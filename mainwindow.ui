@@ -53,8 +53,12 @@ QScrollArea {
     background-color: transparent;
 }
 
+#scrollAreaCollections {
+    border: none;
+}
 #scrollAreaWidgetContents_2 {
     background-color: #1e252f;
+    border: none;
 }
 
 /* 文本框 */
@@ -403,6 +407,12 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
              <height>110</height>
             </size>
            </property>
+           <property name="lineWidth">
+            <number>0</number>
+           </property>
+           <property name="verticalScrollBarPolicy">
+            <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>
+           </property>
            <property name="widgetResizable">
             <bool>true</bool>
            </property>
@@ -411,8 +421,8 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
              <rect>
               <x>0</x>
               <y>0</y>
-              <width>187</width>
-              <height>93</height>
+              <width>999</width>
+              <height>112</height>
              </rect>
             </property>
             <layout class="QHBoxLayout" name="layoutCollections">
@@ -426,15 +436,22 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
               <widget class="QPushButton" name="btnAddCollection">
                <property name="minimumSize">
                 <size>
-                 <width>120</width>
-                 <height>30</height>
+                 <width>90</width>
+                 <height>90</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>90</width>
+                 <height>90</height>
                 </size>
                </property>
                <property name="cursor">
                 <cursorShape>PointingHandCursor</cursorShape>
                </property>
                <property name="text">
-                <string>+ 新建收藏夹</string>
+                <string>+
+New</string>
                </property>
               </widget>
              </item>
@@ -524,7 +541,7 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
             <property name="geometry">
              <rect>
               <x>0</x>
-              <y>-223</y>
+              <y>0</y>
               <width>982</width>
               <height>1058</height>
              </rect>
@@ -939,13 +956,13 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
                     <property name="minimumSize">
                      <size>
                       <width>0</width>
-                      <height>165</height>
+                      <height>170</height>
                      </size>
                     </property>
                     <property name="maximumSize">
                      <size>
                       <width>16777215</width>
-                      <height>165</height>
+                      <height>170</height>
                      </size>
                     </property>
                     <property name="placeholderText">

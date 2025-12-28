@@ -118,6 +118,12 @@ MainWindow::MainWindow(QWidget *parent)
 
     ui->btnFavorite->setContextMenuPolicy(Qt::CustomContextMenu);
 
+    // 1. 确保开启像素滚动 (如果在 XML 里设了，这句可以省略)
+    ui->homeGalleryList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+
+    // 2. 设置滚轮滚一下移动的像素距离 (默认通常较小，比如20)
+    ui->homeGalleryList->verticalScrollBar()->setSingleStep(40);
+
     initMenu();
 
     // === 信号连接 ===
@@ -174,8 +180,19 @@ MainWindow::MainWindow(QWidget *parent)
     }
 
     clearDetailView();
-    loadCollections(); // 加载收藏夹配置
-    loadSettings();    // 扫描模型
+    // loadCollections(); // 加载收藏夹配置
+    // loadSettings();    // 扫描模型
+
+    QTimer::singleShot(10, this, [this](){
+        // 显示一个加载中的状态（可选）
+        ui->statusbar->showMessage("正在扫描本地模型库...");
+
+        // 开始加载
+        loadCollections();
+        loadSettings();
+
+        ui->statusbar->showMessage(QString("加载完成，共 %1 个模型").arg(ui->modelList->count()), 3000);
+    });
 }
 
 MainWindow::~MainWindow()
@@ -266,9 +283,7 @@ void MainWindow::refreshHomeCollectionsUI()
     }
 
     // === 1. 修改新建按钮样式 ===
-    ui->btnAddCollection->setFixedSize(90, 90);
     ui->btnAddCollection->setProperty("class", "collectionBtn");
-    ui->btnAddCollection->setText("+\nNew");
 
     // === 2. 添加 "全部" 按钮 ===
     QPushButton *btnAll = new QPushButton("ALL\n全部");
@@ -702,6 +717,8 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 
 void MainWindow::scanModels(const QString &path)
 {
+    ui->modelList->setUpdatesEnabled(false);
+
     ui->modelList->clear();
 
     ui->comboBaseModel->blockSignals(true);
@@ -753,6 +770,7 @@ void MainWindow::scanModels(const QString &path)
         ui->modelList->addItem(item);
     }
     ui->comboBaseModel->blockSignals(false);
+    ui->modelList->setUpdatesEnabled(true);
     refreshHomeGallery(); // 刷新主页
 }
 
