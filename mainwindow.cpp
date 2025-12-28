@@ -1133,10 +1133,19 @@ void MainWindow::onForceUpdateClicked() {
 }
 
 void MainWindow::fetchModelInfoFromCivitai(const QString &hash) {
+    // 获取当前正在处理的文件名 (从属性或当前选中项)
+    // 建议直接传参进来，或者确保 ui->modelList->property("current_processing_file") 是本地文件名(BaseName)
+    QString localBaseName = ui->modelList->property("current_processing_file").toString();
+
     QString urlStr = QString("https://civitai.com/api/v1/model-versions/by-hash/%1").arg(hash);
     QNetworkRequest request((QUrl(urlStr)));
     request.setHeader(QNetworkRequest::UserAgentHeader, "MyLoraManager/1.0");
+
     QNetworkReply *reply = netManager->get(request);
+
+    // === 关键修改：将本地文件名绑定到 Reply 对象上 ===
+    reply->setProperty("localBaseName", localBaseName);
+
     connect(reply, &QNetworkReply::finished, this, [this, reply](){
         this->onApiMetadataReceived(reply);
     });
@@ -1243,6 +1252,7 @@ bool MainWindow::readLocalJson(const QString &baseName, ModelMeta &meta)
 // 联网回调
 void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
 {
+    QString localBaseName = reply->property("localBaseName").toString();
     reply->deleteLater();
     ui->btnForceUpdate->setEnabled(true);
 
@@ -1338,24 +1348,30 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
 
     // 优先用第一张图做封面，如果本地没有下载，就下载
     if (!meta.images.isEmpty()) {
-        QString baseName = ui->modelList->property("current_processing_file").toString();
-        QString savePath = QDir(currentLoraPath).filePath(baseName + ".preview.png");
+        QString savePath = QDir(currentLoraPath).filePath(localBaseName + ".preview.png");
 
         // 如果本地已存在，直接用；否则下载第一张
         if (!QFile::exists(savePath)) {
             QNetworkRequest req((QUrl(meta.images[0].url)));
             QNetworkReply *imgReply = netManager->get(req);
+
+            // === 关键：把本地文件名和保存路径都传给图片下载回调 ===
+            imgReply->setProperty("localBaseName", localBaseName);
+            imgReply->setProperty("savePath", savePath);
+
             connect(imgReply, &QNetworkReply::finished, this, [this, imgReply](){
                 this->onImageDownloaded(imgReply);
             });
+
+            // 暂时先把 meta 的路径设为这个（虽然还没下载完），以便保存到 JSON
+            meta.previewPath = savePath;
         } else {
             meta.previewPath = savePath;
         }
     }
 
     // 保存并更新UI
-    QString baseName = ui->modelList->property("current_processing_file").toString();
-    saveLocalMetadata(baseName, root);
+    saveLocalMetadata(localBaseName, root);
 
     currentMeta = meta; // 缓存到成员变量
     updateDetailView(meta);
@@ -1364,28 +1380,71 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
 void MainWindow::onImageDownloaded(QNetworkReply *reply)
 {
     reply->deleteLater();
-    if (reply->error() != QNetworkReply::NoError) return;
+
+    // 1. 获取上下文
+    QString localBaseName = reply->property("localBaseName").toString();
+    QString savePath = reply->property("savePath").toString();
+
+    if (reply->error() != QNetworkReply::NoError) {
+        qDebug() << "Image download failed:" << reply->errorString();
+        return;
+    }
 
     QByteArray imgData = reply->readAll();
-    QString baseName = ui->modelList->property("current_processing_file").toString();
+    if (savePath.isEmpty() || localBaseName.isEmpty()) return;
 
-    if (!currentLoraPath.isEmpty() && !baseName.isEmpty()) {
-        QString savePath = QDir(currentLoraPath).filePath(baseName + ".preview.png");
-        QFile file(savePath);
-        if (file.open(QIODevice::WriteOnly)) {
-            file.write(imgData);
-            file.close();
+    // 2. 保存文件
+    QFile file(savePath);
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write(imgData);
+        file.close();
 
-            QList<QListWidgetItem*> items = ui->modelList->findItems(baseName, Qt::MatchExactly);
-            if(!items.isEmpty()) {
-                items.first()->setData(ROLE_PREVIEW_PATH, savePath);
-                items.first()->setIcon(getSquareIcon(savePath));
+        // 生成图标 (耗时操作建议放线程，这里简单处理先用主线程，或复用你的 Task)
+        // 为了立即反馈，先生成一个小图标
+        QIcon newIcon = getSquareIcon(savePath); // 或者 getFitIcon
 
-                // 如果当前正好选中该模型，刷新背景
-                if (ui->modelList->currentItem() && ui->modelList->currentItem()->text() == baseName) {
-                    transitionToImage(savePath);
-                }
+        // === 修复问题 1：更新 SideBar (modelList) 图标 ===
+        // 遍历列表找到对应的 Item (可能有多个，如果同一个文件被加了多次，虽不常见)
+        for(int i = 0; i < ui->modelList->count(); ++i) {
+            QListWidgetItem *item = ui->modelList->item(i);
+            // 必须比对 UserRole (即 baseName) 或 FILE_PATH
+            if (item->data(Qt::UserRole).toString() == localBaseName) {
+                item->setData(ROLE_PREVIEW_PATH, savePath); // 更新数据
+                item->setIcon(newIcon); // 刷新图标
             }
+        }
+
+        // === 修复问题 1：更新 Home Gallery (homeGalleryList) 图标 ===
+        // 主页列表没有存 UserRole (baseName)，但存了 ROLE_FILE_PATH
+        // 我们通过 savePath 推导 filePath，或者更简单的：遍历检查 previewPath
+        QString targetFilePath = QDir(currentLoraPath).filePath(localBaseName + ".safetensors");
+        // 假如你的模型扩展名不确定，这里最好存一个 map，或者遍历检查
+
+        for(int i = 0; i < ui->homeGalleryList->count(); ++i) {
+            QListWidgetItem *item = ui->homeGalleryList->item(i);
+            // 检查 Item 对应的文件路径是否包含 localBaseName
+            QString itemPath = item->data(ROLE_FILE_PATH).toString();
+            QFileInfo fi(itemPath);
+            if (fi.completeBaseName() == localBaseName) {
+                item->setData(ROLE_PREVIEW_PATH, savePath);
+                item->setIcon(newIcon);
+            }
+        }
+
+        // === 修复问题 3：立即更新详情页 Hero 和 背景 ===
+        // 判断当前正在查看的是不是这个模型
+        // 判定标准：当前详情页记录的文件路径 == 下载图片所属的文件的路径
+        QString currentViewingPath = currentMeta.filePath;
+        QFileInfo currentFi(currentViewingPath);
+
+        if (currentFi.completeBaseName() == localBaseName) {
+            // 更新内存中的 meta，防止下次点击还没更新
+            currentMeta.previewPath = savePath;
+            ui->heroFrame->setProperty("fullImagePath", savePath); // 更新大图查看路径
+
+            // 强制触发过渡动画
+            // 此时文件已落地，transitionToImage 会读取成功并刷新 UI
+            transitionToImage(savePath);
         }
     }
 }
