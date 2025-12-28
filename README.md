@@ -34,16 +34,17 @@
 
 ## 📸 界面预览 (Screenshots)
 
-<img width="1555" height="1090" alt="N{$7`N $ANF3X}69@8}HR" src="https://github.com/user-attachments/assets/8074f089-902c-4256-8124-3fbd6f14c78a" />
 
 
 ### 主页画廊 (Home Gallery)
 
+<img width="1555" height="1090" alt="N{$7`N $ANF3X}69@8}HR" src="https://github.com/user-attachments/assets/8074f089-902c-4256-8124-3fbd6f14c78a" />
 
-<img width="1554" height="1089" alt="QDZH0I_$CJWE@@@5IKYNF31" src="https://github.com/user-attachments/assets/4dfc4017-06d2-4bc3-bc64-d372beb62d5a" />
 
 
 ### 模型详情页 (Detail View)
+
+<img width="1554" height="1089" alt="QDZH0I_$CJWE@@@5IKYNF31" src="https://github.com/user-attachments/assets/4dfc4017-06d2-4bc3-bc64-d372beb62d5a" />
 
 <img width="1389" height="1091" alt="V(X`341R(MCLU{ }7L~P6X" src="https://github.com/user-attachments/assets/65341130-f515-4170-8629-aa47556673b8" />
 
