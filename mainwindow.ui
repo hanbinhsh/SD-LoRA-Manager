@@ -27,8 +27,9 @@ QLineEdit { background-color: #131519; border: 1px solid #363c46; color: #dcdedf
 /* 按钮 */
 #btnHome { background-color: transparent; text-align: left; padding-left: 10px; font-size: 14px; font-weight: bold; color: #fff; }
 #btnHome:hover { background-color: #3d4450; }
-#btnScanLocal, #btnForceUpdate, #btnOpenUrl { background-color: #2a3f5a; border-radius: 2px; color: #66c0f4; border: none; }
-#btnScanLocal:hover, #btnForceUpdate:hover, #btnOpenUrl:hover { background-color: #3d5677; color: #ffffff; }
+
+#btnScanLocal, #btnForceUpdate, #btnOpenUrl, #btnFavorite { background-color: #2a3f5a; border-radius: 2px; color: #66c0f4; border: none; }
+#btnScanLocal:hover, #btnForceUpdate:hover, #btnOpenUrl:hover, #btnFavorite:hover { background-color: #3d5677; color: #ffffff; }
 
 /* 绿色复制按钮 */
 QPushButton[class=&quot;copyBtn&quot;] { background-color: #5c7e10; color: white; border: none; border-radius: 2px; font-weight: bold; }
@@ -59,12 +60,18 @@ QScrollArea {
 /* 文本框 */
 QTextBrowser { background-color: #16191e; border: 1px solid #31363d; color: #acb2b8; border-radius: 3px; padding: 8px; }
 
+#textDescription {
+    background-color: transparent;
+    border: none;
+    color: #acb2b8;
+}
+
 /* 标题 */
 QLabel[class=&quot;sectionTitle&quot;] { color: #fff; font-weight: bold; letter-spacing: 1px; font-size: 14px; border-bottom: 1px solid #3d4d5d; padding-bottom: 5px; margin-top: 15px; }
 
 /* 缩略图列表 */
-#scrollAreaGallery { background-color: #16191e; border: none; }
-#galleryContents { background-color: #16191e; }
+#scrollAreaGallery { background-color: transparent; border: none; }
+#galleryContents { background-color: transparent; }
 
 /* === 图库缩略图按钮样式 === */
 QPushButton[class=&quot;galleryThumb&quot;] {
@@ -251,6 +258,102 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
          </layout>
         </item>
         <item>
+         <widget class="QFrame" name="filterFrame">
+          <property name="styleSheet">
+           <string notr="true">
+            QFrame#filterFrame { background-color: #212831; border-radius: 4px; padding: 4px; }
+            QLabel { color: #8c96a0; font-size: 11px; font-weight: bold; }
+            QComboBox { 
+                background-color: #16191e; 
+                color: #dcdedf; 
+                border: 1px solid #363c46; 
+                border-radius: 3px; 
+                padding: 4px; 
+                min-height: 20px;
+            }
+            QComboBox::drop-down { border: none; }
+            QComboBox::down-arrow { image: none; border-left: 2px solid #363c46; } 
+           </string>
+          </property>
+          <property name="frameShape">
+           <enum>QFrame::Shape::StyledPanel</enum>
+          </property>
+          <property name="frameShadow">
+           <enum>QFrame::Shadow::Raised</enum>
+          </property>
+          <layout class="QGridLayout" name="gridLayout_Filter">
+           <property name="leftMargin">
+            <number>5</number>
+           </property>
+           <property name="topMargin">
+            <number>5</number>
+           </property>
+           <property name="rightMargin">
+            <number>5</number>
+           </property>
+           <property name="bottomMargin">
+            <number>5</number>
+           </property>
+           <property name="verticalSpacing">
+            <number>8</number>
+           </property>
+           <item row="0" column="0">
+            <widget class="QLabel" name="lblSort">
+             <property name="text">
+              <string>排序 / Sort:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QComboBox" name="comboSort">
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
+             <item>
+              <property name="text">
+               <string>Name (A-Z)</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>Date (Newest)</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>Downloads (High)</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>Likes (High)</string>
+              </property>
+             </item>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="lblBaseModel">
+             <property name="text">
+              <string>底模 / Base:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QComboBox" name="comboBaseModel">
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
+             <item>
+              <property name="text">
+               <string>All</string>
+              </property>
+             </item>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
          <widget class="QListWidget" name="modelList">
           <property name="contextMenuPolicy">
            <enum>Qt::ContextMenuPolicy::CustomContextMenu</enum>
@@ -421,9 +524,9 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
             <property name="geometry">
              <rect>
               <x>0</x>
-              <y>0</y>
+              <y>-223</y>
               <width>982</width>
-              <height>1055</height>
+              <height>1058</height>
              </rect>
             </property>
             <layout class="QVBoxLayout" name="verticalLayout_ScrollContent">
@@ -561,6 +664,22 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
                   </property>
                  </widget>
                 </item>
+                <item>
+                 <widget class="QPushButton" name="btnFavorite">
+                  <property name="minimumSize">
+                   <size>
+                    <width>40</width>
+                    <height>40</height>
+                   </size>
+                  </property>
+                  <property name="toolTip">
+                   <string>添加到收藏夹 (右键管理)</string>
+                  </property>
+                  <property name="text">
+                   <string>♥</string>
+                  </property>
+                 </widget>
+                </item>
                </layout>
               </widget>
              </item>
@@ -585,27 +704,19 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
                 <item>
                  <layout class="QVBoxLayout" name="layoutLeftCol">
                   <item>
-                   <widget class="QLabel" name="label_TriggerTitle">
-                    <property name="text">
-                     <string>TRIGGER WORDS / 触发词</string>
-                    </property>
-                    <property name="class" stdset="0">
-                     <string>sectionTitle</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <layout class="QVBoxLayout" name="layoutTriggerStack"/>
-                  </item>
-                  <item>
-                   <widget class="Line" name="line_2">
-                    <property name="orientation">
-                     <enum>Qt::Orientation::Horizontal</enum>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
                    <widget class="QLabel" name="label_GalleryTitle">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>40</height>
+                     </size>
+                    </property>
+                    <property name="maximumSize">
+                     <size>
+                      <width>16777215</width>
+                      <height>40</height>
+                     </size>
+                    </property>
                     <property name="text">
                      <string>IMAGE PREVIEWS &amp; PROMPTS / 预览与提示词</string>
                     </property>
@@ -619,6 +730,12 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
                     <property name="minimumSize">
                      <size>
                       <width>0</width>
+                      <height>165</height>
+                     </size>
+                    </property>
+                    <property name="maximumSize">
+                     <size>
+                      <width>16777215</width>
                       <height>165</height>
                      </size>
                     </property>
@@ -663,6 +780,18 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
                      <layout class="QVBoxLayout" name="verticalLayout">
                       <item>
                        <widget class="QLabel" name="lblPromptHeader">
+                        <property name="minimumSize">
+                         <size>
+                          <width>0</width>
+                          <height>30</height>
+                         </size>
+                        </property>
+                        <property name="maximumSize">
+                         <size>
+                          <width>16777215</width>
+                          <height>30</height>
+                         </size>
+                        </property>
                         <property name="styleSheet">
                          <string>color: #8c96a0; font-weight: bold; margin-top: 10px;</string>
                         </property>
@@ -690,6 +819,18 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
                      <layout class="QVBoxLayout" name="verticalLayout_5">
                       <item>
                        <widget class="QLabel" name="lblNegPromptHeader">
+                        <property name="minimumSize">
+                         <size>
+                          <width>0</width>
+                          <height>30</height>
+                         </size>
+                        </property>
+                        <property name="maximumSize">
+                         <size>
+                          <width>16777215</width>
+                          <height>30</height>
+                         </size>
+                        </property>
                         <property name="styleSheet">
                          <string>color: #8c96a0; font-weight: bold; margin-top: 10px;</string>
                         </property>
@@ -725,6 +866,38 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
                     </property>
                    </widget>
                   </item>
+                  <item>
+                   <widget class="Line" name="line_2">
+                    <property name="orientation">
+                     <enum>Qt::Orientation::Horizontal</enum>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="label_TriggerTitle">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>40</height>
+                     </size>
+                    </property>
+                    <property name="maximumSize">
+                     <size>
+                      <width>16777215</width>
+                      <height>40</height>
+                     </size>
+                    </property>
+                    <property name="text">
+                     <string>TRIGGER WORDS / 触发词</string>
+                    </property>
+                    <property name="class" stdset="0">
+                     <string>sectionTitle</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <layout class="QVBoxLayout" name="layoutTriggerStack"/>
+                  </item>
                  </layout>
                 </item>
                 <item>
@@ -736,8 +909,23 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
                 </item>
                 <item>
                  <layout class="QVBoxLayout" name="layoutRightCol">
+                  <property name="spacing">
+                   <number>4</number>
+                  </property>
                   <item>
                    <widget class="QLabel" name="label_DescTitle">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>40</height>
+                     </size>
+                    </property>
+                    <property name="maximumSize">
+                     <size>
+                      <width>16777215</width>
+                      <height>40</height>
+                     </size>
+                    </property>
                     <property name="text">
                      <string>ABOUT / 简介</string>
                     </property>
@@ -751,7 +939,13 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
                     <property name="minimumSize">
                      <size>
                       <width>0</width>
-                      <height>200</height>
+                      <height>165</height>
+                     </size>
+                    </property>
+                    <property name="maximumSize">
+                     <size>
+                      <width>16777215</width>
+                      <height>165</height>
                      </size>
                     </property>
                     <property name="placeholderText">
@@ -760,7 +954,26 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
                    </widget>
                   </item>
                   <item>
+                   <widget class="Line" name="line_3">
+                    <property name="orientation">
+                     <enum>Qt::Orientation::Horizontal</enum>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
                    <widget class="QLabel" name="label_FileTitle">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>40</height>
+                     </size>
+                    </property>
+                    <property name="maximumSize">
+                     <size>
+                      <width>16777215</width>
+                      <height>40</height>
+                     </size>
+                    </property>
                     <property name="text">
                      <string>FILE INFO / 文件</string>
                     </property>
@@ -771,6 +984,12 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
                   </item>
                   <item>
                    <widget class="QLabel" name="lblFileInfo">
+                    <property name="minimumSize">
+                     <size>
+                      <width>0</width>
+                      <height>165</height>
+                     </size>
+                    </property>
                     <property name="styleSheet">
                      <string>color: #acb2b8; line-height: 1.4;</string>
                     </property>
@@ -778,6 +997,9 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
                      <string>Filename: ...
          Size: ...
          Hash: ...</string>
+                    </property>
+                    <property name="alignment">
+                     <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
                     </property>
                     <property name="wordWrap">
                      <bool>true</bool>
@@ -788,7 +1010,7 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
                    </widget>
                   </item>
                   <item>
-                   <spacer name="verticalSpacer_Right">
+                   <spacer name="verticalSpacer">
                     <property name="orientation">
                      <enum>Qt::Orientation::Vertical</enum>
                     </property>

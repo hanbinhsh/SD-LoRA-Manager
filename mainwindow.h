@@ -21,10 +21,23 @@
 #include <QFutureWatcher>
 #include <QLabel>
 #include <QTimer>
+#include <QCollator>
+#include <QFuture>
+
+const int ROLE_SORT_DATE = Qt::UserRole + 10;      // 存储时间戳 (qint64)
+const int ROLE_SORT_DOWNLOADS = Qt::UserRole + 11; // 存储下载量 (int)
+const int ROLE_SORT_LIKES = Qt::UserRole + 12;     // 存储点赞量 (int)
+const int ROLE_FILTER_BASE = Qt::UserRole + 13;    // 存储底模名称 (QString)
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
+
+struct ImageLoadResult {
+    QString path;
+    QImage originalImg; // 只存原图，模糊交给主线程做
+    bool valid = false;
+};
 
 struct ImageInfo {
     QString url;
@@ -81,8 +94,6 @@ private slots:
     void onApiMetadataReceived(QNetworkReply *reply);
     void onImageDownloaded(QNetworkReply *reply);
     void onGalleryImageClicked(int index);
-
-    // === 新增槽函数 ===
     void onHomeButtonClicked(); // 切换到主页
     void onHomeGalleryClicked(QListWidgetItem *item); // 主页大图点击跳转
     void onSidebarContextMenu(const QPoint &pos); // 侧边栏右键
@@ -90,6 +101,11 @@ private slots:
     void onCollectionFilterClicked(const QString &collectionName); // 点击收藏夹过滤
     void onIconLoaded(const QString &filePath, const QImage &image);
     void onHashCalculated();
+    void onSearchTextChanged(const QString &text);
+    void onBtnFavoriteClicked();
+    void onHomeGalleryContextMenu(const QPoint &pos);
+    void onSortIndexChanged(int index);
+    void onFilterBaseModelChanged(const QString &text);
 
 private:
     Ui::MainWindow *ui;
@@ -119,7 +135,6 @@ private:
     void scanModels(const QString &path);
     void updateDetailView(const ModelMeta &meta);
     void clearDetailView();
-    void setHeroImage(const QString &path);
     QIcon getSquareIcon(const QString &path);
 
     // 生成一个适合主页大图的 Icon (2:3比例)
@@ -138,6 +153,27 @@ private:
     void showFullImageDialog(const QString &imagePath);
     QIcon getFitIcon(const QString &path);
     void updateBackgroundImage();
+
+    void showCollectionMenu(const QString &modelName, const QPoint &globalPos);
+
+    // 辅助函数：快速读取单个 JSON 的元数据用于列表显示
+    void preloadItemMetadata(QListWidgetItem *item, const QString &jsonPath);
+
+    QFutureWatcher<ImageLoadResult> *imageLoadWatcher;
+    QPixmap applyBlurToImage(const QImage &srcImg, const QSize &bgSize, const QSize &heroSize);
+    static ImageLoadResult processImageTask(const QString &path);
+    QPixmap nextHeroPixmap;         // 即将显示的新 Hero 图
+    QPixmap currentBlurredBgPix;    // 当前背景的模糊完成图 (用于过渡缓存)
+    QPixmap nextBlurredBgPix;       // 下一张背景的模糊完成图 (用于过渡缓存)
+    float transitionOpacity = 0.0;  // 过渡透明度 (0.0 - 1.0)
+    QVariantAnimation *transitionAnim = nullptr; // 动画控制器
+    void transitionToImage(const QString &path);
+    void updateBackgroundDuringTransition();
+
+    // 辅助函数：执行排序
+    void executeSort();
+    // 辅助函数：执行筛选
+    void executeFilter();
 
     QFutureWatcher<QString> *hashWatcher;
     QString currentProcessingPath;

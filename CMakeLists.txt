@@ -5,6 +5,8 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network concurrent)
 
 qt_standard_project_setup()
 
+set(CMAKE_AUTORCC ON)
+
 qt_add_executable(SD_LoRA_Manager
     WIN32 MACOSX_BUNDLE
     main.cpp
@@ -12,7 +14,8 @@ qt_add_executable(SD_LoRA_Manager
     mainwindow.h
     mainwindow.ui
     imageloader.h
-
+    resources.qrc
+    app.rc
 )
 
 target_link_libraries(SD_LoRA_Manager
