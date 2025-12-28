@@ -1346,11 +1346,10 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
         meta.images.append(imgInfo);
     }
 
-    // 优先用第一张图做封面，如果本地没有下载，就下载
     if (!meta.images.isEmpty()) {
+        // 强制使用本地文件名构造图片路径，解决重名和冲突问题
         QString savePath = QDir(currentLoraPath).filePath(localBaseName + ".preview.png");
 
-        // 如果本地已存在，直接用；否则下载第一张
         if (!QFile::exists(savePath)) {
             QNetworkRequest req((QUrl(meta.images[0].url)));
             QNetworkReply *imgReply = netManager->get(req);
@@ -1399,12 +1398,8 @@ void MainWindow::onImageDownloaded(QNetworkReply *reply)
         file.write(imgData);
         file.close();
 
-        // 生成图标 (耗时操作建议放线程，这里简单处理先用主线程，或复用你的 Task)
-        // 为了立即反馈，先生成一个小图标
         QIcon newIcon = getSquareIcon(savePath); // 或者 getFitIcon
 
-        // === 修复问题 1：更新 SideBar (modelList) 图标 ===
-        // 遍历列表找到对应的 Item (可能有多个，如果同一个文件被加了多次，虽不常见)
         for(int i = 0; i < ui->modelList->count(); ++i) {
             QListWidgetItem *item = ui->modelList->item(i);
             // 必须比对 UserRole (即 baseName) 或 FILE_PATH
@@ -1413,12 +1408,6 @@ void MainWindow::onImageDownloaded(QNetworkReply *reply)
                 item->setIcon(newIcon); // 刷新图标
             }
         }
-
-        // === 修复问题 1：更新 Home Gallery (homeGalleryList) 图标 ===
-        // 主页列表没有存 UserRole (baseName)，但存了 ROLE_FILE_PATH
-        // 我们通过 savePath 推导 filePath，或者更简单的：遍历检查 previewPath
-        QString targetFilePath = QDir(currentLoraPath).filePath(localBaseName + ".safetensors");
-        // 假如你的模型扩展名不确定，这里最好存一个 map，或者遍历检查
 
         for(int i = 0; i < ui->homeGalleryList->count(); ++i) {
             QListWidgetItem *item = ui->homeGalleryList->item(i);
@@ -1431,19 +1420,13 @@ void MainWindow::onImageDownloaded(QNetworkReply *reply)
             }
         }
 
-        // === 修复问题 3：立即更新详情页 Hero 和 背景 ===
-        // 判断当前正在查看的是不是这个模型
-        // 判定标准：当前详情页记录的文件路径 == 下载图片所属的文件的路径
         QString currentViewingPath = currentMeta.filePath;
         QFileInfo currentFi(currentViewingPath);
 
         if (currentFi.completeBaseName() == localBaseName) {
-            // 更新内存中的 meta，防止下次点击还没更新
             currentMeta.previewPath = savePath;
-            ui->heroFrame->setProperty("fullImagePath", savePath); // 更新大图查看路径
-
-            // 强制触发过渡动画
-            // 此时文件已落地，transitionToImage 会读取成功并刷新 UI
+            ui->heroFrame->setProperty("fullImagePath", savePath);
+            currentHeroPath = "";
             transitionToImage(savePath);
         }
     }
@@ -1596,9 +1579,8 @@ void MainWindow::onIconLoaded(const QString &filePath, const QImage &image)
     }
 
     if (filePath == currentMeta.previewPath) {
-        if (currentHeroPixmap.isNull()) {
-            transitionToImage(filePath);
-        }
+        currentHeroPath = "";
+        transitionToImage(filePath);
     }
 }
 
