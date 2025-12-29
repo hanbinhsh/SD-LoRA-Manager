@@ -29,6 +29,8 @@
 const int ROLE_FILE_PATH = Qt::UserRole + 1;
 const int ROLE_PREVIEW_PATH = Qt::UserRole + 2;
 
+const QString ROLE_URL = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/53.36";
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -1203,7 +1205,7 @@ void MainWindow::fetchModelInfoFromCivitai(const QString &hash) {
 
     // === 核心修改点 START ===
     // 1. 伪装成浏览器 (解决 403 Forbidden / 0B 问题)
-    request.setHeader(QNetworkRequest::UserAgentHeader, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+    request.setHeader(QNetworkRequest::UserAgentHeader, ROLE_URL);
 
     // 2. 允许自动重定向 (Qt 6 标准写法)
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
@@ -1421,7 +1423,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
         if (!QFile::exists(savePath)) {
             QNetworkRequest req((QUrl(meta.images[0].url)));
 
-            req.setHeader(QNetworkRequest::UserAgentHeader, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            req.setHeader(QNetworkRequest::UserAgentHeader, ROLE_URL);
             req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
             QNetworkReply *imgReply = netManager->get(req);
@@ -1558,7 +1560,7 @@ void MainWindow::downloadThumbnail(const QString &url, const QString &savePath, 
 
     // === 核心修改点 START ===
     // 1. 伪装成浏览器
-    req.setHeader(QNetworkRequest::UserAgentHeader, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+    req.setHeader(QNetworkRequest::UserAgentHeader, ROLE_URL);
 
     // 2. 允许自动重定向
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
@@ -2265,7 +2267,7 @@ void MainWindow::processNextDownload()
 
     QNetworkRequest req((QUrl(task.url)));
     // === 关键：伪装浏览器头 (防封) ===
-    req.setHeader(QNetworkRequest::UserAgentHeader, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+    req.setHeader(QNetworkRequest::UserAgentHeader, ROLE_URL);
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
     QNetworkReply *reply = netManager->get(req);
