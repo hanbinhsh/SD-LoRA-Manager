@@ -25,6 +25,8 @@
 #include <QFuture>
 #include <QQueue>
 
+#include "tagflowwidget.h"
+
 const int ROLE_SORT_DATE = Qt::UserRole + 10;      // 存储时间戳 (qint64)
 const int ROLE_SORT_DOWNLOADS = Qt::UserRole + 11; // 存储下载量 (int)
 const int ROLE_SORT_LIKES = Qt::UserRole + 12;     // 存储点赞量 (int)
@@ -59,6 +61,13 @@ struct ImageInfo {
     int width;
     int height;
     bool nsfw;
+};
+
+struct UserImageInfo {
+    QString path;
+    QString prompt;
+    QString negativePrompt;
+    QString parameters;
 };
 
 struct ModelMeta {
@@ -113,6 +122,11 @@ private slots:
     void onHomeGalleryContextMenu(const QPoint &pos);
     void onSortIndexChanged(int index);
     void onFilterBaseModelChanged(const QString &text);
+    void onUserImageClicked(QListWidgetItem *item);
+    void onTagFilterChanged(const QSet<QString> &selectedTags);
+    void onToggleDetailTab(); // 切换 Tab 的槽函数
+    void onSetSdFolderClicked();
+    void onRescanUserClicked();
 
 private:
     Ui::MainWindow *ui;
@@ -194,6 +208,14 @@ private:
 
     QQueue<DownloadTask> downloadQueue; // 任务队列
     bool isDownloading = false;         // 当前是否有任务在运行
+
+
+    TagFlowWidget *tagFlowWidget;
+    QString sdOutputFolder;
+    void loadUserGalleryConfig();
+    void scanForUserImages(const QString &loraBaseName);
+    void parsePngInfo(const QString &path, UserImageInfo &info);
+    void updateUserStats(const QList<UserImageInfo> &images);
 };
 
 #endif // MAINWINDOW_H

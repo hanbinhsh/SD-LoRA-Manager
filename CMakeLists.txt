@@ -16,6 +16,7 @@ qt_add_executable(SD_LoRA_Manager
     imageloader.h
     resources.qrc
     app.rc
+    tagflowwidget.h
 )
 
 target_link_libraries(SD_LoRA_Manager
