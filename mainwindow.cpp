@@ -1073,7 +1073,11 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
 
     QString filePath = item->data(ROLE_FILE_PATH).toString();
     if (currentMeta.filePath == filePath && !currentMeta.name.isEmpty()) {
-        // 已经是这个模型了，直接忽略本次点击
+        // 如果当前不在详情页（比如在主页），则只切换页面，不重新加载数据
+        if (ui->mainStack->currentIndex() != 1) {
+            ui->mainStack->setCurrentIndex(1);
+        }
+        // 无论是否切换了页面，都直接返回，不再执行后续繁重的 JSON 解析
         return;
     }
 
@@ -2234,10 +2238,20 @@ void MainWindow::processNextDownload()
 
                 // 加载图标
                 if (task.button) {
-                    IconLoaderTask *iconTask = new IconLoaderTask(task.savePath, 100, 0, this, task.savePath, true);
-                    iconTask->setAutoDelete(true);
-                    threadPool->start(iconTask);
-                    task.button->setText(""); // 清空文字
+                    // 获取当前按钮原本想展示的图片路径（我们在 updateDetailView 里 setProperty 存进去的）
+                    QString currentBtnPath = task.button->property("fullImagePath").toString();
+
+                    // 只有当 下载的任务路径 == 按钮当前需要的路径 时，才更新图标
+                    // 这防止了：模型A的图片下载完了，结果贴到了模型B的按钮上
+                    if (currentBtnPath == task.savePath) {
+                        IconLoaderTask *iconTask = new IconLoaderTask(task.savePath, 100, 0, this, task.savePath, true);
+                        iconTask->setAutoDelete(true);
+                        threadPool->start(iconTask);
+                        task.button->setText("");
+                    } else {
+                        // 这种情况说明用户已经切走了，虽然图下好了，但不要动界面
+                        qDebug() << "Image downloaded but user switched model. GUI update skipped.";
+                    }
                 }
             }
         }
