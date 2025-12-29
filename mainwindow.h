@@ -23,6 +23,7 @@
 #include <QTimer>
 #include <QCollator>
 #include <QFuture>
+#include <QQueue>
 
 const int ROLE_SORT_DATE = Qt::UserRole + 10;      // 存储时间戳 (qint64)
 const int ROLE_SORT_DOWNLOADS = Qt::UserRole + 11; // 存储下载量 (int)
@@ -32,6 +33,12 @@ const int ROLE_FILTER_BASE = Qt::UserRole + 13;    // 存储底模名称 (QStrin
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
+
+struct DownloadTask {
+    QString url;
+    QString savePath;
+    QPointer<QPushButton> button; // 使用 QPointer 防止按钮被销毁后野指针崩溃
+};
 
 struct ImageLoadResult {
     QString path;
@@ -169,6 +176,8 @@ private:
     QVariantAnimation *transitionAnim = nullptr; // 动画控制器
     void transitionToImage(const QString &path);
     void updateBackgroundDuringTransition();
+    void enqueueDownload(const QString &url, const QString &savePath, QPushButton *btn);
+    void processNextDownload();
 
     // 辅助函数：执行排序
     void executeSort();
@@ -182,6 +191,9 @@ private:
     QIcon placeholderIcon;
 
     QTimer *bgResizeTimer;
+
+    QQueue<DownloadTask> downloadQueue; // 任务队列
+    bool isDownloading = false;         // 当前是否有任务在运行
 };
 
 #endif // MAINWINDOW_H

@@ -849,6 +849,9 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
     // 4. 图库 (Gallery)
     clearLayout(ui->layoutGallery);
 
+    downloadQueue.clear();
+    isDownloading = false;
+
     if (meta.images.isEmpty()) {
         ui->layoutGallery->addWidget(new QLabel("No preview images."));
     } else {
@@ -878,27 +881,34 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
 
             QString localPath = findLocalPreviewPath(currentLoraPath, currentBaseName, meta.fileNameServer, i);
 
-            // === 关键修改 1: 存储全路径到 Property (供双击事件使用) ===
             thumbBtn->setProperty("fullImagePath", localPath);
-
-            // === 关键修改 2: 安装事件过滤器 (监听双击) ===
             thumbBtn->installEventFilter(this);
 
             if (QFile::exists(localPath)) {
-                // 1. 先设置一个空的或者占位图标 (避免界面跳动)
-                // 这里可以直接用你的 placeholderIcon (如果是正方形可能会拉伸，最好搞个长方形的占位)
-                // 或者暂时留空，等待回调
+                // 情况 A: 本地有图，直接加载
                 thumbBtn->setText("Loading...");
-
-                // 2. 启动异步加载 (Fit模式)
-                // 参数: 路径, 尺寸(虽然Fit模式内部定死100x150, 但传个占位), 圆角, 接收者, ID, isFitMode=true
                 IconLoaderTask *task = new IconLoaderTask(localPath, 100, 0, this, localPath, true);
                 task->setAutoDelete(true);
                 threadPool->start(task);
-
             } else {
-                thumbBtn->setText("Downloading...");
-                downloadThumbnail(img.url, localPath, thumbBtn);
+                // 情况 B: 本地没图
+
+                // === 解决第一张图冲突 (X) 问题 ===
+                // 如果是第 0 张图，且 previewPath 已经被设置了（说明 onApiMetadataReceived 正在处理那张图）
+                // 我们就不放入队列了，直接等 onImageDownloaded 的回调来更新这个按钮
+                // 这样避免了两个请求抢同一张图
+                if (i == 0 && !meta.previewPath.isEmpty() && meta.previewPath != localPath) {
+                    // 这里的逻辑有点绕，简单来说：
+                    // 如果 meta.previewPath 有值，说明 metadata 那个流程已经接管了封面下载
+                    // 我们这里只需要给按钮显示个 "Downloading..." 占位即可，不要 enqueue
+                    thumbBtn->setText("Downloading...");
+                    // 按钮不需要任何操作，onImageDownloaded 会根据 fullImagePath 找到它并更新
+                }
+                else {
+                    // 其他图片，或者封面没被接管，加入队列
+                    thumbBtn->setText("Queueing..."); // 显示排队中
+                    enqueueDownload(img.url, localPath, thumbBtn);
+                }
             }
 
             // 单击事件 (查看参数 & 预览)
@@ -1139,11 +1149,18 @@ void MainWindow::fetchModelInfoFromCivitai(const QString &hash) {
 
     QString urlStr = QString("https://civitai.com/api/v1/model-versions/by-hash/%1").arg(hash);
     QNetworkRequest request((QUrl(urlStr)));
-    request.setHeader(QNetworkRequest::UserAgentHeader, "MyLoraManager/1.0");
+
+    // === 核心修改点 START ===
+    // 1. 伪装成浏览器 (解决 403 Forbidden / 0B 问题)
+    request.setHeader(QNetworkRequest::UserAgentHeader, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+
+    // 2. 允许自动重定向 (Qt 6 标准写法)
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    // === 核心修改点 END ===
 
     QNetworkReply *reply = netManager->get(request);
 
-    // === 关键修改：将本地文件名绑定到 Reply 对象上 ===
+    // 将本地文件名绑定到 Reply 对象上，确保回调时知道是哪个模型
     reply->setProperty("localBaseName", localBaseName);
 
     connect(reply, &QNetworkReply::finished, this, [this, reply](){
@@ -1352,6 +1369,10 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
 
         if (!QFile::exists(savePath)) {
             QNetworkRequest req((QUrl(meta.images[0].url)));
+
+            req.setHeader(QNetworkRequest::UserAgentHeader, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+
             QNetworkReply *imgReply = netManager->get(req);
 
             // === 关键：把本地文件名和保存路径都传给图片下载回调 ===
@@ -1399,6 +1420,7 @@ void MainWindow::onImageDownloaded(QNetworkReply *reply)
         file.close();
 
         QIcon newIcon = getSquareIcon(savePath); // 或者 getFitIcon
+        QIcon fitIcon = getFitIcon(savePath);
 
         for(int i = 0; i < ui->modelList->count(); ++i) {
             QListWidgetItem *item = ui->modelList->item(i);
@@ -1417,6 +1439,24 @@ void MainWindow::onImageDownloaded(QNetworkReply *reply)
             if (fi.completeBaseName() == localBaseName) {
                 item->setData(ROLE_PREVIEW_PATH, savePath);
                 item->setIcon(newIcon);
+            }
+        }
+
+        if (ui->layoutGallery) {
+            for (int k = 0; k < ui->layoutGallery->count(); ++k) {
+                QLayoutItem *item = ui->layoutGallery->itemAt(k);
+                if (item && item->widget()) {
+                    QPushButton *btn = qobject_cast<QPushButton*>(item->widget());
+                    if (btn) {
+                        // 检查路径是否匹配
+                        QString btnPath = btn->property("fullImagePath").toString();
+                        if (btnPath == savePath) {
+                            btn->setIcon(fitIcon); // 设置图标
+                            btn->setIconSize(QSize(90, 135));
+                            btn->setText(""); // 清除 Downloading 文字
+                        }
+                    }
+                }
             }
         }
 
@@ -1464,26 +1504,48 @@ void MainWindow::onOpenUrlClicked() {
 void MainWindow::downloadThumbnail(const QString &url, const QString &savePath, QPushButton *button)
 {
     QNetworkRequest req((QUrl(url)));
+
+    // === 核心修改点 START ===
+    // 1. 伪装成浏览器
+    req.setHeader(QNetworkRequest::UserAgentHeader, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+
+    // 2. 允许自动重定向
+    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    // === 核心修改点 END ===
+
     QNetworkReply *reply = netManager->get(req);
     QPointer<QPushButton> safeBtn = button;
 
     connect(reply, &QNetworkReply::finished, this, [this, reply, savePath, safeBtn]() {
         reply->deleteLater();
+
+        // 检查网络错误
         if (reply->error() != QNetworkReply::NoError) {
             if (safeBtn) safeBtn->setText("Error");
+            qDebug() << "Download error:" << reply->errorString();
             return;
         }
 
         QByteArray data = reply->readAll();
+
+        // 再次检查数据是否为空 (防止 User-Agent 还是被拦截的情况)
+        if (data.isEmpty()) {
+            if (safeBtn) safeBtn->setText("Empty");
+            return;
+        }
+
         QFile file(savePath);
         if (file.open(QIODevice::WriteOnly)) {
             file.write(data);
             file.close();
+
+            // 启动异步加载图标任务
             IconLoaderTask *task = new IconLoaderTask(savePath, 100, 0, this, savePath, true);
             task->setAutoDelete(true);
             threadPool->start(task);
+
             if (safeBtn) {
-                safeBtn->setText("Processing...");
+                safeBtn->setText(""); // 清除 Loading 文字
             }
         }
     });
@@ -2100,4 +2162,87 @@ void MainWindow::updateBackgroundDuringTransition()
 
     painter.end();
     ui->backgroundLabel->setPixmap(canvas);
+}
+
+// 1. 入队函数
+void MainWindow::enqueueDownload(const QString &url, const QString &savePath, QPushButton *btn)
+{
+    DownloadTask task;
+    task.url = url;
+    task.savePath = savePath;
+    task.button = btn;
+
+    downloadQueue.enqueue(task);
+
+    // 如果当前没有在下载，立即开始处理
+    if (!isDownloading) {
+        processNextDownload();
+    }
+}
+
+// 2. 队列处理函数 (核心：一张张下)
+void MainWindow::processNextDownload()
+{
+    if (downloadQueue.isEmpty()) {
+        isDownloading = false;
+        return;
+    }
+
+    isDownloading = true;
+    DownloadTask task = downloadQueue.dequeue();
+
+    // 检查按钮是否还存在 (可能用户已经切换页面了)
+    if (task.button.isNull()) {
+        // 按钮没了，这个任务由于是界面显示用的，也就没必要下载了
+        // 直接处理下一个
+        processNextDownload();
+        return;
+    }
+
+    // 设置按钮状态
+    task.button->setText("Waiting...");
+
+    QNetworkRequest req((QUrl(task.url)));
+    // === 关键：伪装浏览器头 (防封) ===
+    req.setHeader(QNetworkRequest::UserAgentHeader, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+
+    QNetworkReply *reply = netManager->get(req);
+
+    // 我们不需要 currentDetailReplies 来管理了，因为这是串行的，
+    // 如果你希望切页面时中断队列，可以清空 downloadQueue 并 abort 当前 reply
+    // 这里简单起见，让它在后台默默跑完当前这一张
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, task](){
+        reply->deleteLater();
+
+        if (reply->error() != QNetworkReply::NoError) {
+            if (task.button) task.button->setText("Error");
+            qDebug() << "Download failed:" << task.url << reply->errorString();
+
+            // === 关键：无论成功失败，延时一小会儿后处理下一个，防止请求过快 ===
+            QTimer::singleShot(500, this, &MainWindow::processNextDownload);
+            return;
+        }
+
+        QByteArray data = reply->readAll();
+        if (!data.isEmpty()) {
+            QFile file(task.savePath);
+            if (file.open(QIODevice::WriteOnly)) {
+                file.write(data);
+                file.close();
+
+                // 加载图标
+                if (task.button) {
+                    IconLoaderTask *iconTask = new IconLoaderTask(task.savePath, 100, 0, this, task.savePath, true);
+                    iconTask->setAutoDelete(true);
+                    threadPool->start(iconTask);
+                    task.button->setText(""); // 清空文字
+                }
+            }
+        }
+
+        // === 递归：下载下一张 (间隔 500ms 模拟人类行为，极其安全) ===
+        QTimer::singleShot(500, this, &MainWindow::processNextDownload);
+    });
 }
