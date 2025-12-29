@@ -46,28 +46,36 @@ MainWindow::MainWindow(QWidget *parent)
     connect(imageLoadWatcher, &QFutureWatcher<ImageLoadResult>::finished, this, [this](){
         // A. 获取后台加载的原图
         ImageLoadResult result = imageLoadWatcher->result();
-        if (!result.valid) return;
 
-        // B. 转换 Hero 图片 (QImage -> QPixmap)
-        nextHeroPixmap = QPixmap::fromImage(result.originalImg);
-
-        // C. 准备背景图 (在主线程进行，但因为基于小图操作，速度极快)
-        QSize targetSize = ui->backgroundLabel->size();
-        if (targetSize.isEmpty()) targetSize = QSize(1920, 1080); // 保底
-
-        QSize heroSize = ui->heroFrame->size();
-        if (heroSize.isEmpty()) heroSize = QSize(targetSize.width(), 400);
-
-        // 如果没有旧背景，生成一个
-        if (currentBlurredBgPix.isNull() && !currentHeroPixmap.isNull()) {
-            currentBlurredBgPix = applyBlurToImage(currentHeroPixmap.toImage(), targetSize, heroSize);
+        if (result.path != currentHeroPath) {
+            qDebug() << "Discarding obsolete image load:" << result.path;
+            return;
         }
 
-        // 生成新背景 (核心优化算法在 applyBlurToImage 里)
-        nextBlurredBgPix = applyBlurToImage(result.originalImg, targetSize, heroSize);
+        if (!result.valid) {
+            // 图片无效，淡出
+            nextHeroPixmap = QPixmap();
+            nextBlurredBgPix = QPixmap();
+        } else {
+            // B. 图片有效，转换 Hero 图片
+            nextHeroPixmap = QPixmap::fromImage(result.originalImg);
 
-        // D. 启动动画
+            // C. 准备背景图
+            QSize targetSize = ui->backgroundLabel->size();
+            if (targetSize.isEmpty()) targetSize = QSize(1920, 1080);
+            QSize heroSize = ui->heroFrame->size();
+            if (heroSize.isEmpty()) heroSize = QSize(targetSize.width(), 400);
+
+            if (currentBlurredBgPix.isNull() && !currentHeroPixmap.isNull()) {
+                currentBlurredBgPix = applyBlurToImage(currentHeroPixmap.toImage(), targetSize, heroSize);
+            }
+            nextBlurredBgPix = applyBlurToImage(result.originalImg, targetSize, heroSize);
+        }
+
         transitionOpacity = 0.0;
+        if (transitionAnim->state() == QAbstractAnimation::Running) {
+            transitionAnim->stop();
+        }
         transitionAnim->start();
     });
 
@@ -893,12 +901,24 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
     if (meta.images.isEmpty()) {
         ui->layoutGallery->addWidget(new QLabel("No preview images."));
     } else {
-        QString currentBaseName = ui->modelList->currentItem() ? ui->modelList->currentItem()->text() : meta.name;
-        // 获取当前模型的基础文件名 (用于拼接图片路径)
-        QString baseName = ui->modelList->currentItem() ? ui->modelList->currentItem()->text() : meta.name;
-        QFileInfo fi(meta.filePath);
-        QString safeBaseName = fi.completeBaseName();
-        if (safeBaseName.isEmpty()) safeBaseName = meta.name;
+        // === 核心修复 START: 获取绝对标准的 BaseName ===
+        QString currentStandardBaseName;
+        QListWidgetItem *item = ui->modelList->currentItem();
+
+        // 优先使用 UserRole (这是最原始的文件名，扫描时存入的)
+        if (item) {
+            currentStandardBaseName = item->data(Qt::UserRole).toString();
+        }
+
+        // 只有当 UserRole 异常为空时，才回退到 text() 或 meta 推断
+        if (currentStandardBaseName.isEmpty()) {
+            QFileInfo fi(meta.filePath);
+            currentStandardBaseName = fi.completeBaseName();
+        }
+
+        // 如果这时候还是空的，就用 meta.name 防止崩溃（虽然不应该发生）
+        if (currentStandardBaseName.isEmpty()) currentStandardBaseName = meta.name;
+        // === 核心修复 END ===
 
         for (int i = 0; i < meta.images.count(); ++i) {
             const ImageInfo &img = meta.images[i];
@@ -908,48 +928,42 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
             thumbBtn->setCheckable(true);
             thumbBtn->setAutoExclusive(true);
             thumbBtn->setCursor(Qt::PointingHandCursor);
-
-            // 样式优化：加上 padding 让图片看起来不像贴在边上
             thumbBtn->setProperty("class", "galleryThumb");
 
-            // 计算路径
-            QString imgFileName;
-            if (i == 0) imgFileName = safeBaseName + ".preview.png";
-            else imgFileName = safeBaseName + QString(".preview.%1.png").arg(i);
+            // 计算文件名
+            QString suffix = (i == 0) ? ".preview.png" : QString(".preview.%1.png").arg(i);
 
-            QString localPath = findLocalPreviewPath(currentLoraPath, currentBaseName, meta.fileNameServer, i);
+            // === 核心修复：手动拼接路径，并使用 cleanPath 标准化 ===
+            // 确保和 onImageDownloaded 里的 savePath 绝对一致
+            QString rawPath = QDir(currentLoraPath).filePath(currentStandardBaseName + suffix);
+            QString strictLocalPath = QDir::cleanPath(rawPath);
 
-            thumbBtn->setProperty("fullImagePath", localPath);
+            // 绑定属性用于查找
+            thumbBtn->setProperty("fullImagePath", strictLocalPath);
             thumbBtn->installEventFilter(this);
 
-            if (QFile::exists(localPath)) {
-                // 情况 A: 本地有图，直接加载
+            if (QFile::exists(strictLocalPath)) {
+                // A. 本地有图
                 thumbBtn->setText("Loading...");
-                IconLoaderTask *task = new IconLoaderTask(localPath, 100, 0, this, localPath, true);
+                IconLoaderTask *task = new IconLoaderTask(strictLocalPath, 100, 0, this, strictLocalPath, true);
                 task->setAutoDelete(true);
                 threadPool->start(task);
             } else {
-                // 情况 B: 本地没图
-
-                // === 解决第一张图冲突 (X) 问题 ===
-                // 如果是第 0 张图，且 previewPath 已经被设置了（说明 onApiMetadataReceived 正在处理那张图）
-                // 我们就不放入队列了，直接等 onImageDownloaded 的回调来更新这个按钮
-                // 这样避免了两个请求抢同一张图
-                if (i == 0 && !meta.previewPath.isEmpty() && meta.previewPath != localPath) {
-                    // 这里的逻辑有点绕，简单来说：
-                    // 如果 meta.previewPath 有值，说明 metadata 那个流程已经接管了封面下载
-                    // 我们这里只需要给按钮显示个 "Downloading..." 占位即可，不要 enqueue
+                // B. 本地没图
+                // 特殊处理封面(index 0)：如果 meta.previewPath 有值，说明 API 回调已经在下载这张图了
+                // 我们只需要让按钮显示 "Downloading..." 并等待回调找到它
+                if (i == 0 && !meta.previewPath.isEmpty()) {
+                    // 这里不需要比较路径了，只要是第0张且正在下载，就标记状态
                     thumbBtn->setText("Downloading...");
-                    // 按钮不需要任何操作，onImageDownloaded 会根据 fullImagePath 找到它并更新
                 }
                 else {
-                    // 其他图片，或者封面没被接管，加入队列
-                    thumbBtn->setText("Queueing..."); // 显示排队中
-                    enqueueDownload(img.url, localPath, thumbBtn);
+                    // 其他图片，加入下载队列
+                    thumbBtn->setText("Queueing...");
+                    enqueueDownload(img.url, strictLocalPath, thumbBtn);
                 }
             }
 
-            // 单击事件 (查看参数 & 预览)
+            // 单击事件
             connect(thumbBtn, &QPushButton::clicked, this, [this, i](){
                 onGalleryImageClicked(i);
             });
@@ -1418,7 +1432,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
 
     if (!meta.images.isEmpty()) {
         // 强制使用本地文件名构造图片路径，解决重名和冲突问题
-        QString savePath = QDir(currentLoraPath).filePath(localBaseName + ".preview.png");
+        QString savePath = QDir::cleanPath(QDir(currentLoraPath).filePath(localBaseName + ".preview.png"));
 
         if (!QFile::exists(savePath)) {
             QNetworkRequest req((QUrl(meta.images[0].url)));
@@ -1513,13 +1527,20 @@ void MainWindow::onImageDownloaded(QNetworkReply *reply)
             }
         }
 
-        QString currentViewingPath = currentMeta.filePath;
-        QFileInfo currentFi(currentViewingPath);
+        QListWidgetItem *currentItem = ui->modelList->currentItem();
+        QString currentViewingBaseName = currentItem ? currentItem->data(Qt::UserRole).toString() : "";
 
-        if (currentFi.completeBaseName() == localBaseName) {
+        // 只有当下载完成的图 == 当前正在看的模型时，才刷新大图
+        if (currentViewingBaseName == localBaseName) {
+            // 1. 立即更新内存中的元数据，防止后续逻辑读到旧值
             currentMeta.previewPath = savePath;
             ui->heroFrame->setProperty("fullImagePath", savePath);
+
+            // 2. 强制重置 currentHeroPath，欺骗 transitionToImage 以为这是张新图
+            // 即使路径和之前“尝试加载”的路径一样（之前可能加载失败了），现在文件有了，必须重试
             currentHeroPath = "";
+
+            // 3. 触发过渡动画
             transitionToImage(savePath);
         }
     }
@@ -1714,32 +1735,13 @@ QString MainWindow::findLocalPreviewPath(const QString &dirPath, const QString &
     QDir dir(dirPath);
     QString suffix = (imgIndex == 0) ? ".preview.png" : QString(".preview.%1.png").arg(imgIndex);
 
-    // 1. 策略 A: 优先使用当前本地模型的文件名 (最准确)
-    // 例如: [ALICESOFT]_Dohna.preview.png
-    QString pathA = dir.filePath(currentBaseName + suffix);
-    if (QFile::exists(pathA)) return pathA;
+    // === 严格模式：只使用当前本地模型的文件名 ===
+    // 例如: 本地文件是 "MyLora_v1.safetensors"，那么只找 "MyLora_v1.preview.1.png"
+    // 彻底摒弃根据 serverFileName (如 "MyLora.png") 查找的逻辑，杜绝重名冲突
+    QString strictPath = dir.filePath(currentBaseName + suffix);
 
-    // 2. 策略 B: 尝试服务器原始文件名
-    // 例如: [ALICESOFT] Dohna.preview.png
-    if (!serverFileName.isEmpty()) {
-        QFileInfo serverFi(serverFileName);
-        QString serverBase = serverFi.completeBaseName();
-        QString pathB = dir.filePath(serverBase + suffix);
-        if (QFile::exists(pathB)) return pathB;
-
-        // === 【新增】策略 C: 尝试将服务器文件名中的空格替换为下划线 ===
-        // 很多下载工具会自动把 "[A] B" 改成 "[A]_B"
-        QString serverBaseUnderscore = serverBase;
-        serverBaseUnderscore.replace(" ", "_");
-        QString pathC = dir.filePath(serverBaseUnderscore + suffix);
-        if (QFile::exists(pathC)) return pathC;
-
-        // === 【新增】策略 D: 尝试去掉方括号等特殊字符的模糊匹配 (可选，视情况而定) ===
-        // 如果上面都不行，这可能是最后的保底，但通常策略 C 就能解决问题
-    }
-
-    // 3. 实在找不到，返回默认路径 (路径 A)，以便下载逻辑使用这个名字保存新文件
-    return pathA;
+    // 即使文件不存在，也返回这个路径，作为“下载目标路径”
+    return strictPath;
 }
 
 void MainWindow::onHashCalculated()
@@ -2069,29 +2071,33 @@ ImageLoadResult MainWindow::processImageTask(const QString &path)
     ImageLoadResult result;
     result.path = path;
 
-    // 1. 加载原图 (耗时: 30ms - 200ms)
     QImageReader reader(path);
     reader.setAutoTransform(true);
-    // 稍微优化：如果原图是 8K 的，没必要读全分辨率，读个适合屏幕的就行
-    // reader.setScaledSize(QSize(2560, 1440)); // 可选优化
     result.originalImg = reader.read();
-
     result.valid = !result.originalImg.isNull();
     return result;
 }
 
 void MainWindow::transitionToImage(const QString &path)
 {
-    if (path == currentHeroPath) return;
+    if (path == currentHeroPath && transitionAnim->state() != QAbstractAnimation::Running) return;
 
     currentHeroPath = path;
 
+    // 如果正在动画中，立即停止并将状态快进到“当前显示的是上一张图”
     if (transitionAnim->state() == QAbstractAnimation::Running) {
         transitionAnim->stop();
+        // 如果 next 已经准备好了，就把它作为 current，以此为基础过渡到最新的 new
         if (!nextHeroPixmap.isNull()) {
             currentHeroPixmap = nextHeroPixmap;
             currentBlurredBgPix = nextBlurredBgPix;
         }
+    }
+
+    // 清理 Watcher
+    if (imageLoadWatcher->isRunning()) {
+        // 虽然 cancel 不能杀线程，但能断开一部分连接，配合上面的 path 校验双重保险
+        imageLoadWatcher->cancel();
     }
 
     // 重置动画参数
@@ -2099,14 +2105,10 @@ void MainWindow::transitionToImage(const QString &path)
     nextBlurredBgPix = QPixmap();
     transitionOpacity = 0.0;
 
+    // 5. 根据路径执行
     if (path.isEmpty()) {
-        // === 目标是空图（Fade to Black）===
-        // 不要立即清空 currentHeroPixmap！
-        // 而是启动动画，让 eventFilter 里的 "情况 B" 去处理淡出
-        transitionAnim->start();
+        transitionAnim->start(); // 淡出到黑
     } else {
-        // === 目标是新图 ===
-        // 启动后台加载，加载完后在回调里设置 nextHeroPixmap 并启动动画
         QFuture<ImageLoadResult> future = QtConcurrent::run(&MainWindow::processImageTask, path);
         imageLoadWatcher->setFuture(future);
     }
