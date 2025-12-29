@@ -45,6 +45,11 @@ QPushButton[class=&quot;copyBtn&quot;]:pressed { background-color: #4c6b0c; }
 QLabel[class=&quot;tag&quot;] { background-color: #2a3f5a; color: #66c0f4; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; }
 QLabel[class=&quot;tagRed&quot;] { background-color: #3c1919; color: #ff4c4c; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; border: 1px solid #ff4c4c; }
 
+/* 标题 */
+#label_GalleryTitle, #label_DescTitle, #label_FileTitle, #label_TriggerTitle {
+    color: #fff;
+}
+
 QScrollArea {
     border: none;
     background-color: #1b2838;
@@ -101,14 +106,14 @@ QPushButton[class=&quot;galleryThumb&quot;]:checked:hover {
 }
 
 /* === 收藏夹按钮 (圆角正方形) === */
-QPushButton[class=&quot;collectionBtn&quot;] { 
+QPushButton[class=&quot;collectionBtn&quot;], #btnAddCollection { 
     background-color: #2a3f5a; 
     color: #fff; 
     border-radius: 12px; /* 圆角 */
     font-size: 13px;
     border: 2px solid transparent;
 }
-QPushButton[class=&quot;collectionBtn&quot;]:hover {
+QPushButton[class=&quot;collectionBtn&quot;]:hover, #btnAddCollection:hover {
     background-color: #3d4450;
     border: 2px solid #888;
 }
@@ -374,7 +379,7 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
       </widget>
       <widget class="QStackedWidget" name="mainStack">
        <property name="currentIndex">
-        <number>0</number>
+        <number>1</number>
        </property>
        <widget class="QWidget" name="pageHome">
         <layout class="QVBoxLayout" name="verticalLayout_Home">
