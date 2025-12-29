@@ -74,8 +74,7 @@
 
 1. 克隆仓库：
 ```bash
-git clone https://github.com/IceRinne/LoRA-Manager.git
-cd LoRA-Manager
+git clone https://github.com/hanbinhsh/SD-LoRA-Manager.git
 
 ```
 
