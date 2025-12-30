@@ -28,6 +28,7 @@
 // 自定义数据 Role
 const int ROLE_FILE_PATH = Qt::UserRole + 1;
 const int ROLE_PREVIEW_PATH = Qt::UserRole + 2;
+const int ROLE_NSFW_LEVEL = Qt::UserRole + 5;
 
 const QString ROLE_URL = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/53.36";
 
@@ -57,8 +58,28 @@ MainWindow::MainWindow(QWidget *parent)
             nextHeroPixmap = QPixmap();
             nextBlurredBgPix = QPixmap();
         } else {
-            // B. 图片有效，转换 Hero 图片
-            nextHeroPixmap = QPixmap::fromImage(result.originalImg);
+
+            QPixmap rawPix = QPixmap::fromImage(result.originalImg);
+
+            // --- NSFW 大图处理 ---
+            bool shouldBlur = false;
+            // 判断这张图是否为 NSFW。可以通过 path 在 currentMeta.images 里查找
+            // 简单处理：如果是当前详情页的封面，直接看 currentMeta.nsfw
+            if (optFilterNSFW && optNSFWMode == 1) {
+                // 检查该图在详情页列表中是否标记为 NSFW
+                for(const auto& img : currentMeta.images) {
+                    if(result.path.contains(img.hash) || result.path == currentMeta.previewPath) {
+                        if(img.nsfwLevel > optNSFWLevel) shouldBlur = true;
+                        break;
+                    }
+                }
+            }
+
+            if (shouldBlur) {
+                nextHeroPixmap = applyNSFWBlur(rawPix); // 大图模糊半径加大
+            } else {
+                nextHeroPixmap = rawPix;
+            }
 
             // C. 准备背景图
             QSize targetSize = ui->backgroundLabel->size();
@@ -121,6 +142,14 @@ MainWindow::MainWindow(QWidget *parent)
     ui->chkDownscaleBlur->setChecked(optDownscaleBlur);
     ui->spinBlurWidth->setValue(optBlurProcessWidth);
     ui->spinBlurWidth->setEnabled(optDownscaleBlur);
+    ui->chkFilterNSFW->setChecked(optFilterNSFW);
+    if (optNSFWMode == 0) ui->radioNSFW_Hide->setChecked(true);
+    else ui->radioNSFW_Blur->setChecked(true);
+    ui->spinNSFWLevel->setValue(optNSFWLevel);
+    bool enabled = optFilterNSFW;
+    ui->radioNSFW_Hide->setEnabled(enabled);
+    ui->radioNSFW_Blur->setEnabled(enabled);
+    ui->spinNSFWLevel->setEnabled(enabled);
     // === 4. 连接设置页信号 ===
     connect(ui->btnBrowseLora, &QPushButton::clicked, this, &MainWindow::onBrowseLoraPath);
     connect(ui->btnBrowseGallery, &QPushButton::clicked, this, &MainWindow::onBrowseGalleryPath);
@@ -140,6 +169,29 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(ui->spinBlurWidth, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val){
         optBlurProcessWidth = val;
+        saveGlobalConfig();
+    });
+
+    connect(ui->chkFilterNSFW, &QCheckBox::toggled, this, [this](bool checked){
+        optFilterNSFW = checked;
+        ui->radioNSFW_Hide->setEnabled(checked);
+        ui->radioNSFW_Blur->setEnabled(checked);
+        ui->spinNSFWLevel->setEnabled(checked);
+        saveGlobalConfig();
+    });
+
+    connect(ui->radioNSFW_Hide, &QRadioButton::toggled, this, [this](bool checked){
+        if(checked) optNSFWMode = 0;
+        saveGlobalConfig();
+    });
+
+    connect(ui->radioNSFW_Blur, &QRadioButton::toggled, this, [this](bool checked){
+        if(checked) optNSFWMode = 1;
+        saveGlobalConfig();
+    });
+
+    connect(ui->spinNSFWLevel, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val){
+        optNSFWLevel = val;
         saveGlobalConfig();
     });
 
@@ -485,8 +537,15 @@ void MainWindow::refreshHomeGallery()
 
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *sideItem = ui->modelList->item(i);
-
         if (sideItem->isHidden()) continue;
+
+        // --- NSFW 拦截逻辑 ---
+        int nsfwLevel = sideItem->data(ROLE_NSFW_LEVEL).toInt();
+        bool isNSFW = nsfwLevel > optNSFWLevel;
+
+        if (optFilterNSFW && isNSFW && optNSFWMode == 0) {
+            continue; // 完全不显示模式：直接跳过此模型
+        }
 
         QString baseName = sideItem->text();
 
@@ -516,6 +575,7 @@ void MainWindow::refreshHomeGallery()
         item->setToolTip(baseName);
         item->setData(ROLE_FILE_PATH, filePath);
         item->setData(ROLE_PREVIEW_PATH, previewPath);
+        item->setData(ROLE_NSFW_LEVEL, nsfwLevel);
 
         item->setIcon(placeholderIcon);
         ui->homeGalleryList->addItem(item);
@@ -676,19 +736,18 @@ QIcon MainWindow::getRoundedSquareIcon(const QString &path, int size, int radius
 // ---------------------------------------------------------
 
 // === 辅助：生成正方形图标 ===
-QIcon MainWindow::getSquareIcon(const QString &path)
+QIcon MainWindow::getSquareIcon(const QPixmap &srcPix)
 {
-    QPixmap pix(path);
-    if (pix.isNull()) return QIcon();
+    if (srcPix.isNull()) return QIcon();
 
     // 1. 计算裁剪区域 (短边裁剪)
-    int side = qMin(pix.width(), pix.height());
+    int side = qMin(srcPix.width(), srcPix.height());
     // X轴居中，Y轴顶端对齐 (适合人物)
-    int x = (pix.width() - side) / 2;
+    int x = (srcPix.width() - side) / 2;
     int y = 0;
 
     // 获取原始的正方形裁剪图
-    QPixmap square = pix.copy(x, y, side, side);
+    QPixmap square = srcPix.copy(x, y, side, side);
 
     // 2. === 核心修改：增加透明内边距 ===
     // 设定输出图标的基础分辨率 (越高越清晰，64x64 对侧边栏足够)
@@ -875,16 +934,19 @@ void MainWindow::scanModels(const QString &path)
         item->setData(ROLE_FILE_PATH, fullPath);
         item->setData(ROLE_PREVIEW_PATH, previewPath);
 
-        // 设置图标
-        if (!previewPath.isEmpty()) {
-            item->setIcon(getSquareIcon(previewPath));
-        } else {
-            item->setIcon(placeholderIcon);
-        }
-
-        // 8. 寻找 JSON 元数据 (同样在当前目录下找)
         QString jsonPath = currentFileDir.filePath(baseName + ".json");
         preloadItemMetadata(item, jsonPath);
+
+        int nsfwLevel = item->data(ROLE_NSFW_LEVEL).toInt();
+        bool isNSFW = nsfwLevel > optNSFWLevel;
+
+        if (optFilterNSFW && isNSFW && optNSFWMode == 0) {
+            // 如果开启过滤 + 是NSFW + 模式为隐藏(0) -> 直接删除item并跳过
+            delete item;
+            continue;
+        }
+
+        item->setIcon(placeholderIcon);
 
         // 9. 处理底模过滤器
         QString baseModel = item->data(ROLE_FILTER_BASE).toString();
@@ -897,11 +959,12 @@ void MainWindow::scanModels(const QString &path)
     }
 
     // 10. 恢复 UI 更新
-    ui->statusbar->showMessage(QString("扫描完成，共 %1 个模型").arg(scannedCount));
+    ui->statusbar->showMessage(QString("扫描完成，共 %1 个模型").arg(ui->modelList->count()));
     ui->comboBaseModel->blockSignals(false);
     ui->modelList->setUpdatesEnabled(true);
 
     // 11. 刷新主页大图视图
+    executeSort();
     refreshHomeGallery();
 }
 
@@ -1001,12 +1064,21 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
         for (int i = 0; i < meta.images.count(); ++i) {
             const ImageInfo &img = meta.images[i];
 
+            // === NSFW 过滤逻辑 ===
+            bool isNsfw = (img.nsfwLevel > optNSFWLevel);
+            if (optFilterNSFW && isNsfw) {
+                if (optNSFWMode == 0) {
+                    continue; // 模式 0：直接跳过这张图，不生成按钮
+                }
+            }
+
             QPushButton *thumbBtn = new QPushButton();
             thumbBtn->setFixedSize(100, 150);
             thumbBtn->setCheckable(true);
             thumbBtn->setAutoExclusive(true);
             thumbBtn->setCursor(Qt::PointingHandCursor);
             thumbBtn->setProperty("class", "galleryThumb");
+            thumbBtn->setProperty("isNSFW", isNsfw);
 
             // 计算文件名
             QString suffix = (i == 0) ? ".preview.png" : QString(".preview.%1.png").arg(i);
@@ -1177,6 +1249,7 @@ void MainWindow::onActionOpenFolderTriggered() {
 
 void MainWindow::onScanLocalClicked() {
     if (!currentLoraPath.isEmpty()) scanModels(currentLoraPath);
+    executeSort();
 }
 
 // 点击列表项
@@ -1346,7 +1419,8 @@ bool MainWindow::readLocalJson(const QString &dirPath, const QString &baseName, 
         imgInfo.hash = imgObj["hash"].toString();
         imgInfo.width = imgObj["width"].toInt();       // 补全
         imgInfo.height = imgObj["height"].toInt();     // 补全
-        imgInfo.nsfw = (imgObj["nsfwLevel"].toInt() > 1); // 补全
+        imgInfo.nsfwLevel = imgObj["nsfwLevel"].toInt();
+        imgInfo.nsfw = (imgInfo.nsfwLevel > 1);
 
         QJsonObject imgMeta = imgObj["meta"].toObject();
         if(!imgMeta.isEmpty()) {
@@ -1486,7 +1560,8 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
         imgInfo.hash = imgObj["hash"].toString(); // blurhash
         imgInfo.width = imgObj["width"].toInt();
         imgInfo.height = imgObj["height"].toInt();
-        imgInfo.nsfw = (imgObj["nsfwLevel"].toInt() > 1); // 简单判断
+        imgInfo.nsfwLevel = imgObj["nsfwLevel"].toInt();
+        imgInfo.nsfw = (imgInfo.nsfwLevel > 1);
 
         QJsonObject imgMeta = imgObj["meta"].toObject();
         if (!imgMeta.isEmpty()) {
@@ -1556,7 +1631,7 @@ void MainWindow::onImageDownloaded(QNetworkReply *reply)
         file.write(imgData);
         file.close();
 
-        QIcon newIcon = getSquareIcon(savePath); // 或者 getFitIcon
+        QIcon newIcon = getSquareIcon(QPixmap(savePath)); // 或者 getFitIcon
         QIcon fitIcon = getFitIcon(savePath);
 
         for(int i = 0; i < ui->modelList->count(); ++i) {
@@ -1735,14 +1810,46 @@ QIcon MainWindow::getFitIcon(const QString &path)
 
 void MainWindow::onIconLoaded(const QString &filePath, const QImage &image)
 {
-    QPixmap pix = QPixmap::fromImage(image);
-    QIcon icon(pix);
+    QPixmap originalPix = QPixmap::fromImage(image);
+    QIcon originalIcon(originalPix);
+
+    QPixmap blurredPix;
+    auto getDisplayPix = [&](bool isNSFW) {
+        if (optFilterNSFW && isNSFW && optNSFWMode == 1) {
+            if (blurredPix.isNull()) blurredPix = applyNSFWBlur(originalPix);
+            return blurredPix;
+        }
+        return originalPix;
+    };
+
     // 1. 更新主页列表 (Home Gallery)
     for(int i = 0; i < ui->homeGalleryList->count(); ++i) {
         QListWidgetItem *item = ui->homeGalleryList->item(i);
         if (item->data(ROLE_FILE_PATH).toString() == filePath) {
-            item->setIcon(icon);
-            // 只要匹配到了，通常不需要继续找了(除非同一个文件用了多次)
+            bool isNSFW = item->data(ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
+            if (optFilterNSFW && isNSFW && optNSFWMode == 1) {
+                if (blurredPix.isNull()) blurredPix = applyNSFWBlur(originalPix);
+                QPixmap roundedBlur = applyRoundedMask(blurredPix, 12);
+                item->setIcon(QIcon(roundedBlur));
+            } else {
+                item->setIcon(QIcon(originalPix));
+            }
+        }
+    }
+
+    // --- 更新侧边栏列表 (Sidebar) ---
+    for(int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (item->data(ROLE_FILE_PATH).toString() == filePath) {
+            bool isNSFW = item->data(ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
+            if (optFilterNSFW && isNSFW && optNSFWMode == 1) {
+                if (blurredPix.isNull()) blurredPix = applyNSFWBlur(originalPix);
+                // 侧边栏使用 getSquareIcon 处理样式
+                QPixmap roundedBlur = applyRoundedMask(blurredPix, 12);
+                item->setIcon(getSquareIcon(roundedBlur));
+            } else {
+                item->setIcon(getSquareIcon(originalPix));
+            }
         }
     }
 
@@ -1757,9 +1864,11 @@ void MainWindow::onIconLoaded(const QString &filePath, const QImage &image)
                 if (btn) {
                     // 检查我们在 updateDetailView 里绑定的全路径属性
                     if (btn->property("fullImagePath").toString() == filePath) {
-                        btn->setIcon(icon);
-                        btn->setIconSize(QSize(90, 135)); // 确保图标大小正确
-                        btn->setText(""); // 清除 Loading 文字
+                        bool isNSFW = btn->property("isNSFW").toBool();
+                        QPixmap p = getDisplayPix(isNSFW);
+                        btn->setIcon(QIcon(p));
+                        btn->setIconSize(QSize(90, 135));
+                        btn->setText("");
                     }
                 }
             }
@@ -1771,7 +1880,7 @@ void MainWindow::onIconLoaded(const QString &filePath, const QImage &image)
             QListWidgetItem *item = ui->listUserImages->item(i);
             // 我们在 scanForUserImages 里把路径存到了 Qt::UserRole
             if (item->data(Qt::UserRole).toString() == filePath) {
-                item->setIcon(icon);
+                item->setIcon(originalIcon);
             }
         }
     }
@@ -2003,6 +2112,7 @@ void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonP
     item->setData(ROLE_SORT_DOWNLOADS, 0);
     item->setData(ROLE_SORT_LIKES, 0);
     item->setData(ROLE_FILTER_BASE, "Unknown");
+    item->setData(ROLE_NSFW_LEVEL, 1);
 
     QFile file(jsonPath);
     if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
@@ -2014,6 +2124,34 @@ void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonP
 
     QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
     QJsonObject root = doc.object();
+
+    // NSFW
+    int coverLevel = 1; // 默认 Safe
+
+    QJsonArray images = root["images"].toArray();
+    if (!images.isEmpty()) {
+        // 优先：读取 images[0] 的 nsfwLevel
+        // 因为侧边栏和主页显示的都是这张图，我们只关心这张图是否违规
+        QJsonObject coverObj = images[0].toObject();
+        if (coverObj.contains("nsfwLevel")) {
+            coverLevel = coverObj["nsfwLevel"].toInt();
+        }
+        // 兼容旧数据：有的旧 JSON image 里只有 nsfw (None/Soft/Mature/X)
+        else if (coverObj.contains("nsfw")) {
+            QString val = coverObj["nsfw"].toString().toLower();
+            if (val == "x" || val == "mature") coverLevel = 16;
+            else if (val == "soft") coverLevel = 2;
+            else coverLevel = 1;
+        }
+    }
+    else {
+        // 后备：如果 images 数组为空（极少见），才回退到读取整个模型的等级
+        if (root.contains("nsfwLevel")) coverLevel = root["nsfwLevel"].toInt();
+        else if (root["nsfw"].toBool()) coverLevel = 16;
+    }
+
+    // 存入 Item，供后续判断
+    item->setData(ROLE_NSFW_LEVEL, coverLevel);
 
     // 1. 底模 (Base Model)
     QString baseModel = root["baseModel"].toString();
@@ -2882,6 +3020,9 @@ void MainWindow::loadGlobalConfig() {
         QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
         QJsonObject root = doc.object();
 
+        optFilterNSFW = root["nsfw_filter"].toBool(false);
+        optNSFWMode = root["nsfw_mode"].toInt(1); // 默认模糊
+        optNSFWLevel = root["nsfw_level_threshold"].toInt(1);
         optLoraRecursive = root["lora_recursive"].toBool(false);
         optGalleryRecursive = root["gallery_recursive"].toBool(false); // 默认关
         optBlurRadius = root["blur_radius"].toInt(30);
@@ -2904,6 +3045,9 @@ void MainWindow::saveGlobalConfig() {
     root["blur_radius"] = optBlurRadius;
     root["blur_downscale_enabled"] = optDownscaleBlur;
     root["blur_process_width"] = optBlurProcessWidth;
+    root["nsfw_filter"] = optFilterNSFW;
+    root["nsfw_mode"] = optNSFWMode;
+    root["nsfw_level_threshold"] = optNSFWLevel;
 
     QFile file(configDir + "/settings.json");
     if (file.open(QIODevice::WriteOnly)) {
@@ -3033,4 +3177,46 @@ QString MainWindow::getSafetensorsInternalName(const QString &path)
     }
 
     return "";
+}
+
+QPixmap MainWindow::applyNSFWBlur(const QPixmap &pix) {
+    if (pix.isNull()) return pix;
+
+    QGraphicsBlurEffect *blur = new QGraphicsBlurEffect;
+    blur->setBlurRadius(40); // 强度大一点，确保看不清内容
+
+    QGraphicsScene scene;
+    QGraphicsPixmapItem item;
+    item.setPixmap(pix);
+    item.setGraphicsEffect(blur);
+    scene.addItem(&item);
+
+    QPixmap result(pix.size());
+    result.fill(Qt::transparent);
+    QPainter painter(&result);
+    scene.render(&painter);
+    return result;
+}
+
+QPixmap MainWindow::applyRoundedMask(const QPixmap &src, int radius)
+{
+    if (src.isNull()) return QPixmap();
+    if (radius <= 0) return src;
+
+    QPixmap result(src.size());
+    result.fill(Qt::transparent);
+
+    QPainter painter(&result);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+
+    // 创建圆角路径
+    QPainterPath path;
+    path.addRoundedRect(src.rect(), radius, radius);
+
+    // 裁剪并绘制
+    painter.setClipPath(path);
+    painter.drawPixmap(0, 0, src);
+
+    return result;
 }

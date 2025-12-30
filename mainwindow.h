@@ -59,6 +59,7 @@ struct ImageInfo {
     QString steps;
     QString seed;
     QString model;
+    int nsfwLevel;
     int width;
     int height;
     bool nsfw;
@@ -164,7 +165,7 @@ private:
     void scanModels(const QString &path);
     void updateDetailView(const ModelMeta &meta);
     void clearDetailView();
-    QIcon getSquareIcon(const QString &path);
+    QIcon getSquareIcon(const QPixmap &srcPix);
 
     // 生成一个适合主页大图的 Icon (2:3比例)
     QIcon getRoundedSquareIcon(const QString &path, int size, int radius);
@@ -249,6 +250,13 @@ private:
 
     // 定义一个特殊的字符串标识“未分类”
     const QString FILTER_UNCATEGORIZED = "__UNCATEGORIZED__";
+
+    bool optFilterNSFW = false;
+    int optNSFWMode = 1; // 0: 完全隐藏, 1: 高斯模糊
+    int optNSFWLevel = 1;
+    QPixmap applyNSFWBlur(const QPixmap &pix);
+
+    QPixmap applyRoundedMask(const QPixmap &src, int radius);
 };
 
 #endif // MAINWINDOW_H

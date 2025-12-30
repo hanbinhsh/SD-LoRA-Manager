@@ -639,7 +639,7 @@ New</string>
                  <rect>
                   <x>0</x>
                   <y>0</y>
-                  <width>982</width>
+                  <width>670</width>
                   <height>1058</height>
                  </rect>
                 </property>
@@ -926,7 +926,7 @@ New</string>
                               <rect>
                                <x>0</x>
                                <y>0</y>
-                               <width>657</width>
+                               <width>423</width>
                                <height>165</height>
                               </rect>
                              </property>
@@ -1400,8 +1400,8 @@ Hash: ...</string>
                                 <rect>
                                  <x>0</x>
                                  <y>0</y>
-                                 <width>434</width>
-                                 <height>220</height>
+                                 <width>278</width>
+                                 <height>78</height>
                                 </rect>
                                </property>
                               </widget>
@@ -1558,75 +1558,180 @@ Hash: ...</string>
          </widget>
         </item>
         <item>
-         <widget class="QGroupBox" name="groupAppearance">
-          <property name="title">
-           <string>外观 / Appearance</string>
-          </property>
-          <layout class="QGridLayout" name="gridLayout">
-           <item row="0" column="1">
-            <widget class="QSlider" name="sliderBlur">
-             <property name="minimum">
-              <number>0</number>
-             </property>
-             <property name="maximum">
-              <number>100</number>
-             </property>
-             <property name="value">
-              <number>30</number>
-             </property>
-             <property name="orientation">
-              <enum>Qt::Orientation::Horizontal</enum>
-             </property>
-            </widget>
-           </item>
-           <item row="0" column="2">
-            <widget class="QLabel" name="lblBlurValue">
-             <property name="minimumSize">
-              <size>
-               <width>40</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="text">
-              <string>30px</string>
-             </property>
-            </widget>
-           </item>
-           <item row="0" column="0">
-            <widget class="QLabel" name="lblBlur">
-             <property name="text">
-              <string>背景模糊半径 (Blur Radius):</string>
-             </property>
-            </widget>
-           </item>
-           <item row="1" column="0">
-            <widget class="QCheckBox" name="chkDownscaleBlur">
-             <property name="toolTip">
-              <string>开启后会先将原图缩小再模糊，能极大提高大图背景的生成速度。</string>
-             </property>
-             <property name="text">
-              <string>模糊前缩放图片 (Scale image before blur)</string>
-             </property>
-            </widget>
-           </item>
-           <item row="1" column="1" colspan="2">
-            <widget class="QSpinBox" name="spinBlurWidth">
-             <property name="suffix">
-              <string> px</string>
-             </property>
-             <property name="minimum">
-              <number>64</number>
-             </property>
-             <property name="maximum">
-              <number>2048</number>
-             </property>
-             <property name="value">
-              <number>500</number>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </widget>
+         <layout class="QHBoxLayout" name="horizontalLayout">
+          <item>
+           <widget class="QGroupBox" name="groupAppearance">
+            <property name="title">
+             <string>外观 / Appearance</string>
+            </property>
+            <layout class="QGridLayout" name="gridLayout">
+             <item row="0" column="2">
+              <widget class="QLabel" name="lblBlurValue">
+               <property name="minimumSize">
+                <size>
+                 <width>40</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="text">
+                <string>30px</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QSlider" name="sliderBlur">
+               <property name="minimum">
+                <number>0</number>
+               </property>
+               <property name="maximum">
+                <number>100</number>
+               </property>
+               <property name="value">
+                <number>30</number>
+               </property>
+               <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1" colspan="2">
+              <widget class="QSpinBox" name="spinBlurWidth">
+               <property name="suffix">
+                <string> px</string>
+               </property>
+               <property name="minimum">
+                <number>64</number>
+               </property>
+               <property name="maximum">
+                <number>2048</number>
+               </property>
+               <property name="value">
+                <number>500</number>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="0">
+              <widget class="QLabel" name="lblBlur">
+               <property name="text">
+                <string>背景模糊半径 (Blur Radius):</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QCheckBox" name="chkDownscaleBlur">
+               <property name="toolTip">
+                <string>开启后会先将原图缩小再模糊，能极大提高大图背景的生成速度。</string>
+               </property>
+               <property name="text">
+                <string>模糊前缩放图片 (Scale before blur)</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="groupNSFW">
+            <property name="title">
+             <string>内容过滤 / NSFW Filter</string>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_NSFW">
+             <item>
+              <widget class="QCheckBox" name="chkFilterNSFW">
+               <property name="text">
+                <string>开启 NSFW 内容过滤 (Enable NSFW Filter)</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <layout class="QHBoxLayout" name="horizontalLayout_NSFWMode">
+               <item>
+                <widget class="QLabel" name="lblNSFWMode">
+                 <property name="text">
+                  <string>过滤模式:</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QRadioButton" name="radioNSFW_Hide">
+                 <property name="text">
+                  <string>完全不显示 (Hide)</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QRadioButton" name="radioNSFW_Blur">
+                 <property name="text">
+                  <string>高斯模糊 (Blur)</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <spacer name="horizontalSpacer_NSFW">
+                 <property name="orientation">
+                  <enum>Qt::Orientation::Horizontal</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>0</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <layout class="QHBoxLayout" name="horizontalLayout_NSFWLevel">
+               <item>
+                <widget class="QLabel" name="lblNSFWLevel">
+                 <property name="text">
+                  <string>过滤等级阈值 (Level &gt; X):</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QSpinBox" name="spinNSFWLevel">
+                 <property name="minimum">
+                  <number>1</number>
+                 </property>
+                 <property name="maximum">
+                  <number>100</number>
+                 </property>
+                 <property name="value">
+                  <number>1</number>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="lblNSFWHint">
+                 <property name="styleSheet">
+                  <string>color: #666; font-size: 11px;</string>
+                 </property>
+                 <property name="text">
+                  <string>(Civitai 标准: 1=正常, &gt;1 包含不同程度成人内容)</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <spacer name="horizontalSpacer_NSFW2">
+                 <property name="orientation">
+                  <enum>Qt::Orientation::Horizontal</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>0</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+              </layout>
+             </item>
+            </layout>
+           </widget>
+          </item>
+         </layout>
         </item>
         <item>
          <spacer name="verticalSpacer_Settings">
