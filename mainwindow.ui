@@ -858,7 +858,7 @@ New</string>
                        </size>
                       </property>
                       <property name="currentIndex">
-                       <number>1</number>
+                       <number>0</number>
                       </property>
                       <widget class="QWidget" name="pageModelInfo">
                        <layout class="QHBoxLayout" name="horizontalLayout_Content" stretch="3,0,1">
