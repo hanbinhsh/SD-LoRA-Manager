@@ -224,6 +224,8 @@ private:
     void parsePngInfo(const QString &path, UserImageInfo &info);
     void updateUserStats(const QList<UserImageInfo> &images);
 
+    QString getSafetensorsInternalName(const QString &path);
+
     QStringList parsePromptsToTags(const QString &rawPrompt);
     QString cleanTagText(QString t);
 

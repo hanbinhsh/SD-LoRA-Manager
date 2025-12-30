@@ -2437,7 +2437,7 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     if (isGlobalMode) {
         ui->statusbar->showMessage("正在扫描所有本地图片...");
     } else {
-        ui->statusbar->showMessage(QString("正在扫描包含 '%1' 的图片...").arg(loraBaseName));
+        ui->statusbar->showMessage(QString("正在扫描使用 '%1' 的图片...").arg(loraBaseName));
     }
 
     // =========================================================
@@ -2447,28 +2447,51 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
 
     if(!isGlobalMode){
         QSet<QString> uniqueKeys; // 使用 Set 自动去重
-        // A. 获取核心名称 (去除版本号、括号、扩展名)
-        // 例如: "Korean_Doll_Likeness [v1.5].safetensors" -> "Korean_Doll_Likeness"
-        QString rawName = loraBaseName;
-        // 去除 [xxx]
-        if (rawName.contains("[")) rawName = rawName.split("[").first().trimmed();
-        // 去除 .safetensors / .pt
-        QFileInfo fi(rawName);
-        QString coreName = fi.completeBaseName();
-        // B. 生成变体
-        if (!coreName.isEmpty()) {
-            uniqueKeys.insert(coreName);// 1. 原始核心名
-            QString spaceToUnder = coreName;// 2. 空格 -> 下划线 (My Lora -> My_Lora)
-            spaceToUnder.replace(" ", "_");uniqueKeys.insert(spaceToUnder);
-            QString underToSpace = coreName;// 3. 下划线 -> 空格 (My_Lora -> My Lora)
-            underToSpace.replace("_", " ");uniqueKeys.insert(underToSpace);
-            QString noSpace = coreName;// 4. 去除所有空格 (My Lora -> MyLora)
-            noSpace.remove(" ");uniqueKeys.insert(noSpace);
-            QString noUnder = coreName;// 5. 去除所有下划线 (My_Lora -> MyLora)
-            noUnder.remove("_");uniqueKeys.insert(noUnder);
-            QString pure = coreName;// 6. 极致纯净版 (同时去除空格和下划线)
-            pure.remove(" ").remove("_");uniqueKeys.insert(pure);
+
+        // === 获取 Safetensors 内部名称 ===
+        // 获取当前选中项的完整路径
+        QListWidgetItem *currentItem = ui->modelList->currentItem();
+        if (currentItem) {
+            QString fullPath = currentItem->data(ROLE_FILE_PATH).toString();
+            QString internalName = getSafetensorsInternalName(fullPath);
+
+            if (!internalName.isEmpty()) {
+                qDebug() << "Found internal LoRA name:" << internalName;
+                uniqueKeys.insert(internalName);
+                // 对内部名称也生成变体（例如把下划线转空格），以防万一
+                QString spaceVer = internalName; spaceVer.replace("_", " "); uniqueKeys.insert(spaceVer);
+                QString underVer = internalName; underVer.replace(" ", "_"); uniqueKeys.insert(underVer);
+            }
         }
+
+        // --- 回退逻辑 (Fallback) ---
+        // 只有当内部名称为空时（例如 .pt 文件，或没有写入 metadata 的旧模型），
+        // 我们才退而求其次，使用文件名作为筛选依据。
+        if (uniqueKeys.isEmpty()) {
+            // A. 获取核心名称 (去除版本号、括号、扩展名)
+            // 例如: "Korean_Doll_Likeness [v1.5].safetensors" -> "Korean_Doll_Likeness"
+            QString rawName = loraBaseName;
+            // 去除 [xxx]
+            if (rawName.contains("[")) rawName = rawName.split("[").first().trimmed();
+            // 去除 .safetensors / .pt
+            QFileInfo fi(rawName);
+            QString coreName = fi.completeBaseName();
+            // B. 生成变体
+            if (!coreName.isEmpty()) {
+                uniqueKeys.insert(coreName);// 1. 原始核心名
+                QString spaceToUnder = coreName;// 2. 空格 -> 下划线 (My Lora -> My_Lora)
+                spaceToUnder.replace(" ", "_");uniqueKeys.insert(spaceToUnder);
+                QString underToSpace = coreName;// 3. 下划线 -> 空格 (My_Lora -> My Lora)
+                underToSpace.replace("_", " ");uniqueKeys.insert(underToSpace);
+                QString noSpace = coreName;// 4. 去除所有空格 (My Lora -> MyLora)
+                noSpace.remove(" ");uniqueKeys.insert(noSpace);
+                QString noUnder = coreName;// 5. 去除所有下划线 (My_Lora -> MyLora)
+                noUnder.remove("_");uniqueKeys.insert(noUnder);
+                QString pure = coreName;// 6. 极致纯净版 (同时去除空格和下划线)
+                pure.remove(" ").remove("_");uniqueKeys.insert(pure);
+            }
+        }
+
         // 将 Set 转为 List 以便传入线程
         searchKeys = uniqueKeys.values();
         // 过滤掉太短的 Key，防止错误匹配 (例如 "v1" 这种太短的词会匹配到所有图片)
@@ -2969,4 +2992,43 @@ QIcon MainWindow::generatePlaceholderIcon()
                      contentRect.left() + margin, contentRect.bottom() - margin);
 
     return QIcon(finalPix);
+}
+
+QString MainWindow::getSafetensorsInternalName(const QString &path)
+{
+    if (!path.endsWith(".safetensors", Qt::CaseInsensitive)) {
+        return "";
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) return "";
+
+    // 1. 读取前8个字节 (uint64, Little Endian)，表示 JSON 头部的长度
+    qint64 headerLen = 0;
+    if (file.read((char*)&headerLen, 8) != 8) return "";
+
+    // 安全检查：防止读取过大的垃圾数据（一般 header 不会超过 100MB）
+    if (headerLen <= 0 || headerLen > 100 * 1024 * 1024) return "";
+
+    // 2. 读取 JSON 头部数据
+    QByteArray headerData = file.read(headerLen);
+    file.close();
+
+    // 3. 解析 JSON
+    QJsonDocument doc = QJsonDocument::fromJson(headerData);
+    if (doc.isNull()) return "";
+
+    QJsonObject root = doc.object();
+
+    // 4. 提取 __metadata__ 中的 ss_output_name
+    if (root.contains("__metadata__")) {
+        QJsonObject meta = root["__metadata__"].toObject();
+        // ss_output_name 是最常用的内部名称字段
+        if (meta.contains("ss_output_name")) {
+            return meta["ss_output_name"].toString();
+        }
+        // 部分模型可能使用 ss_tag_frequency 等字段，但 name 最准确
+    }
+
+    return "";
 }
