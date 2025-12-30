@@ -251,10 +251,11 @@ MainWindow::MainWindow(QWidget *parent)
     QTimer::singleShot(10, this, [this](){
         // 显示一个加载中的状态（可选）
         ui->statusbar->showMessage("正在扫描本地模型库...");
-
         // 开始加载
         loadCollections();
         if (!currentLoraPath.isEmpty()) scanModels(currentLoraPath);
+        ui->comboSort->setCurrentIndex(0); // 0 = Name (A-Z)
+        executeSort();
         ui->statusbar->showMessage(QString("加载完成，共 %1 个模型").arg(ui->modelList->count()), 3000);
     });
 }
@@ -2352,6 +2353,8 @@ void MainWindow::onToggleDetailTab() {
     int currentIndex = ui->detailContentStack->currentIndex();
     int nextIndex = (currentIndex == 0) ? 1 : 0;
 
+    ui->scrollAreaWidgetContents->removeEventFilter(this);
+
     // 1. 切换页面
     ui->detailContentStack->setCurrentIndex(nextIndex);
 
@@ -2365,6 +2368,22 @@ void MainWindow::onToggleDetailTab() {
             ui->scrollAreaWidgetContents->adjustSize();
         });
     }
+
+    QTimer::singleShot(50, this, [this, nextIndex](){
+        // 恢复事件监听
+        ui->scrollAreaWidgetContents->installEventFilter(this);
+
+        // 如果切换到详情页，调整容器大小
+        if (nextIndex == 0) {
+            ui->scrollAreaWidgetContents->adjustSize();
+        }
+
+        // 强制更新一次背景（避免尺寸不对）
+        if (ui->backgroundLabel) {
+            ui->backgroundLabel->setGeometry(ui->scrollAreaWidgetContents->rect());
+        }
+        updateBackgroundImage();
+    });
 
     // 3. 自动扫描逻辑 (保持不变)
     if (nextIndex == 1 && ui->listUserImages->count() == 0) {
