@@ -101,18 +101,7 @@ MainWindow::MainWindow(QWidget *parent)
         updateBackgroundDuringTransition();
     });
 
-    QPixmap pix(180, 180);
-    pix.fill(QColor("#25282f"));
-    // 可以简单画个圆角
-    QPixmap rounded(180, 180);
-    rounded.fill(Qt::transparent);
-    QPainter p(&rounded);
-    p.setRenderHint(QPainter::Antialiasing);
-    QPainterPath path;
-    path.addRoundedRect(0,0,180,180,12,12);
-    p.setClipPath(path);
-    p.drawPixmap(0,0,pix);
-    placeholderIcon = QIcon(rounded);
+    placeholderIcon = generatePlaceholderIcon();
 
     settings = new QSettings("MyAiTools", "LoraManager", this);
     netManager = new QNetworkAccessManager(this);
@@ -222,6 +211,7 @@ MainWindow::MainWindow(QWidget *parent)
     // 切换 Tab 按钮
     connect(ui->btnShowUserGallery, &QPushButton::clicked, this, &MainWindow::onToggleDetailTab);
     // SD 目录与扫描
+    connect(ui->btnSetSdFolder, &QPushButton::clicked, this, &MainWindow::onSetSdFolderClicked);
     connect(ui->btnRescanUser, &QPushButton::clicked, this, &MainWindow::onRescanUserClicked);
     // 图片点击
     connect(ui->listUserImages, &QListWidget::itemClicked, this, &MainWindow::onUserImageClicked);
@@ -288,6 +278,7 @@ void MainWindow::onCollectionFilterClicked(const QString &collectionName)
 
 void MainWindow::onHomeButtonClicked()
 {
+    threadPool->clear();
     ui->mainStack->setCurrentIndex(0); // 切换到主页
     ui->modelList->clearSelection();   // 清除侧边栏选中
     currentCollectionFilter = "";      // 重置过滤，显示全部
@@ -1167,9 +1158,6 @@ void MainWindow::clearDetailView()
     clearLayout(ui->badgesFrame->layout());
     clearLayout(ui->layoutTriggerStack);
     clearLayout(ui->layoutGallery);
-
-    // transitionToImage("");
-    // ui->heroFrame->setProperty("fullImagePath", "");
 }
 
 // ---------------------------------------------------------
@@ -1195,7 +1183,7 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
     // === 恢复 UI 状态 ===
     ui->btnForceUpdate->setVisible(true);
     ui->btnFavorite->setVisible(true);
-    ui->btnShowUserGallery->setEnabled(true);
+    ui->btnShowUserGallery->setVisible(true);
     ui->btnShowUserGallery->setEnabled(true);
 
     QString filePath = item->data(ROLE_FILE_PATH).toString();
@@ -1835,28 +1823,16 @@ void MainWindow::updateBackgroundImage()
     QSize heroSize = ui->heroFrame->size();
     if (heroSize.isEmpty()) heroSize = QSize(targetSize.width(), 400);
 
-    // === 修复逻辑：始终基于原图重新生成 ===
-    // 之前的问题在于复用 currentBlurredBgPix 时导致了：
-    // 1. 双重遮罩 (Mask on Mask) -> 变暗
-    // 2. 双重偏移 (Offset on Offset) -> 抖动/错位
-
     if (!currentHeroPixmap.isNull()) {
-        // 直接用当前的高清原图生成新的背景，保证比例、位置、遮罩都是全新的且正确的
         currentBlurredBgPix = applyBlurToImage(currentHeroPixmap.toImage(), targetSize, heroSize);
-
-        // 刷新显示
         ui->backgroundLabel->setPixmap(currentBlurredBgPix);
-    }
-    else if (!currentHeroPath.isEmpty() && QFile::exists(currentHeroPath)) {
+    } else if (!currentHeroPath.isEmpty() && QFile::exists(currentHeroPath)) {
         // 如果缓存丢了但有路径，重新读图生成
         QImage img(currentHeroPath);
         currentBlurredBgPix = applyBlurToImage(img, targetSize, heroSize);
         ui->backgroundLabel->setPixmap(currentBlurredBgPix);
-    }
-    else {
-        // 既没图也没路径，清空背景
+    } else {
         ui->backgroundLabel->clear();
-        // 或者保留纯色底
         QPixmap empty(targetSize);
         empty.fill(QColor("#1b2838"));
         ui->backgroundLabel->setPixmap(empty);
@@ -2383,7 +2359,7 @@ void MainWindow::onToggleDetailTab() {
     if (nextIndex == 1) {
         ui->detailContentStack->setFixedHeight(750);
     } else {
-        ui->detailContentStack->setMinimumHeight(0);
+        ui->detailContentStack->setMinimumHeight(500);
         ui->detailContentStack->setMaximumHeight(16777215); // QWIDGETSIZE_MAX
         QTimer::singleShot(0, this, [this](){
             ui->scrollAreaWidgetContents->adjustSize();
@@ -2407,6 +2383,23 @@ void MainWindow::onRescanUserClicked() {
         scanForUserImages("");
     }
 }
+void MainWindow::onSetSdFolderClicked() {
+    QString dir = QFileDialog::getExistingDirectory(this, "选择 SD 输出目录 (outputs/txt2img-images)", sdOutputFolder);
+    if (!dir.isEmpty()) {
+        sdOutputFolder = dir;
+        // 保存配置
+        QString configDir = qApp->applicationDirPath() + "/config";
+        QDir().mkpath(configDir);
+        QJsonObject root;
+        root["sd_folder"] = sdOutputFolder;
+        QFile file(configDir + "/user_gallery.json");
+        if (file.open(QIODevice::WriteOnly)) {
+            file.write(QJsonDocument(root).toJson());
+        }
+        onRescanUserClicked();
+    }
+}
+
 
 void MainWindow::scanForUserImages(const QString &loraBaseName) {
     ui->listUserImages->clear();
@@ -2903,4 +2896,49 @@ void MainWindow::onBlurSliderChanged(int value) {
 
     // 实时更新当前背景 (如果有)
     updateBackgroundImage();
+}
+
+QIcon MainWindow::generatePlaceholderIcon()
+{
+    // === 修改点 1：将基准尺寸设为 180 (适配主页大图) ===
+    int fullSize = 180;
+
+    // === 修改点 2：按比例调整内边距 ===
+    // 之前 64px 用 8px 边距 (12.5%)
+    // 现在 180px 对应约 20px 边距，这样缩小后在侧边栏看着比例才对
+    int padding = 20;
+
+    int contentSize = fullSize - (padding * 2);
+
+    // 创建透明底图
+    QPixmap finalPix(fullSize, fullSize);
+    finalPix.fill(Qt::transparent);
+
+    QPainter painter(&finalPix);
+    // 开启高质量抗锯齿
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+
+    // 计算中间内容的区域
+    QRect contentRect(padding, padding, contentSize, contentSize);
+
+    // 绘制深色背景框 (圆角加大一点)
+    painter.setBrush(QColor("#25282f"));
+    painter.setPen(Qt::NoPen);
+    painter.drawRoundedRect(contentRect, 12, 12);
+
+    // 绘制“×”符号
+    QPen pen(QColor("#3d4450")); // 线条颜色稍微调深一点，更有质感
+    pen.setWidth(5); // 线条加粗，适应大尺寸
+    pen.setCapStyle(Qt::RoundCap); // 线条端点圆润
+    painter.setPen(pen);
+
+    // 画两条交叉线 (Margin 也要按比例放大)
+    int margin = 40;
+    painter.drawLine(contentRect.left() + margin, contentRect.top() + margin,
+                     contentRect.right() - margin, contentRect.bottom() - margin);
+    painter.drawLine(contentRect.right() - margin, contentRect.top() + margin,
+                     contentRect.left() + margin, contentRect.bottom() - margin);
+
+    return QIcon(finalPix);
 }

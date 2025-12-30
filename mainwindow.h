@@ -137,6 +137,7 @@ private slots:
     void onBrowseGalleryPath();
     void onSettingsChanged(); // 通用改变处理
     void onBlurSliderChanged(int value);
+    void onSetSdFolderClicked();
 
 private:
     Ui::MainWindow *ui;
@@ -225,6 +226,8 @@ private:
 
     QStringList parsePromptsToTags(const QString &rawPrompt);
     QString cleanTagText(QString t);
+
+    QIcon generatePlaceholderIcon();
 
     // === 配置变量 ===
     bool optLoraRecursive = false;    // 默认关闭

@@ -462,7 +462,7 @@ QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; lef
           </widget>
           <widget class="QStackedWidget" name="mainStack">
            <property name="currentIndex">
-            <number>0</number>
+            <number>1</number>
            </property>
            <widget class="QWidget" name="pageHome">
             <layout class="QVBoxLayout" name="verticalLayout_Home">
@@ -619,20 +619,35 @@ New</string>
              </property>
              <item>
               <widget class="QScrollArea" name="scrollArea">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>500</height>
+                </size>
+               </property>
                <property name="frameShape">
                 <enum>QFrame::Shape::NoFrame</enum>
                </property>
                <property name="widgetResizable">
                 <bool>true</bool>
                </property>
+               <property name="alignment">
+                <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+               </property>
                <widget class="QWidget" name="scrollAreaWidgetContents">
                 <property name="geometry">
                  <rect>
                   <x>0</x>
                   <y>0</y>
-                  <width>670</width>
+                  <width>982</width>
                   <height>1058</height>
                  </rect>
+                </property>
+                <property name="minimumSize">
+                 <size>
+                  <width>0</width>
+                  <height>500</height>
+                 </size>
                 </property>
                 <layout class="QVBoxLayout" name="verticalLayout_ScrollContent">
                  <property name="spacing">
@@ -668,6 +683,9 @@ New</string>
                     <enum>QFrame::Shape::NoFrame</enum>
                    </property>
                    <layout class="QVBoxLayout" name="verticalLayout_Hero">
+                    <property name="topMargin">
+                     <number>0</number>
+                    </property>
                     <property name="bottomMargin">
                      <number>40</number>
                     </property>
@@ -702,7 +720,13 @@ New</string>
                    <property name="minimumSize">
                     <size>
                      <width>0</width>
-                     <height>60</height>
+                     <height>62</height>
+                    </size>
+                   </property>
+                   <property name="maximumSize">
+                    <size>
+                     <width>16777215</width>
+                     <height>62</height>
                     </size>
                    </property>
                    <layout class="QHBoxLayout" name="horizontalLayout_Action">
@@ -806,6 +830,12 @@ New</string>
                  </item>
                  <item>
                   <widget class="QWidget" name="contentAreaWidget" native="true">
+                   <property name="minimumSize">
+                    <size>
+                     <width>0</width>
+                     <height>500</height>
+                    </size>
+                   </property>
                    <layout class="QVBoxLayout" name="verticalLayout_ContentArea">
                     <property name="leftMargin">
                      <number>0</number>
@@ -821,6 +851,12 @@ New</string>
                     </property>
                     <item>
                      <widget class="QStackedWidget" name="detailContentStack">
+                      <property name="minimumSize">
+                       <size>
+                        <width>0</width>
+                        <height>500</height>
+                       </size>
+                      </property>
                       <property name="currentIndex">
                        <number>0</number>
                       </property>
@@ -890,7 +926,7 @@ New</string>
                               <rect>
                                <x>0</x>
                                <y>0</y>
-                               <width>423</width>
+                               <width>657</width>
                                <height>165</height>
                               </rect>
                              </property>
@@ -1364,8 +1400,8 @@ Hash: ...</string>
                                 <rect>
                                  <x>0</x>
                                  <y>0</y>
-                                 <width>278</width>
-                                 <height>78</height>
+                                 <width>434</width>
+                                 <height>220</height>
                                 </rect>
                                </property>
                               </widget>
@@ -1392,11 +1428,20 @@ Hash: ...</string>
                    <height>1055</height>
                   </rect>
                  </property>
+                 <property name="minimumSize">
+                  <size>
+                   <width>0</width>
+                   <height>500</height>
+                  </size>
+                 </property>
                  <property name="styleSheet">
                   <string notr="true">background-color: #1b2838;</string>
                  </property>
                  <property name="text">
                   <string/>
+                 </property>
+                 <property name="alignment">
+                  <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
                  </property>
                 </widget>
                </widget>
