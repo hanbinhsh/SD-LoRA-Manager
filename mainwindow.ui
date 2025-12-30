@@ -462,7 +462,7 @@ QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; lef
           </widget>
           <widget class="QStackedWidget" name="mainStack">
            <property name="currentIndex">
-            <number>1</number>
+            <number>0</number>
            </property>
            <widget class="QWidget" name="pageHome">
             <layout class="QVBoxLayout" name="verticalLayout_Home">
@@ -858,7 +858,7 @@ New</string>
                        </size>
                       </property>
                       <property name="currentIndex">
-                       <number>0</number>
+                       <number>1</number>
                       </property>
                       <widget class="QWidget" name="pageModelInfo">
                        <layout class="QHBoxLayout" name="horizontalLayout_Content" stretch="3,0,1">

@@ -157,9 +157,11 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 1. 确保开启像素滚动 (如果在 XML 里设了，这句可以省略)
     ui->homeGalleryList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    ui->listUserImages->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
 
     // 2. 设置滚轮滚一下移动的像素距离 (默认通常较小，比如20)
     ui->homeGalleryList->verticalScrollBar()->setSingleStep(40);
+    ui->listUserImages->verticalScrollBar()->setSingleStep(40);
 
     // === 信号连接 ===
     connect(ui->modelList, &QListWidget::itemClicked, this, &MainWindow::onModelListClicked);
