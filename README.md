@@ -1,6 +1,6 @@
 # LoRA Manager (SD Model Viewer)
 
-一个优雅、高（？）性能的本地 Stable Diffusion LoRA 模型管理工具。（仅适用于Civit下载或者存在于Civit中的模型，国内需要魔法）
+一个优雅、高（？）性能的本地 Stable Diffusion LoRA 模型管理和图库管理工具。（仅适用于Civit下载或者存在于Civit中的模型，国内需要魔法）
 专为解决本地模型混乱、预览图缺失、元数据难以查看而设计。无需启动 WebUI，即可快速浏览、筛选和管理你的 LoRA 库。
 
 <img width="1559" height="1090" alt="3 $WD1YW8KQ$K)V_JX88LYL" src="https://github.com/user-attachments/assets/1cbb2a93-02fa-4bd8-b14b-1a225f95846e" />
@@ -47,6 +47,18 @@
 <img width="1554" height="1089" alt="QDZH0I_$CJWE@@@5IKYNF31" src="https://github.com/user-attachments/assets/4dfc4017-06d2-4bc3-bc64-d372beb62d5a" />
 
 <img width="1389" height="1091" alt="V(X`341R(MCLU{ }7L~P6X" src="https://github.com/user-attachments/assets/65341130-f515-4170-8629-aa47556673b8" />
+
+
+### 图库页 (Gallery）
+
+<img width="1553" height="1090" alt="%OFY58 @OF$~QP~QM4 J5R" src="https://github.com/user-attachments/assets/86efbb0c-9fa6-41f5-adb2-b6b7123f9f2e" />
+
+<img width="1553" height="1089" alt="{I~$7%(B %3`P9 PG6CM{9S" src="https://github.com/user-attachments/assets/a36feb06-98d6-498a-a408-1f3d2f88efbc" />
+
+
+### 设置页 (Settings）
+
+<img width="1627" height="1139" alt="J~4CW7 Z5(95E76RN45IJFW" src="https://github.com/user-attachments/assets/2c0944f3-2102-48b4-a7c2-f3e0a3447350" />
 
 
 ## 🛠️ 安装与运行 (Installation)
