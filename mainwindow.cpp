@@ -117,6 +117,43 @@ MainWindow::MainWindow(QWidget *parent)
     settings = new QSettings("MyAiTools", "LoraManager", this);
     netManager = new QNetworkAccessManager(this);
 
+    // === 1. 初始化菜单栏 ===
+    initMenuBar();
+    // === 2. 加载配置 ===
+    loadPathSettings();   // 从注册表读路径
+    loadGlobalConfig();   // 从 JSON 读选项
+    // === 3. 初始化设置页 UI 状态 ===
+    ui->editLoraPath->setText(currentLoraPath);
+    ui->editGalleryPath->setText(sdOutputFolder);
+    ui->chkRecursiveLora->setChecked(optLoraRecursive);
+    ui->chkRecursiveGallery->setChecked(optGalleryRecursive);
+    ui->sliderBlur->setValue(optBlurRadius);
+    ui->lblBlurValue->setText(QString::number(optBlurRadius) + "px");
+    ui->chkDownscaleBlur->setChecked(optDownscaleBlur);
+    ui->spinBlurWidth->setValue(optBlurProcessWidth);
+    ui->spinBlurWidth->setEnabled(optDownscaleBlur);
+    // === 4. 连接设置页信号 ===
+    connect(ui->btnBrowseLora, &QPushButton::clicked, this, &MainWindow::onBrowseLoraPath);
+    connect(ui->btnBrowseGallery, &QPushButton::clicked, this, &MainWindow::onBrowseGalleryPath);
+    // 复选框改变即保存
+    connect(ui->chkRecursiveLora, &QCheckBox::toggled, this, &MainWindow::onSettingsChanged);
+    connect(ui->chkRecursiveGallery, &QCheckBox::toggled, this, &MainWindow::onSettingsChanged);
+    // 模糊滑块
+    connect(ui->sliderBlur, &QSlider::valueChanged, this, &MainWindow::onBlurSliderChanged);
+    // 滑块释放时保存配置（避免拖动时疯狂写文件）
+    connect(ui->sliderBlur, &QSlider::sliderReleased, this, &MainWindow::saveGlobalConfig);
+
+    connect(ui->chkDownscaleBlur, &QCheckBox::toggled, this, [this](bool checked){
+        optDownscaleBlur = checked;
+        ui->spinBlurWidth->setEnabled(checked);
+        saveGlobalConfig();
+    });
+
+    connect(ui->spinBlurWidth, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val){
+        optBlurProcessWidth = val;
+        saveGlobalConfig();
+    });
+
     // 样式设置
     QGraphicsDropShadowEffect *shadow = new QGraphicsDropShadowEffect(this);
     shadow->setBlurRadius(20);
@@ -134,8 +171,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 2. 设置滚轮滚一下移动的像素距离 (默认通常较小，比如20)
     ui->homeGalleryList->verticalScrollBar()->setSingleStep(40);
-
-    initMenu();
 
     // === 信号连接 ===
     connect(ui->modelList, &QListWidget::itemClicked, this, &MainWindow::onModelListClicked);
@@ -187,15 +222,11 @@ MainWindow::MainWindow(QWidget *parent)
     // 切换 Tab 按钮
     connect(ui->btnShowUserGallery, &QPushButton::clicked, this, &MainWindow::onToggleDetailTab);
     // SD 目录与扫描
-    connect(ui->btnSetSdFolder, &QPushButton::clicked, this, &MainWindow::onSetSdFolderClicked);
     connect(ui->btnRescanUser, &QPushButton::clicked, this, &MainWindow::onRescanUserClicked);
     // 图片点击
     connect(ui->listUserImages, &QListWidget::itemClicked, this, &MainWindow::onUserImageClicked);
     // Tag 筛选
     connect(tagFlowWidget, &TagFlowWidget::filterChanged, this, &MainWindow::onTagFilterChanged);
-    // 4. 加载配置
-    loadUserGalleryConfig();
-
     // 2. 右键点击 -> 弹出菜单
     connect(ui->btnFavorite, &QPushButton::customContextMenuRequested, this, [this](const QPoint &pos){
         // 获取当前选中的模型名称
@@ -226,8 +257,6 @@ MainWindow::MainWindow(QWidget *parent)
     }
 
     clearDetailView();
-    // loadCollections(); // 加载收藏夹配置
-    // loadSettings();    // 扫描模型
 
     QTimer::singleShot(10, this, [this](){
         // 显示一个加载中的状态（可选）
@@ -235,8 +264,7 @@ MainWindow::MainWindow(QWidget *parent)
 
         // 开始加载
         loadCollections();
-        loadSettings();
-
+        if (!currentLoraPath.isEmpty()) scanModels(currentLoraPath);
         ui->statusbar->showMessage(QString("加载完成，共 %1 个模型").arg(ui->modelList->count()), 3000);
     });
 }
@@ -344,9 +372,23 @@ void MainWindow::refreshHomeCollectionsUI()
     });
     layout->addWidget(btnAll);
 
+    // === 未分类按钮 ===
+    QPushButton *btnUncat = new QPushButton("📦\n未分类");
+    btnUncat->setFixedSize(90, 90);
+    btnUncat->setProperty("class", "collectionBtn");
+    btnUncat->setCheckable(true);
+    btnUncat->setChecked(currentCollectionFilter == FILTER_UNCATEGORIZED);
+    connect(btnUncat, &QPushButton::clicked, this, [this](){
+        currentCollectionFilter = FILTER_UNCATEGORIZED;
+        refreshHomeGallery();
+        refreshHomeCollectionsUI();
+    });
+    layout->addWidget(btnUncat);
+
     // === 3. 添加收藏夹按钮 (带右键功能) ===
     for (auto it = collections.begin(); it != collections.end(); ++it) {
         QString name = it.key();
+        if (name == FILTER_UNCATEGORIZED) continue; // 健壮性屏蔽
 
         // 名字截断
         QString displayName = name;
@@ -453,12 +495,27 @@ void MainWindow::refreshHomeGallery()
         if (sideItem->isHidden()) continue;
 
         QString baseName = sideItem->text();
+
         QString previewPath = sideItem->data(ROLE_PREVIEW_PATH).toString();
         QString filePath = sideItem->data(ROLE_FILE_PATH).toString();
 
         if (!currentCollectionFilter.isEmpty()) {
-            QStringList list = collections.value(currentCollectionFilter);
-            if (!list.contains(baseName)) continue;
+            if (currentCollectionFilter == FILTER_UNCATEGORIZED) {
+                // 如果当前选的是“未分类”：
+                // 检查这个 baseName 是否存在于任何一个已有的收藏夹 List 中
+                bool categorized = false;
+                for (auto it = collections.begin(); it != collections.end(); ++it) {
+                    if (it.value().contains(baseName)) {
+                        categorized = true;
+                        break;
+                    }
+                }
+                if (categorized) continue; // 已分类的模型，不显示在“未分类”中
+            } else {
+                // 正常的收藏夹筛选逻辑
+                QStringList list = collections.value(currentCollectionFilter);
+                if (!list.contains(baseName)) continue;
+            }
         }
 
         QListWidgetItem *item = new QListWidgetItem();
@@ -765,37 +822,59 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 
 void MainWindow::scanModels(const QString &path)
 {
+    // 1. 锁定 UI 更新，防止闪烁
     ui->modelList->setUpdatesEnabled(false);
-
     ui->modelList->clear();
 
     ui->comboBaseModel->blockSignals(true);
     ui->comboBaseModel->clear();
     ui->comboBaseModel->addItem("All");
+
     QSet<QString> foundBaseModels; // 用于去重记录发现的底模
 
-    QDir dir(path);
-    QStringList filters;
-    filters << "*.safetensors" << "*.pt";
-    dir.setNameFilters(filters);
+    // 2. 准备文件名过滤器
+    QStringList nameFilters;
+    nameFilters << "*.safetensors" << "*.pt";
 
-    QFileInfoList fileList = dir.entryInfoList(QDir::Files | QDir::NoDotAndDotDot);
-    ui->statusbar->showMessage(QString("扫描完成，共 %1 个模型").arg(fileList.count()));
+    // 3. 准备目录过滤器 (只看文件，不包含 . 和 ..)
+    QDir::Filters dirFilters = QDir::Files | QDir::NoDotAndDotDot;
 
-    for (const QFileInfo &fileInfo : fileList) {
+    // 4. 准备迭代器标志 (是否递归)
+    QDirIterator::IteratorFlags iterFlags = QDirIterator::NoIteratorFlags;
+    if (optLoraRecursive) {
+        iterFlags = QDirIterator::Subdirectories; // 开启递归
+    }
+
+    // 5. 初始化迭代器
+    // 构造函数签名: QDirIterator(path, nameFilters, filters, flags)
+    QDirIterator it(path, nameFilters, dirFilters, iterFlags);
+
+    int scannedCount = 0;
+
+    while (it.hasNext()) {
+        it.next();
+        QFileInfo fileInfo = it.fileInfo();
+        scannedCount++;
+
         QString baseName = fileInfo.completeBaseName();
         QString fullPath = fileInfo.absoluteFilePath();
-        QString previewPath = "";
 
+        // 获取当前文件所在的目录 (递归模式下可能是子目录)
+        QDir currentFileDir = fileInfo.dir();
+
+        // 6. 寻找预览图
+        QString previewPath = "";
         QStringList imgExts = {".preview.png", ".png", ".jpg", ".jpeg"};
         for (const QString &ext : imgExts) {
-            QString tryPath = dir.absoluteFilePath(baseName + ext);
+            // 在当前模型文件的同级目录下找图片
+            QString tryPath = currentFileDir.absoluteFilePath(baseName + ext);
             if (QFile::exists(tryPath)) {
                 previewPath = tryPath;
                 break;
             }
         }
 
+        // 7. 创建列表项
         QListWidgetItem *item = new QListWidgetItem(baseName);
         item->setToolTip(fullPath);
         item->setData(Qt::UserRole, baseName);
@@ -805,10 +884,15 @@ void MainWindow::scanModels(const QString &path)
         // 设置图标
         if (!previewPath.isEmpty()) {
             item->setIcon(getSquareIcon(previewPath));
+        } else {
+            item->setIcon(placeholderIcon);
         }
 
-        QString jsonPath = dir.filePath(baseName + ".json");
+        // 8. 寻找 JSON 元数据 (同样在当前目录下找)
+        QString jsonPath = currentFileDir.filePath(baseName + ".json");
         preloadItemMetadata(item, jsonPath);
+
+        // 9. 处理底模过滤器
         QString baseModel = item->data(ROLE_FILTER_BASE).toString();
         if (!baseModel.isEmpty() && !foundBaseModels.contains(baseModel)) {
             foundBaseModels.insert(baseModel);
@@ -817,9 +901,14 @@ void MainWindow::scanModels(const QString &path)
 
         ui->modelList->addItem(item);
     }
+
+    // 10. 恢复 UI 更新
+    ui->statusbar->showMessage(QString("扫描完成，共 %1 个模型").arg(scannedCount));
     ui->comboBaseModel->blockSignals(false);
     ui->modelList->setUpdatesEnabled(true);
-    refreshHomeGallery(); // 刷新主页
+
+    // 11. 刷新主页大图视图
+    refreshHomeGallery();
 }
 
 // 更新界面显示
@@ -896,31 +985,24 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
 
     // 4. 图库 (Gallery)
     clearLayout(ui->layoutGallery);
-
     downloadQueue.clear();
     isDownloading = false;
 
     if (meta.images.isEmpty()) {
         ui->layoutGallery->addWidget(new QLabel("No preview images."));
     } else {
-        // === 核心修复 START: 获取绝对标准的 BaseName ===
+        // === 核心修复：获取绝对标准化的模型目录 ===
+        QFileInfo modelFileInfo(meta.filePath);
+        QString modelDir = modelFileInfo.absolutePath();
         QString currentStandardBaseName;
-        QListWidgetItem *item = ui->modelList->currentItem();
 
-        // 优先使用 UserRole (这是最原始的文件名，扫描时存入的)
-        if (item) {
-            currentStandardBaseName = item->data(Qt::UserRole).toString();
+        QListWidgetItem *listItem = ui->modelList->currentItem();
+        if (listItem) {
+            currentStandardBaseName = listItem->data(Qt::UserRole).toString();
         }
-
-        // 只有当 UserRole 异常为空时，才回退到 text() 或 meta 推断
         if (currentStandardBaseName.isEmpty()) {
-            QFileInfo fi(meta.filePath);
-            currentStandardBaseName = fi.completeBaseName();
+            currentStandardBaseName = modelFileInfo.completeBaseName();
         }
-
-        // 如果这时候还是空的，就用 meta.name 防止崩溃（虽然不应该发生）
-        if (currentStandardBaseName.isEmpty()) currentStandardBaseName = meta.name;
-        // === 核心修复 END ===
 
         for (int i = 0; i < meta.images.count(); ++i) {
             const ImageInfo &img = meta.images[i];
@@ -934,47 +1016,37 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
 
             // 计算文件名
             QString suffix = (i == 0) ? ".preview.png" : QString(".preview.%1.png").arg(i);
+            // === 强制使用 QFileInfo 再次标准化路径字符串 ===
+            QString rawPath = QDir(modelDir).filePath(currentStandardBaseName + suffix);
+            QString strictLocalPath = QFileInfo(rawPath).absoluteFilePath();
 
-            // === 核心修复：手动拼接路径，并使用 cleanPath 标准化 ===
-            // 确保和 onImageDownloaded 里的 savePath 绝对一致
-            QString rawPath = QDir(currentLoraPath).filePath(currentStandardBaseName + suffix);
-            QString strictLocalPath = QDir::cleanPath(rawPath);
-
-            // 绑定属性用于查找
+            // 绑定标准化后的路径
             thumbBtn->setProperty("fullImagePath", strictLocalPath);
             thumbBtn->installEventFilter(this);
 
             if (QFile::exists(strictLocalPath)) {
-                // A. 本地有图
                 thumbBtn->setText("Loading...");
                 IconLoaderTask *task = new IconLoaderTask(strictLocalPath, 100, 0, this, strictLocalPath, true);
                 task->setAutoDelete(true);
                 threadPool->start(task);
             } else {
-                // B. 本地没图
-                // 特殊处理封面(index 0)：如果 meta.previewPath 有值，说明 API 回调已经在下载这张图了
-                // 我们只需要让按钮显示 "Downloading..." 并等待回调找到它
-                if (i == 0 && !meta.previewPath.isEmpty()) {
-                    // 这里不需要比较路径了，只要是第0张且正在下载，就标记状态
+                if (i == 0) {
+                    // 封面图正在下载
                     thumbBtn->setText("Downloading...");
-                }
-                else {
-                    // 其他图片，加入下载队列
+                } else {
+                    // 后续图进入队列，确保传入的是 strictLocalPath
                     thumbBtn->setText("Queueing...");
                     enqueueDownload(img.url, strictLocalPath, thumbBtn);
                 }
             }
 
-            // 单击事件
             connect(thumbBtn, &QPushButton::clicked, this, [this, i](){
                 onGalleryImageClicked(i);
             });
-
             ui->layoutGallery->addWidget(thumbBtn);
         }
         ui->layoutGallery->addStretch();
 
-        // 默认选中第一张
         if (ui->layoutGallery->count() > 0) {
             QPushButton *firstBtn = qobject_cast<QPushButton*>(ui->layoutGallery->itemAt(0)->widget());
             if (firstBtn) {
@@ -993,8 +1065,6 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
 
     QTimer::singleShot(0, this, [this, meta](){
         ui->scrollAreaWidgetContents->adjustSize();
-
-        // 只有在新高度计算完成后，再加载图片动画
         transitionToImage(meta.previewPath);
     });
 }
@@ -1005,7 +1075,7 @@ void MainWindow::onGalleryImageClicked(int index)
 
     const ImageInfo &img = currentMeta.images[index];
 
-    // 更新 Prompt 显示
+    // 1. 更新 Prompt 显示
     ui->textImgPrompt->setPlainText(img.prompt.isEmpty() ? "No positive prompt." : img.prompt);
     ui->textImgNegPrompt->setPlainText(img.negativePrompt.isEmpty() ? "No negative prompt." : img.negativePrompt);
 
@@ -1017,26 +1087,40 @@ void MainWindow::onGalleryImageClicked(int index)
                          .arg(img.seed);
     ui->lblImgParams->setText(params);
 
-    // 如果选中的是封面(第0张)，且本地有图，同步更新大图背景
+    // === 动态获取模型所在的子目录 ===
     QString currentBaseName;
+    QString modelDir; // 用于存储该模型实际所在的文件夹路径
+
     QListWidgetItem *item = ui->modelList->currentItem();
     if (item) {
-        // 优先从 UserRole 获取完整名 (之前在 scanModels 里存进去的)
+        // A. 获取模型名称标识
         currentBaseName = item->data(Qt::UserRole).toString();
-        // 如果 UserRole 是空的 (防止异常)，才回退到 text()
         if (currentBaseName.isEmpty()) currentBaseName = item->text();
+
+        // B. 获取模型文件所在的绝对目录 (支持子文件夹的关键)
+        QString fullModelPath = item->data(ROLE_FILE_PATH).toString();
+        if (!fullModelPath.isEmpty()) {
+            modelDir = QFileInfo(fullModelPath).absolutePath();
+        }
     } else {
+        // 兜底逻辑：如果侧边栏没选中，尝试从 currentMeta 推断
         currentBaseName = currentMeta.name;
+        modelDir = QFileInfo(currentMeta.filePath).absolutePath();
     }
 
-    // 2. 寻找本地图片路径
-    QString localPath = findLocalPreviewPath(currentLoraPath, currentBaseName, currentMeta.fileNameServer, index);
+    // 如果因为某种异常没拿到目录，则回退到 Lora 根目录
+    if (modelDir.isEmpty()) {
+        modelDir = currentLoraPath;
+    }
+
+    // 2. 寻找本地图片路径 (使用解析出的 modelDir 而不是全局 currentLoraPath)
+    QString localPath = findLocalPreviewPath(modelDir, currentBaseName, currentMeta.fileNameServer, index);
 
     // 3. 执行过渡
     if (QFile::exists(localPath)) {
         transitionToImage(localPath);
     } else {
-        qDebug() << "Preview image not found at:" << localPath; // 方便调试
+        qDebug() << "[Debug] Preview image not found at:" << localPath;
     }
 }
 
@@ -1091,23 +1175,6 @@ void MainWindow::clearDetailView()
 // ---------------------------------------------------------
 // 文件与网络部分
 // ---------------------------------------------------------
-
-void MainWindow::initMenu() {
-    QMenu *fileMenu = menuBar()->addMenu("文件(&F)");
-    QAction *openAction = new QAction("选择模型文件夹...", this);
-    openAction->setShortcut(QKeySequence::Open);
-    connect(openAction, &QAction::triggered, this, &MainWindow::onActionOpenFolderTriggered);
-    fileMenu->addAction(openAction);
-}
-
-void MainWindow::loadSettings() {
-    QString lastPath = settings->value("lora_path").toString();
-    if (!lastPath.isEmpty() && QDir(lastPath).exists()) {
-        currentLoraPath = lastPath;
-        scanModels(currentLoraPath);
-    }
-}
-
 void MainWindow::onActionOpenFolderTriggered() {
     QString dir = QFileDialog::getExistingDirectory(this, "选择 LoRA 文件夹", currentLoraPath);
     if (!dir.isEmpty()) {
@@ -1132,6 +1199,8 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
     ui->btnShowUserGallery->setEnabled(true);
 
     QString filePath = item->data(ROLE_FILE_PATH).toString();
+    QString modelDir = QFileInfo(filePath).absolutePath();
+    ui->modelList->setProperty("current_model_dir", modelDir);
     if (currentMeta.filePath == filePath && !currentMeta.name.isEmpty()) {
         // 如果当前不在详情页（比如在主页），则只切换页面，不重新加载数据
         if (ui->mainStack->currentIndex() != 1) {
@@ -1159,7 +1228,7 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
     meta.previewPath = previewPath;
 
     // 2. 尝试读取本地 JSON
-    bool hasLocalData = readLocalJson(baseName, meta);
+    bool hasLocalData = readLocalJson(modelDir, baseName, meta);
 
     if (hasLocalData) {
         // === 情况 A: 有本地数据，直接显示 (秒开) ===
@@ -1175,6 +1244,7 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
         // 记录当前正在处理的文件，防止回调时错位
         currentProcessingPath = filePath;
         ui->modelList->setProperty("current_processing_file", baseName);
+        ui->modelList->setProperty("current_processing_path", filePath);
 
         // === 启动后台线程计算 Hash ===
         // 使用 QtConcurrent::run 把耗时函数丢到后台
@@ -1221,22 +1291,19 @@ void MainWindow::fetchModelInfoFromCivitai(const QString &hash) {
     // 获取当前正在处理的文件名 (从属性或当前选中项)
     // 建议直接传参进来，或者确保 ui->modelList->property("current_processing_file") 是本地文件名(BaseName)
     QString localBaseName = ui->modelList->property("current_processing_file").toString();
-
+    QString modelDir = ui->modelList->property("current_model_dir").toString();
     QString urlStr = QString("https://civitai.com/api/v1/model-versions/by-hash/%1").arg(hash);
+    QString filePath = ui->modelList->property("current_processing_path").toString();
     QNetworkRequest request((QUrl(urlStr)));
 
-    // === 核心修改点 START ===
-    // 1. 伪装成浏览器 (解决 403 Forbidden / 0B 问题)
     request.setHeader(QNetworkRequest::UserAgentHeader, ROLE_URL);
-
-    // 2. 允许自动重定向 (Qt 6 标准写法)
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-    // === 核心修改点 END ===
-
     QNetworkReply *reply = netManager->get(request);
-
     // 将本地文件名绑定到 Reply 对象上，确保回调时知道是哪个模型
     reply->setProperty("localBaseName", localBaseName);
+    reply->setProperty("modelDir", modelDir);
+    reply->setProperty("localFilePath", filePath);
+    reply->setProperty("filePath", filePath);
 
     connect(reply, &QNetworkReply::finished, this, [this, reply](){
         this->onApiMetadataReceived(reply);
@@ -1244,10 +1311,11 @@ void MainWindow::fetchModelInfoFromCivitai(const QString &hash) {
 }
 
 // 解析 JSON
-bool MainWindow::readLocalJson(const QString &baseName, ModelMeta &meta)
+bool MainWindow::readLocalJson(const QString &dirPath, const QString &baseName, ModelMeta &meta)
 {
-    if (currentLoraPath.isEmpty()) return false;
-    QString jsonPath = QDir(currentLoraPath).filePath(baseName + ".json");
+    if (dirPath.isEmpty()) return false;
+    QString jsonPath = QDir(dirPath).filePath(baseName + ".json");
+
     QFile file(jsonPath);
     if (!file.exists() || !file.open(QIODevice::ReadOnly)) return false;
 
@@ -1324,7 +1392,7 @@ bool MainWindow::readLocalJson(const QString &baseName, ModelMeta &meta)
         meta.sha256 = f["hashes"].toObject()["SHA256"].toString();
     }
 
-    QString bestPreviewPath = findLocalPreviewPath(currentLoraPath, baseName, meta.fileNameServer, 0);
+    QString bestPreviewPath = findLocalPreviewPath(dirPath, baseName, meta.fileNameServer, 0);
 
     if (QFile::exists(bestPreviewPath)) {
         QImageReader reader(bestPreviewPath);
@@ -1345,13 +1413,15 @@ bool MainWindow::readLocalJson(const QString &baseName, ModelMeta &meta)
 void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
 {
     QString localBaseName = reply->property("localBaseName").toString();
+    QString modelDir = reply->property("modelDir").toString();
+    QString filePath = reply->property("filePath").toString();
     reply->deleteLater();
     ui->btnForceUpdate->setEnabled(true);
 
     if (reply->error() != QNetworkReply::NoError) {
         clearLayout(ui->layoutTriggerStack); // 清空触发词区域
 
-        // === 修改：在标题栏醒目显示错误 ===
+        // === 在标题栏醒目显示错误 ===
         ui->lblModelName->setText(QString("⚠️ 连接失败 / Error: %1").arg(reply->errorString()));
 
         // 设置醒目的红色样式
@@ -1377,6 +1447,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     QString modelRealName = root["model"].toObject()["name"].toString();
     QString versionName = root["name"].toString();
     meta.name = modelRealName + " [" + versionName + "]";
+    meta.filePath = filePath;
 
     // 2. 触发词 (保存为列表)
     meta.trainedWordsGroups.clear();
@@ -1440,7 +1511,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
 
     if (!meta.images.isEmpty()) {
         // 强制使用本地文件名构造图片路径，解决重名和冲突问题
-        QString savePath = QDir::cleanPath(QDir(currentLoraPath).filePath(localBaseName + ".preview.png"));
+        QString savePath = QDir::cleanPath(QDir(modelDir).filePath(localBaseName + ".preview.png"));
 
         if (!QFile::exists(savePath)) {
             QNetworkRequest req((QUrl(meta.images[0].url)));
@@ -1466,7 +1537,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     }
 
     // 保存并更新UI
-    saveLocalMetadata(localBaseName, root);
+    saveLocalMetadata(modelDir, localBaseName, root);
 
     currentMeta = meta; // 缓存到成员变量
     updateDetailView(meta);
@@ -1474,11 +1545,11 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
 
 void MainWindow::onImageDownloaded(QNetworkReply *reply)
 {
-    reply->deleteLater();
-
     // 1. 获取上下文
     QString localBaseName = reply->property("localBaseName").toString();
-    QString savePath = reply->property("savePath").toString();
+    QString savePath = QFileInfo(reply->property("savePath").toString()).absoluteFilePath();
+    reply->deleteLater();
+
 
     if (reply->error() != QNetworkReply::NoError) {
         qDebug() << "Image download failed:" << reply->errorString();
@@ -1516,19 +1587,16 @@ void MainWindow::onImageDownloaded(QNetworkReply *reply)
                 item->setIcon(newIcon);
             }
         }
-
+        
         if (ui->layoutGallery) {
             for (int k = 0; k < ui->layoutGallery->count(); ++k) {
-                QLayoutItem *item = ui->layoutGallery->itemAt(k);
-                if (item && item->widget()) {
-                    QPushButton *btn = qobject_cast<QPushButton*>(item->widget());
-                    if (btn) {
-                        // 检查路径是否匹配
-                        QString btnPath = btn->property("fullImagePath").toString();
+                if (QLayoutItem *li = ui->layoutGallery->itemAt(k)) {
+                    if (QPushButton *btn = qobject_cast<QPushButton*>(li->widget())) {
+                        QString btnPath = QFileInfo(btn->property("fullImagePath").toString()).absoluteFilePath();
                         if (btnPath == savePath) {
-                            btn->setIcon(fitIcon); // 设置图标
+                            btn->setIcon(fitIcon);
                             btn->setIconSize(QSize(90, 135));
-                            btn->setText(""); // 清除 Downloading 文字
+                            btn->setText(""); // 清除文字
                         }
                     }
                 }
@@ -1536,31 +1604,21 @@ void MainWindow::onImageDownloaded(QNetworkReply *reply)
         }
 
         QListWidgetItem *currentItem = ui->modelList->currentItem();
-        QString currentViewingBaseName = currentItem ? currentItem->data(Qt::UserRole).toString() : "";
-
-        // 只有当下载完成的图 == 当前正在看的模型时，才刷新大图
-        if (currentViewingBaseName == localBaseName) {
-            // 1. 立即更新内存中的元数据，防止后续逻辑读到旧值
-            currentMeta.previewPath = savePath;
-            ui->heroFrame->setProperty("fullImagePath", savePath);
-
-            // 2. 强制重置 currentHeroPath，欺骗 transitionToImage 以为这是张新图
-            // 即使路径和之前“尝试加载”的路径一样（之前可能加载失败了），现在文件有了，必须重试
-            currentHeroPath = "";
-
-            // 3. 触发过渡动画
-            transitionToImage(savePath);
+        if (currentItem && currentItem->data(Qt::UserRole).toString() == localBaseName) {
+            if (savePath.endsWith(".preview.png")) {
+                currentHeroPath = "";
+                transitionToImage(savePath);
+            }
         }
     }
 }
 
-void MainWindow::saveLocalMetadata(const QString &baseName, const QJsonObject &data) {
-    if (currentLoraPath.isEmpty()) return;
-    QString savePath = QDir(currentLoraPath).filePath(baseName + ".json");
+void MainWindow::saveLocalMetadata(const QString &modelDir, const QString &baseName, const QJsonObject &data) {
+    if (modelDir.isEmpty()) return;
+    QString savePath = QDir(modelDir).filePath(baseName + ".json");
     QFile file(savePath);
     if (file.open(QIODevice::WriteOnly)) {
-        QJsonDocument doc(data);
-        file.write(doc.toJson());
+        file.write(QJsonDocument(data).toJson());
         file.close();
     }
 }
@@ -1587,13 +1645,8 @@ void MainWindow::downloadThumbnail(const QString &url, const QString &savePath, 
 {
     QNetworkRequest req((QUrl(url)));
 
-    // === 核心修改点 START ===
-    // 1. 伪装成浏览器
     req.setHeader(QNetworkRequest::UserAgentHeader, ROLE_URL);
-
-    // 2. 允许自动重定向
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-    // === 核心修改点 END ===
 
     QNetworkReply *reply = netManager->get(req);
     QPointer<QPushButton> safeBtn = button;
@@ -1740,16 +1793,10 @@ void MainWindow::onIconLoaded(const QString &filePath, const QImage &image)
 
 QString MainWindow::findLocalPreviewPath(const QString &dirPath, const QString &currentBaseName, const QString &serverFileName, int imgIndex)
 {
+    if (dirPath.isEmpty()) return "";
     QDir dir(dirPath);
     QString suffix = (imgIndex == 0) ? ".preview.png" : QString(".preview.%1.png").arg(imgIndex);
-
-    // === 严格模式：只使用当前本地模型的文件名 ===
-    // 例如: 本地文件是 "MyLora_v1.safetensors"，那么只找 "MyLora_v1.preview.1.png"
-    // 彻底摒弃根据 serverFileName (如 "MyLora.png") 查找的逻辑，杜绝重名冲突
-    QString strictPath = dir.filePath(currentBaseName + suffix);
-
-    // 即使文件不存在，也返回这个路径，作为“下载目标路径”
-    return strictPath;
+    return QFileInfo(dir.filePath(currentBaseName + suffix)).absoluteFilePath();
 }
 
 void MainWindow::onHashCalculated()
@@ -1931,6 +1978,7 @@ void MainWindow::showCollectionMenu(const QString &baseName, const QPoint &globa
 
     for (auto it = collections.begin(); it != collections.end(); ++it) {
         QString colName = it.key();
+        if (colName == FILTER_UNCATEGORIZED) continue;
         QAction *action = addMenu->addAction(colName);
         action->setCheckable(true);
         // 勾选状态反映当前是否在其中
@@ -2126,13 +2174,20 @@ QPixmap MainWindow::applyBlurToImage(const QImage &srcImg, const QSize &bgSize, 
 {
     if (srcImg.isNull()) return QPixmap();
 
-    // 1. 缩小图片 (制作模糊源)
-    int processWidth = 500;
-    QPixmap tempPix = QPixmap::fromImage(srcImg.scaledToWidth(processWidth, Qt::SmoothTransformation));
+    QPixmap tempPix;
+
+    // === 修改点：根据设置决定是否缩小 ===
+    if (optDownscaleBlur) {
+        // 使用配置的缩小尺寸
+        tempPix = QPixmap::fromImage(srcImg.scaledToWidth(optBlurProcessWidth, Qt::SmoothTransformation));
+    } else {
+        // 不缩小，直接使用原图（注意：这在模糊半径较大时非常耗时）
+        tempPix = QPixmap::fromImage(srcImg);
+    }
 
     // 2. 高斯模糊
     QGraphicsBlurEffect *blur = new QGraphicsBlurEffect;
-    blur->setBlurRadius(30);
+    blur->setBlurRadius(optBlurRadius);
     blur->setBlurHints(QGraphicsBlurEffect::PerformanceHint);
     QGraphicsScene scene;
     QGraphicsPixmapItem *item = new QGraphicsPixmapItem(tempPix);
@@ -2264,10 +2319,7 @@ void MainWindow::processNextDownload()
     isDownloading = true;
     DownloadTask task = downloadQueue.dequeue();
 
-    // 检查按钮是否还存在 (可能用户已经切换页面了)
     if (task.button.isNull()) {
-        // 按钮没了，这个任务由于是界面显示用的，也就没必要下载了
-        // 直接处理下一个
         processNextDownload();
         return;
     }
@@ -2275,8 +2327,9 @@ void MainWindow::processNextDownload()
     // 设置按钮状态
     task.button->setText("Waiting...");
 
+    QString cleanedSavePath = QFileInfo(task.savePath).absoluteFilePath();
+
     QNetworkRequest req((QUrl(task.url)));
-    // === 关键：伪装浏览器头 (防封) ===
     req.setHeader(QNetworkRequest::UserAgentHeader, ROLE_URL);
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
@@ -2286,46 +2339,32 @@ void MainWindow::processNextDownload()
     // 如果你希望切页面时中断队列，可以清空 downloadQueue 并 abort 当前 reply
     // 这里简单起见，让它在后台默默跑完当前这一张
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, task](){
+    connect(reply, &QNetworkReply::finished, this, [this, reply, task, cleanedSavePath](){
         reply->deleteLater();
-
         if (reply->error() != QNetworkReply::NoError) {
             if (task.button) task.button->setText("Error");
-            qDebug() << "Download failed:" << task.url << reply->errorString();
-
-            // === 关键：无论成功失败，延时一小会儿后处理下一个，防止请求过快 ===
             QTimer::singleShot(500, this, &MainWindow::processNextDownload);
             return;
         }
 
         QByteArray data = reply->readAll();
         if (!data.isEmpty()) {
-            QFile file(task.savePath);
+            QFile file(cleanedSavePath);
             if (file.open(QIODevice::WriteOnly)) {
                 file.write(data);
                 file.close();
 
-                // 加载图标
                 if (task.button) {
-                    // 获取当前按钮原本想展示的图片路径（我们在 updateDetailView 里 setProperty 存进去的）
-                    QString currentBtnPath = task.button->property("fullImagePath").toString();
-
-                    // 只有当 下载的任务路径 == 按钮当前需要的路径 时，才更新图标
-                    // 这防止了：模型A的图片下载完了，结果贴到了模型B的按钮上
-                    if (currentBtnPath == task.savePath) {
-                        IconLoaderTask *iconTask = new IconLoaderTask(task.savePath, 100, 0, this, task.savePath, true);
+                    QString currentBtnPath = QFileInfo(task.button->property("fullImagePath").toString()).absoluteFilePath();
+                    if (currentBtnPath == cleanedSavePath) {
+                        IconLoaderTask *iconTask = new IconLoaderTask(cleanedSavePath, 100, 0, this, cleanedSavePath, true);
                         iconTask->setAutoDelete(true);
                         threadPool->start(iconTask);
                         task.button->setText("");
-                    } else {
-                        // 这种情况说明用户已经切走了，虽然图下好了，但不要动界面
-                        qDebug() << "Image downloaded but user switched model. GUI update skipped.";
                     }
                 }
             }
         }
-
-        // === 递归：下载下一张 (间隔 500ms 模拟人类行为，极其安全) ===
         QTimer::singleShot(500, this, &MainWindow::processNextDownload);
     });
 }
@@ -2333,16 +2372,6 @@ void MainWindow::processNextDownload()
 // ==========================================
 //  User Gallery (Tab Page 2) Implementation
 // ==========================================
-
-void MainWindow::loadUserGalleryConfig() {
-    QString configDir = qApp->applicationDirPath() + "/config";
-    QFile file(configDir + "/user_gallery.json");
-    if (file.open(QIODevice::ReadOnly)) {
-        QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-        sdOutputFolder = doc.object()["sd_folder"].toString();
-    }
-}
-
 void MainWindow::onToggleDetailTab() {
     int currentIndex = ui->detailContentStack->currentIndex();
     int nextIndex = (currentIndex == 0) ? 1 : 0;
@@ -2363,23 +2392,6 @@ void MainWindow::onToggleDetailTab() {
 
     // 3. 自动扫描逻辑 (保持不变)
     if (nextIndex == 1 && ui->listUserImages->count() == 0) {
-        onRescanUserClicked();
-    }
-}
-
-void MainWindow::onSetSdFolderClicked() {
-    QString dir = QFileDialog::getExistingDirectory(this, "选择 SD 输出目录 (outputs/txt2img-images)", sdOutputFolder);
-    if (!dir.isEmpty()) {
-        sdOutputFolder = dir;
-        // 保存配置
-        QString configDir = qApp->applicationDirPath() + "/config";
-        QDir().mkpath(configDir);
-        QJsonObject root;
-        root["sd_folder"] = sdOutputFolder;
-        QFile file(configDir + "/user_gallery.json");
-        if (file.open(QIODevice::WriteOnly)) {
-            file.write(QJsonDocument(root).toJson());
-        }
         onRescanUserClicked();
     }
 }
@@ -2462,12 +2474,12 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     // =========================================================
     // 3. 异步扫描
     // =========================================================
-    QFuture<QList<UserImageInfo>> future = QtConcurrent::run([this, searchKeys, isGlobalMode]() {
+    bool recursive = optGalleryRecursive;
+    QFuture<QList<UserImageInfo>> future = QtConcurrent::run([this, searchKeys, isGlobalMode, recursive]() { // 捕获 recursive
         QList<UserImageInfo> results;
+        QDirIterator::IteratorFlag iterFlag = recursive ? QDirIterator::Subdirectories : QDirIterator::NoIteratorFlags;
+        QDirIterator it(sdOutputFolder, QStringList() << "*.png" << "*.jpg" << "*.jpeg", QDir::Files, iterFlag);
         int scannedFiles = 0;
-
-        // 扫描 PNG 和 JPG
-        QDirIterator it(sdOutputFolder, QStringList() << "*.png" << "*.jpg" << "*.jpeg", QDir::Files, QDirIterator::Subdirectories);
 
         while (it.hasNext()) {
             QString path = it.next();
@@ -2750,4 +2762,145 @@ QStringList MainWindow::parsePromptsToTags(const QString &rawPrompt) {
         }
     }
     return result;
+}
+
+void MainWindow::initMenuBar() {
+    // 1. 使用 this->menuBar() 这是一个保险措施
+    // 它可以确保即便 XML 里的菜单栏丢失或层级错误，这里也能获取到窗口真正的菜单栏
+    QMenuBar *bar = this->menuBar();
+    bar->clear(); // 清空旧内容
+
+    // 2. 设置样式，确保在深色主题下可见
+    // 如果不设置，有时候文字颜色会和背景色一样导致“隐形”
+    bar->setStyleSheet(
+        "QMenuBar { background-color: #1a1f29; color: #dcdedf; border-bottom: 1px solid #3d4d5d; }"
+        "QMenuBar::item { background-color: transparent; padding: 8px 20px; font-size: 14px; font-weight: bold; }"
+        "QMenuBar::item:selected { background-color: #3d4450; color: #ffffff; }"
+        "QMenuBar::item:pressed { background-color: #66c0f4; color: #000000; }"
+    );
+
+    // 3. 直接添加“库”按钮 (Action)
+    // 这种直接 addAction 到 bar 的方式，效果就像是点击按钮，而不是弹出下拉菜单
+    QAction *actLib = new QAction("📚 库 / Library", this);
+    actLib->setShortcut(QKeySequence("Ctrl+1"));
+    connect(actLib, &QAction::triggered, this, &MainWindow::onMenuSwitchToLibrary);
+    bar->addAction(actLib);
+
+    // 4. 直接添加“设置”按钮 (Action)
+    QAction *actSet = new QAction("⚙️ 设置 / Settings", this);
+    actSet->setShortcut(QKeySequence("Ctrl+2"));
+    connect(actSet, &QAction::triggered, this, &MainWindow::onMenuSwitchToSettings);
+    bar->addAction(actSet);
+
+    // 5. 强制显示 (防止被 hidden 属性隐藏)
+    bar->setVisible(true);
+}
+
+void MainWindow::onMenuSwitchToLibrary() {
+    ui->rootStack->setCurrentIndex(0);
+}
+
+void MainWindow::onMenuSwitchToSettings() {
+    ui->rootStack->setCurrentIndex(1);
+}
+
+// === 路径加载与保存 (注册表) ===
+void MainWindow::loadPathSettings() {
+    // 读取 LoRA 路径
+    currentLoraPath = settings->value("lora_path").toString();
+    // 读取 Gallery 路径 (迁移到注册表)
+    sdOutputFolder = settings->value("gallery_path").toString();
+
+    // 兼容旧版 config json (如果注册表没值，尝试读一下旧文件，作为一次性迁移)
+    if (sdOutputFolder.isEmpty()) {
+        QString configDir = qApp->applicationDirPath() + "/config";
+        QFile file(configDir + "/user_gallery.json");
+        if (file.open(QIODevice::ReadOnly)) {
+            QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+            sdOutputFolder = doc.object()["sd_folder"].toString();
+            savePathSettings(); // 存入注册表
+        }
+    }
+}
+
+void MainWindow::savePathSettings() {
+    settings->setValue("lora_path", currentLoraPath);
+    settings->setValue("gallery_path", sdOutputFolder);
+}
+
+// === 全局配置加载与保存 (JSON) ===
+void MainWindow::loadGlobalConfig() {
+    QString configPath = qApp->applicationDirPath() + "/config/settings.json";
+    QFile file(configPath);
+    if (file.open(QIODevice::ReadOnly)) {
+        QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+        QJsonObject root = doc.object();
+
+        optLoraRecursive = root["lora_recursive"].toBool(false);
+        optGalleryRecursive = root["gallery_recursive"].toBool(false); // 默认关
+        optBlurRadius = root["blur_radius"].toInt(30);
+        optDownscaleBlur = root["blur_downscale_enabled"].toBool(true); // 默认开启
+        optBlurProcessWidth = root["blur_process_width"].toInt(500);    // 默认 500px
+
+        // 范围校验
+        if (optBlurRadius < 0) optBlurRadius = 0;
+        if (optBlurRadius > 100) optBlurRadius = 100;
+    }
+}
+
+void MainWindow::saveGlobalConfig() {
+    QString configDir = qApp->applicationDirPath() + "/config";
+    QDir().mkpath(configDir);
+
+    QJsonObject root;
+    root["lora_recursive"] = optLoraRecursive;
+    root["gallery_recursive"] = optGalleryRecursive;
+    root["blur_radius"] = optBlurRadius;
+    root["blur_downscale_enabled"] = optDownscaleBlur;
+    root["blur_process_width"] = optBlurProcessWidth;
+
+    QFile file(configDir + "/settings.json");
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write(QJsonDocument(root).toJson());
+    }
+}
+
+// === 设置页交互 ===
+
+void MainWindow::onBrowseLoraPath() {
+    QString dir = QFileDialog::getExistingDirectory(this, "选择 LoRA 文件夹", currentLoraPath);
+    if (!dir.isEmpty()) {
+        currentLoraPath = dir;
+        ui->editLoraPath->setText(dir);
+        savePathSettings();
+        // 立即触发重新扫描? 或者等用户切回库时扫描?
+        // 体验最好的是询问，这里简单起见，如果切回库会自动刷新(如果没有，可以手动刷新)
+        QMessageBox::information(this, "提示", "LoRA 路径已更新，请返回库界面点击刷新按钮。");
+    }
+}
+
+void MainWindow::onBrowseGalleryPath() {
+    QString dir = QFileDialog::getExistingDirectory(this, "选择图库文件夹", sdOutputFolder);
+    if (!dir.isEmpty()) {
+        sdOutputFolder = dir;
+        ui->editGalleryPath->setText(dir);
+        savePathSettings();
+    }
+}
+
+void MainWindow::onSettingsChanged() {
+    // 从 UI 更新变量
+    optLoraRecursive = ui->chkRecursiveLora->isChecked();
+    optGalleryRecursive = ui->chkRecursiveGallery->isChecked();
+
+    // 保存
+    saveGlobalConfig();
+}
+
+void MainWindow::onBlurSliderChanged(int value) {
+    optBlurRadius = value;
+    ui->lblBlurValue->setText(QString::number(value) + "px");
+
+    // 实时更新当前背景 (如果有)
+    updateBackgroundImage();
 }

@@ -24,6 +24,7 @@
 #include <QCollator>
 #include <QFuture>
 #include <QQueue>
+#include <QButtonGroup>
 
 #include "tagflowwidget.h"
 
@@ -126,9 +127,16 @@ private slots:
     void onUserImageClicked(QListWidgetItem *item);
     void onTagFilterChanged(const QSet<QString> &selectedTags);
     void onToggleDetailTab(); // 切换 Tab 的槽函数
-    void onSetSdFolderClicked();
     void onRescanUserClicked();
     void onGalleryButtonClicked();
+    // === 菜单槽函数 ===
+    void onMenuSwitchToLibrary();
+    void onMenuSwitchToSettings();
+    // === 设置页槽函数 ===
+    void onBrowseLoraPath();
+    void onBrowseGalleryPath();
+    void onSettingsChanged(); // 通用改变处理
+    void onBlurSliderChanged(int value);
 
 private:
     Ui::MainWindow *ui;
@@ -145,9 +153,6 @@ private:
     // Key: 收藏夹名称, Value: 模型文件名列表 (BaseName)
     QMap<QString, QStringList> collections;
     QString currentCollectionFilter; // 当前显示的收藏夹 ("" 代表全部)
-
-    void initMenu();
-    void loadSettings();
 
     // 收藏夹 JSON 读写
     void loadCollections();
@@ -167,8 +172,8 @@ private:
 
     QString calculateFileHash(const QString &filePath);
     void fetchModelInfoFromCivitai(const QString &hash);
-    void saveLocalMetadata(const QString &baseName, const QJsonObject &data);
-    bool readLocalJson(const QString &baseName, ModelMeta &meta);
+    void saveLocalMetadata(const QString &modelDir, const QString &baseName, const QJsonObject &data);
+    bool readLocalJson(const QString &dirPath, const QString &baseName, ModelMeta &meta);
 
     void clearLayout(QLayout *layout);
     void addBadge(QString text, bool isRed = false);
@@ -214,13 +219,31 @@ private:
 
     TagFlowWidget *tagFlowWidget;
     QString sdOutputFolder;
-    void loadUserGalleryConfig();
     void scanForUserImages(const QString &loraBaseName);
     void parsePngInfo(const QString &path, UserImageInfo &info);
     void updateUserStats(const QList<UserImageInfo> &images);
 
     QStringList parsePromptsToTags(const QString &rawPrompt);
     QString cleanTagText(QString t);
+
+    // === 配置变量 ===
+    bool optLoraRecursive = false;    // 默认关闭
+    bool optGalleryRecursive = false; // 默认关闭
+    int optBlurRadius = 30;           // 默认 30
+    bool optDownscaleBlur = true;     // 默认开启缩小
+    int optBlurProcessWidth = 500;    // 默认缩小到 500px
+    // === 新增函数 ===
+    void initMenuBar();       // 重写菜单初始化
+    void loadGlobalConfig();  // 加载配置
+    void saveGlobalConfig();  // 保存配置
+
+    // 辅助：从注册表加载路径
+    void loadPathSettings();
+    void savePathSettings();
+
+
+    // 定义一个特殊的字符串标识“未分类”
+    const QString FILTER_UNCATEGORIZED = "__UNCATEGORIZED__";
 };
 
 #endif // MAINWINDOW_H
