@@ -2590,30 +2590,39 @@ void MainWindow::parsePngInfo(const QString &path, UserImageInfo &info) {
     }
 
     if (!text.isEmpty()) {
-        QStringList parts = text.split("Negative prompt:");
-        info.prompt = parts[0].trimmed();
+        // === 核心改进：先找参数位置，再向前找 Negative ===
+
+        // 1. 寻找参数的起始位置 (Steps: 通常是参数的开始)
+        int stepsIndex = text.lastIndexOf("Steps: ");
+
+        if (stepsIndex == -1) {
+            // 没有参数？那就全是 Prompt（极少见的情况）
+            info.prompt = text.trimmed();
+            info.cleanTags = parsePromptsToTags(info.prompt);
+            return;
+        }
+
+        // 2. 提取参数部分 (Steps 及其之后)
+        info.parameters = text.mid(stepsIndex).trimmed();
+
+        // 3. 提取参数之前的内容 (Positive + 可能的 Negative)
+        QString beforeParams = text.left(stepsIndex).trimmed();
+
+        // 4. 在参数之前的内容中寻找 "Negative prompt:"
+        int negIndex = beforeParams.indexOf("Negative prompt:");
+
+        if (negIndex != -1) {
+            // 有 Negative：分割
+            info.prompt = beforeParams.left(negIndex).trimmed();
+            info.negativePrompt = beforeParams.mid(negIndex + 16).trimmed(); // 16 = "Negative prompt:".length()
+        } else {
+            // 没有 Negative：全是 Positive
+            info.prompt = beforeParams.trimmed();
+            info.negativePrompt = "(empty)";
+        }
+
+        // 5. 解析 Tags (只从 Positive Prompt 中提取)
         info.cleanTags = parsePromptsToTags(info.prompt);
-
-        QString remaining;
-        if (parts.size() > 1) {
-            remaining = parts[1];
-        }
-
-        if (!remaining.isEmpty()) {
-            // 寻找 "Steps: " 的位置
-            int stepsIndex = remaining.lastIndexOf("Steps: ");
-
-            if (stepsIndex != -1) {
-                // Steps 之前是 Negative Prompt
-                info.negativePrompt = remaining.left(stepsIndex).trimmed();
-
-                // Steps 及其之后是参数 (Steps: 20, Sampler: Euler a ...)
-                info.parameters = remaining.mid(stepsIndex).trimmed();
-            } else {
-                // 没找到 Steps，说明全是 Negative
-                info.negativePrompt = remaining.trimmed();
-            }
-        }
     }
 }
 
