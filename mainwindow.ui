@@ -25,8 +25,8 @@ QLineEdit { background-color: #131519; border: 1px solid #363c46; color: #dcdedf
 #modelList::item:selected { background-color: #3d4450; color: #ffffff; border-left: 3px solid #66c0f4; }
 
 /* 按钮 */
-#btnHome { background-color: transparent; text-align: left; padding-left: 10px; font-size: 14px; font-weight: bold; color: #fff; }
-#btnHome:hover { background-color: #3d4450; }
+#btnHome, #btnGallery { background-color: transparent; text-align: left; padding-left: 10px; font-size: 14px; font-weight: bold; color: #fff; }
+#btnHome:hover, #btnGallery:hover { background-color: #3d4450; }
 
 #btnScanLocal, #btnForceUpdate, #btnOpenUrl, #btnFavorite, #btnShowUserGallery { background-color: #2a3f5a; border-radius: 2px; color: #66c0f4; border: none; }
 #btnScanLocal:hover, #btnForceUpdate:hover, #btnOpenUrl:hover, #btnFavorite:hover, #btnShowUserGallery:hover { background-color: #3d5677; color: #ffffff; }
@@ -230,20 +230,49 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
          <number>0</number>
         </property>
         <item>
-         <widget class="QPushButton" name="btnHome">
-          <property name="minimumSize">
-           <size>
-            <width>0</width>
-            <height>40</height>
-           </size>
+         <layout class="QHBoxLayout" name="horizontalLayout_2">
+          <property name="spacing">
+           <number>3</number>
           </property>
-          <property name="cursor">
-           <cursorShape>PointingHandCursor</cursorShape>
-          </property>
-          <property name="text">
-           <string>HOME / 主页</string>
-          </property>
-         </widget>
+          <item>
+           <widget class="QPushButton" name="btnHome">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>40</height>
+             </size>
+            </property>
+            <property name="cursor">
+             <cursorShape>PointingHandCursor</cursorShape>
+            </property>
+            <property name="text">
+             <string>HOME / 主页</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btnGallery">
+            <property name="minimumSize">
+             <size>
+              <width>40</width>
+              <height>40</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>40</width>
+              <height>40</height>
+             </size>
+            </property>
+            <property name="cursor">
+             <cursorShape>PointingHandCursor</cursorShape>
+            </property>
+            <property name="text">
+             <string>🎨</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
         </item>
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout_search">
@@ -403,7 +432,7 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
       </widget>
       <widget class="QStackedWidget" name="mainStack">
        <property name="currentIndex">
-        <number>1</number>
+        <number>0</number>
        </property>
        <widget class="QWidget" name="pageHome">
         <layout class="QVBoxLayout" name="verticalLayout_Home">
@@ -450,7 +479,7 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
              <rect>
               <x>0</x>
               <y>0</y>
-              <width>157</width>
+              <width>999</width>
               <height>112</height>
              </rect>
             </property>
@@ -571,7 +600,7 @@ New</string>
              <rect>
               <x>0</x>
               <y>0</y>
-              <width>982</width>
+              <width>670</width>
               <height>1058</height>
              </rect>
             </property>
@@ -831,7 +860,7 @@ New</string>
                           <rect>
                            <x>0</x>
                            <y>0</y>
-                           <width>657</width>
+                           <width>423</width>
                            <height>165</height>
                           </rect>
                          </property>
@@ -1079,8 +1108,8 @@ New</string>
                         </property>
                         <property name="text">
                          <string>Filename: ...
-             Size: ...
-             Hash: ...</string>
+Size: ...
+Hash: ...</string>
                         </property>
                         <property name="alignment">
                          <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>

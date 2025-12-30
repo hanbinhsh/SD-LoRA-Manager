@@ -161,6 +161,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->homeGalleryList, &QListWidget::itemClicked, this, &MainWindow::onHomeGalleryClicked);
     connect(ui->btnAddCollection, &QPushButton::clicked, this, &MainWindow::onCreateCollection);
 
+    connect(ui->btnGallery, &QPushButton::clicked, this, &MainWindow::onGalleryButtonClicked);
+
     // === 用户图库页面初始化 ===
     // 1. 初始化 Tag 流式控件，放入 XML 定义好的 scrollAreaTags 中
     tagFlowWidget = new TagFlowWidget();
@@ -1004,8 +1006,8 @@ void MainWindow::onGalleryImageClicked(int index)
     const ImageInfo &img = currentMeta.images[index];
 
     // 更新 Prompt 显示
-    ui->textImgPrompt->setText(img.prompt.isEmpty() ? "No positive prompt." : img.prompt);
-    ui->textImgNegPrompt->setText(img.negativePrompt.isEmpty() ? "No negative prompt." : img.negativePrompt);
+    ui->textImgPrompt->setPlainText(img.prompt.isEmpty() ? "No positive prompt." : img.prompt);
+    ui->textImgNegPrompt->setPlainText(img.negativePrompt.isEmpty() ? "No negative prompt." : img.negativePrompt);
 
     // 更新参数行
     QString params = QString("Sampler: <span style='color:white'>%1</span> | Steps: <span style='color:white'>%2</span> | CFG: <span style='color:white'>%3</span> | Seed: <span style='color:white'>%4</span>")
@@ -1122,6 +1124,12 @@ void MainWindow::onScanLocalClicked() {
 // 点击列表项
 void MainWindow::onModelListClicked(QListWidgetItem *item) {
     if (!item) return;
+
+    // === 恢复 UI 状态 ===
+    ui->btnForceUpdate->setVisible(true);
+    ui->btnFavorite->setVisible(true);
+    ui->btnShowUserGallery->setEnabled(true);
+    ui->btnShowUserGallery->setEnabled(true);
 
     QString filePath = item->data(ROLE_FILE_PATH).toString();
     if (currentMeta.filePath == filePath && !currentMeta.name.isEmpty()) {
@@ -2378,10 +2386,14 @@ void MainWindow::onSetSdFolderClicked() {
 
 void MainWindow::onRescanUserClicked() {
     QListWidgetItem *item = ui->modelList->currentItem();
-    if (!item) return;
-
-    // 扫描当前选中的模型
-    scanForUserImages(item->text());
+    if (item) {
+        // 如果有选中项，说明是在查看特定模型，按名称扫描
+        scanForUserImages(item->text());
+    } else {
+        // 如果没有选中项，说明是在 "Global Gallery" 模式
+        // 传入空字符串进行全量扫描
+        scanForUserImages("");
+    }
 }
 
 void MainWindow::scanForUserImages(const QString &loraBaseName) {
@@ -2396,74 +2408,61 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
         return;
     }
 
-    ui->statusbar->showMessage("正在后台扫描本地图片...");
-    qDebug() << "=== 开始模糊扫描 ===";
+    bool isGlobalMode = loraBaseName.isEmpty();
 
-    // =========================================================
-    // 2. 构建模糊匹配关键字列表 (Fuzzy Matching Logic)
-    // =========================================================
-    QSet<QString> uniqueKeys; // 使用 Set 自动去重
-
-    // A. 获取核心名称 (去除版本号、括号、扩展名)
-    // 例如: "Korean_Doll_Likeness [v1.5].safetensors" -> "Korean_Doll_Likeness"
-    QString rawName = loraBaseName;
-
-    // 去除 [xxx]
-    if (rawName.contains("[")) rawName = rawName.split("[").first().trimmed();
-
-    // 去除 .safetensors / .pt
-    QFileInfo fi(rawName);
-    QString coreName = fi.completeBaseName();
-
-    // B. 生成变体
-    if (!coreName.isEmpty()) {
-        // 1. 原始核心名
-        uniqueKeys.insert(coreName);
-
-        // 2. 空格 -> 下划线 (My Lora -> My_Lora)
-        QString spaceToUnder = coreName;
-        spaceToUnder.replace(" ", "_");
-        uniqueKeys.insert(spaceToUnder);
-
-        // 3. 下划线 -> 空格 (My_Lora -> My Lora)
-        QString underToSpace = coreName;
-        underToSpace.replace("_", " ");
-        uniqueKeys.insert(underToSpace);
-
-        // 4. 去除所有空格 (My Lora -> MyLora)
-        QString noSpace = coreName;
-        noSpace.remove(" ");
-        uniqueKeys.insert(noSpace);
-
-        // 5. 去除所有下划线 (My_Lora -> MyLora)
-        QString noUnder = coreName;
-        noUnder.remove("_");
-        uniqueKeys.insert(noUnder);
-
-        // 6. 极致纯净版 (同时去除空格和下划线)
-        QString pure = coreName;
-        pure.remove(" ").remove("_");
-        uniqueKeys.insert(pure);
+    if (isGlobalMode) {
+        ui->statusbar->showMessage("正在扫描所有本地图片...");
+    } else {
+        ui->statusbar->showMessage(QString("正在扫描包含 '%1' 的图片...").arg(loraBaseName));
     }
 
-    // 将 Set 转为 List 以便传入线程
-    QStringList searchKeys = uniqueKeys.values();
+    // =========================================================
+    // 2. 构建模糊匹配关键字列表 (仅在非全局模式下)
+    // =========================================================
+    QStringList searchKeys;
 
-    // 过滤掉太短的 Key，防止错误匹配 (例如 "v1" 这种太短的词会匹配到所有图片)
-    for (auto it = searchKeys.begin(); it != searchKeys.end(); ) {
-        if (it->length() < 2) {
-            it = searchKeys.erase(it);
-        } else {
-            ++it;
+    if(!isGlobalMode){
+        QSet<QString> uniqueKeys; // 使用 Set 自动去重
+        // A. 获取核心名称 (去除版本号、括号、扩展名)
+        // 例如: "Korean_Doll_Likeness [v1.5].safetensors" -> "Korean_Doll_Likeness"
+        QString rawName = loraBaseName;
+        // 去除 [xxx]
+        if (rawName.contains("[")) rawName = rawName.split("[").first().trimmed();
+        // 去除 .safetensors / .pt
+        QFileInfo fi(rawName);
+        QString coreName = fi.completeBaseName();
+        // B. 生成变体
+        if (!coreName.isEmpty()) {
+            uniqueKeys.insert(coreName);// 1. 原始核心名
+            QString spaceToUnder = coreName;// 2. 空格 -> 下划线 (My Lora -> My_Lora)
+            spaceToUnder.replace(" ", "_");uniqueKeys.insert(spaceToUnder);
+            QString underToSpace = coreName;// 3. 下划线 -> 空格 (My_Lora -> My Lora)
+            underToSpace.replace("_", " ");uniqueKeys.insert(underToSpace);
+            QString noSpace = coreName;// 4. 去除所有空格 (My Lora -> MyLora)
+            noSpace.remove(" ");uniqueKeys.insert(noSpace);
+            QString noUnder = coreName;// 5. 去除所有下划线 (My_Lora -> MyLora)
+            noUnder.remove("_");uniqueKeys.insert(noUnder);
+            QString pure = coreName;// 6. 极致纯净版 (同时去除空格和下划线)
+            pure.remove(" ").remove("_");uniqueKeys.insert(pure);
         }
+        // 将 Set 转为 List 以便传入线程
+        searchKeys = uniqueKeys.values();
+        // 过滤掉太短的 Key，防止错误匹配 (例如 "v1" 这种太短的词会匹配到所有图片)
+        for (auto it = searchKeys.begin(); it != searchKeys.end(); ) {
+            if (it->length() < 2) {
+                it = searchKeys.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        qDebug() << "生成的模糊匹配词:" << searchKeys;
     }
 
-    qDebug() << "生成的模糊匹配词:" << searchKeys;
 
     // =========================================================
     // 3. 异步扫描
     // =========================================================
-    QFuture<QList<UserImageInfo>> future = QtConcurrent::run([this, searchKeys]() {
+    QFuture<QList<UserImageInfo>> future = QtConcurrent::run([this, searchKeys, isGlobalMode]() {
         QList<UserImageInfo> results;
         int scannedFiles = 0;
 
@@ -2486,12 +2485,17 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
 
             // 核心匹配：只要 Prompt 包含任一关键字即可
             bool matched = false;
-            for (const QString &key : searchKeys) {
-                // 使用 CaseInsensitive (忽略大小写)
-                if (info.prompt.contains(key, Qt::CaseInsensitive)) {
-                    matched = true;
-                    // qDebug() << "Match Found:" << key << "in" << QFileInfo(path).fileName();
-                    break;
+
+            if (isGlobalMode) {
+                // 全局模式：只要有 Prompt 信息就算匹配
+                matched = true;
+            } else {
+                for (const QString &key : searchKeys) {
+                    // 使用 CaseInsensitive (忽略大小写)
+                    if (info.prompt.contains(key, Qt::CaseInsensitive)) {
+                        matched = true;
+                        break;
+                    }
                 }
             }
 
@@ -2499,6 +2503,12 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
                 results.append(info);
             }
         }
+
+        // 按时间倒序排列（新图在前）
+        std::sort(results.begin(), results.end(), [](const UserImageInfo &a, const UserImageInfo &b){
+            return QFileInfo(a.path).lastModified() > QFileInfo(b.path).lastModified();
+        });
+
         return results;
     });
 
@@ -2506,9 +2516,11 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     connect(watcher, &QFutureWatcher<QList<UserImageInfo>>::finished, this, [this, watcher](){
         QList<UserImageInfo> results = watcher->result();
 
+        qDebug() << "Found" << results.count() << "images.";
+
         if (results.isEmpty()) {
             ui->statusbar->showMessage("扫描完成，未找到匹配图片", 5000);
-            QMessageBox::information(this, "结果", "未找到包含此 Lora 的图片。\n请检查图片是否包含元数据，或 Lora 文件名是否与 Prompt 差异过大。");
+            // QMessageBox::information(this, "结果", "未找到包含此 Lora 的图片。\n请检查图片是否包含元数据，或 Lora 文件名是否与 Prompt 差异过大。");
         } else {
             ui->statusbar->showMessage(QString("扫描完成，找到 %1 张相关图片").arg(results.count()), 3000);
         }
@@ -2519,6 +2531,7 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
             item->setData(Qt::UserRole + 1, info.prompt);
             item->setData(Qt::UserRole + 2, info.negativePrompt);
             item->setData(Qt::UserRole + 3, info.parameters);
+            item->setData(Qt::UserRole + 4, info.cleanTags);
 
             item->setIcon(placeholderIcon);
             ui->listUserImages->addItem(item);
@@ -2547,7 +2560,7 @@ void MainWindow::parsePngInfo(const QString &path, UserImageInfo &info) {
         if (!comfy.isEmpty()) {
             info.prompt = comfy;
             info.negativePrompt = "ComfyUI Workflow Data (Hidden)";
-            // ComfyUI 通常没有纯文本的 parameters，除非安装了插件
+            info.cleanTags = parsePromptsToTags(info.prompt);
             return;
         }
     }
@@ -2555,6 +2568,7 @@ void MainWindow::parsePngInfo(const QString &path, UserImageInfo &info) {
     if (!text.isEmpty()) {
         QStringList parts = text.split("Negative prompt:");
         info.prompt = parts[0].trimmed();
+        info.cleanTags = parsePromptsToTags(info.prompt);
 
         QString remaining;
         if (parts.size() > 1) {
@@ -2582,15 +2596,11 @@ void MainWindow::parsePngInfo(const QString &path, UserImageInfo &info) {
 void MainWindow::updateUserStats(const QList<UserImageInfo> &images) {
     QMap<QString, int> tagCounts;
     for (const auto &img : images) {
-        QStringList tags = img.prompt.split(",");
-        for (QString tag : tags) {
-            tag = tag.trimmed();
-            if (tag.isEmpty()) continue;
+        for (const QString &tag : img.cleanTags) {
             if (tag.compare("BREAK", Qt::CaseInsensitive) == 0) continue;
             tagCounts[tag]++;
         }
     }
-    // 将统计数据传给自定义控件
     tagFlowWidget->setData(tagCounts);
 }
 
@@ -2604,6 +2614,12 @@ void MainWindow::onUserImageClicked(QListWidgetItem *item) {
     // === 新增：取出参数 ===
     QString params = item->data(Qt::UserRole + 3).toString();
 
+    // === 进行 HTML 转义 ===
+    // 将 < 转换为 &lt;，将 > 转换为 &gt;，这样浏览器才会把它当做文本显示，而不是标签
+    QString safePrompt = prompt.toHtmlEscaped();
+    QString safeNeg = neg.toHtmlEscaped();
+    QString safeParams = params.toHtmlEscaped();
+
     // 格式化显示
     // 使用 <hr> 分割线，参数部分使用较小的字体和灰色
     QString html = QString(
@@ -2612,7 +2628,7 @@ void MainWindow::onUserImageClicked(QListWidgetItem *item) {
                        "<hr style='background-color:#444; height:1px; border:none;'>"
                        "<p><b><span style='color:#aaaaaa'>Parameters:</span></b><br>"
                        "<span style='color:#888888; font-size:11px; font-family:Consolas, monospace;'>%3</span></p>"
-                       ).arg(prompt).arg(neg).arg(params);
+                       ).arg(safePrompt).arg(safeNeg).arg(safeParams);
 
     ui->textUserPrompt->setHtml(html);
 
@@ -2625,14 +2641,21 @@ void MainWindow::onTagFilterChanged(const QSet<QString> &selectedTags) {
 
     for(int i = 0; i < ui->listUserImages->count(); ++i) {
         QListWidgetItem *item = ui->listUserImages->item(i);
-        QString prompt = item->data(Qt::UserRole + 1).toString();
+        QString rawPrompt = item->data(Qt::UserRole + 1).toString();
+        QStringList distinctTags = item->data(Qt::UserRole + 4).toStringList();
 
         bool match = true;
         // AND 逻辑：必须包含所有选中的 Tag
-        for (const QString &tag : selectedTags) {
-            // 简单的包含匹配
-            // 如果需要精确匹配单词，可以 split 后比较，但这里为了性能直接用 contains
-            if (!prompt.contains(tag, Qt::CaseInsensitive)) {
+        for (const QString &selTag : selectedTags) {
+            bool tagFound = false;
+            for (const QString &imgTag : distinctTags) {
+                if (imgTag.compare(selTag, Qt::CaseInsensitive) == 0) {
+                    tagFound = true;
+                    break;
+                }
+            }
+
+            if (!tagFound) {
                 match = false;
                 break;
             }
@@ -2643,4 +2666,88 @@ void MainWindow::onTagFilterChanged(const QSet<QString> &selectedTags) {
     }
 
     ui->statusbar->showMessage(QString("筛选: %1 张图片符合条件").arg(visibleCount));
+}
+
+void MainWindow::onGalleryButtonClicked()
+{
+    // 1. 清除侧边栏模型选中状态，表示现在不是看某个具体模型
+    ui->modelList->clearSelection();
+
+    // 2. 切换到详情页 (Page 1)
+    ui->mainStack->setCurrentIndex(1);
+
+    // 3. 强制切换到“本地返图”标签页 (Index 1)
+    // 注意：这里我们手动模拟 onToggleDetailTab 的部分逻辑
+    ui->detailContentStack->setCurrentIndex(1);
+
+    // 设置固定高度，确保 ScrollArea 能滚动
+    ui->detailContentStack->setFixedHeight(750);
+
+    // 4. 设置 UI 状态 (伪装成一个 Model)
+    clearDetailView(); // 清空之前的模型信息
+
+    // 自定义标题
+    ui->lblModelName->setText("Global User Gallery / 所有用户返图");
+    ui->lblModelName->setStyleSheet(
+        "color: #fff;"
+        "background-color: rgba(0,0,0,120);"
+        "padding: 15px;"
+        "border-left: 5px solid #ffcc00;" // 换个颜色，比如黄色，区分一下
+        "font-size: 24px;"
+        "font-weight: bold;"
+    );
+
+    // 隐藏/禁用一些不相关的按钮
+    ui->btnForceUpdate->setVisible(false);
+    ui->btnOpenUrl->setVisible(false);
+    ui->btnFavorite->setVisible(false);
+    ui->btnShowUserGallery->setVisible(false);
+
+    // 5. 清除背景图 (或者你可以放一张默认的图库壁纸)
+    currentHeroPath = "";
+    transitionToImage("");
+
+    // 6. 执行全局扫描 (传入空字符串)
+    scanForUserImages("");
+}
+
+// 辅助函数：清洗单个 Tag
+QString MainWindow::cleanTagText(QString t) {
+    t = t.trimmed();
+    if (t.isEmpty()) return "";
+
+    // === 特殊保护：颜文字 ===
+    // 如果是常见的颜文字，直接返回，不去除括号
+    static const QSet<QString> emoticons = {":)", ":-)", ":(", ":-(", "^_^", "T_T", "o_o", "O_O"};
+    if (emoticons.contains(t)) return t;
+
+    // === 处理权重和括号 ===
+    // 1. 去除尾部的权重数字 (例如 :1.2 或 :0.9)
+    // 正则含义：冒号后面跟着数字和小数点，且在字符串末尾
+    static QRegularExpression weightRegex(":[0-9.]+$");
+    t.remove(weightRegex);
+
+    // 2. 去除所有类型的括号 ( { [ ( ) ] } )
+    // 正则含义：匹配所有括号字符
+    static QRegularExpression bracketRegex("[\\{\\}\\[\\]\\(\\)]");
+    t.remove(bracketRegex);
+
+    return t.trimmed();
+}
+
+// 辅助函数：将 Prompt 字符串解析为 Tag 列表
+QStringList MainWindow::parsePromptsToTags(const QString &rawPrompt) {
+    QStringList result;
+    if (rawPrompt.isEmpty()) return result;
+
+    // 1. 按逗号切分 (这是 SD Prompt 的标准分隔符)
+    QStringList parts = rawPrompt.split(",", Qt::SkipEmptyParts);
+
+    for (const QString &part : parts) {
+        QString clean = cleanTagText(part);
+        if (!clean.isEmpty()) {
+            result.append(clean);
+        }
+    }
+    return result;
 }

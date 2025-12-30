@@ -66,6 +66,7 @@ struct ImageInfo {
 struct UserImageInfo {
     QString path;
     QString prompt;
+    QStringList cleanTags;
     QString negativePrompt;
     QString parameters;
 };
@@ -127,6 +128,7 @@ private slots:
     void onToggleDetailTab(); // 切换 Tab 的槽函数
     void onSetSdFolderClicked();
     void onRescanUserClicked();
+    void onGalleryButtonClicked();
 
 private:
     Ui::MainWindow *ui;
@@ -216,6 +218,9 @@ private:
     void scanForUserImages(const QString &loraBaseName);
     void parsePngInfo(const QString &path, UserImageInfo &info);
     void updateUserStats(const QList<UserImageInfo> &images);
+
+    QStringList parsePromptsToTags(const QString &rawPrompt);
+    QString cleanTagText(QString t);
 };
 
 #endif // MAINWINDOW_H
