@@ -140,6 +140,8 @@ private slots:
     void onBlurSliderChanged(int value);
     void onSetSdFolderClicked();
 
+    void onBrowseTranslationPath();
+
 private:
     Ui::MainWindow *ui;
     QSettings *settings;
@@ -257,6 +259,10 @@ private:
     QPixmap applyNSFWBlur(const QPixmap &pix);
 
     QPixmap applyRoundedMask(const QPixmap &src, int radius);
+
+    QHash<QString, QString> translationMap; // 存储翻译数据
+    QString translationCsvPath;             // 翻译文件路径
+    void loadTranslationCSV(const QString &path); // 加载函数
 };
 
 #endif // MAINWINDOW_H

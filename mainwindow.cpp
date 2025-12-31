@@ -153,6 +153,7 @@ MainWindow::MainWindow(QWidget *parent)
     // === 4. 连接设置页信号 ===
     connect(ui->btnBrowseLora, &QPushButton::clicked, this, &MainWindow::onBrowseLoraPath);
     connect(ui->btnBrowseGallery, &QPushButton::clicked, this, &MainWindow::onBrowseGalleryPath);
+    connect(ui->btnBrowseTrans, &QPushButton::clicked, this, &MainWindow::onBrowseTranslationPath);
     // 复选框改变即保存
     connect(ui->chkRecursiveLora, &QCheckBox::toggled, this, &MainWindow::onSettingsChanged);
     connect(ui->chkRecursiveGallery, &QCheckBox::toggled, this, &MainWindow::onSettingsChanged);
@@ -244,6 +245,7 @@ MainWindow::MainWindow(QWidget *parent)
     // === 用户图库页面初始化 ===
     // 1. 初始化 Tag 流式控件，放入 XML 定义好的 scrollAreaTags 中
     tagFlowWidget = new TagFlowWidget();
+    tagFlowWidget->setTranslationMap(&translationMap);
     tagFlowWidget->setObjectName("tagFlowContainer");
     tagFlowWidget->setAttribute(Qt::WA_TranslucentBackground);
     ui->scrollAreaTags->viewport()->setAutoFillBackground(false);
@@ -267,6 +269,32 @@ MainWindow::MainWindow(QWidget *parent)
     // SD 目录与扫描
     connect(ui->btnSetSdFolder, &QPushButton::clicked, this, &MainWindow::onSetSdFolderClicked);
     connect(ui->btnRescanUser, &QPushButton::clicked, this, &MainWindow::onRescanUserClicked);
+    connect(ui->btnTranslate, &QPushButton::toggled, this, [this](bool checked){
+        if (checked) {
+            // 用户想开启翻译，检查是否有数据
+            if (translationMap.isEmpty()) {
+                // 1. 临时阻断信号，把勾选状态取消掉（因为开启失败）
+                ui->btnTranslate->blockSignals(true);
+                ui->btnTranslate->setChecked(false);
+                ui->btnTranslate->blockSignals(false);
+
+                // 2. 弹窗提示
+                QMessageBox::StandardButton reply;
+                reply = QMessageBox::question(this, "未加载翻译",
+                                              "尚未加载翻译词表 (CSV)。\n是否现在前往设置页面进行设置？\n\n(格式: 英文,中文)",
+                                              QMessageBox::Yes|QMessageBox::No);
+
+                if (reply == QMessageBox::Yes) {
+                    ui->rootStack->setCurrentIndex(1); // 跳转到设置页
+                    // 还可以高亮一下设置路径的框，提升体验
+                    ui->editTransPath->setFocus();
+                }
+                return;
+            }
+        }
+        // 如果有数据（或者用户关闭翻译），通知控件切换模式
+        tagFlowWidget->setShowTranslation(checked);
+    });
     // 图片点击
     connect(ui->listUserImages, &QListWidget::itemClicked, this, &MainWindow::onUserImageClicked);
     // Tag 筛选
@@ -2574,11 +2602,14 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
 
     bool isGlobalMode = loraBaseName.isEmpty();
 
+    QString scanPrefix;
     if (isGlobalMode) {
-        ui->statusbar->showMessage("正在扫描所有本地图片...");
+        scanPrefix = "正在扫描所有本地图片";
     } else {
-        ui->statusbar->showMessage(QString("正在扫描使用 '%1' 的图片...").arg(loraBaseName));
+        scanPrefix = QString("正在扫描使用 '%1' 的图片").arg(loraBaseName);
     }
+
+    ui->statusbar->showMessage(scanPrefix + "...");
 
     // =========================================================
     // 2. 构建模糊匹配关键字列表 (仅在非全局模式下)
@@ -2650,7 +2681,7 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     // 3. 异步扫描
     // =========================================================
     bool recursive = optGalleryRecursive;
-    QFuture<QList<UserImageInfo>> future = QtConcurrent::run([this, searchKeys, isGlobalMode, recursive]() { // 捕获 recursive
+    QFuture<QList<UserImageInfo>> future = QtConcurrent::run([this, searchKeys, isGlobalMode, recursive, scanPrefix]() { // 捕获 recursive
         QList<UserImageInfo> results;
         QDirIterator::IteratorFlag iterFlag = recursive ? QDirIterator::Subdirectories : QDirIterator::NoIteratorFlags;
         QDirIterator it(sdOutputFolder, QStringList() << "*.png" << "*.jpg" << "*.jpeg", QDir::Files, iterFlag);
@@ -2660,7 +2691,12 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
             QString path = it.next();
             scannedFiles++;
 
-            if (scannedFiles % 200 == 0) qDebug() << "Scanning..." << scannedFiles;
+            if (scannedFiles % 50 == 0) {
+                QMetaObject::invokeMethod(this, [this, scannedFiles, scanPrefix](){
+                    // 拼接前缀和数量
+                    ui->statusbar->showMessage(QString("%1... (%2 张)").arg(scanPrefix).arg(scannedFiles));
+                });
+            }
 
             UserImageInfo info;
             info.path = path;
@@ -2994,22 +3030,19 @@ void MainWindow::loadPathSettings() {
     currentLoraPath = settings->value("lora_path").toString();
     // 读取 Gallery 路径 (迁移到注册表)
     sdOutputFolder = settings->value("gallery_path").toString();
-
-    // 兼容旧版 config json (如果注册表没值，尝试读一下旧文件，作为一次性迁移)
-    if (sdOutputFolder.isEmpty()) {
-        QString configDir = qApp->applicationDirPath() + "/config";
-        QFile file(configDir + "/user_gallery.json");
-        if (file.open(QIODevice::ReadOnly)) {
-            QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-            sdOutputFolder = doc.object()["sd_folder"].toString();
-            savePathSettings(); // 存入注册表
-        }
+    translationCsvPath = settings->value("translation_path").toString();
+    if (ui->editLoraPath) ui->editLoraPath->setText(currentLoraPath);
+    if (ui->editGalleryPath) ui->editGalleryPath->setText(sdOutputFolder);
+    if (ui->editTransPath) ui->editTransPath->setText(translationCsvPath);
+    if (!translationCsvPath.isEmpty()) {
+        loadTranslationCSV(translationCsvPath);
     }
 }
 
 void MainWindow::savePathSettings() {
     settings->setValue("lora_path", currentLoraPath);
     settings->setValue("gallery_path", sdOutputFolder);
+    settings->setValue("translation_path", translationCsvPath);
 }
 
 // === 全局配置加载与保存 (JSON) ===
@@ -3219,4 +3252,57 @@ QPixmap MainWindow::applyRoundedMask(const QPixmap &src, int radius)
     painter.drawPixmap(0, 0, src);
 
     return result;
+}
+
+// 浏览翻译文件
+void MainWindow::onBrowseTranslationPath() {
+    QString fileName = QFileDialog::getOpenFileName(this, "选择翻译文件 (CSV)",
+                                                    QFileInfo(translationCsvPath).path(),
+                                                    "CSV Files (*.csv);;All Files (*.*)");
+    if (!fileName.isEmpty()) {
+        translationCsvPath = fileName;
+        ui->editTransPath->setText(fileName);
+
+        // 保存到配置
+        settings->setValue("translation_path", translationCsvPath);
+
+        // 立即加载
+        loadTranslationCSV(translationCsvPath);
+
+        QMessageBox::information(this, "设置", "翻译词表已加载。");
+    }
+}
+
+// 加载 CSV 逻辑
+void MainWindow::loadTranslationCSV(const QString &path) {
+    translationMap.clear();
+    if (path.isEmpty() || !QFile::exists(path)) return;
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+
+    QTextStream in(&file);
+
+    while (!in.atEnd()) {
+        QString line = in.readLine();
+        if (line.trimmed().isEmpty()) continue;
+
+        // 格式：1girl,1女孩
+        // 使用第一次出现的逗号进行分割，以防翻译内容中也有逗号（虽然CSV通常会有引号处理，这里做简易处理）
+        int firstComma = line.indexOf(',');
+        if (firstComma != -1) {
+            QString en = line.left(firstComma).trimmed();
+            QString cn = line.mid(firstComma + 1).trimmed();
+
+            // 去除可能存在的引号（如果CSV是标准格式）
+            if (en.startsWith('"') && en.endsWith('"')) en = en.mid(1, en.length()-2);
+            if (cn.startsWith('"') && cn.endsWith('"')) cn = cn.mid(1, cn.length()-2);
+
+            if (!en.isEmpty() && !cn.isEmpty()) {
+                translationMap.insert(en, cn);
+            }
+        }
+    }
+    file.close();
+    qDebug() << "Loaded translation entries:" << translationMap.size();
 }

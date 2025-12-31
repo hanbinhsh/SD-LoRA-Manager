@@ -177,10 +177,9 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
 QWidget#pageSettings { background-color: #1b2838; color: #dcdedf; }
 QGroupBox { border: 1px solid #3d4d5d; margin-top: 20px; font-weight: bold; color: #66c0f4; border-radius: 4px; }
 QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 10px; padding: 0 5px; }
-#lblSetLora, #lblSetGallery, #lblBlur, #lblBlurValue { color: #acb2b8; font-size: 14px; }
-#editLoraPath, #editGalleryPath { background-color: #16191e; border: 1px solid #363c46; padding: 5px; color: #fff; border-radius: 3px; }
-#btnBrowseLora, #btnBrowseGallery { background-color: #2a3f5a; color: #fff; border: none; padding: 6px 12px; border-radius: 3px; }
-#btnBrowseLora:hove, #btnBrowseGallery:hover { background-color: #3d5677; }
+#editLoraPath, #editGalleryPath, #editTransPath { background-color: #16191e; border: 1px solid #363c46; padding: 5px; color: #fff; border-radius: 3px; }
+#btnBrowseLora, #btnBrowseGallery, #btnBrowseTrans { background-color: #2a3f5a; color: #fff; border: none; padding: 6px 12px; border-radius: 3px; }
+#btnBrowseLora:hove, #btnBrowseGallery:hover, #btnBrowseTrans:hover { background-color: #3d5677; }
 </string>
   </property>
   <widget class="QWidget" name="centralwidget">
@@ -639,7 +638,7 @@ New</string>
                  <rect>
                   <x>0</x>
                   <y>0</y>
-                  <width>670</width>
+                  <width>982</width>
                   <height>1058</height>
                  </rect>
                 </property>
@@ -926,7 +925,7 @@ New</string>
                               <rect>
                                <x>0</x>
                                <y>0</y>
-                               <width>423</width>
+                               <width>657</width>
                                <height>165</height>
                               </rect>
                              </property>
@@ -1297,6 +1296,37 @@ Hash: ...</string>
                             </property>
                            </widget>
                           </item>
+                          <item>
+                           <widget class="QPushButton" name="btnTranslate">
+                            <property name="minimumSize">
+                             <size>
+                              <width>28</width>
+                              <height>28</height>
+                             </size>
+                            </property>
+                            <property name="maximumSize">
+                             <size>
+                              <width>28</width>
+                              <height>28</height>
+                             </size>
+                            </property>
+                            <property name="cursor">
+                             <cursorShape>PointingHandCursor</cursorShape>
+                            </property>
+                            <property name="toolTip">
+                             <string>显示/隐藏 Tag 翻译</string>
+                            </property>
+                            <property name="text">
+                             <string>文</string>
+                            </property>
+                            <property name="checkable">
+                             <bool>true</bool>
+                            </property>
+                            <property name="class" stdset="0">
+                             <string>copyBtn</string>
+                            </property>
+                           </widget>
+                          </item>
                          </layout>
                         </item>
                         <item>
@@ -1400,8 +1430,8 @@ Hash: ...</string>
                                 <rect>
                                  <x>0</x>
                                  <y>0</y>
-                                 <width>278</width>
-                                 <height>78</height>
+                                 <width>434</width>
+                                 <height>220</height>
                                 </rect>
                                </property>
                               </widget>
@@ -1517,6 +1547,33 @@ Hash: ...</string>
            </item>
            <item row="1" column="2">
             <widget class="QPushButton" name="btnBrowseGallery">
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
+             <property name="text">
+              <string>浏览...</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="lblSetTrans">
+             <property name="text">
+              <string>Tag 翻译表 (CSV):</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QLineEdit" name="editTransPath">
+             <property name="readOnly">
+              <bool>true</bool>
+             </property>
+             <property name="placeholderText">
+              <string>可选：选择 \extensions\...\tags 目录下的 csv 文件</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="2">
+            <widget class="QPushButton" name="btnBrowseTrans">
              <property name="cursor">
               <cursorShape>PointingHandCursor</cursorShape>
              </property>
