@@ -778,7 +778,7 @@ New</string>
                  <rect>
                   <x>0</x>
                   <y>0</y>
-                  <width>982</width>
+                  <width>670</width>
                   <height>1058</height>
                  </rect>
                 </property>
@@ -1065,7 +1065,7 @@ New</string>
                               <rect>
                                <x>0</x>
                                <y>0</y>
-                               <width>657</width>
+                               <width>423</width>
                                <height>165</height>
                               </rect>
                              </property>
@@ -1570,8 +1570,8 @@ Hash: ...</string>
                                 <rect>
                                  <x>0</x>
                                  <y>0</y>
-                                 <width>434</width>
-                                 <height>220</height>
+                                 <width>278</width>
+                                 <height>78</height>
                                 </rect>
                                </property>
                               </widget>
@@ -1811,10 +1811,29 @@ Hash: ...</string>
              <string>外观 / Appearance</string>
             </property>
             <layout class="QGridLayout" name="gridLayout">
-             <item row="0" column="0">
-              <widget class="QLabel" name="lblBlur">
+             <item row="3" column="0">
+              <widget class="QCheckBox" name="chkRestoreTreeState">
+               <property name="toolTip">
+                <string>下次启动时，保持当前收藏夹的展开状态和滚动条位置。</string>
+               </property>
                <property name="text">
-                <string>背景模糊半径 (Blur Radius):</string>
+                <string>启动时恢复菜单 (Restore Menu on Startup)</string>
+               </property>
+               <property name="checked">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="2">
+              <widget class="QLabel" name="lblBlurValue">
+               <property name="minimumSize">
+                <size>
+                 <width>40</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="text">
+                <string>30px</string>
                </property>
               </widget>
              </item>
@@ -1834,6 +1853,13 @@ Hash: ...</string>
                </property>
               </widget>
              </item>
+             <item row="0" column="0">
+              <widget class="QLabel" name="lblBlur">
+               <property name="text">
+                <string>背景模糊半径 (Blur Radius):</string>
+               </property>
+              </widget>
+             </item>
              <item row="1" column="0">
               <widget class="QCheckBox" name="chkDownscaleBlur">
                <property name="toolTip">
@@ -1841,19 +1867,6 @@ Hash: ...</string>
                </property>
                <property name="text">
                 <string>模糊前缩放图片 (Scale before blur)</string>
-               </property>
-              </widget>
-             </item>
-             <item row="0" column="2">
-              <widget class="QLabel" name="lblBlurValue">
-               <property name="minimumSize">
-                <size>
-                 <width>40</width>
-                 <height>0</height>
-                </size>
-               </property>
-               <property name="text">
-                <string>30px</string>
                </property>
               </widget>
              </item>
@@ -1873,16 +1886,16 @@ Hash: ...</string>
                </property>
               </widget>
              </item>
-             <item row="2" column="0">
-              <widget class="QCheckBox" name="chkRestoreTreeState">
+             <item row="4" column="0">
+              <widget class="QCheckBox" name="chkShowEmptyCollections">
                <property name="toolTip">
-                <string>下次启动时，保持当前收藏夹的展开状态和滚动条位置。</string>
+                <string>如果取消勾选，不包含任何模型（或被搜索过滤后为空）的收藏夹将不会显示在侧边栏中。</string>
                </property>
                <property name="text">
-                <string>启动时恢复菜单 (Restore Menu on Startup)</string>
+                <string>显示空的收藏夹 (Show Empty Collections)</string>
                </property>
                <property name="checked">
-                <bool>true</bool>
+                <bool>false</bool>
                </property>
               </widget>
              </item>

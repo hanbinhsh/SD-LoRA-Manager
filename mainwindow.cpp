@@ -28,11 +28,7 @@
 #include "imageloader.h"
 
 // 自定义数据 Role
-const int ROLE_FILE_PATH = Qt::UserRole + 1;
-const int ROLE_PREVIEW_PATH = Qt::UserRole + 2;
-const int ROLE_NSFW_LEVEL = Qt::UserRole + 5;
-
-const QString ROLE_URL = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/53.36";
+const QString HTTP_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/53.36";
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -211,7 +207,7 @@ MainWindow::MainWindow(QWidget *parent)
     // 2. 双击列表项查看大图 ===
     connect(ui->listUserImages, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *item){
         if (!item) return;
-        QString path = item->data(Qt::UserRole).toString(); // 取出全路径
+        QString path = item->data(ROLE_FILE_PATH).toString(); // 取出全路径
         if (!path.isEmpty()) {
             showFullImageDialog(path); // 调用已有的显示大图函数
         }
@@ -571,6 +567,7 @@ void MainWindow::refreshHomeGallery()
         item->setData(ROLE_FILE_PATH, filePath);
         item->setData(ROLE_PREVIEW_PATH, previewPath);
         item->setData(ROLE_NSFW_LEVEL, nsfwLevel);
+        item->setData(ROLE_MODEL_NAME, baseName);
 
         item->setIcon(placeholderIcon);
         ui->homeGalleryList->addItem(item);
@@ -648,8 +645,8 @@ void MainWindow::onHomeGalleryContextMenu(const QPoint &pos)
 
     // 注意：主页 Item 没有 text，我们需要从 data 里找或者通过 ToolTip
     // 之前我们在 refreshHomeGallery 里设置了 tooltip 为 baseName
-    QString baseName = item->toolTip();
-
+    QString baseName = item->data(ROLE_MODEL_NAME).toString();
+    if (baseName.isEmpty()) baseName = item->toolTip();  // 后备方案
     if (baseName.isEmpty()) return;
 
     // 复用通用的菜单逻辑
@@ -921,7 +918,7 @@ void MainWindow::scanModels(const QString &path)
         // 7. 创建列表项
         QListWidgetItem *item = new QListWidgetItem(baseName);
         item->setToolTip(fullPath);
-        item->setData(Qt::UserRole, baseName);
+        item->setData(ROLE_MODEL_NAME, baseName);
         item->setData(ROLE_FILE_PATH, fullPath);
         item->setData(ROLE_PREVIEW_PATH, previewPath);
 
@@ -1048,7 +1045,7 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
 
         QListWidgetItem *listItem = ui->modelList->currentItem();
         if (listItem) {
-            currentStandardBaseName = listItem->data(Qt::UserRole).toString();
+            currentStandardBaseName = listItem->data(ROLE_MODEL_NAME).toString();
         }
         if (currentStandardBaseName.isEmpty()) {
             currentStandardBaseName = modelFileInfo.completeBaseName();
@@ -1153,7 +1150,7 @@ void MainWindow::onGalleryImageClicked(int index)
     QListWidgetItem *item = ui->modelList->currentItem();
     if (item) {
         // A. 获取模型名称标识
-        currentBaseName = item->data(Qt::UserRole).toString();
+        currentBaseName = item->data(ROLE_MODEL_NAME).toString();
         if (currentBaseName.isEmpty()) currentBaseName = item->text();
 
         // B. 获取模型文件所在的绝对目录 (支持子文件夹的关键)
@@ -1355,7 +1352,7 @@ void MainWindow::fetchModelInfoFromCivitai(const QString &hash) {
     QString filePath = ui->modelList->property("current_processing_path").toString();
     QNetworkRequest request((QUrl(urlStr)));
 
-    request.setHeader(QNetworkRequest::UserAgentHeader, ROLE_URL);
+    request.setHeader(QNetworkRequest::UserAgentHeader, HTTP_USER_AGENT);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     QNetworkReply *reply = netManager->get(request);
     // 将本地文件名绑定到 Reply 对象上，确保回调时知道是哪个模型
@@ -1577,7 +1574,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
         if (!QFile::exists(savePath)) {
             QNetworkRequest req((QUrl(meta.images[0].url)));
 
-            req.setHeader(QNetworkRequest::UserAgentHeader, ROLE_URL);
+            req.setHeader(QNetworkRequest::UserAgentHeader, HTTP_USER_AGENT);
             req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
             QNetworkReply *imgReply = netManager->get(req);
@@ -1632,7 +1629,7 @@ void MainWindow::onImageDownloaded(QNetworkReply *reply)
         for(int i = 0; i < ui->modelList->count(); ++i) {
             QListWidgetItem *item = ui->modelList->item(i);
             // 必须比对 UserRole (即 baseName) 或 FILE_PATH
-            if (item->data(Qt::UserRole).toString() == localBaseName) {
+            if (item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
                 item->setData(ROLE_PREVIEW_PATH, savePath); // 更新数据
                 item->setIcon(newIcon); // 刷新图标
             }
@@ -1665,7 +1662,7 @@ void MainWindow::onImageDownloaded(QNetworkReply *reply)
         }
 
         QListWidgetItem *currentItem = ui->modelList->currentItem();
-        if (currentItem && currentItem->data(Qt::UserRole).toString() == localBaseName) {
+        if (currentItem && currentItem->data(ROLE_MODEL_NAME).toString() == localBaseName) {
             if (savePath.endsWith(".preview.png")) {
                 currentHeroPath = "";
                 transitionToImage(savePath);
@@ -1706,7 +1703,7 @@ void MainWindow::downloadThumbnail(const QString &url, const QString &savePath, 
 {
     QNetworkRequest req((QUrl(url)));
 
-    req.setHeader(QNetworkRequest::UserAgentHeader, ROLE_URL);
+    req.setHeader(QNetworkRequest::UserAgentHeader, HTTP_USER_AGENT);
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
     QNetworkReply *reply = netManager->get(req);
@@ -1894,8 +1891,8 @@ void MainWindow::onIconLoaded(const QString &filePath, const QImage &image)
     if (ui->listUserImages) {
         for (int i = 0; i < ui->listUserImages->count(); ++i) {
             QListWidgetItem *item = ui->listUserImages->item(i);
-            // 我们在 scanForUserImages 里把路径存到了 Qt::UserRole
-            if (item->data(Qt::UserRole).toString() == filePath) {
+            // 我们在 scanForUserImages 里把路径存到了 UserRole
+            if (item->data(ROLE_USER_IMAGE_PATH).toString() == filePath) {
                 item->setIcon(originalIcon);
             }
         }
@@ -1990,7 +1987,7 @@ void MainWindow::onSearchTextChanged(const QString &text)
 
         // === 修改：获取名称的逻辑 ===
         // 优先用 UserRole (排序用的也是这个，保持一致)，如果为空则用显示的文本
-        QString modelName = item->data(Qt::UserRole).toString();
+        QString modelName = item->data(ROLE_MODEL_NAME).toString();
         if (modelName.isEmpty()) modelName = item->text();
 
         // A. 名称匹配
@@ -2222,8 +2219,8 @@ void MainWindow::executeSort()
                   switch (sortType) {
                   case 0: // Name (A-Z, Windows Explorer Style)
                   {
-                      QString nameA = a->data(Qt::UserRole).toString();
-                      QString nameB = b->data(Qt::UserRole).toString();
+                      QString nameA = a->data(ROLE_MODEL_NAME).toString();
+                      QString nameB = b->data(ROLE_MODEL_NAME).toString();
                       // 使用 collator 进行自然比较，结果 < 0 表示 A 在 B 前
                       return collator.compare(nameA, nameB) < 0;
                   }
@@ -2470,7 +2467,7 @@ void MainWindow::processNextDownload()
     QString cleanedSavePath = QFileInfo(task.savePath).absoluteFilePath();
 
     QNetworkRequest req((QUrl(task.url)));
-    req.setHeader(QNetworkRequest::UserAgentHeader, ROLE_URL);
+    req.setHeader(QNetworkRequest::UserAgentHeader, HTTP_USER_AGENT);
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
     QNetworkReply *reply = netManager->get(req);
@@ -2745,11 +2742,11 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
 
         for (const auto &info : results) {
             QListWidgetItem *item = new QListWidgetItem();
-            item->setData(Qt::UserRole, info.path);
-            item->setData(Qt::UserRole + 1, info.prompt);
-            item->setData(Qt::UserRole + 2, info.negativePrompt);
-            item->setData(Qt::UserRole + 3, info.parameters);
-            item->setData(Qt::UserRole + 4, info.cleanTags);
+            item->setData(ROLE_USER_IMAGE_PATH, info.path);
+            item->setData(ROLE_USER_IMAGE_PROMPT, info.prompt);
+            item->setData(ROLE_USER_IMAGE_NEG, info.negativePrompt);
+            item->setData(ROLE_USER_IMAGE_PARAMS, info.parameters);
+            item->setData(ROLE_USER_IMAGE_TAGS, info.cleanTags);
 
             item->setIcon(placeholderIcon);
             ui->listUserImages->addItem(item);
@@ -2899,10 +2896,10 @@ void MainWindow::updateUserStats(const QList<UserImageInfo> &images) {
 void MainWindow::onUserImageClicked(QListWidgetItem *item) {
     if (!item) return;
 
-    QString path = item->data(Qt::UserRole).toString();
-    QString prompt = item->data(Qt::UserRole + 1).toString();
-    QString neg = item->data(Qt::UserRole + 2).toString();
-    QString params = item->data(Qt::UserRole + 3).toString();
+    QString path = item->data(ROLE_USER_IMAGE_PATH).toString();
+    QString prompt = item->data(ROLE_USER_IMAGE_PROMPT).toString();
+    QString neg = item->data(ROLE_USER_IMAGE_NEG).toString();
+    QString params = item->data(ROLE_USER_IMAGE_PARAMS).toString();
 
     QString safePrompt = prompt.toHtmlEscaped();
     QString safeNeg = neg.toHtmlEscaped();
@@ -2929,13 +2926,14 @@ void MainWindow::onUserImageClicked(QListWidgetItem *item) {
     ui->heroFrame->setProperty("fullImagePath", path);
     transitionToImage(path);
 }
+
 void MainWindow::onTagFilterChanged(const QSet<QString> &selectedTags) {
     int visibleCount = 0;
 
     for(int i = 0; i < ui->listUserImages->count(); ++i) {
         QListWidgetItem *item = ui->listUserImages->item(i);
-        QString rawPrompt = item->data(Qt::UserRole + 1).toString();
-        QStringList distinctTags = item->data(Qt::UserRole + 4).toStringList();
+        QString rawPrompt = item->data(ROLE_USER_IMAGE_PROMPT).toString();
+        QStringList distinctTags = item->data(ROLE_USER_IMAGE_TAGS).toStringList();
 
         bool match = true;
         // AND 逻辑：必须包含所有选中的 Tag
@@ -3145,18 +3143,19 @@ void MainWindow::loadGlobalConfig() {
         QJsonObject root = doc.object();
 
         // 1. 读取所有配置到成员变量
-        optFilterNSFW = root["nsfw_filter"].toBool(false);
-        optNSFWMode = root["nsfw_mode"].toInt(1);
-        optNSFWLevel = root["nsfw_level_threshold"].toInt(1);
-        optLoraRecursive = root["lora_recursive"].toBool(false);
-        optGalleryRecursive = root["gallery_recursive"].toBool(false);
-        optBlurRadius = root["blur_radius"].toInt(30);
-        optDownscaleBlur = root["blur_downscale_enabled"].toBool(true);
-        optBlurProcessWidth = root["blur_process_width"].toInt(500);
-        optRenderThreadCount = root["render_thread_count"].toInt(4);
-        optRestoreTreeState = root["restore_tree_state"].toBool(true);
-        optSplitOnNewline = root["split_on_newline"].toBool(true);
-        QString filterStr = root["filter_tags_string"].toString(DEFAULT_FILTER_TAGS);
+        optFilterNSFW                   = root["nsfw_filter"].toBool(false);
+        optNSFWMode                     = root["nsfw_mode"].toInt(1);
+        optNSFWLevel                    = root["nsfw_level_threshold"].toInt(1);
+        optLoraRecursive                = root["lora_recursive"].toBool(false);
+        optGalleryRecursive             = root["gallery_recursive"].toBool(false);
+        optBlurRadius                   = root["blur_radius"].toInt(30);
+        optDownscaleBlur                = root["blur_downscale_enabled"].toBool(true);
+        optBlurProcessWidth             = root["blur_process_width"].toInt(500);
+        optRenderThreadCount            = root["render_thread_count"].toInt(4);
+        optRestoreTreeState             = root["restore_tree_state"].toBool(true);
+        optSplitOnNewline               = root["split_on_newline"].toBool(true);
+        optShowEmptyCollections         = root["show_empty_collections"].toBool(false);
+        QString filterStr               = root["filter_tags_string"].toString(DEFAULT_FILTER_TAGS);
         // 解析过滤词
         optFilterTags = filterStr.split(',', Qt::SkipEmptyParts);
         for(QString &s : optFilterTags) s = s.trimmed();
@@ -3197,6 +3196,7 @@ void MainWindow::loadGlobalConfig() {
     ui->chkRestoreTreeState->setChecked(optRestoreTreeState);
     ui->chkSplitOnNewline->setChecked(optSplitOnNewline);
     ui->editFilterTags->setText(optFilterTags.join(", "));
+    ui->chkShowEmptyCollections->setChecked(optShowEmptyCollections);
 
     // ===============================
     // === 连接 Settings 页面的信号 ===
@@ -3279,6 +3279,13 @@ void MainWindow::loadGlobalConfig() {
             ui->statusbar->showMessage("过滤词已重置", 2000);
         }
     });
+    // 显示空收藏夹开关
+    connect(ui->chkShowEmptyCollections, &QCheckBox::toggled, this, [this](bool checked){
+        optShowEmptyCollections = checked;
+        saveGlobalConfig();
+        // 修改此设置后，必须立刻刷新树状图才能看到效果
+        refreshCollectionTreeView();
+    });
 }
 
 void MainWindow::saveGlobalConfig() {
@@ -3286,18 +3293,19 @@ void MainWindow::saveGlobalConfig() {
     QDir().mkpath(configDir);
 
     QJsonObject root;
-    root["lora_recursive"] = optLoraRecursive;
-    root["gallery_recursive"] = optGalleryRecursive;
-    root["blur_radius"] = optBlurRadius;
-    root["blur_downscale_enabled"] = optDownscaleBlur;
-    root["blur_process_width"] = optBlurProcessWidth;
-    root["nsfw_filter"] = optFilterNSFW;
-    root["nsfw_mode"] = optNSFWMode;
-    root["nsfw_level_threshold"] = optNSFWLevel;
-    root["render_thread_count"] = optRenderThreadCount;
-    root["restore_tree_state"] = optRestoreTreeState;
-    root["split_on_newline"] = optSplitOnNewline;
-    root["filter_tags_string"] = ui->editFilterTags->text();
+    root["lora_recursive"]              = optLoraRecursive;
+    root["gallery_recursive"]           = optGalleryRecursive;
+    root["blur_radius"]                 = optBlurRadius;
+    root["blur_downscale_enabled"]      = optDownscaleBlur;
+    root["blur_process_width"]          = optBlurProcessWidth;
+    root["nsfw_filter"]                 = optFilterNSFW;
+    root["nsfw_mode"]                   = optNSFWMode;
+    root["nsfw_level_threshold"]        = optNSFWLevel;
+    root["render_thread_count"]         = optRenderThreadCount;
+    root["restore_tree_state"]          = optRestoreTreeState;
+    root["split_on_newline"]            = optSplitOnNewline;
+    root["filter_tags_string"]          = ui->editFilterTags->text();
+    root["show_empty_collections"]      = optShowEmptyCollections;
 
     if (optRestoreTreeState) {
         QJsonObject treeState;
@@ -3556,7 +3564,7 @@ void MainWindow::onUserGalleryContextMenu(const QPoint &pos)
     QListWidgetItem *item = ui->listUserImages->itemAt(pos);
     if (!item) return;
 
-    QString filePath = item->data(Qt::UserRole).toString();
+    QString filePath = item->data(ROLE_FILE_PATH).toString();
     if (filePath.isEmpty()) return;
 
     QMenu menu(this);
@@ -3626,6 +3634,7 @@ void MainWindow::onCollectionTreeItemClicked(QTreeWidgetItem *item, int column)
     if (item->data(0, ROLE_IS_COLLECTION_NODE).toBool()) {
         // === 收藏夹节点 ===
         QString collectionName = item->data(0, ROLE_COLLECTION_NAME).toString();
+        int count = item->data(0, ROLE_ITEM_COUNT).toInt();
 
         // 2. 展开/折叠节点
         bool wasExpanded = item->isExpanded();
@@ -3633,11 +3642,9 @@ void MainWindow::onCollectionTreeItemClicked(QTreeWidgetItem *item, int column)
 
         // 3. 切换文本前缀
         QString displayName = (collectionName == FILTER_UNCATEGORIZED) ? "未分类 / Uncategorized" : collectionName;
-        if (!wasExpanded) {
-            item->setText(0, " - " + displayName);
-        } else {
-            item->setText(0, " + " + displayName);
-        }
+        QString prefix = (!wasExpanded) ? " - " : " + "; // 此时已切换状态
+        QString newText = QString("%1%2 (%3)").arg(prefix).arg(displayName).arg(count);
+        item->setText(0, newText);
     } else {
         // 模型节点
         QString filePath = item->data(0, ROLE_FILE_PATH).toString();
@@ -3720,7 +3727,8 @@ void MainWindow::onCollectionTreeContextMenu(const QPoint &pos)
         }
     } else {
         // --- 模型节点右键菜单 ---
-        QString baseName = item->text(0); // 模型名称
+        QString baseName = item->data(0, ROLE_MODEL_NAME).toString();
+        if (baseName.isEmpty()) baseName = item->text(0);
         // 复用通用的模型收藏菜单逻辑
         showCollectionMenu(baseName, ui->collectionTree->mapToGlobal(pos));
     }
@@ -3772,7 +3780,7 @@ void MainWindow::refreshCollectionTreeView()
         // 关键点：如果它被搜索/底模筛选隐藏了，就不放入 Map
         if (item->isHidden()) continue;
 
-        QString baseName = item->data(Qt::UserRole).toString();
+        QString baseName = item->data(ROLE_MODEL_NAME).toString();
         visibleItemMap.insert(baseName, item);
         visibleItemRank.insert(baseName, i); // 记录它在列表中的顺序
     }
@@ -3805,6 +3813,7 @@ void MainWindow::refreshCollectionTreeView()
                 child->setData(0, ROLE_FILE_PATH, sourceItem->data(ROLE_FILE_PATH));
                 child->setData(0, ROLE_PREVIEW_PATH, sourceItem->data(ROLE_PREVIEW_PATH));
                 child->setData(0, ROLE_NSFW_LEVEL, sourceItem->data(ROLE_NSFW_LEVEL));
+                child->setData(0, ROLE_MODEL_NAME, sourceItem->data(ROLE_MODEL_NAME));
                 child->setIcon(0, sourceItem->icon());
             }
         }
@@ -3824,28 +3833,33 @@ void MainWindow::refreshCollectionTreeView()
     for (auto it = visibleItemMap.begin(); it != visibleItemMap.end(); ++it) {
         if (!categorizedSet.contains(it.key())) uncatModels.append(it.key());
     }
-    // 只有当有内容时才显示“未分类” (可选，这里我设置为始终显示，保持结构稳定)
-    QTreeWidgetItem *uncategorizedNode = new QTreeWidgetItem(ui->collectionTree);
-    bool isUncatExpanded = expandedCollections.contains(FILTER_UNCATEGORIZED);
-    uncategorizedNode->setExpanded(isUncatExpanded);
-    uncategorizedNode->setText(0, (isUncatExpanded ? PRE_OPEN : PRE_CLOSED) + "未分类 / Uncategorized");
-    uncategorizedNode->setData(0, ROLE_IS_COLLECTION_NODE, true);
-    uncategorizedNode->setData(0, ROLE_COLLECTION_NAME, FILTER_UNCATEGORIZED);
-    uncategorizedNode->setFont(0, categoryFont);
 
-    // 排序并添加
-    std::sort(uncatModels.begin(), uncatModels.end(), rankSort);
-    // 这里手动添加循环，因为 uncatModels 已经是过滤好的了
-    for (const QString &baseName : uncatModels) {
-        QListWidgetItem *sourceItem = visibleItemMap.value(baseName);
-        QTreeWidgetItem *child = new QTreeWidgetItem(uncategorizedNode);
-        child->setText(0, sourceItem->text());
-        child->setData(0, ROLE_FILE_PATH, sourceItem->data(ROLE_FILE_PATH));
-        child->setData(0, ROLE_PREVIEW_PATH, sourceItem->data(ROLE_PREVIEW_PATH));
-        child->setData(0, ROLE_NSFW_LEVEL, sourceItem->data(ROLE_NSFW_LEVEL));
-        child->setIcon(0, sourceItem->icon());
+    int uncatCount = uncatModels.count();
+    if (uncatCount > 0 || optShowEmptyCollections){
+        // 只有当有内容时才显示“未分类” (可选，这里我设置为始终显示，保持结构稳定)
+        QTreeWidgetItem *uncategorizedNode = new QTreeWidgetItem(ui->collectionTree);
+        bool isUncatExpanded = expandedCollections.contains(FILTER_UNCATEGORIZED);
+        uncategorizedNode->setExpanded(isUncatExpanded);
+        uncategorizedNode->setText(0, (isUncatExpanded ? PRE_OPEN : PRE_CLOSED) + "未分类 / Uncategorized (" + QString::number(uncatCount) + ")");
+        uncategorizedNode->setData(0, ROLE_IS_COLLECTION_NODE, true);
+        uncategorizedNode->setData(0, ROLE_COLLECTION_NAME, FILTER_UNCATEGORIZED);
+        uncategorizedNode->setData(0, ROLE_ITEM_COUNT, uncatCount);
+        uncategorizedNode->setFont(0, categoryFont);
+
+        // 排序并添加
+        std::sort(uncatModels.begin(), uncatModels.end(), rankSort);
+        // 这里手动添加循环，因为 uncatModels 已经是过滤好的了
+        for (const QString &baseName : uncatModels) {
+            QListWidgetItem *sourceItem = visibleItemMap.value(baseName);
+            QTreeWidgetItem *child = new QTreeWidgetItem(uncategorizedNode);
+            child->setText(0, sourceItem->text());
+            child->setData(0, ROLE_FILE_PATH, sourceItem->data(ROLE_FILE_PATH));
+            child->setData(0, ROLE_PREVIEW_PATH, sourceItem->data(ROLE_PREVIEW_PATH));
+            child->setData(0, ROLE_NSFW_LEVEL, sourceItem->data(ROLE_NSFW_LEVEL));
+            child->setData(0, ROLE_MODEL_NAME, sourceItem->data(ROLE_MODEL_NAME));
+            child->setIcon(0, sourceItem->icon());
+        }
     }
-
     // --- 收藏夹 ---
     // 对收藏夹名字排序 (使用自然排序 QCollator)
     QCollator collator;
@@ -3863,16 +3877,26 @@ void MainWindow::refreshCollectionTreeView()
         // 获取该收藏夹的所有模型
         QStringList models = collections.value(colName);
 
-        QTreeWidgetItem *collectionNode = new QTreeWidgetItem(ui->collectionTree);
-        bool isColExpanded = expandedCollections.contains(colName);
-        collectionNode->setExpanded(isColExpanded);
-        collectionNode->setText(0, (isColExpanded ? PRE_OPEN : PRE_CLOSED) + colName);
-        collectionNode->setData(0, ROLE_IS_COLLECTION_NODE, true);
-        collectionNode->setData(0, ROLE_COLLECTION_NAME, colName);
-        collectionNode->setFont(0, categoryFont);
+        int visibleCount = 0;
+        for(const QString &m : models) {
+            if(visibleItemMap.contains(m)) visibleCount++;
+        }
 
-        // 调用辅助函数，它会自动过滤掉不匹配搜索的模型，并按当前规则排序
-        addModelChildren(collectionNode, models);
+        if (visibleCount > 0 || optShowEmptyCollections) {
+            QTreeWidgetItem *collectionNode = new QTreeWidgetItem(ui->collectionTree);
+            collectionNode->setData(0, ROLE_IS_COLLECTION_NODE, true);
+            collectionNode->setData(0, ROLE_COLLECTION_NAME, colName);
+            collectionNode->setData(0, ROLE_ITEM_COUNT, visibleCount);
+            collectionNode->setFont(0, categoryFont);
+
+            bool isColExpanded = expandedCollections.contains(colName);
+            collectionNode->setExpanded(isColExpanded);
+
+            collectionNode->setText(0, (isColExpanded ? PRE_OPEN : PRE_CLOSED) + colName + " (" + QString::number(visibleCount) + ")");
+
+            // 调用辅助函数，它会自动过滤掉不匹配搜索的模型，并按当前规则排序
+            addModelChildren(collectionNode, models);
+        }
     }
 
     // 恢复滚动条
@@ -3888,7 +3912,7 @@ void MainWindow::refreshCollectionTreeView()
 void MainWindow::addPlaceholderChild(QTreeWidgetItem *parent) {
     QTreeWidgetItem *dummy = new QTreeWidgetItem();
     dummy->setText(0, "Loading...");
-    dummy->setData(0, 999, true); // 标记为 dummy
+    dummy->setData(0, ROLE_IS_PLACEHOLDER, true);
     parent->addChild(dummy);
 }
 
@@ -3899,7 +3923,7 @@ void MainWindow::filterModelsByCollection(const QString &collectionName)
     // 刷新 modelList 的可见性
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *item = ui->modelList->item(i);
-        QString baseName = item->data(Qt::UserRole).toString(); // 获取模型的基础名称
+        QString baseName = item->data(ROLE_MODEL_NAME).toString(); // 获取模型的基础名称
 
         bool shouldBeVisible = false;
 
@@ -4010,7 +4034,7 @@ void MainWindow::onCheckUpdateClicked()
     ui->btnCheckUpdate->setEnabled(false);
 
     QNetworkRequest request((QUrl(GITHUB_REPO_API)));
-    request.setHeader(QNetworkRequest::UserAgentHeader, ROLE_URL);
+    request.setHeader(QNetworkRequest::UserAgentHeader, HTTP_USER_AGENT);
 
     QNetworkReply *reply = netManager->get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply](){
