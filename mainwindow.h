@@ -141,6 +141,7 @@ private slots:
     void onSetSdFolderClicked();
 
     void onBrowseTranslationPath();
+    void onUserGalleryContextMenu(const QPoint &pos);
 
 private:
     Ui::MainWindow *ui;
@@ -263,6 +264,7 @@ private:
     QHash<QString, QString> translationMap; // 存储翻译数据
     QString translationCsvPath;             // 翻译文件路径
     void loadTranslationCSV(const QString &path); // 加载函数
+    QString extractPngParameters(const QString &filePath);
 };
 
 #endif // MAINWINDOW_H

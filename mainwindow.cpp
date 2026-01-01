@@ -22,6 +22,8 @@
 #include <QGraphicsPixmapItem>
 #include <QGraphicsBlurEffect>
 #include <QDirIterator>
+#include <QProcess>
+#include <QtEndian>
 
 #include "imageloader.h"
 
@@ -254,6 +256,11 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->scrollAreaTags->verticalScrollBar(), &QScrollBar::valueChanged,
             ui->scrollAreaTags->viewport(), [this](){
                 ui->scrollAreaTags->viewport()->update();});
+    // 设置右键菜单策略
+    ui->listUserImages->setContextMenuPolicy(Qt::CustomContextMenu);
+    // 连接右键信号
+    connect(ui->listUserImages, &QListWidget::customContextMenuRequested,
+            this, &MainWindow::onUserGalleryContextMenu);
 
     // 2. 双击列表项查看大图 ===
     connect(ui->listUserImages, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *item){
@@ -1913,9 +1920,15 @@ void MainWindow::onIconLoaded(const QString &filePath, const QImage &image)
         }
     }
 
+    // if (filePath == currentMeta.previewPath) {
+    //     currentHeroPath = "";
+    //     transitionToImage(filePath);
+    // }
+    // 下面这行替换了上面的，修复了切换模型导致的动画闪烁问题，不过尚不清楚有无其他bug
     if (filePath == currentMeta.previewPath) {
-        currentHeroPath = "";
-        transitionToImage(filePath);
+        if (currentHeroPath != filePath) {
+            transitionToImage(filePath);
+        }
     }
 }
 
@@ -2281,7 +2294,13 @@ ImageLoadResult MainWindow::processImageTask(const QString &path)
 
 void MainWindow::transitionToImage(const QString &path)
 {
-    if (path == currentHeroPath && transitionAnim->state() != QAbstractAnimation::Running) return;
+    //if (path == currentHeroPath && transitionAnim->state() != QAbstractAnimation::Running) return;
+    // 下面这行替换了上面的，修复了切换模型导致的动画闪烁问题，不过尚不清楚有无其他bug
+    if (path == currentHeroPath) {
+        return;
+    }
+
+    // qDebug() << "Transition to:" << path;
 
     currentHeroPath = path;
 
@@ -2771,21 +2790,86 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     watcher->setFuture(future);
 }
 
-void MainWindow::parsePngInfo(const QString &path, UserImageInfo &info) {
-    QImageReader reader(path);
-    if (!reader.canRead()) return;
+QString MainWindow::extractPngParameters(const QString &filePath)
+{
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) return "";
 
-    QString text = reader.text("parameters");
+    // 1. 检查 PNG 签名 (8字节)
+    QByteArray signature = file.read(8);
+    const char pngSignature[] = {-119, 'P', 'N', 'G', 13, 10, 26, 10};
+    if (signature != QByteArray::fromRawData(pngSignature, 8)) {
+        return ""; // 不是 PNG
+    }
 
-    // 兼容 ComfyUI
-    if (text.isEmpty()) {
-        QString comfy = reader.text("prompt");
-        if (!comfy.isEmpty()) {
-            info.prompt = comfy;
-            info.negativePrompt = "ComfyUI Workflow Data (Hidden)";
-            info.cleanTags = parsePromptsToTags(info.prompt);
-            return;
+    // 2. 循环读取 Chunk (块)
+    while (!file.atEnd()) {
+        // 读取长度 (4字节, Big Endian)
+        QByteArray lenData = file.read(4);
+        if (lenData.size() < 4) break;
+        quint32 length = qFromBigEndian<quint32>(lenData.constData());
+
+        // 读取类型 (4字节)
+        QByteArray type = file.read(4);
+
+        // 如果是 tEXt 块 (A1111 WebUI 通常存这里)
+        if (type == "tEXt") {
+            QByteArray data = file.read(length);
+            // tEXt 格式: Keyword + \0 + Text
+            int nullPos = data.indexOf('\0');
+            if (nullPos != -1) {
+                QString keyword = QString::fromLatin1(data.left(nullPos));
+                if (keyword == "parameters") {
+                    // 找到啦！提取内容 (通常是 UTF-8)
+                    return QString::fromUtf8(data.mid(nullPos + 1));
+                }
+            }
         }
+        // 如果是 iTXt 块 (国际化文本，偶尔会用)
+        else if (type == "iTXt") {
+            QByteArray data = file.read(length);
+            // iTXt 格式: Keyword + \0 + ... + Text
+            // 简单解析：寻找 parameters 关键字
+            if (data.startsWith("parameters")) {
+                // iTXt 结构比较复杂，前面有压缩标志等，通常 parameters 都在最后
+                // 这里做一个偷懒的查找：找到第一个 null 后的非 null 区域
+                // 但为了稳妥，A1111 99% 都是用 tEXt，这里略过 iTXt 的复杂解包，
+                // 如果您发现某些图还是读不出，我们再加 iTXt 的完整解析。
+            }
+        }
+        else {
+            // 跳过数据部分 (如果不是我们要的块)
+            // 注意：如果上面 if 读取了 data，这里就不用 skip 了
+            // 但因为我们只 read 了 tEXt 的 data，其他类型需要 skip
+            file.seek(file.pos() + length);
+        }
+
+        // 跳过 CRC (4字节)
+        file.seek(file.pos() + 4);
+    }
+
+    return ""; // 没找到
+}
+
+void MainWindow::parsePngInfo(const QString &path, UserImageInfo &info) {
+    QString text = extractPngParameters(path);
+
+    if (text.isEmpty()) {
+        // qDebug() << "No PNG Text Found! Path:" << path;
+        QImageReader reader(path);
+        if (reader.canRead()) {
+            text = reader.text("parameters");
+            // 兼容 ComfyUI
+            if (text.isEmpty()) {
+                QString comfy = reader.text("prompt");
+                if (!comfy.isEmpty()) {
+                    info.prompt = comfy;
+                    info.negativePrompt = "ComfyUI Workflow Data (Hidden)";
+                    info.cleanTags = parsePromptsToTags(info.prompt);
+                    return;
+                }
+            }
+        } else return;
     }
 
     if (!text.isEmpty()) {
@@ -2842,12 +2926,8 @@ void MainWindow::onUserImageClicked(QListWidgetItem *item) {
     QString path = item->data(Qt::UserRole).toString();
     QString prompt = item->data(Qt::UserRole + 1).toString();
     QString neg = item->data(Qt::UserRole + 2).toString();
-
-    // === 新增：取出参数 ===
     QString params = item->data(Qt::UserRole + 3).toString();
 
-    // === 进行 HTML 转义 ===
-    // 将 < 转换为 &lt;，将 > 转换为 &gt;，这样浏览器才会把它当做文本显示，而不是标签
     QString safePrompt = prompt.toHtmlEscaped();
     QString safeNeg = neg.toHtmlEscaped();
     QString safeParams = params.toHtmlEscaped();
@@ -2855,11 +2935,16 @@ void MainWindow::onUserImageClicked(QListWidgetItem *item) {
     // 格式化显示
     // 使用 <hr> 分割线，参数部分使用较小的字体和灰色
     QString html = QString(
-                       "<p><b><span style='color:#66c0f4'>Positive:</span></b><br>%1</p>"
-                       "<p><b><span style='color:#ff6666'>Negative:</span></b><br>%2</p>"
+                       "<style>"
+                       "  .content { white-space: pre-wrap; }" // 定义一个样式类
+                       "</style>"
+                       "<p><b><span style='color:#66c0f4'>Positive:</span></b><br>"
+                       "<span class='content'>%1</span></p>"
+                       "<p><b><span style='color:#ff6666'>Negative:</span></b><br>"
+                       "<span class='content'>%2</span></p>"
                        "<hr style='background-color:#444; height:1px; border:none;'>"
                        "<p><b><span style='color:#aaaaaa'>Parameters:</span></b><br>"
-                       "<span style='color:#888888; font-size:11px; font-family:Consolas, monospace;'>%3</span></p>"
+                       "<span class='content' style='color:#888888; font-size:11px; font-family:Consolas, monospace;'>%3</span></p>"
                        ).arg(safePrompt).arg(safeNeg).arg(safeParams);
 
     ui->textUserPrompt->setHtml(html);
@@ -3305,4 +3390,57 @@ void MainWindow::loadTranslationCSV(const QString &path) {
     }
     file.close();
     qDebug() << "Loaded translation entries:" << translationMap.size();
+}
+
+void MainWindow::onUserGalleryContextMenu(const QPoint &pos)
+{
+    QListWidgetItem *item = ui->listUserImages->itemAt(pos);
+    if (!item) return;
+
+    QString filePath = item->data(Qt::UserRole).toString();
+    if (filePath.isEmpty()) return;
+
+    QMenu menu(this);
+
+    QAction *actOpenImg = menu.addAction("打开图片 / Open Image");
+    QAction *actOpenDir = menu.addAction("打开文件位置 / Show in Folder");
+    menu.addSeparator();
+    QAction *actCopyPath = menu.addAction("复制路径 / Copy Path");
+
+    QAction *selected = menu.exec(ui->listUserImages->mapToGlobal(pos));
+
+    if (selected == actOpenImg) {
+        // 使用默认看图软件打开
+        QDesktopServices::openUrl(QUrl::fromLocalFile(filePath));
+    }
+    else if (selected == actOpenDir) {
+#ifdef Q_OS_WIN
+        // === Windows 终极修复方案 ===
+        // 使用 QProcess 的 setNativeArguments 绕过 Qt 的自动引号机制
+        QProcess *process = new QProcess(this);
+        process->setProgram("explorer.exe");
+
+        // 转换为 Windows 反斜杠格式
+        QString nativePath = QDir::toNativeSeparators(filePath);
+
+        // 手动构建参数：/select,"C:\Path\File.png"
+        // 这里的引号是我们手动加的，Qt 不会再外面再包一层引号
+        QString args = QString("/select,\"%1\"").arg(nativePath);
+
+        process->setNativeArguments(args);
+        process->start();
+
+        // 进程结束后自动删除对象
+        connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                process, &QProcess::deleteLater);
+#else
+        // Mac / Linux
+        QFileInfo fi(filePath);
+        QDesktopServices::openUrl(QUrl::fromLocalFile(fi.absolutePath()));
+#endif
+    }
+    else if (selected == actCopyPath) {
+        QGuiApplication::clipboard()->setText(QDir::toNativeSeparators(filePath));
+        ui->statusbar->showMessage("路径已复制", 2000);
+    }
 }
