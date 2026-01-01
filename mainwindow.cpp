@@ -40,27 +40,28 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    // 初始化运行时状态
+    isFirstTreeRefresh = true;
+    startupTreeScrollPos = 0;
+    // 线程池初始化 (此时还没有读取配置，先不设最大数)
     threadPool = new QThreadPool(this);
-    threadPool->setMaxThreadCount(4);
+    // Hash 计算器
     hashWatcher = new QFutureWatcher<QString>(this);
     connect(hashWatcher, &QFutureWatcherBase::finished, this, &MainWindow::onHashCalculated);
-
+    // 图片加载器
     imageLoadWatcher = new QFutureWatcher<ImageLoadResult>(this);
     connect(imageLoadWatcher, &QFutureWatcher<ImageLoadResult>::finished, this, [this](){
         // A. 获取后台加载的原图
         ImageLoadResult result = imageLoadWatcher->result();
-
         if (result.path != currentHeroPath) {
             qDebug() << "Discarding obsolete image load:" << result.path;
             return;
         }
-
         if (!result.valid) {
             // 图片无效，淡出
             nextHeroPixmap = QPixmap();
             nextBlurredBgPix = QPixmap();
         } else {
-
             QPixmap rawPix = QPixmap::fromImage(result.originalImg);
 
             // --- NSFW 大图处理 ---
@@ -76,25 +77,21 @@ MainWindow::MainWindow(QWidget *parent)
                     }
                 }
             }
-
             if (shouldBlur) {
-                nextHeroPixmap = applyNSFWBlur(rawPix); // 大图模糊半径加大
+                nextHeroPixmap = applyNSFWBlur(rawPix);
             } else {
                 nextHeroPixmap = rawPix;
             }
-
             // C. 准备背景图
             QSize targetSize = ui->backgroundLabel->size();
             if (targetSize.isEmpty()) targetSize = QSize(1920, 1080);
             QSize heroSize = ui->heroFrame->size();
             if (heroSize.isEmpty()) heroSize = QSize(targetSize.width(), 400);
-
             if (currentBlurredBgPix.isNull() && !currentHeroPixmap.isNull()) {
                 currentBlurredBgPix = applyBlurToImage(currentHeroPixmap.toImage(), targetSize, heroSize);
             }
             nextBlurredBgPix = applyBlurToImage(result.originalImg, targetSize, heroSize);
         }
-
         transitionOpacity = 0.0;
         if (transitionAnim->state() == QAbstractAnimation::Running) {
             transitionAnim->stop();
@@ -102,18 +99,17 @@ MainWindow::MainWindow(QWidget *parent)
         transitionAnim->start();
     });
 
+    // 动画初始化
     transitionAnim = new QVariantAnimation(this);
     transitionAnim->setStartValue(0.0f);
     transitionAnim->setEndValue(1.0f);
     transitionAnim->setDuration(250);
     transitionAnim->setEasingCurve(QEasingCurve::InOutQuad);
-
     connect(transitionAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant &val){
         transitionOpacity = val.toFloat();
         ui->heroFrame->update();
         updateBackgroundDuringTransition();
     });
-
     connect(transitionAnim, &QVariantAnimation::finished, this, [this](){
         currentHeroPixmap = nextHeroPixmap;
         currentBlurredBgPix = nextBlurredBgPix;
@@ -123,7 +119,6 @@ MainWindow::MainWindow(QWidget *parent)
         ui->heroFrame->update();
         updateBackgroundDuringTransition();
     });
-
     placeholderIcon = generatePlaceholderIcon();
 
     settings = new QSettings("MyAiTools", "LoraManager", this);
@@ -134,69 +129,12 @@ MainWindow::MainWindow(QWidget *parent)
     // === 2. 加载配置 ===
     loadPathSettings();   // 从注册表读路径
     loadGlobalConfig();   // 从 JSON 读选项
-    // === 3. 初始化设置页 UI 状态 ===
-    ui->editLoraPath->setText(currentLoraPath);
-    ui->editGalleryPath->setText(sdOutputFolder);
-    ui->chkRecursiveLora->setChecked(optLoraRecursive);
-    ui->chkRecursiveGallery->setChecked(optGalleryRecursive);
-    ui->sliderBlur->setValue(optBlurRadius);
-    ui->lblBlurValue->setText(QString::number(optBlurRadius) + "px");
-    ui->chkDownscaleBlur->setChecked(optDownscaleBlur);
-    ui->spinBlurWidth->setValue(optBlurProcessWidth);
-    ui->spinBlurWidth->setEnabled(optDownscaleBlur);
-    ui->chkFilterNSFW->setChecked(optFilterNSFW);
-    if (optNSFWMode == 0) ui->radioNSFW_Hide->setChecked(true);
-    else ui->radioNSFW_Blur->setChecked(true);
-    ui->spinNSFWLevel->setValue(optNSFWLevel);
-    bool enabled = optFilterNSFW;
-    ui->radioNSFW_Hide->setEnabled(enabled);
-    ui->radioNSFW_Blur->setEnabled(enabled);
-    ui->spinNSFWLevel->setEnabled(enabled);
-    // === 4. 连接设置页信号 ===
+    // === 应用线程数 ===
+    threadPool->setMaxThreadCount(optRenderThreadCount);
+    // === 3. 连接路径设置信号 ===
     connect(ui->btnBrowseLora, &QPushButton::clicked, this, &MainWindow::onBrowseLoraPath);
     connect(ui->btnBrowseGallery, &QPushButton::clicked, this, &MainWindow::onBrowseGalleryPath);
     connect(ui->btnBrowseTrans, &QPushButton::clicked, this, &MainWindow::onBrowseTranslationPath);
-    // 复选框改变即保存
-    connect(ui->chkRecursiveLora, &QCheckBox::toggled, this, &MainWindow::onSettingsChanged);
-    connect(ui->chkRecursiveGallery, &QCheckBox::toggled, this, &MainWindow::onSettingsChanged);
-    // 模糊滑块
-    connect(ui->sliderBlur, &QSlider::valueChanged, this, &MainWindow::onBlurSliderChanged);
-    // 滑块释放时保存配置（避免拖动时疯狂写文件）
-    connect(ui->sliderBlur, &QSlider::sliderReleased, this, &MainWindow::saveGlobalConfig);
-
-    connect(ui->chkDownscaleBlur, &QCheckBox::toggled, this, [this](bool checked){
-        optDownscaleBlur = checked;
-        ui->spinBlurWidth->setEnabled(checked);
-        saveGlobalConfig();
-    });
-
-    connect(ui->spinBlurWidth, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val){
-        optBlurProcessWidth = val;
-        saveGlobalConfig();
-    });
-
-    connect(ui->chkFilterNSFW, &QCheckBox::toggled, this, [this](bool checked){
-        optFilterNSFW = checked;
-        ui->radioNSFW_Hide->setEnabled(checked);
-        ui->radioNSFW_Blur->setEnabled(checked);
-        ui->spinNSFWLevel->setEnabled(checked);
-        saveGlobalConfig();
-    });
-
-    connect(ui->radioNSFW_Hide, &QRadioButton::toggled, this, [this](bool checked){
-        if(checked) optNSFWMode = 0;
-        saveGlobalConfig();
-    });
-
-    connect(ui->radioNSFW_Blur, &QRadioButton::toggled, this, [this](bool checked){
-        if(checked) optNSFWMode = 1;
-        saveGlobalConfig();
-    });
-
-    connect(ui->spinNSFWLevel, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val){
-        optNSFWLevel = val;
-        saveGlobalConfig();
-    });
 
     // 样式设置
     QGraphicsDropShadowEffect *shadow = new QGraphicsDropShadowEffect(this);
@@ -210,38 +148,47 @@ MainWindow::MainWindow(QWidget *parent)
 
     ui->btnFavorite->setContextMenuPolicy(Qt::CustomContextMenu);
 
-    // 1. 确保开启像素滚动 (如果在 XML 里设了，这句可以省略)
+    // 1. 开启像素滚动
     ui->homeGalleryList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     ui->listUserImages->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-
-    // 2. 设置滚轮滚一下移动的像素距离 (默认通常较小，比如20)
+    // 2. 设置滚轮滚一下移动的像素距离
     ui->homeGalleryList->verticalScrollBar()->setSingleStep(40);
     ui->listUserImages->verticalScrollBar()->setSingleStep(40);
 
-    // === 信号连接 ===
+    ui->collectionTree->setHeaderHidden(true); // 隐藏 "Collection / Model" 表头
+
+    ui->btnModelsTab->setCheckable(true);
+    ui->btnCollectionsTab->setCheckable(true);
+    ui->btnModelsTab->setAutoExclusive(true);
+    ui->btnCollectionsTab->setAutoExclusive(true);
+    ui->btnModelsTab->setChecked(true);
+
+    // 关于页版本号显示
+    ui->lblAboutVersion->setText("Version " + CURRENT_VERSION);
+    // 检查更新按钮
+    connect(ui->btnCheckUpdate, &QPushButton::clicked, this, &MainWindow::onCheckUpdateClicked);
+
+    // === 主界面信号连接 ===
     connect(ui->modelList, &QListWidget::itemClicked, this, &MainWindow::onModelListClicked);
-
-    connect(ui->comboSort, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &MainWindow::onSortIndexChanged);
-
-    connect(ui->comboBaseModel, &QComboBox::currentTextChanged,
-            this, &MainWindow::onFilterBaseModelChanged);
-
+    connect(ui->comboSort, QOverload<int>::of(&QComboBox::currentIndexChanged),this, &MainWindow::onSortIndexChanged);
+    connect(ui->comboBaseModel, &QComboBox::currentTextChanged,this, &MainWindow::onFilterBaseModelChanged);
+    connect(ui->btnModelsTab, &QPushButton::clicked, this, &MainWindow::onModelsTabButtonClicked);
+    connect(ui->btnCollectionsTab, &QPushButton::clicked, this, &MainWindow::onCollectionsTabButtonClicked);
+    connect(ui->collectionTree, &QTreeWidget::itemClicked, this, &MainWindow::onCollectionTreeItemClicked);
     // 侧边栏右键菜单
     ui->modelList->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(ui->modelList, &QListWidget::customContextMenuRequested, this, &MainWindow::onSidebarContextMenu);
-
+    ui->collectionTree->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(ui->collectionTree, &QTreeWidget::customContextMenuRequested, this, &MainWindow::onCollectionTreeContextMenu);
+    // 工具栏按钮
     connect(ui->btnOpenUrl, &QPushButton::clicked, this, &MainWindow::onOpenUrlClicked);
     connect(ui->btnScanLocal, &QPushButton::clicked, this, &MainWindow::onScanLocalClicked);
     connect(ui->btnForceUpdate, &QPushButton::clicked, this, &MainWindow::onForceUpdateClicked);
-
     connect(ui->searchEdit, &QLineEdit::textChanged, this, &MainWindow::onSearchTextChanged);
-
-    // 主页相关
+    // 主页与画廊按钮
     connect(ui->btnHome, &QPushButton::clicked, this, &MainWindow::onHomeButtonClicked);
     connect(ui->homeGalleryList, &QListWidget::itemClicked, this, &MainWindow::onHomeGalleryClicked);
     connect(ui->btnAddCollection, &QPushButton::clicked, this, &MainWindow::onCreateCollection);
-
     connect(ui->btnGallery, &QPushButton::clicked, this, &MainWindow::onGalleryButtonClicked);
 
     // === 用户图库页面初始化 ===
@@ -261,7 +208,6 @@ MainWindow::MainWindow(QWidget *parent)
     // 连接右键信号
     connect(ui->listUserImages, &QListWidget::customContextMenuRequested,
             this, &MainWindow::onUserGalleryContextMenu);
-
     // 2. 双击列表项查看大图 ===
     connect(ui->listUserImages, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *item){
         if (!item) return;
@@ -293,7 +239,6 @@ MainWindow::MainWindow(QWidget *parent)
 
                 if (reply == QMessageBox::Yes) {
                     ui->rootStack->setCurrentIndex(1); // 跳转到设置页
-                    // 还可以高亮一下设置路径的框，提升体验
                     ui->editTransPath->setFocus();
                 }
                 return;
@@ -321,15 +266,17 @@ MainWindow::MainWindow(QWidget *parent)
     ui->splitter->setSizes(QList<int>() << 260 << 1000);
 
     // 默认显示主页 (Page 0)
-    ui->mainStack->setCurrentIndex(0);
+    ui->rootStack->setCurrentIndex(0);          // 库页面
+    ui->mainStack->setCurrentIndex(0);          // 库页面中的主页 (大图网格)
+    ui->sidebarStack->setCurrentIndex(1);       // 侧边栏默认显示收藏夹树
+    ui->btnCollectionsTab->setChecked(true);    // 确保收藏夹按钮选中
 
     bgResizeTimer = new QTimer(this);
-    bgResizeTimer->setSingleShot(true); // 只触发一次
+    bgResizeTimer->setSingleShot(true);
     // 当定时器时间到，执行更新背景函数
     connect(bgResizeTimer, &QTimer::timeout, this, &MainWindow::updateBackgroundImage);
 
     if (ui->backgroundLabel && ui->scrollAreaWidgetContents) {
-
         ui->scrollAreaWidgetContents->installEventFilter(this);
         ui->backgroundLabel->setScaledContents(true);
         ui->backgroundLabel->setGeometry(ui->scrollAreaWidgetContents->rect());
@@ -338,20 +285,20 @@ MainWindow::MainWindow(QWidget *parent)
     clearDetailView();
 
     QTimer::singleShot(10, this, [this](){
-        // 显示一个加载中的状态（可选）
         ui->statusbar->showMessage("正在扫描本地模型库...");
-        // 开始加载
         loadCollections();
         if (!currentLoraPath.isEmpty()) scanModels(currentLoraPath);
-        ui->comboSort->setCurrentIndex(0); // 0 = Name (A-Z)
+        ui->comboSort->setCurrentIndex(0);
         executeSort();
+        refreshCollectionTreeView();
         ui->statusbar->showMessage(QString("加载完成，共 %1 个模型").arg(ui->modelList->count()), 3000);
     });
 }
 
 MainWindow::~MainWindow()
 {
-    threadPool->clear();
+    saveGlobalConfig();
+    cancelPendingTasks();
     threadPool->waitForDone(500);
     delete ui;
 }
@@ -368,9 +315,10 @@ void MainWindow::onCollectionFilterClicked(const QString &collectionName)
 
 void MainWindow::onHomeButtonClicked()
 {
-    threadPool->clear();
+    cancelPendingTasks();
     ui->mainStack->setCurrentIndex(0); // 切换到主页
     ui->modelList->clearSelection();   // 清除侧边栏选中
+    ui->collectionTree->clearSelection();
     currentCollectionFilter = "";      // 重置过滤，显示全部
     refreshHomeGallery();
     refreshHomeCollectionsUI();
@@ -422,6 +370,7 @@ void MainWindow::onCreateCollection()
         if (!collections.contains(text)) {
             collections.insert(text, QStringList());
             saveCollections();
+            refreshCollectionTreeView();
         }
     }
 }
@@ -549,6 +498,7 @@ void MainWindow::refreshHomeCollectionsUI()
 
 void MainWindow::refreshHomeGallery()
 {
+    cancelPendingTasks();
     ui->homeGalleryList->clear();
 
     // 1. 设置图标大小 (正方形)
@@ -570,22 +520,32 @@ void MainWindow::refreshHomeGallery()
     disconnect(ui->homeGalleryList, &QListWidget::customContextMenuRequested, this, &MainWindow::onHomeGalleryContextMenu);
     connect(ui->homeGalleryList, &QListWidget::customContextMenuRequested, this, &MainWindow::onHomeGalleryContextMenu);
 
+    QString searchText = ui->searchEdit->text().trimmed();
+    QString targetBaseModel = ui->comboBaseModel->currentText();
+
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *sideItem = ui->modelList->item(i);
-        if (sideItem->isHidden()) continue;
 
-        // --- NSFW 拦截逻辑 ---
+
         int nsfwLevel = sideItem->data(ROLE_NSFW_LEVEL).toInt();
         bool isNSFW = nsfwLevel > optNSFWLevel;
+        QString baseName = sideItem->text();
+        QString previewPath = sideItem->data(ROLE_PREVIEW_PATH).toString();
+        QString filePath = sideItem->data(ROLE_FILE_PATH).toString();
+        QString itemBaseModel = sideItem->data(ROLE_FILTER_BASE).toString();
 
+        // --- NSFW 拦截逻辑 ---
         if (optFilterNSFW && isNSFW && optNSFWMode == 0) {
             continue; // 完全不显示模式：直接跳过此模型
         }
 
-        QString baseName = sideItem->text();
+        if (!searchText.isEmpty()) {
+            if (!baseName.contains(searchText, Qt::CaseInsensitive)) continue;
+        }
 
-        QString previewPath = sideItem->data(ROLE_PREVIEW_PATH).toString();
-        QString filePath = sideItem->data(ROLE_FILE_PATH).toString();
+        if (targetBaseModel != "All") {
+            if (itemBaseModel != targetBaseModel) continue;
+        }
 
         if (!currentCollectionFilter.isEmpty()) {
             if (currentCollectionFilter == FILTER_UNCATEGORIZED) {
@@ -615,7 +575,6 @@ void MainWindow::refreshHomeGallery()
         item->setIcon(placeholderIcon);
         ui->homeGalleryList->addItem(item);
 
-        // === 优化点：如果有图，启动后台加载 ===
         if (!filePath.isEmpty()) {
             QString pathToSend = previewPath.isEmpty() ? "invalid_path" : previewPath;
 
@@ -635,6 +594,9 @@ void MainWindow::onHomeGalleryClicked(QListWidgetItem *item)
     QString targetPath = item->data(ROLE_FILE_PATH).toString();
     if (targetPath.isEmpty()) return;
 
+    cancelPendingTasks();
+    ui->mainStack->setCurrentIndex(1);
+
     // 2. 在侧边栏 (modelList) 中寻找匹配该路径的项
     QListWidgetItem* matchItem = nullptr;
     for(int i = 0; i < ui->modelList->count(); ++i) {
@@ -648,14 +610,8 @@ void MainWindow::onHomeGalleryClicked(QListWidgetItem *item)
     // 3. 如果找到了，选中它并触发加载逻辑
     if (matchItem) {
         ui->modelList->setCurrentItem(matchItem);
-        // 手动调用点击事件，让详情页加载数据
+        syncTreeSelection(targetPath);
         onModelListClicked(matchItem);
-
-        // 4. 切换到详情页 (Page 2)
-        ui->mainStack->setCurrentIndex(1);
-    } else {
-        // 理论上不会发生，除非侧边栏被清空了
-        qDebug() << "Error: Model not found in sidebar list.";
     }
 }
 
@@ -1001,6 +957,8 @@ void MainWindow::scanModels(const QString &path)
     // 11. 刷新主页大图视图
     executeSort();
     refreshHomeGallery();
+    // 刷新收藏夹树状视图
+    refreshCollectionTreeView();
 }
 
 // 更新界面显示
@@ -1290,6 +1248,8 @@ void MainWindow::onScanLocalClicked() {
 // 点击列表项
 void MainWindow::onModelListClicked(QListWidgetItem *item) {
     if (!item) return;
+
+    cancelPendingTasks();
 
     // === 恢复 UI 状态 ===
     ui->btnForceUpdate->setVisible(true);
@@ -1888,6 +1848,27 @@ void MainWindow::onIconLoaded(const QString &filePath, const QImage &image)
         }
     }
 
+    for(int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *parent = ui->collectionTree->topLevelItem(i);
+        // 遍历子节点 (模型)
+        for(int j = 0; j < parent->childCount(); ++j) {
+            QTreeWidgetItem *child = parent->child(j);
+            // 检查路径是否匹配
+            if (child->data(0, ROLE_FILE_PATH).toString() == filePath) {
+                // 如果启用了 NSFW 模糊，这里也要处理 (复用之前的逻辑)
+                bool isNSFW = child->data(0, ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
+                if (optFilterNSFW && isNSFW && optNSFWMode == 1) {
+                    if (blurredPix.isNull()) blurredPix = applyNSFWBlur(originalPix);
+                    // 侧边栏使用 getSquareIcon 处理样式
+                    QPixmap roundedBlur = applyRoundedMask(blurredPix, 12);
+                    child->setIcon(0, getSquareIcon(roundedBlur));
+                } else {
+                    child->setIcon(0, getSquareIcon(originalPix));
+                }
+            }
+        }
+    }
+
     // 2. 更新详情页预览列表 (Detail Gallery) - 新增逻辑
     // 只有当当前在详情页时才需要更新，或者直接遍历layout
     QLayout *layout = ui->layoutGallery;
@@ -2036,6 +2017,8 @@ void MainWindow::onSearchTextChanged(const QString &text)
             ui->mainStack->setCurrentIndex(0);
         }
     }
+
+    refreshCollectionTreeView();
 }
 
 void MainWindow::showCollectionMenu(const QString &baseName, const QPoint &globalPos)
@@ -2059,6 +2042,7 @@ void MainWindow::showCollectionMenu(const QString &baseName, const QPoint &globa
                 collections[currentCollectionFilter].removeAll(baseName);
                 saveCollections();
                 refreshHomeGallery();
+                refreshCollectionTreeView();
             });
         }
     }
@@ -2077,18 +2061,11 @@ void MainWindow::showCollectionMenu(const QString &baseName, const QPoint &globa
         if (it.value().contains(baseName)) {
             isInAnyCollection = true;
             QAction *actRemove = removeMenu->addAction(colName);
-            // 鼠标悬停变红提示删除（可选样式）
-
             connect(actRemove, &QAction::triggered, this, [this, colName, baseName](){
-                // 执行移除逻辑
                 collections[colName].removeAll(baseName);
                 saveCollections();
-
-                // 如果当前正处于该收藏夹视图，或者处于全部视图，刷新一下界面
-                // (虽然在全部视图下移除收藏不影响显示，但刷新一下比较稳妥)
                 refreshHomeGallery();
-
-                // 提示用户
+                refreshCollectionTreeView();
                 ui->statusbar->showMessage(QString("已从 %1 中移除").arg(colName), 2000);
             });
         }
@@ -2126,6 +2103,7 @@ void MainWindow::showCollectionMenu(const QString &baseName, const QPoint &globa
             if (currentCollectionFilter == colName || !currentCollectionFilter.isEmpty()) {
                 refreshHomeGallery();
             }
+            refreshCollectionTreeView();
         });
     }
 
@@ -2138,7 +2116,8 @@ void MainWindow::showCollectionMenu(const QString &baseName, const QPoint &globa
             if(!collections.contains(text)) {
                 collections[text] = QStringList() << baseName;
                 saveCollections();
-                refreshHomeCollectionsUI(); // 别忘了刷新顶部的按钮
+                refreshHomeCollectionsUI();
+                refreshCollectionTreeView();
             }
         }
     });
@@ -2269,13 +2248,10 @@ void MainWindow::executeSort()
     }
 
     // 4. 同步刷新主页
-    refreshHomeGallery();
+    onSearchTextChanged(ui->searchEdit->text());
 }
 
 void MainWindow::onFilterBaseModelChanged(const QString &text) {
-    // 触发统一筛选
-    // 这里我们简单复用 onSearchTextChanged 里的逻辑，或者重写一个 unifiedFilter
-    // 建议直接调用 onSearchTextChanged 并传入当前搜索框的字
     onSearchTextChanged(ui->searchEdit->text());
 }
 
@@ -3057,12 +3033,36 @@ QStringList MainWindow::parsePromptsToTags(const QString &rawPrompt) {
     QStringList result;
     if (rawPrompt.isEmpty()) return result;
 
-    // 1. 按逗号切分 (这是 SD Prompt 的标准分隔符)
-    QStringList parts = rawPrompt.split(",", Qt::SkipEmptyParts);
+    QString processText = rawPrompt;
+
+    // === 1. 处理换行符分割 ===
+    if (optSplitOnNewline) {
+        // 将所有换行符替换为逗号，这样 split(',') 就能把它们分开
+        processText.replace("\r\n", ",");
+        processText.replace("\n", ",");
+        processText.replace("\r", ",");
+    }
+
+    // 2. 按逗号切分
+    QStringList parts = processText.split(",", Qt::SkipEmptyParts);
 
     for (const QString &part : parts) {
+        // 3. 清洗 Tag (去除权重括号等)
         QString clean = cleanTagText(part);
-        if (!clean.isEmpty()) {
+
+        if (clean.isEmpty()) continue;
+
+        // === 4. 过滤黑名单关键词 ===
+        bool isBlocked = false;
+        for (const QString &filterWord : optFilterTags) {
+            // 使用 compare 忽略大小写 (例如 break == BREAK)
+            if (clean.compare(filterWord, Qt::CaseInsensitive) == 0) {
+                isBlocked = true;
+                break;
+            }
+        }
+
+        if (!isBlocked) {
             result.append(clean);
         }
     }
@@ -3096,6 +3096,12 @@ void MainWindow::initMenuBar() {
     actSet->setShortcut(QKeySequence("Ctrl+2"));
     connect(actSet, &QAction::triggered, this, &MainWindow::onMenuSwitchToSettings);
     bar->addAction(actSet);
+
+    // 关于按钮
+    QAction *btnAbout = new QAction("ℹ️ 关于 / About");
+    btnAbout->setShortcut(QKeySequence("Ctrl+3"));
+    connect(btnAbout, &QAction::triggered, this, &MainWindow::onMenuSwitchToAbout);
+    bar->addAction(btnAbout);
 
     // 5. 强制显示 (防止被 hidden 属性隐藏)
     bar->setVisible(true);
@@ -3138,19 +3144,141 @@ void MainWindow::loadGlobalConfig() {
         QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
         QJsonObject root = doc.object();
 
+        // 1. 读取所有配置到成员变量
         optFilterNSFW = root["nsfw_filter"].toBool(false);
-        optNSFWMode = root["nsfw_mode"].toInt(1); // 默认模糊
+        optNSFWMode = root["nsfw_mode"].toInt(1);
         optNSFWLevel = root["nsfw_level_threshold"].toInt(1);
         optLoraRecursive = root["lora_recursive"].toBool(false);
-        optGalleryRecursive = root["gallery_recursive"].toBool(false); // 默认关
+        optGalleryRecursive = root["gallery_recursive"].toBool(false);
         optBlurRadius = root["blur_radius"].toInt(30);
-        optDownscaleBlur = root["blur_downscale_enabled"].toBool(true); // 默认开启
-        optBlurProcessWidth = root["blur_process_width"].toInt(500);    // 默认 500px
+        optDownscaleBlur = root["blur_downscale_enabled"].toBool(true);
+        optBlurProcessWidth = root["blur_process_width"].toInt(500);
+        optRenderThreadCount = root["render_thread_count"].toInt(4);
+        optRestoreTreeState = root["restore_tree_state"].toBool(true);
+        optSplitOnNewline = root["split_on_newline"].toBool(true);
+        QString filterStr = root["filter_tags_string"].toString(DEFAULT_FILTER_TAGS);
+        // 解析过滤词
+        optFilterTags = filterStr.split(',', Qt::SkipEmptyParts);
+        for(QString &s : optFilterTags) s = s.trimmed();
+
+        // 读取树状菜单状态
+        if (optRestoreTreeState && root.contains("tree_state")) {
+            QJsonObject treeState = root["tree_state"].toObject();
+            startupTreeScrollPos = treeState["scroll_pos"].toInt(0);
+            QJsonArray arr = treeState["expanded_items"].toArray();
+            for (const auto &val : arr) {
+                startupExpandedCollections.insert(val.toString());
+            }
+        }
 
         // 范围校验
         if (optBlurRadius < 0) optBlurRadius = 0;
         if (optBlurRadius > 100) optBlurRadius = 100;
+        if (optRenderThreadCount < 1) optRenderThreadCount = 4;
     }
+
+    // 将配置应用到 UI 控件 (初始化 UI 状态)
+    ui->chkRecursiveLora->setChecked(optLoraRecursive);
+    ui->chkRecursiveGallery->setChecked(optGalleryRecursive);
+    ui->sliderBlur->setValue(optBlurRadius);
+    ui->lblBlurValue->setText(QString::number(optBlurRadius) + "px");
+    ui->chkDownscaleBlur->setChecked(optDownscaleBlur);
+    ui->spinBlurWidth->setValue(optBlurProcessWidth);
+    ui->spinBlurWidth->setEnabled(optDownscaleBlur);
+    ui->chkFilterNSFW->setChecked(optFilterNSFW);
+    if (optNSFWMode == 0) ui->radioNSFW_Hide->setChecked(true);
+    else ui->radioNSFW_Blur->setChecked(true);
+    ui->spinNSFWLevel->setValue(optNSFWLevel);
+    bool nsfwEnabled = optFilterNSFW;
+    ui->radioNSFW_Hide->setEnabled(nsfwEnabled);
+    ui->radioNSFW_Blur->setEnabled(nsfwEnabled);
+    ui->spinNSFWLevel->setEnabled(nsfwEnabled);
+    ui->spinRenderThreads->setValue(optRenderThreadCount);
+    ui->chkRestoreTreeState->setChecked(optRestoreTreeState);
+    ui->chkSplitOnNewline->setChecked(optSplitOnNewline);
+    ui->editFilterTags->setText(optFilterTags.join(", "));
+
+    // ===============================
+    // === 连接 Settings 页面的信号 ===
+    // ===============================
+    // 递归查找
+    connect(ui->chkRecursiveLora, &QCheckBox::toggled, this, &MainWindow::onSettingsChanged);
+    connect(ui->chkRecursiveGallery, &QCheckBox::toggled, this, &MainWindow::onSettingsChanged);
+    // 模糊滑块
+    connect(ui->sliderBlur, &QSlider::valueChanged, this, &MainWindow::onBlurSliderChanged);
+    connect(ui->sliderBlur, &QSlider::sliderReleased, this, &MainWindow::saveGlobalConfig);
+    // 缩放模糊
+    connect(ui->chkDownscaleBlur, &QCheckBox::toggled, this, [this](bool checked){
+        optDownscaleBlur = checked;
+        ui->spinBlurWidth->setEnabled(checked);
+        saveGlobalConfig();
+    });
+    connect(ui->spinBlurWidth, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val){
+        optBlurProcessWidth = val;
+        saveGlobalConfig();
+    });
+    // NSFW 设置
+    connect(ui->chkFilterNSFW, &QCheckBox::toggled, this, [this](bool checked){
+        optFilterNSFW = checked;
+        ui->radioNSFW_Hide->setEnabled(checked);
+        ui->radioNSFW_Blur->setEnabled(checked);
+        ui->spinNSFWLevel->setEnabled(checked);
+        saveGlobalConfig();
+    });
+    connect(ui->radioNSFW_Hide, &QRadioButton::toggled, this, [this](bool checked){
+        if(checked) optNSFWMode = 0;
+        saveGlobalConfig();
+    });
+    connect(ui->radioNSFW_Blur, &QRadioButton::toggled, this, [this](bool checked){
+        if(checked) optNSFWMode = 1;
+        saveGlobalConfig();
+    });
+    connect(ui->spinNSFWLevel, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val){
+        optNSFWLevel = val;
+        saveGlobalConfig();
+    });
+    // 线程数
+    connect(ui->spinRenderThreads, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val){
+        optRenderThreadCount = val;
+        threadPool->setMaxThreadCount(val);
+        saveGlobalConfig();
+    });
+    // 树状态恢复
+    connect(ui->chkRestoreTreeState, &QCheckBox::toggled, this, [this](bool checked){
+        optRestoreTreeState = checked;
+        saveGlobalConfig();
+    });
+    // 换行符开关
+    connect(ui->chkSplitOnNewline, &QCheckBox::toggled, this, [this](bool checked){
+        optSplitOnNewline = checked;
+        saveGlobalConfig();
+    });
+    // 过滤词输入框
+    connect(ui->editFilterTags, &QLineEdit::editingFinished, this, [this](){
+        QString text = ui->editFilterTags->text();
+        optFilterTags = text.split(',', Qt::SkipEmptyParts);
+        for(QString &s : optFilterTags) s = s.trimmed();
+        saveGlobalConfig();
+    });
+    // 重置按钮
+    connect(ui->btnResetFilterTags, &QPushButton::clicked, this, [this](){
+        // 弹出确认对话框
+        QMessageBox::StandardButton reply;
+        reply = QMessageBox::question(this,
+                                      "确认重置 / Confirm Reset",
+                                      "确定要将过滤提示词重置为默认值吗？\n此操作将覆盖当前的自定义设置。\n\n"
+                                      "Are you sure you want to reset filter tags to default?",
+                                      QMessageBox::Yes | QMessageBox::No);
+        if (reply == QMessageBox::Yes) {
+            // 用户点击了 Yes，执行重置逻辑
+            ui->editFilterTags->setText(DEFAULT_FILTER_TAGS);
+            // 解析并保存
+            optFilterTags = DEFAULT_FILTER_TAGS.split(',', Qt::SkipEmptyParts);
+            for(QString &s : optFilterTags) s = s.trimmed();
+            saveGlobalConfig();
+            ui->statusbar->showMessage("过滤词已重置", 2000);
+        }
+    });
 }
 
 void MainWindow::saveGlobalConfig() {
@@ -3166,6 +3294,37 @@ void MainWindow::saveGlobalConfig() {
     root["nsfw_filter"] = optFilterNSFW;
     root["nsfw_mode"] = optNSFWMode;
     root["nsfw_level_threshold"] = optNSFWLevel;
+    root["render_thread_count"] = optRenderThreadCount;
+    root["restore_tree_state"] = optRestoreTreeState;
+    root["split_on_newline"] = optSplitOnNewline;
+    root["filter_tags_string"] = ui->editFilterTags->text();
+
+    if (optRestoreTreeState) {
+        QJsonObject treeState;
+
+        // 1. 获取当前展开的项
+        QJsonArray expandedArr;
+        // 如果 UI 还没初始化完(比如刚启动就关闭)，尽量保留读取到的旧状态，防止清空
+        // 但这里我们主要处理运行时保存：
+        if (ui->collectionTree->topLevelItemCount() > 0) {
+            for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
+                QTreeWidgetItem *item = ui->collectionTree->topLevelItem(i);
+                if (item->isExpanded()) {
+                    expandedArr.append(item->data(0, ROLE_COLLECTION_NAME).toString());
+                }
+            }
+            treeState["expanded_items"] = expandedArr;
+            treeState["scroll_pos"] = ui->collectionTree->verticalScrollBar()->value();
+        } else {
+            // 如果树是空的（极少情况），可能还没加载，保留启动时读到的缓存
+            QJsonArray cachedArr;
+            for (const QString &s : startupExpandedCollections) cachedArr.append(s);
+            treeState["expanded_items"] = cachedArr;
+            treeState["scroll_pos"] = startupTreeScrollPos;
+        }
+
+        root["tree_state"] = treeState;
+    }
 
     QFile file(configDir + "/settings.json");
     if (file.open(QIODevice::WriteOnly)) {
@@ -3442,5 +3601,501 @@ void MainWindow::onUserGalleryContextMenu(const QPoint &pos)
     else if (selected == actCopyPath) {
         QGuiApplication::clipboard()->setText(QDir::toNativeSeparators(filePath));
         ui->statusbar->showMessage("路径已复制", 2000);
+    }
+}
+
+void MainWindow::onModelsTabButtonClicked()
+{
+    ui->sidebarStack->setCurrentIndex(0);
+    ui->btnModelsTab->setChecked(true);
+    ui->btnCollectionsTab->setChecked(false);
+}
+
+void MainWindow::onCollectionsTabButtonClicked()
+{
+    ui->sidebarStack->setCurrentIndex(1);
+    ui->btnCollectionsTab->setChecked(true);
+    ui->btnModelsTab->setChecked(false);
+}
+
+void MainWindow::onCollectionTreeItemClicked(QTreeWidgetItem *item, int column)
+{
+    Q_UNUSED(column);
+
+    // 判断是收藏夹节点还是模型节点
+    if (item->data(0, ROLE_IS_COLLECTION_NODE).toBool()) {
+        // === 收藏夹节点 ===
+        QString collectionName = item->data(0, ROLE_COLLECTION_NAME).toString();
+
+        // 2. 展开/折叠节点
+        bool wasExpanded = item->isExpanded();
+        item->setExpanded(!wasExpanded);
+
+        // 3. 切换文本前缀
+        QString displayName = (collectionName == FILTER_UNCATEGORIZED) ? "未分类 / Uncategorized" : collectionName;
+        if (!wasExpanded) {
+            item->setText(0, " - " + displayName);
+        } else {
+            item->setText(0, " + " + displayName);
+        }
+    } else {
+        // 模型节点
+        QString filePath = item->data(0, ROLE_FILE_PATH).toString();
+        if (filePath.isEmpty()) return;
+
+        QListWidgetItem* matchItem = nullptr;
+        for(int i = 0; i < ui->modelList->count(); ++i) {
+            QListWidgetItem* sideItem = ui->modelList->item(i);
+            if (sideItem->data(ROLE_FILE_PATH).toString() == filePath) {
+                matchItem = sideItem;
+                break;
+            }
+        }
+
+        if (matchItem) {
+            ui->modelList->setCurrentItem(matchItem);
+            onModelListClicked(matchItem);
+            ui->mainStack->setCurrentIndex(1); // 跳转详情页
+        }
+    }
+}
+
+void MainWindow::onCollectionTreeContextMenu(const QPoint &pos)
+{
+    QTreeWidgetItem *item = ui->collectionTree->itemAt(pos);
+    if (!item) return;
+
+    // 判断是收藏夹节点还是模型节点
+    if (item->data(0, ROLE_IS_COLLECTION_NODE).toBool()) {
+        // --- 收藏夹节点右键菜单 ---
+        QString collectionName = item->data(0, ROLE_COLLECTION_NAME).toString();
+
+        QMenu menu(this);
+        QAction *title = menu.addAction(QString("管理收藏夹: %1").arg(collectionName));
+        title->setEnabled(false);
+        menu.addSeparator();
+
+        if (collectionName == FILTER_UNCATEGORIZED) {
+            // "未分类"特殊处理，不能重命名和删除
+            QAction *dummy = menu.addAction("无法操作此项");
+            dummy->setEnabled(false);
+        } else {
+            QAction *actRename = menu.addAction("重命名 / Rename Collection");
+            QAction *actDelete = menu.addAction("删除 / Delete Collection");
+
+            QAction *selected = menu.exec(ui->collectionTree->mapToGlobal(pos));
+
+            if (selected == actRename) {
+                bool ok;
+                QString newName = QInputDialog::getText(this, "重命名收藏夹", "新名称:", QLineEdit::Normal, collectionName, &ok);
+                if (ok && !newName.trimmed().isEmpty() && newName != collectionName) {
+                    if (collections.contains(newName)) {
+                        QMessageBox::warning(this, "错误", "该名称已存在！");
+                        return;
+                    }
+                    QStringList files = collections.value(collectionName);
+                    collections.insert(newName, files);
+                    collections.remove(collectionName);
+
+                    if (currentCollectionFilter == collectionName) currentCollectionFilter = newName;
+
+                    saveCollections();
+                    refreshHomeCollectionsUI(); // 刷新主页的收藏夹按钮
+                    refreshCollectionTreeView(); // 刷新收藏夹树状视图
+                }
+            } else if (selected == actDelete) {
+                auto reply = QMessageBox::question(this, "确认删除",
+                                                   QString("确定要删除收藏夹 \"%1\" 吗？\n(里面的模型不会被删除，仅删除分类)").arg(collectionName),
+                                                   QMessageBox::Yes | QMessageBox::No);
+                if (reply == QMessageBox::Yes) {
+                    collections.remove(collectionName);
+                    if (currentCollectionFilter == collectionName) currentCollectionFilter = "";
+                    saveCollections();
+                    refreshHomeCollectionsUI();
+                    refreshCollectionTreeView();
+                    // 如果删除了当前正在过滤的收藏夹，需要重置主页过滤
+                    if (currentCollectionFilter.isEmpty()) refreshHomeGallery();
+                }
+            }
+        }
+    } else {
+        // --- 模型节点右键菜单 ---
+        QString baseName = item->text(0); // 模型名称
+        // 复用通用的模型收藏菜单逻辑
+        showCollectionMenu(baseName, ui->collectionTree->mapToGlobal(pos));
+    }
+}
+
+void MainWindow::refreshCollectionTreeView()
+{
+    // 保存菜单
+    QSet<QString> expandedCollections;
+    int scrollPos = 0;
+
+    if (isFirstTreeRefresh && optRestoreTreeState) {
+        // A. 首次启动：使用从 JSON 读取的缓存
+        expandedCollections = startupExpandedCollections;
+        scrollPos = startupTreeScrollPos;
+        isFirstTreeRefresh = false; // 标记已使用，下次刷新就走逻辑 B
+    } else {
+        // B. 运行时刷新：使用 UI 当前的状态
+        for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
+            QTreeWidgetItem *item = ui->collectionTree->topLevelItem(i);
+            if (item->isExpanded()) {
+                expandedCollections.insert(item->data(0, ROLE_COLLECTION_NAME).toString());
+            }
+        }
+        scrollPos = ui->collectionTree->verticalScrollBar()->value();
+    }
+
+    // 清理和生成
+    ui->collectionTree->clear();
+    ui->collectionTree->setAnimated(true);
+    ui->collectionTree->setIconSize(QSize(32, 32));
+    ui->collectionTree->setRootIsDecorated(false);
+    ui->collectionTree->setIndentation(10); // 子节点的缩进保持正常
+    ui->collectionTree->setExpandsOnDoubleClick(false);
+
+    QFont categoryFont = ui->collectionTree->font();
+    categoryFont.setBold(true);
+    categoryFont.setPointSize(10);
+
+    const QString PRE_OPEN   = " - "; // 展开时：减号 + 空格
+    const QString PRE_CLOSED = " + "; // 折叠时：加号 + 空格
+
+    QMap<QString, QListWidgetItem*> visibleItemMap; // BaseName -> Item
+    QMap<QString, int> visibleItemRank;             // BaseName -> SortIndex (排名)
+
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+
+        // 关键点：如果它被搜索/底模筛选隐藏了，就不放入 Map
+        if (item->isHidden()) continue;
+
+        QString baseName = item->data(Qt::UserRole).toString();
+        visibleItemMap.insert(baseName, item);
+        visibleItemRank.insert(baseName, i); // 记录它在列表中的顺序
+    }
+
+    // 定义排序 Lambda：让树节点按照 modelList 的顺序排列
+    auto rankSort = [&](const QString &s1, const QString &s2) {
+        return visibleItemRank.value(s1) < visibleItemRank.value(s2);
+    };
+
+    // 辅助 Lambda：添加子节点
+    auto addModelChildren = [&](QTreeWidgetItem *parent, QStringList models) {
+        // 1. 过滤：移除不可见的模型
+        QMutableStringListIterator it(models);
+        while (it.hasNext()) {
+            if (!visibleItemMap.contains(it.next())) {
+                it.remove();
+            }
+        }
+
+        // 2. 排序：按照 modelList 的顺序重排
+        std::sort(models.begin(), models.end(), rankSort);
+
+        // 3. 生成节点
+        for (const QString &baseName : models) {
+            if (visibleItemMap.contains(baseName)) {
+                QListWidgetItem *sourceItem = visibleItemMap.value(baseName);
+
+                QTreeWidgetItem *child = new QTreeWidgetItem(parent);
+                child->setText(0, sourceItem->text());
+                child->setData(0, ROLE_FILE_PATH, sourceItem->data(ROLE_FILE_PATH));
+                child->setData(0, ROLE_PREVIEW_PATH, sourceItem->data(ROLE_PREVIEW_PATH));
+                child->setData(0, ROLE_NSFW_LEVEL, sourceItem->data(ROLE_NSFW_LEVEL));
+                child->setIcon(0, sourceItem->icon());
+            }
+        }
+    };
+
+    // =========================================================
+    // 3. 生成节点 (使用上面的可见数据源)
+    // =========================================================
+
+    // --- 未分类 ---
+    QSet<QString> categorizedSet;
+    for (auto it = collections.begin(); it != collections.end(); ++it) {
+        for (const QString &m : it.value()) categorizedSet.insert(m);
+    }
+    QStringList uncatModels;
+    // 只遍历可见的模型
+    for (auto it = visibleItemMap.begin(); it != visibleItemMap.end(); ++it) {
+        if (!categorizedSet.contains(it.key())) uncatModels.append(it.key());
+    }
+    // 只有当有内容时才显示“未分类” (可选，这里我设置为始终显示，保持结构稳定)
+    QTreeWidgetItem *uncategorizedNode = new QTreeWidgetItem(ui->collectionTree);
+    bool isUncatExpanded = expandedCollections.contains(FILTER_UNCATEGORIZED);
+    uncategorizedNode->setExpanded(isUncatExpanded);
+    uncategorizedNode->setText(0, (isUncatExpanded ? PRE_OPEN : PRE_CLOSED) + "未分类 / Uncategorized");
+    uncategorizedNode->setData(0, ROLE_IS_COLLECTION_NODE, true);
+    uncategorizedNode->setData(0, ROLE_COLLECTION_NAME, FILTER_UNCATEGORIZED);
+    uncategorizedNode->setFont(0, categoryFont);
+
+    // 排序并添加
+    std::sort(uncatModels.begin(), uncatModels.end(), rankSort);
+    // 这里手动添加循环，因为 uncatModels 已经是过滤好的了
+    for (const QString &baseName : uncatModels) {
+        QListWidgetItem *sourceItem = visibleItemMap.value(baseName);
+        QTreeWidgetItem *child = new QTreeWidgetItem(uncategorizedNode);
+        child->setText(0, sourceItem->text());
+        child->setData(0, ROLE_FILE_PATH, sourceItem->data(ROLE_FILE_PATH));
+        child->setData(0, ROLE_PREVIEW_PATH, sourceItem->data(ROLE_PREVIEW_PATH));
+        child->setData(0, ROLE_NSFW_LEVEL, sourceItem->data(ROLE_NSFW_LEVEL));
+        child->setIcon(0, sourceItem->icon());
+    }
+
+    // --- 收藏夹 ---
+    // 对收藏夹名字排序 (使用自然排序 QCollator)
+    QCollator collator;
+    collator.setNumericMode(true);
+    collator.setCaseSensitivity(Qt::CaseInsensitive);
+    collator.setIgnorePunctuation(false);
+
+    QList<QString> collectionNames = collections.keys();
+    collectionNames.removeAll(FILTER_UNCATEGORIZED);
+    std::sort(collectionNames.begin(), collectionNames.end(), [&](const QString &s1, const QString &s2){
+        return collator.compare(s1, s2) < 0;
+    });
+
+    for (const QString &colName : collectionNames) {
+        // 获取该收藏夹的所有模型
+        QStringList models = collections.value(colName);
+
+        QTreeWidgetItem *collectionNode = new QTreeWidgetItem(ui->collectionTree);
+        bool isColExpanded = expandedCollections.contains(colName);
+        collectionNode->setExpanded(isColExpanded);
+        collectionNode->setText(0, (isColExpanded ? PRE_OPEN : PRE_CLOSED) + colName);
+        collectionNode->setData(0, ROLE_IS_COLLECTION_NODE, true);
+        collectionNode->setData(0, ROLE_COLLECTION_NAME, colName);
+        collectionNode->setFont(0, categoryFont);
+
+        // 调用辅助函数，它会自动过滤掉不匹配搜索的模型，并按当前规则排序
+        addModelChildren(collectionNode, models);
+    }
+
+    // 恢复滚动条
+    // 使用 QTimer 0 延时，确保 UI 布局完成后再滚动，否则可能滚不到位
+    if (scrollPos > 0) {
+        QTimer::singleShot(0, this, [this, scrollPos](){
+            ui->collectionTree->verticalScrollBar()->setValue(scrollPos);
+        });
+    }
+}
+
+// 辅助函数：添加占位符
+void MainWindow::addPlaceholderChild(QTreeWidgetItem *parent) {
+    QTreeWidgetItem *dummy = new QTreeWidgetItem();
+    dummy->setText(0, "Loading...");
+    dummy->setData(0, 999, true); // 标记为 dummy
+    parent->addChild(dummy);
+}
+
+void MainWindow::filterModelsByCollection(const QString &collectionName)
+{
+    currentCollectionFilter = collectionName; // 更新当前的过滤状态
+
+    // 刷新 modelList 的可见性
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        QString baseName = item->data(Qt::UserRole).toString(); // 获取模型的基础名称
+
+        bool shouldBeVisible = false;
+
+        if (currentCollectionFilter.isEmpty()) { // "ALL / 全部模型"
+            shouldBeVisible = true;
+        } else if (currentCollectionFilter == FILTER_UNCATEGORIZED) {
+            bool categorized = false;
+            for (auto it = collections.begin(); it != collections.end(); ++it) {
+                if (it.value().contains(baseName)) {
+                    categorized = true;
+                    break;
+                }
+            }
+            shouldBeVisible = !categorized;
+        } else { // 特定收藏夹
+            QStringList modelsInSelectedCollection = collections.value(currentCollectionFilter);
+            shouldBeVisible = modelsInSelectedCollection.contains(baseName);
+        }
+
+        // --- NSFW 过滤逻辑 (需要复制 scanModels 中的逻辑以保持一致) ---
+        int nsfwLevel = item->data(ROLE_NSFW_LEVEL).toInt();
+        bool isNSFW = nsfwLevel > optNSFWLevel;
+        if (optFilterNSFW && isNSFW && optNSFWMode == 0) {
+            shouldBeVisible = false; // 隐藏模式下，NSFW 不可见
+        }
+
+        item->setHidden(!shouldBeVisible);
+    }
+
+    // 清除搜索框（因为现在是按收藏夹过滤）
+    ui->searchEdit->clear();
+
+    // 重新执行排序（排序是基于可见项进行的）
+    // executeSort(); // 理论上这里不需要重新排序，只需要刷新可见性。
+    // 但为了保持排序结果和可见性一致，可以调用。
+    // 这里暂时不调，因为 modelList 的 item 隐藏后排序没意义。
+
+    // 刷新主页大图列表
+    refreshHomeGallery();
+
+    ui->statusbar->showMessage(QString("当前过滤: %1").arg(currentCollectionFilter.isEmpty() ? "全部模型" : currentCollectionFilter));
+}
+
+void MainWindow::cancelPendingTasks()
+{
+    // QThreadPool::clear() 会移除所有尚未开始的任务
+    // 正在运行的任务无法强制停止，但它们很快就会结束
+    threadPool->clear();
+
+    // 可选：如果之前的逻辑有正在下载的队列，也可以在这里清空
+    // downloadQueue.clear();
+    // isDownloading = false;
+}
+
+void MainWindow::syncTreeSelection(const QString &filePath)
+{
+    if (filePath.isEmpty()) return;
+
+    // 临时阻断信号，防止 setExpanded 触发不需要的逻辑（视你的信号连接情况而定）
+    // 这里通常不需要阻断，因为我们需要 setExpanded 触发 updateText (+/-) 的逻辑
+    // ui->collectionTree->blockSignals(true);
+
+    bool found = false;
+
+    // 1. 遍历所有顶级节点 (收藏夹/未分类)
+    for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *parent = ui->collectionTree->topLevelItem(i);
+
+        // 2. 遍历子节点 (模型)
+        for (int j = 0; j < parent->childCount(); ++j) {
+            QTreeWidgetItem *child = parent->child(j);
+
+            // 比较文件路径
+            if (child->data(0, ROLE_FILE_PATH).toString() == filePath) {
+
+                // === 核心动作 A: 展开父节点 ===
+                if (!parent->isExpanded()) {
+                    parent->setExpanded(true);
+                    // 提示：如果你使用了上一轮的信号槽 (onTreeItemExpanded)
+                    // 这里 setExpanded(true) 会自动触发信号把 "+" 变成 "-"，非常完美
+                }
+
+                // === 核心动作 B: 选中并滚动 ===
+                ui->collectionTree->setCurrentItem(child);
+                child->setSelected(true); // 显式选中
+                ui->collectionTree->scrollToItem(child, QAbstractItemView::PositionAtCenter);
+
+                found = true;
+                break;
+            }
+        }
+        if (found) break; // 找到后跳出外层循环
+    }
+
+    // ui->collectionTree->blockSignals(false);
+}
+
+void MainWindow::onMenuSwitchToAbout()
+{
+    // 切换到 rootStack 的最后一页 (即 pageAbout)
+    ui->rootStack->setCurrentWidget(ui->pageAbout);
+}
+
+void MainWindow::onCheckUpdateClicked()
+{
+    ui->statusbar->showMessage("正在连接 GitHub 检查更新...", 3000);
+    ui->btnCheckUpdate->setText("⏳ Checking...");
+    ui->btnCheckUpdate->setEnabled(false);
+
+    QNetworkRequest request((QUrl(GITHUB_REPO_API)));
+    request.setHeader(QNetworkRequest::UserAgentHeader, ROLE_URL);
+
+    QNetworkReply *reply = netManager->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply](){
+        onUpdateApiReceived(reply);
+    });
+}
+
+void MainWindow::onUpdateApiReceived(QNetworkReply *reply)
+{
+    ui->btnCheckUpdate->setText("🚀 检查更新 / Check for Updates");
+    ui->btnCheckUpdate->setEnabled(true);
+    reply->deleteLater();
+
+    if (reply->error() != QNetworkReply::NoError) {
+        QMessageBox::warning(this, "检查失败", "无法连接到 GitHub API:\n" + reply->errorString());
+        return;
+    }
+
+    QByteArray data = reply->readAll();
+    QJsonDocument doc = QJsonDocument::fromJson(data);
+    QJsonObject root = doc.object();
+
+    // GitHub API 返回的 tag_name (例如 "1.1.1" 或 "1.1.5")
+    QString remoteTag = root["tag_name"].toString();
+    QString htmlUrl = root["html_url"].toString();
+    QString body = root["body"].toString();
+
+    if (remoteTag.isEmpty()) {
+        QMessageBox::warning(this, "错误", "无法解析版本信息 (Rate Limit Exceeded?)。");
+        return;
+    }
+
+    // === 版本比较逻辑 (适配不带 v 的情况) ===
+    // 如果 remoteTag 带有 'v' 前缀而 CURRENT_VERSION 没有，可以手动去除
+    if (remoteTag.startsWith("v", Qt::CaseInsensitive)) {
+        remoteTag = remoteTag.mid(1);
+    }
+
+    // 简单比较：只要字符串不相等，且远程版本号通常比本地长或大
+    // 更严谨的方法是用 semver 库，但这里我们可以写个简单的辅助判断
+
+    bool hasNewVersion = false;
+
+    if (remoteTag != CURRENT_VERSION) {
+        // 分割版本号进行数字比较 (1.1.1 vs 1.0.0)
+        QStringList remoteParts = remoteTag.split('.');
+        QStringList localParts = CURRENT_VERSION.split('.');
+
+        int len = qMax(remoteParts.size(), localParts.size());
+        for (int i = 0; i < len; ++i) {
+            int r = (i < remoteParts.size()) ? remoteParts[i].toInt() : 0;
+            int l = (i < localParts.size()) ? localParts[i].toInt() : 0;
+
+            if (r > l) {
+                hasNewVersion = true;
+                break;
+            } else if (r < l) {
+                // 本地版本比远程还新（开发版），不算更新
+                hasNewVersion = false;
+                break;
+            }
+        }
+    }
+
+    if (hasNewVersion) {
+        // 发现新版本
+        QMessageBox msgBox(this);
+        msgBox.setWindowTitle("发现新版本");
+        msgBox.setTextFormat(Qt::RichText);
+        msgBox.setText(QString("<h3>🚀 发现新版本: %1</h3>"
+                               "<p>当前版本: %2</p>"
+                               "<hr>"
+                               "<p><b>更新日志:</b></p><pre style='font-size:11px'>%3</pre>")
+                           .arg(remoteTag)
+                           .arg(CURRENT_VERSION)
+                           .arg(body));
+
+        QPushButton *btnGo = msgBox.addButton("前往下载 / Download", QMessageBox::AcceptRole);
+        msgBox.addButton("稍后 / Later", QMessageBox::RejectRole);
+        msgBox.exec();
+
+        if (msgBox.clickedButton() == btnGo) {
+            QDesktopServices::openUrl(QUrl(htmlUrl));
+        }
+    } else {
+        QMessageBox::information(this, "检查更新", QString("当前已是最新版本 (%1)。").arg(CURRENT_VERSION));
     }
 }

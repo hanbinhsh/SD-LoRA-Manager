@@ -25,13 +25,22 @@
 #include <QFuture>
 #include <QQueue>
 #include <QButtonGroup>
+#include <QStandardPaths>
+#include <QTreeWidget>
 
 #include "tagflowwidget.h"
 
-const int ROLE_SORT_DATE = Qt::UserRole + 10;      // 存储时间戳 (qint64)
-const int ROLE_SORT_DOWNLOADS = Qt::UserRole + 11; // 存储下载量 (int)
-const int ROLE_SORT_LIKES = Qt::UserRole + 12;     // 存储点赞量 (int)
-const int ROLE_FILTER_BASE = Qt::UserRole + 13;    // 存储底模名称 (QString)
+const int ROLE_SORT_DATE            = Qt::UserRole + 10;  // 存储时间戳 (qint64)
+const int ROLE_SORT_DOWNLOADS       = Qt::UserRole + 11;  // 存储下载量 (int)
+const int ROLE_SORT_LIKES           = Qt::UserRole + 12;  // 存储点赞量 (int)
+const int ROLE_FILTER_BASE          = Qt::UserRole + 13;  // 存储底模名称 (QString)
+const int ROLE_IS_COLLECTION_NODE   = Qt::UserRole + 14;  // 标记这是一个收藏夹节点
+const int ROLE_COLLECTION_NAME      = Qt::UserRole + 15;  // 存储收藏夹名称
+
+const QString CURRENT_VERSION = "1.2.0";
+const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
+
+const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -106,6 +115,10 @@ protected:
 
 private slots:
     void onModelListClicked(QListWidgetItem *item);
+    void onCollectionTreeItemClicked(QTreeWidgetItem *item, int column);
+    void onModelsTabButtonClicked();
+    void onCollectionsTabButtonClicked();
+    void onCollectionTreeContextMenu(const QPoint &pos);
     void onActionOpenFolderTriggered();
     void onForceUpdateClicked();
     void onScanLocalClicked();
@@ -143,15 +156,16 @@ private slots:
     void onBrowseTranslationPath();
     void onUserGalleryContextMenu(const QPoint &pos);
 
+    void onMenuSwitchToAbout();
+    void onCheckUpdateClicked();
+    void onUpdateApiReceived(QNetworkReply *reply);
+
 private:
     Ui::MainWindow *ui;
     QSettings *settings;
-    QString currentLoraPath;
     QNetworkAccessManager *netManager;
-
     QPixmap currentHeroPixmap;
     QString currentHeroPath;
-
     ModelMeta currentMeta;
 
     // === 收藏夹管理 ===
@@ -172,26 +186,20 @@ private:
 
     // 生成一个适合主页大图的 Icon (2:3比例)
     QIcon getRoundedSquareIcon(const QString &path, int size, int radius);
-
     QString findLocalPreviewPath(const QString &dirPath, const QString &currentBaseName, const QString &serverFileName, int imgIndex);
-
     QString calculateFileHash(const QString &filePath);
     void fetchModelInfoFromCivitai(const QString &hash);
     void saveLocalMetadata(const QString &modelDir, const QString &baseName, const QJsonObject &data);
     bool readLocalJson(const QString &dirPath, const QString &baseName, ModelMeta &meta);
-
     void clearLayout(QLayout *layout);
     void addBadge(QString text, bool isRed = false);
     void downloadThumbnail(const QString &url, const QString &savePath, QPushButton *button);
     void showFullImageDialog(const QString &imagePath);
     QIcon getFitIcon(const QString &path);
     void updateBackgroundImage();
-
     void showCollectionMenu(const QString &modelName, const QPoint &globalPos);
-
-    // 辅助函数：快速读取单个 JSON 的元数据用于列表显示
+    // 快速读取单个 JSON 的元数据用于列表显示
     void preloadItemMetadata(QListWidgetItem *item, const QString &jsonPath);
-
     QFutureWatcher<ImageLoadResult> *imageLoadWatcher;
     QPixmap applyBlurToImage(const QImage &srcImg, const QSize &bgSize, const QSize &heroSize);
     static ImageLoadResult processImageTask(const QString &path);
@@ -205,9 +213,9 @@ private:
     void enqueueDownload(const QString &url, const QString &savePath, QPushButton *btn);
     void processNextDownload();
 
-    // 辅助函数：执行排序
+    // 执行排序
     void executeSort();
-    // 辅助函数：执行筛选
+    // 执行筛选
     void executeFilter();
 
     QFutureWatcher<QString> *hashWatcher;
@@ -223,7 +231,7 @@ private:
 
 
     TagFlowWidget *tagFlowWidget;
-    QString sdOutputFolder;
+
     void scanForUserImages(const QString &loraBaseName);
     void parsePngInfo(const QString &path, UserImageInfo &info);
     void updateUserStats(const QList<UserImageInfo> &images);
@@ -235,36 +243,51 @@ private:
 
     QIcon generatePlaceholderIcon();
 
-    // === 配置变量 ===
-    bool optLoraRecursive = false;    // 默认关闭
-    bool optGalleryRecursive = false; // 默认关闭
-    int optBlurRadius = 30;           // 默认 30
-    bool optDownscaleBlur = true;     // 默认开启缩小
-    int optBlurProcessWidth = 500;    // 默认缩小到 500px
-    // === 新增函数 ===
-    void initMenuBar();       // 重写菜单初始化
-    void loadGlobalConfig();  // 加载配置
-    void saveGlobalConfig();  // 保存配置
-
-    // 辅助：从注册表加载路径
-    void loadPathSettings();
-    void savePathSettings();
-
-
     // 定义一个特殊的字符串标识“未分类”
     const QString FILTER_UNCATEGORIZED = "__UNCATEGORIZED__";
 
-    bool optFilterNSFW = false;
-    int optNSFWMode = 1; // 0: 完全隐藏, 1: 高斯模糊
-    int optNSFWLevel = 1;
     QPixmap applyNSFWBlur(const QPixmap &pix);
-
     QPixmap applyRoundedMask(const QPixmap &src, int radius);
-
     QHash<QString, QString> translationMap; // 存储翻译数据
-    QString translationCsvPath;             // 翻译文件路径
     void loadTranslationCSV(const QString &path); // 加载函数
+
     QString extractPngParameters(const QString &filePath);
+
+    void refreshCollectionTreeView();
+    void filterModelsByCollection(const QString &collectionName);
+    void addPlaceholderChild(QTreeWidgetItem *parent);
+    void cancelPendingTasks();
+    void syncTreeSelection(const QString &filePath);
+    void initMenuBar();       // 菜单初始化
+
+    // === 配置变量 ===
+    QString currentLoraPath;                            // LoRA文件夹
+    QString translationCsvPath;                         // 翻译文件路径
+    QString sdOutputFolder;                             // 图库路径
+    bool    optLoraRecursive        = false;            // 递归搜索lora文件夹
+    bool    optGalleryRecursive     = false;            // 递归搜索图库文件夹
+    int     optBlurRadius           = 30;               // 模糊半径
+    bool    optDownscaleBlur        = true;             // 模糊前缩放
+    int     optBlurProcessWidth     = 500;              // 默认缩小到 500px
+    int     optRenderThreadCount    = 4;                // 图片处理线程数
+    bool    optRestoreTreeState     = true;             // 保存菜单状态
+    bool    optSplitOnNewline       = true;             // 换行符分割
+    bool    optFilterNSFW           = false;            // NSFW过滤
+    int     optNSFWMode             = 1;                // 0: 完全隐藏, 1: 高斯模糊
+    int     optNSFWLevel            = 1;                // NSFW筛选等级
+    QStringList optFilterTags       = DEFAULT_FILTER_TAGS.split(',', Qt::SkipEmptyParts);    // 过滤词列表 (存储清洗后的列表)
+    // 保存与加载
+    void loadGlobalConfig();        // 加载配置
+    void saveGlobalConfig();        // 保存配置
+    // 从注册表加载路径
+    void loadPathSettings();
+    void savePathSettings();
+    // 设置辅助变量
+    QSet<QString> startupExpandedCollections; // 启动时从文件读出的展开项
+    int startupTreeScrollPos;                 // 启动时从文件读出的滚动位置
+    bool isFirstTreeRefresh;                  // 标记是否是第一次刷新树（用于判断是否使用缓存）
+    // 设置辅助函数
+
 };
 
 #endif // MAINWINDOW_H
