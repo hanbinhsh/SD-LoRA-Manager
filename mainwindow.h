@@ -53,7 +53,7 @@ const int ROLE_USER_IMAGE_TAGS      = Qt::UserRole + 24;
 // 树状图占位符标记
 const int ROLE_IS_PLACEHOLDER       = Qt::UserRole + 30;
 
-const QString CURRENT_VERSION = "1.2.1";
+const QString CURRENT_VERSION = "1.2.2";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
