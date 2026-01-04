@@ -27,14 +27,13 @@
 
 #include "imageloader.h"
 
-// 自定义数据 Role
-const QString HTTP_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/53.36";
-
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+
+    currentUserAgent = getRandomUserAgent();
 
     // 初始化运行时状态
     isFirstTreeRefresh = true;
@@ -1352,7 +1351,7 @@ void MainWindow::fetchModelInfoFromCivitai(const QString &hash) {
     QString filePath = ui->modelList->property("current_processing_path").toString();
     QNetworkRequest request((QUrl(urlStr)));
 
-    request.setHeader(QNetworkRequest::UserAgentHeader, HTTP_USER_AGENT);
+    request.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     QNetworkReply *reply = netManager->get(request);
     // 将本地文件名绑定到 Reply 对象上，确保回调时知道是哪个模型
@@ -1574,7 +1573,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
         if (!QFile::exists(savePath)) {
             QNetworkRequest req((QUrl(meta.images[0].url)));
 
-            req.setHeader(QNetworkRequest::UserAgentHeader, HTTP_USER_AGENT);
+            req.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
             req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
             QNetworkReply *imgReply = netManager->get(req);
@@ -1703,7 +1702,7 @@ void MainWindow::downloadThumbnail(const QString &url, const QString &savePath, 
 {
     QNetworkRequest req((QUrl(url)));
 
-    req.setHeader(QNetworkRequest::UserAgentHeader, HTTP_USER_AGENT);
+    req.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
     QNetworkReply *reply = netManager->get(req);
@@ -2467,7 +2466,7 @@ void MainWindow::processNextDownload()
     QString cleanedSavePath = QFileInfo(task.savePath).absoluteFilePath();
 
     QNetworkRequest req((QUrl(task.url)));
-    req.setHeader(QNetworkRequest::UserAgentHeader, HTTP_USER_AGENT);
+    req.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
     QNetworkReply *reply = netManager->get(req);
@@ -3156,6 +3155,11 @@ void MainWindow::loadGlobalConfig() {
         optSplitOnNewline               = root["split_on_newline"].toBool(true);
         optShowEmptyCollections         = root["show_empty_collections"].toBool(false);
         QString filterStr               = root["filter_tags_string"].toString(DEFAULT_FILTER_TAGS);
+        optUseArrangedUA                = root["use_custom_ua"].toBool(false);
+        optSavedUAString           = root["custom_user_agent"].toString();
+
+        qDebug() << "Loaded User-Agent:" << currentUserAgent;
+
         // 解析过滤词
         optFilterTags = filterStr.split(',', Qt::SkipEmptyParts);
         for(QString &s : optFilterTags) s = s.trimmed();
@@ -3169,6 +3173,10 @@ void MainWindow::loadGlobalConfig() {
                 startupExpandedCollections.insert(val.toString());
             }
         }
+
+        // 设置UA
+        if (optUseArrangedUA && !optSavedUAString.isEmpty())currentUserAgent = optSavedUAString;
+        else currentUserAgent = getRandomUserAgent();
 
         // 范围校验
         if (optBlurRadius < 0) optBlurRadius = 0;
@@ -3197,6 +3205,9 @@ void MainWindow::loadGlobalConfig() {
     ui->chkSplitOnNewline->setChecked(optSplitOnNewline);
     ui->editFilterTags->setText(optFilterTags.join(", "));
     ui->chkShowEmptyCollections->setChecked(optShowEmptyCollections);
+    ui->chkUseCustomUserAgent->setChecked(optUseArrangedUA);
+    ui->editUserAgent->setEnabled(optUseArrangedUA);
+    if (!optSavedUAString.isEmpty()) {ui->editUserAgent->setText(optSavedUAString);}
 
     // ===============================
     // === 连接 Settings 页面的信号 ===
@@ -3286,6 +3297,41 @@ void MainWindow::loadGlobalConfig() {
         // 修改此设置后，必须立刻刷新树状图才能看到效果
         refreshCollectionTreeView();
     });
+    // 复选框切换：控制输入框可用性 + 立即切换 UA 策略 + 自动保存
+    connect(ui->chkUseCustomUserAgent, &QCheckBox::toggled, this, [this](bool checked){
+        ui->editUserAgent->setEnabled(checked);
+        if (checked) {
+            // 勾选瞬间：如果框里有字，就用框里的；没字就随机填一个
+            if (ui->editUserAgent->text().trimmed().isEmpty()) {
+                ui->editUserAgent->setText(getRandomUserAgent());
+                ui->editUserAgent->setEnabled(true);
+            }
+            currentUserAgent = ui->editUserAgent->text().trimmed();
+        } else {
+            // 取消勾选瞬间：立即切换回随机 UA，但保留输入框里的字
+            currentUserAgent = getRandomUserAgent();
+            ui->editUserAgent->setEnabled(false);
+        }
+        qDebug() << "UA Changed to:" << currentUserAgent;
+        saveGlobalConfig(); // 状态改变立即保存
+    });
+    // 勾选时更新当前 UA (编辑完成时保存，避免每打一个字都存硬盘)
+    connect(ui->editUserAgent, &QLineEdit::editingFinished, this, [this](){
+        if (ui->chkUseCustomUserAgent->isChecked()) {
+            currentUserAgent = ui->editUserAgent->text().trimmed();
+        }
+        saveGlobalConfig();
+    });
+    // 生成随机按钮：填入框 + (如果勾选)更新当前UA + 保存
+    connect(ui->btnResetUA, &QPushButton::clicked, this, [this](){
+        QString newUA = getRandomUserAgent();
+        ui->editUserAgent->setText(newUA);
+
+        if (ui->chkUseCustomUserAgent->isChecked()) {
+            currentUserAgent = newUA;
+        }
+        saveGlobalConfig();
+    });
 }
 
 void MainWindow::saveGlobalConfig() {
@@ -3306,6 +3352,8 @@ void MainWindow::saveGlobalConfig() {
     root["split_on_newline"]            = optSplitOnNewline;
     root["filter_tags_string"]          = ui->editFilterTags->text();
     root["show_empty_collections"]      = optShowEmptyCollections;
+    root["use_custom_ua"]               = ui->chkUseCustomUserAgent->isChecked();
+    root["custom_user_agent"]           = ui->editUserAgent->text();
 
     if (optRestoreTreeState) {
         QJsonObject treeState;
@@ -4034,7 +4082,7 @@ void MainWindow::onCheckUpdateClicked()
     ui->btnCheckUpdate->setEnabled(false);
 
     QNetworkRequest request((QUrl(GITHUB_REPO_API)));
-    request.setHeader(QNetworkRequest::UserAgentHeader, HTTP_USER_AGENT);
+    request.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
 
     QNetworkReply *reply = netManager->get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply](){
@@ -4122,4 +4170,46 @@ void MainWindow::onUpdateApiReceived(QNetworkReply *reply)
     } else {
         QMessageBox::information(this, "检查更新", QString("当前已是最新版本 (%1)。").arg(CURRENT_VERSION));
     }
+}
+
+QString MainWindow::getRandomUserAgent() {
+    QStringList uas;
+    // Chrome Win10
+    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
+    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.6834.83 Safari/537.36";
+    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.6943.50 Safari/537.36";
+    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
+    uas << "Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+    // Edge Win10
+    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0";
+    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0";
+    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0";
+    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 Edg/132.0.0.0";
+    uas << "Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.2903.99";
+    // Windows Firefox
+    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0";
+    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0";
+    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0";
+    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0";
+    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0";
+    // macOS Chrome
+    // Intel Mac
+    uas << "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+    uas << "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36";
+    // macOS Safari
+    uas << "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15";
+    uas << "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15";
+    // macOS Firefox
+    uas << "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.7; rv:132.0) Gecko/20100101 Firefox/132.0";
+    // Linux
+    uas << "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+    uas << "Mozilla/5.0 (X11; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0";
+    uas << "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0";
+
+    // 随机取一个
+    int index = QRandomGenerator::global()->bounded(uas.size());
+    return uas.at(index);
 }

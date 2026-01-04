@@ -178,8 +178,8 @@ QWidget#pageSettings { background-color: #1b2838; color: #dcdedf; }
 QGroupBox { border: 1px solid #3d4d5d; margin-top: 20px; font-weight: bold; color: #66c0f4; border-radius: 4px; }
 QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 10px; padding: 0 5px; }
 #editLoraPath, #editGalleryPath, #editTransPath { background-color: #16191e; border: 1px solid #363c46; padding: 5px; color: #fff; border-radius: 3px; }
-#btnBrowseLora, #btnBrowseGallery, #btnBrowseTrans { background-color: #2a3f5a; color: #fff; border: none; padding: 6px 12px; border-radius: 3px; }
-#btnBrowseLora:hove, #btnBrowseGallery:hover, #btnBrowseTrans:hover { background-color: #3d5677; }
+#btnBrowseLora, #btnBrowseGallery, #btnBrowseTrans, #btnResetUA { background-color: #2a3f5a; color: #fff; border: none; padding: 6px 12px; border-radius: 3px; }
+#btnBrowseLora:hove, #btnBrowseGallery:hover, #btnBrowseTrans:hover, #btnResetUA:hover { background-color: #3d5677; }
 
 /* Sidebar Tab 按钮 */
 #sidebarTabFrame {
@@ -1719,6 +1719,48 @@ Hash: ...</string>
              </property>
              <property name="text">
               <string>浏览...</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="groupUserAgent">
+          <property name="title">
+           <string>网络请求设置 / Network &amp; User Agent</string>
+          </property>
+          <layout class="QHBoxLayout" name="horizontalLayout_UA">
+           <property name="spacing">
+            <number>10</number>
+           </property>
+           <item>
+            <widget class="QCheckBox" name="chkUseCustomUserAgent">
+             <property name="toolTip">
+              <string>勾选后使用右侧文本框的内容作为 UA；未勾选则每次启动随机生成。</string>
+             </property>
+             <property name="text">
+              <string>自定义 UA (Custom User-Agent):</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLineEdit" name="editUserAgent">
+             <property name="enabled">
+              <bool>false</bool>
+             </property>
+             <property name="placeholderText">
+              <string>Mozilla/5.0 ... (留空则使用随机生成的 UA)</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnResetUA">
+             <property name="toolTip">
+              <string>生成一个随机的现代浏览器 UA 填入框中</string>
+             </property>
+             <property name="text">
+              <string>生成随机 (Random)</string>
              </property>
             </widget>
            </item>

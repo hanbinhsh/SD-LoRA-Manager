@@ -276,11 +276,14 @@ private:
     void syncTreeSelection(const QString &filePath);
     void initMenuBar();       // 菜单初始化
 
+    QString currentUserAgent;                           // 当前UA
+
     // === 配置变量 ===
     QString currentLoraPath;                            // LoRA文件夹
     QString translationCsvPath;                         // 翻译文件路径
     QString sdOutputFolder;                             // 图库路径
-    bool    optLoraRecursive        = false;            // 递归搜索lora文件夹
+    QString optSavedUAString        = "";               // 设置的UA
+    bool    optLoraRecursive        = false;            // 递归搜索Lora文件夹
     bool    optGalleryRecursive     = false;            // 递归搜索图库文件夹
     int     optBlurRadius           = 30;               // 模糊半径
     bool    optDownscaleBlur        = true;             // 模糊前缩放
@@ -292,6 +295,7 @@ private:
     int     optNSFWMode             = 1;                // 0: 完全隐藏, 1: 高斯模糊
     int     optNSFWLevel            = 1;                // NSFW筛选等级
     bool    optShowEmptyCollections = false;            // 显示空收藏夹
+    bool    optUseArrangedUA        = false;            // 使用自定义UA
     QStringList optFilterTags       = DEFAULT_FILTER_TAGS.split(',', Qt::SkipEmptyParts);    // 过滤词列表 (存储清洗后的列表)
     // 保存与加载
     void loadGlobalConfig();        // 加载配置
@@ -304,7 +308,7 @@ private:
     int startupTreeScrollPos;                 // 启动时从文件读出的滚动位置
     bool isFirstTreeRefresh;                  // 标记是否是第一次刷新树（用于判断是否使用缓存）
     // 设置辅助函数
-
+    QString getRandomUserAgent();             // 获取随机 UA
 };
 
 #endif // MAINWINDOW_H
