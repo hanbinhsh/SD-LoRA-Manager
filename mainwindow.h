@@ -53,7 +53,7 @@ const int ROLE_USER_IMAGE_TAGS      = Qt::UserRole + 24;
 // 树状图占位符标记
 const int ROLE_IS_PLACEHOLDER       = Qt::UserRole + 30;
 
-const QString CURRENT_VERSION = "1.2.2";
+const QString CURRENT_VERSION = "1.2.3";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
@@ -96,6 +96,7 @@ struct UserImageInfo {
     QStringList cleanTags;
     QString negativePrompt;
     QString parameters;
+    qint64 lastModified = 0;
 };
 
 struct ModelMeta {
@@ -277,6 +278,11 @@ private:
     void initMenuBar();       // 菜单初始化
 
     QString currentUserAgent;                           // 当前UA
+
+    // Key: 文件绝对路径, Value: 缓存的图片信息
+    QMap<QString, UserImageInfo> imageCache;
+    void loadUserGalleryCache();
+    void saveUserGalleryCache();
 
     // === 配置变量 ===
     QString currentLoraPath;                            // LoRA文件夹

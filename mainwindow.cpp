@@ -206,7 +206,7 @@ MainWindow::MainWindow(QWidget *parent)
     // 2. 双击列表项查看大图 ===
     connect(ui->listUserImages, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *item){
         if (!item) return;
-        QString path = item->data(ROLE_FILE_PATH).toString(); // 取出全路径
+        QString path = item->data(ROLE_USER_IMAGE_PATH).toString(); // 取出全路径
         if (!path.isEmpty()) {
             showFullImageDialog(path); // 调用已有的显示大图函数
         }
@@ -288,6 +288,8 @@ MainWindow::MainWindow(QWidget *parent)
         refreshCollectionTreeView();
         ui->statusbar->showMessage(QString("加载完成，共 %1 个模型").arg(ui->modelList->count()), 3000);
     });
+
+    loadUserGalleryCache();
 }
 
 MainWindow::~MainWindow()
@@ -2671,74 +2673,110 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     // =========================================================
     // 3. 异步扫描
     // =========================================================
+    QMap<QString, UserImageInfo> currentCacheCopy = this->imageCache;
     bool recursive = optGalleryRecursive;
-    QFuture<QList<UserImageInfo>> future = QtConcurrent::run([this, searchKeys, isGlobalMode, recursive, scanPrefix]() { // 捕获 recursive
-        QList<UserImageInfo> results;
-        QDirIterator::IteratorFlag iterFlag = recursive ? QDirIterator::Subdirectories : QDirIterator::NoIteratorFlags;
-        QDirIterator it(sdOutputFolder, QStringList() << "*.png" << "*.jpg" << "*.jpeg", QDir::Files, iterFlag);
-        int scannedFiles = 0;
+    // 开启异步任务
+    QFuture<QPair<QList<UserImageInfo>, QMap<QString, UserImageInfo>>> future = QtConcurrent::run(
+        [this, searchKeys, isGlobalMode, recursive, scanPrefix, currentCacheCopy]() {
 
-        while (it.hasNext()) {
-            QString path = it.next();
-            scannedFiles++;
+            QList<UserImageInfo> results;
+            QMap<QString, UserImageInfo> newCacheUpdates; // 用于收集需要更新到主缓存的数据
 
-            if (scannedFiles % 50 == 0) {
-                QMetaObject::invokeMethod(this, [this, scannedFiles, scanPrefix](){
-                    // 拼接前缀和数量
-                    ui->statusbar->showMessage(QString("%1... (%2 张)").arg(scanPrefix).arg(scannedFiles));
-                });
-            }
+            QDirIterator::IteratorFlag iterFlag = recursive ? QDirIterator::Subdirectories : QDirIterator::NoIteratorFlags;
+            QDirIterator it(sdOutputFolder, QStringList() << "*.png" << "*.jpg" << "*.jpeg", QDir::Files, iterFlag);
 
-            UserImageInfo info;
-            info.path = path;
+            int scannedFiles = 0;
+            int cacheHits = 0;
 
-            // 解析
-            parsePngInfo(path, info);
+            while (it.hasNext()) {
+                QString path = it.next();
+                QFileInfo fi = it.fileInfo();
+                qint64 currentModified = fi.lastModified().toMSecsSinceEpoch();
 
-            if (info.prompt.isEmpty()) continue;
+                scannedFiles++;
+                if (scannedFiles % 100 == 0) { // 稍微降低一点 UI 刷新频率
+                    QMetaObject::invokeMethod(this, [this, scannedFiles, cacheHits](){
+                        ui->statusbar->showMessage(QString("扫描中... (%1 张, 缓存命中 %2)").arg(scannedFiles).arg(cacheHits));
+                    });
+                }
 
-            // 核心匹配：只要 Prompt 包含任一关键字即可
-            bool matched = false;
+                UserImageInfo info;
+                bool needParse = true;
 
-            if (isGlobalMode) {
-                // 全局模式：只要有 Prompt 信息就算匹配
-                matched = true;
-            } else {
-                for (const QString &key : searchKeys) {
-                    // 使用 CaseInsensitive (忽略大小写)
-                    if (info.prompt.contains(key, Qt::CaseInsensitive)) {
-                        matched = true;
-                        break;
+                // === 核心优化：检查缓存 ===
+                if (currentCacheCopy.contains(path)) {
+                    const UserImageInfo &cachedInfo = currentCacheCopy.value(path);
+                    if (cachedInfo.lastModified == currentModified) {
+                        // 命中缓存！直接使用，不需要 open 文件
+                        info = cachedInfo;
+                        needParse = false;
+                        cacheHits++;
                     }
+                }
+
+                // 如果没命中缓存，或者文件被修改过，则解析
+                if (needParse) {
+                    info.path = path;
+                    info.lastModified = currentModified;
+                    parsePngInfo(path, info); // 解析 I/O 操作
+
+                    // 记录到更新列表
+                    newCacheUpdates.insert(path, info);
+                }
+
+                // === 筛选逻辑 ===
+                if (info.prompt.isEmpty()) continue;
+
+                bool matched = false;
+                if (isGlobalMode) {
+                    matched = true;
+                } else {
+                    for (const QString &key : searchKeys) {
+                        if (info.prompt.contains(key, Qt::CaseInsensitive)) {
+                            matched = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (matched) {
+                    results.append(info);
                 }
             }
 
-            if (matched) {
-                results.append(info);
-            }
-        }
+            // 按时间倒序
+            std::sort(results.begin(), results.end(), [](const UserImageInfo &a, const UserImageInfo &b){
+                return a.lastModified > b.lastModified; // 使用 timestamp 比较更快
+            });
 
-        // 按时间倒序排列（新图在前）
-        std::sort(results.begin(), results.end(), [](const UserImageInfo &a, const UserImageInfo &b){
-            return QFileInfo(a.path).lastModified() > QFileInfo(b.path).lastModified();
+            // 返回结果 和 需要更新的缓存
+            return qMakePair(results, newCacheUpdates);
         });
 
-        return results;
-    });
+    // 监听结果
+    QFutureWatcher<QPair<QList<UserImageInfo>, QMap<QString, UserImageInfo>>> *watcher =
+        new QFutureWatcher<QPair<QList<UserImageInfo>, QMap<QString, UserImageInfo>>>(this);
 
-    QFutureWatcher<QList<UserImageInfo>> *watcher = new QFutureWatcher<QList<UserImageInfo>>(this);
-    connect(watcher, &QFutureWatcher<QList<UserImageInfo>>::finished, this, [this, watcher](){
-        QList<UserImageInfo> results = watcher->result();
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher](){
+        auto resultPair = watcher->result();
+        QList<UserImageInfo> results = resultPair.first;
+        QMap<QString, UserImageInfo> newUpdates = resultPair.second;
 
-        qDebug() << "Found" << results.count() << "images.";
-
-        if (results.isEmpty()) {
-            ui->statusbar->showMessage("扫描完成，未找到匹配图片", 5000);
-            // QMessageBox::information(this, "结果", "未找到包含此 Lora 的图片。\n请检查图片是否包含元数据，或 Lora 文件名是否与 Prompt 差异过大。");
-        } else {
-            ui->statusbar->showMessage(QString("扫描完成，找到 %1 张相关图片").arg(results.count()), 3000);
+        // 1. 更新主线程缓存
+        if (!newUpdates.isEmpty()) {
+            for(auto it = newUpdates.begin(); it != newUpdates.end(); ++it) {
+                this->imageCache.insert(it.key(), it.value());
+            }
+            // 保存到磁盘，下次启动就快了
+            saveUserGalleryCache();
         }
 
+        // 2. UI 更新逻辑 (与原代码一致)
+        ui->statusbar->showMessage(QString("扫描完成，共 %1 张").arg(results.count()), 3000);
+
+        // 这里的 UI 渲染（new QListWidgetItem）在大量数据时也会卡顿
+        // 建议使用 setUpdatesEnabled(false)
+        ui->listUserImages->setUpdatesEnabled(false);
         for (const auto &info : results) {
             QListWidgetItem *item = new QListWidgetItem();
             item->setData(ROLE_USER_IMAGE_PATH, info.path);
@@ -2746,14 +2784,15 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
             item->setData(ROLE_USER_IMAGE_NEG, info.negativePrompt);
             item->setData(ROLE_USER_IMAGE_PARAMS, info.parameters);
             item->setData(ROLE_USER_IMAGE_TAGS, info.cleanTags);
-
             item->setIcon(placeholderIcon);
             ui->listUserImages->addItem(item);
 
+            // 启动缩略图加载
             IconLoaderTask *task = new IconLoaderTask(info.path, 140, 4, this, info.path);
             task->setAutoDelete(true);
             threadPool->start(task);
         }
+        ui->listUserImages->setUpdatesEnabled(true);
 
         updateUserStats(results);
         watcher->deleteLater();
@@ -3612,20 +3651,52 @@ void MainWindow::onUserGalleryContextMenu(const QPoint &pos)
     QListWidgetItem *item = ui->listUserImages->itemAt(pos);
     if (!item) return;
 
-    QString filePath = item->data(ROLE_FILE_PATH).toString();
+    QString filePath = item->data(ROLE_USER_IMAGE_PATH).toString();
     if (filePath.isEmpty()) return;
+    QString prompt = item->data(ROLE_USER_IMAGE_PROMPT).toString();
+    QString neg = item->data(ROLE_USER_IMAGE_NEG).toString();
+    QString params = item->data(ROLE_USER_IMAGE_PARAMS).toString();
 
     QMenu menu(this);
 
+    QAction *actCopyGenParams = menu.addAction("复制生成参数 / Copy Gen Params");
+    actCopyGenParams->setToolTip("复制符合SD WebUI格式的完整参数，\n粘贴进提示词框后可直接点击↙️按钮读取。");
+    menu.addSeparator(); // 分隔线
     QAction *actOpenImg = menu.addAction("打开图片 / Open Image");
     QAction *actOpenDir = menu.addAction("打开文件位置 / Show in Folder");
     menu.addSeparator();
     QAction *actCopyPath = menu.addAction("复制路径 / Copy Path");
 
     QAction *selected = menu.exec(ui->listUserImages->mapToGlobal(pos));
+    
+    if (selected == actCopyGenParams) {
+        QStringList parts;
 
-    if (selected == actOpenImg) {
-        // 使用默认看图软件打开
+        // 1. 正向提示词
+        if (!prompt.isEmpty()) {
+            parts.append(prompt);
+        }
+
+        // 2. 反向提示词 (需要补上标准前缀 "Negative prompt: ")
+        // 注意：在 parsePngInfo 里如果是 "(empty)" 则跳过
+        if (!neg.isEmpty() && neg != "(empty)") {
+            parts.append("Negative prompt: " + neg);
+        }
+
+        // 3. 参数行 (Steps: 20, Sampler: ...)
+        if (!params.isEmpty()) {
+            parts.append(params);
+        }
+
+        // 用换行符连接，这是 SD WebUI 识别的标准格式
+        QString fullParams = parts.join("\n");
+
+        QClipboard *clip = QGuiApplication::clipboard();
+        clip->setText(fullParams);
+
+        ui->statusbar->showMessage("已复制 SD 生成参数到剪贴板", 2000);
+    }
+    else if (selected == actOpenImg) {
         QDesktopServices::openUrl(QUrl::fromLocalFile(filePath));
     }
     else if (selected == actOpenDir) {
@@ -4212,4 +4283,55 @@ QString MainWindow::getRandomUserAgent() {
     // 随机取一个
     int index = QRandomGenerator::global()->bounded(uas.size());
     return uas.at(index);
+}
+
+// 加载缓存
+void MainWindow::loadUserGalleryCache() {
+    imageCache.clear();
+    QString configDir = qApp->applicationDirPath() + "/config";
+    QFile file(configDir + "/user_gallery_cache.json");
+    if (!file.open(QIODevice::ReadOnly)) return;
+
+    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    QJsonObject root = doc.object();
+
+    for (auto it = root.begin(); it != root.end(); ++it) {
+        QJsonObject obj = it.value().toObject();
+        UserImageInfo info;
+        info.path = it.key();
+        info.prompt = obj["p"].toString();
+        info.negativePrompt = obj["np"].toString();
+        info.parameters = obj["param"].toString();
+        info.lastModified = obj["t"].toVariant().toLongLong();
+
+        // 恢复 Tags (为了节省空间，JSON里可以不存tags，读取时解析，或者也存进去)
+        // 这里建议直接解析，因为 parsePromptsToTags 是纯内存操作，很快
+        info.cleanTags = parsePromptsToTags(info.prompt);
+
+        imageCache.insert(info.path, info);
+    }
+}
+
+// 保存缓存
+void MainWindow::saveUserGalleryCache() {
+    QString configDir = qApp->applicationDirPath() + "/config";
+    QDir().mkpath(configDir);
+
+    QJsonObject root;
+    // 遍历当前的 imageCache
+    for (auto it = imageCache.begin(); it != imageCache.end(); ++it) {
+        const UserImageInfo &info = it.value();
+        QJsonObject obj;
+        obj["p"] = info.prompt;
+        obj["np"] = info.negativePrompt;
+        obj["param"] = info.parameters;
+        obj["t"] = QString::number(info.lastModified); // 存为字符串避免精度问题
+
+        root.insert(info.path, obj);
+    }
+
+    QFile file(configDir + "/user_gallery_cache.json");
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write(QJsonDocument(root).toJson(QJsonDocument::Compact)); // Compact 模式减小体积
+    }
 }
