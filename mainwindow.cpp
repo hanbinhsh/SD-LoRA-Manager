@@ -1147,10 +1147,15 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
 
     // 5. 右侧信息
     ui->textDescription->setHtml(meta.description);
-    ui->lblFileInfo->setText(QString("Filename: %1\nSize: %2 MB\nSHA256: %3")
+    QFileInfo fi(meta.filePath);
+    QDateTime addedTime = fi.birthTime();
+    if(!addedTime.isValid()) addedTime = fi.lastModified();
+    QString addedStr = addedTime.toString("yyyy-MM-dd");
+    ui->lblFileInfo->setText(QString("Filename: %1\nSize: %2 MB\nSHA256: %3\nAdded: %4")
                                  .arg(meta.fileNameServer.isEmpty() ? meta.fileName : meta.fileNameServer)
                                  .arg(meta.fileSizeMB, 0, 'f', 1)
-                                 .arg(meta.sha256.left(10) + "..."));
+                                 .arg(meta.sha256.left(10) + "...")
+                                 .arg(addedStr));
 
     QTimer::singleShot(0, this, [this, meta](){
         ui->scrollAreaWidgetContents->adjustSize();
@@ -2268,6 +2273,17 @@ void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonP
     item->setData(ROLE_FILTER_BASE, "Unknown");
     item->setData(ROLE_NSFW_LEVEL, 1);
 
+    // === 读取本地文件时间 (下载/添加时间) ===
+    QString filePath = item->data(ROLE_FILE_PATH).toString();
+    QFileInfo fi(filePath);
+    QDateTime birthTime = fi.birthTime(); // 获取创建时间
+    // 在某些系统(如Linux部分文件系统) birthTime 可能无效，回退到 lastModified
+    if (!birthTime.isValid()) {
+        birthTime = fi.lastModified();
+    }
+    item->setData(ROLE_SORT_ADDED, birthTime.toMSecsSinceEpoch());
+    // ============================================
+
     QFile file(jsonPath);
     if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
         // 如果没有 JSON，尝试用文件修改时间作为日期
@@ -2343,7 +2359,7 @@ void MainWindow::onSortIndexChanged(int index) {
 
 void MainWindow::executeSort()
 {
-    // 0: Name, 1: Date(New), 2: Downloads, 3: Likes
+    // 0: Name, 1: Date(New), 2: Downloads, 3: Likes, 4: Date Added
     int sortType = ui->comboSort->currentIndex();
 
     // 1. 取出所有 Item
@@ -2377,6 +2393,9 @@ void MainWindow::executeSort()
 
             case 3: // Likes (High -> Descending)
                 return a->data(ROLE_SORT_LIKES).toInt() > b->data(ROLE_SORT_LIKES).toInt();
+
+            case 4: // Date Added (Local Created At -> Descending)
+                return a->data(ROLE_SORT_ADDED).toLongLong() > b->data(ROLE_SORT_ADDED).toLongLong();
 
             default:
                 return false;

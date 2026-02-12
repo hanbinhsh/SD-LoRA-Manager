@@ -41,20 +41,21 @@ const int ROLE_SORT_DATE            = Qt::UserRole + 10;  // 存储时间戳 (qi
 const int ROLE_SORT_DOWNLOADS       = Qt::UserRole + 11;  // 存储下载量 (int)
 const int ROLE_SORT_LIKES           = Qt::UserRole + 12;  // 存储点赞量 (int)
 const int ROLE_FILTER_BASE          = Qt::UserRole + 13;  // 存储底模名称 (QString)
+const int ROLE_SORT_ADDED           = Qt::UserRole + 14;  // 存储本地文件创建时间 (qint64)
 // 收藏夹树状图
-const int ROLE_IS_COLLECTION_NODE   = Qt::UserRole + 14;  // 标记这是一个收藏夹节点
-const int ROLE_COLLECTION_NAME      = Qt::UserRole + 15;  // 存储收藏夹名称
-const int ROLE_ITEM_COUNT           = Qt::UserRole + 16;  // 存储该分类下的模型数量
+const int ROLE_IS_COLLECTION_NODE   = Qt::UserRole + 20;  // 标记这是一个收藏夹节点
+const int ROLE_COLLECTION_NAME      = Qt::UserRole + 21;  // 存储收藏夹名称
+const int ROLE_ITEM_COUNT           = Qt::UserRole + 22;  // 存储该分类下的模型数量
 // 用户图库专用
-const int ROLE_USER_IMAGE_PATH      = Qt::UserRole + 20;
-const int ROLE_USER_IMAGE_PROMPT    = Qt::UserRole + 21;
-const int ROLE_USER_IMAGE_NEG       = Qt::UserRole + 22;
-const int ROLE_USER_IMAGE_PARAMS    = Qt::UserRole + 23;
-const int ROLE_USER_IMAGE_TAGS      = Qt::UserRole + 24;
+const int ROLE_USER_IMAGE_PATH      = Qt::UserRole + 30;
+const int ROLE_USER_IMAGE_PROMPT    = Qt::UserRole + 31;
+const int ROLE_USER_IMAGE_NEG       = Qt::UserRole + 32;
+const int ROLE_USER_IMAGE_PARAMS    = Qt::UserRole + 33;
+const int ROLE_USER_IMAGE_TAGS      = Qt::UserRole + 34;
 // 树状图占位符标记
-const int ROLE_IS_PLACEHOLDER       = Qt::UserRole + 30;
+const int ROLE_IS_PLACEHOLDER       = Qt::UserRole + 40;
 
-const QString CURRENT_VERSION = "1.2.3";
+const QString CURRENT_VERSION = "1.2.4";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";

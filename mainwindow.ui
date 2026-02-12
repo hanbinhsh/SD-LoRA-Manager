@@ -477,6 +477,11 @@ QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; lef
                    <string>Likes (High)</string>
                   </property>
                  </item>
+                 <item>
+                  <property name="text">
+                   <string>Date Added (Local)</string>
+                  </property>
+                 </item>
                 </widget>
                </item>
                <item row="1" column="0">
@@ -601,7 +606,7 @@ QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; lef
           </widget>
           <widget class="QStackedWidget" name="mainStack">
            <property name="currentIndex">
-            <number>0</number>
+            <number>1</number>
            </property>
            <widget class="QWidget" name="pageHome">
             <layout class="QVBoxLayout" name="verticalLayout_Home">
@@ -778,7 +783,7 @@ New</string>
                  <rect>
                   <x>0</x>
                   <y>0</y>
-                  <width>670</width>
+                  <width>989</width>
                   <height>1038</height>
                  </rect>
                 </property>
@@ -1065,7 +1070,7 @@ New</string>
                               <rect>
                                <x>0</x>
                                <y>0</y>
-                               <width>423</width>
+                               <width>663</width>
                                <height>165</height>
                               </rect>
                              </property>
