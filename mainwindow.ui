@@ -649,7 +649,7 @@ QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; lef
                   <x>0</x>
                   <y>0</y>
                   <width>999</width>
-                  <height>112</height>
+                  <height>110</height>
                  </rect>
                 </property>
                 <layout class="QHBoxLayout" name="layoutCollections">
@@ -779,7 +779,7 @@ New</string>
                   <x>0</x>
                   <y>0</y>
                   <width>670</width>
-                  <height>1058</height>
+                  <height>1038</height>
                  </rect>
                 </property>
                 <property name="minimumSize">
@@ -1853,29 +1853,23 @@ Hash: ...</string>
              <string>外观 / Appearance</string>
             </property>
             <layout class="QGridLayout" name="gridLayout">
-             <item row="3" column="0">
-              <widget class="QCheckBox" name="chkRestoreTreeState">
-               <property name="toolTip">
-                <string>下次启动时，保持当前收藏夹的展开状态和滚动条位置。</string>
-               </property>
+             <item row="0" column="0">
+              <widget class="QLabel" name="lblBlur">
                <property name="text">
-                <string>启动时恢复菜单 (Restore Menu on Startup)</string>
-               </property>
-               <property name="checked">
-                <bool>true</bool>
+                <string>背景模糊半径 (Blur Radius):</string>
                </property>
               </widget>
              </item>
-             <item row="0" column="2">
-              <widget class="QLabel" name="lblBlurValue">
-               <property name="minimumSize">
-                <size>
-                 <width>40</width>
-                 <height>0</height>
-                </size>
+             <item row="4" column="0">
+              <widget class="QCheckBox" name="chkShowEmptyCollections">
+               <property name="toolTip">
+                <string>如果取消勾选，不包含任何模型（或被搜索过滤后为空）的收藏夹将不会显示在侧边栏中。</string>
                </property>
                <property name="text">
-                <string>30px</string>
+                <string>显示空的收藏夹 (Show Empty Collections)</string>
+               </property>
+               <property name="checked">
+                <bool>false</bool>
                </property>
               </widget>
              </item>
@@ -1895,20 +1889,16 @@ Hash: ...</string>
                </property>
               </widget>
              </item>
-             <item row="0" column="0">
-              <widget class="QLabel" name="lblBlur">
-               <property name="text">
-                <string>背景模糊半径 (Blur Radius):</string>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="0">
-              <widget class="QCheckBox" name="chkDownscaleBlur">
-               <property name="toolTip">
-                <string>开启后会先将原图缩小再模糊，能极大提高大图背景的生成速度。</string>
+             <item row="0" column="2">
+              <widget class="QLabel" name="lblBlurValue">
+               <property name="minimumSize">
+                <size>
+                 <width>40</width>
+                 <height>0</height>
+                </size>
                </property>
                <property name="text">
-                <string>模糊前缩放图片 (Scale before blur)</string>
+                <string>30px</string>
                </property>
               </widget>
              </item>
@@ -1928,16 +1918,36 @@ Hash: ...</string>
                </property>
               </widget>
              </item>
-             <item row="4" column="0">
-              <widget class="QCheckBox" name="chkShowEmptyCollections">
+             <item row="3" column="0">
+              <widget class="QCheckBox" name="chkRestoreTreeState">
                <property name="toolTip">
-                <string>如果取消勾选，不包含任何模型（或被搜索过滤后为空）的收藏夹将不会显示在侧边栏中。</string>
+                <string>下次启动时，保持当前收藏夹的展开状态和滚动条位置。</string>
                </property>
                <property name="text">
-                <string>显示空的收藏夹 (Show Empty Collections)</string>
+                <string>启动时恢复菜单 (Restore Menu on Startup)</string>
                </property>
                <property name="checked">
-                <bool>false</bool>
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QCheckBox" name="chkDownscaleBlur">
+               <property name="toolTip">
+                <string>开启后会先将原图缩小再模糊，能极大提高大图背景的生成速度。</string>
+               </property>
+               <property name="text">
+                <string>模糊前缩放图片 (Scale before blur)</string>
+               </property>
+              </widget>
+             </item>
+             <item row="5" column="0">
+              <widget class="QCheckBox" name="chkUseCivitaiName">
+               <property name="toolTip">
+                <string>勾选后，如果本地存在 JSON 元数据，将显示模型的真实名称（如 'ChilloutMix [Pruned]'）而非文件名。</string>
+               </property>
+               <property name="text">
+                <string>使用 Civitai 模型名称 (Use Civitai Name)</string>
                </property>
               </widget>
              </item>
@@ -2320,7 +2330,7 @@ Hash: ...</string>
      <x>0</x>
      <y>0</y>
      <width>1300</width>
-     <height>24</height>
+     <height>17</height>
     </rect>
    </property>
   </widget>

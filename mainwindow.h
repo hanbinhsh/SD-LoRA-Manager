@@ -35,6 +35,7 @@ const int ROLE_MODEL_NAME           = Qt::UserRole;
 const int ROLE_FILE_PATH            = Qt::UserRole + 1;
 const int ROLE_PREVIEW_PATH         = Qt::UserRole + 2;
 const int ROLE_NSFW_LEVEL           = Qt::UserRole + 5;
+const int ROLE_CIVITAI_NAME         = Qt::UserRole + 6;   // 存储从 JSON 读取的真实名称
 // 排序与筛选
 const int ROLE_SORT_DATE            = Qt::UserRole + 10;  // 存储时间戳 (qint64)
 const int ROLE_SORT_DOWNLOADS       = Qt::UserRole + 11;  // 存储下载量 (int)
@@ -214,7 +215,7 @@ private:
     void showFullImageDialog(const QString &imagePath);
     QIcon getFitIcon(const QString &path);
     void updateBackgroundImage();
-    void showCollectionMenu(const QString &modelName, const QPoint &globalPos);
+    void showCollectionMenu(const QList<QListWidgetItem*> &items, const QPoint &globalPos);
     // 快速读取单个 JSON 的元数据用于列表显示
     void preloadItemMetadata(QListWidgetItem *item, const QString &jsonPath);
     QFutureWatcher<ImageLoadResult> *imageLoadWatcher;
@@ -238,7 +239,8 @@ private:
     QFutureWatcher<QString> *hashWatcher;
     QString currentProcessingPath;
 
-    QThreadPool *threadPool;
+    QThreadPool *threadPool;           //用于详情页、大图 (可被 cancel)
+    QThreadPool *backgroundThreadPool; // 【新增】用于侧边栏、主页列表 (不可被 cancel)
     QIcon placeholderIcon;
 
     QTimer *bgResizeTimer;
@@ -303,6 +305,7 @@ private:
     bool    optShowEmptyCollections = false;            // 显示空收藏夹
     bool    optUseArrangedUA        = false;            // 使用自定义UA
     QStringList optFilterTags       = DEFAULT_FILTER_TAGS.split(',', Qt::SkipEmptyParts);    // 过滤词列表 (存储清洗后的列表)
+    bool    optUseCivitaiName = false;                  // 使用json中的模型名称
     // 保存与加载
     void loadGlobalConfig();        // 加载配置
     void saveGlobalConfig();        // 保存配置
@@ -315,6 +318,7 @@ private:
     bool isFirstTreeRefresh;                  // 标记是否是第一次刷新树（用于判断是否使用缓存）
     // 设置辅助函数
     QString getRandomUserAgent();             // 获取随机 UA
+    void updateModelListNames();              // 刷新列表显示名称的辅助函数
 };
 
 #endif // MAINWINDOW_H

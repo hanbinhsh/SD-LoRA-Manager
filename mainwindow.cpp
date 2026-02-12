@@ -40,6 +40,7 @@ MainWindow::MainWindow(QWidget *parent)
     startupTreeScrollPos = 0;
     // 线程池初始化 (此时还没有读取配置，先不设最大数)
     threadPool = new QThreadPool(this);
+    backgroundThreadPool = new QThreadPool(this);
     // Hash 计算器
     hashWatcher = new QFutureWatcher<QString>(this);
     connect(hashWatcher, &QFutureWatcherBase::finished, this, &MainWindow::onHashCalculated);
@@ -126,6 +127,7 @@ MainWindow::MainWindow(QWidget *parent)
     loadGlobalConfig();   // 从 JSON 读选项
     // === 应用线程数 ===
     threadPool->setMaxThreadCount(optRenderThreadCount);
+    backgroundThreadPool->setMaxThreadCount(optRenderThreadCount);
     // === 3. 连接路径设置信号 ===
     connect(ui->btnBrowseLora, &QPushButton::clicked, this, &MainWindow::onBrowseLoraPath);
     connect(ui->btnBrowseGallery, &QPushButton::clicked, this, &MainWindow::onBrowseGalleryPath);
@@ -172,9 +174,11 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->collectionTree, &QTreeWidget::itemClicked, this, &MainWindow::onCollectionTreeItemClicked);
     // 侧边栏右键菜单
     ui->modelList->setContextMenuPolicy(Qt::CustomContextMenu);
+    ui->modelList->setSelectionMode(QAbstractItemView::ExtendedSelection); // 开启 Shift/Ctrl 多选
     connect(ui->modelList, &QListWidget::customContextMenuRequested, this, &MainWindow::onSidebarContextMenu);
     ui->collectionTree->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(ui->collectionTree, &QTreeWidget::customContextMenuRequested, this, &MainWindow::onCollectionTreeContextMenu);
+    ui->collectionTree->setSelectionMode(QAbstractItemView::ExtendedSelection);
     // 工具栏按钮
     connect(ui->btnOpenUrl, &QPushButton::clicked, this, &MainWindow::onOpenUrlClicked);
     connect(ui->btnScanLocal, &QPushButton::clicked, this, &MainWindow::onScanLocalClicked);
@@ -248,11 +252,18 @@ MainWindow::MainWindow(QWidget *parent)
     connect(tagFlowWidget, &TagFlowWidget::filterChanged, this, &MainWindow::onTagFilterChanged);
     // 2. 右键点击 -> 弹出菜单
     connect(ui->btnFavorite, &QPushButton::customContextMenuRequested, this, [this](const QPoint &pos){
-        // 获取当前选中的模型名称
-        if (ui->modelList->currentItem()) {
-            QString name = ui->modelList->currentItem()->text();
-            // 在按钮位置弹出菜单
-            showCollectionMenu(name, ui->btnFavorite->mapToGlobal(pos));
+        // 获取当前选中的所有模型
+        QList<QListWidgetItem*> selectedItems = ui->modelList->selectedItems();
+
+        // 如果没有多选，但有当前焦点的单选项，也把它加进去
+        if (selectedItems.isEmpty() && ui->modelList->currentItem()) {
+            selectedItems.append(ui->modelList->currentItem());
+        }
+
+        // 只有非空时才弹出
+        if (!selectedItems.isEmpty()) {
+            // 在按钮下方弹出菜单
+            showCollectionMenu(selectedItems, ui->btnFavorite->mapToGlobal(pos));
         }
     });
     connect(ui->btnFavorite, &QPushButton::clicked, this, &MainWindow::onBtnFavoriteClicked);
@@ -297,6 +308,7 @@ MainWindow::~MainWindow()
     saveGlobalConfig();
     cancelPendingTasks();
     threadPool->waitForDone(500);
+    backgroundThreadPool->waitForDone(500);
     delete ui;
 }
 
@@ -576,7 +588,10 @@ void MainWindow::refreshHomeGallery()
         if (!filePath.isEmpty()) {
             QString pathToSend = previewPath.isEmpty() ? "invalid_path" : previewPath;
 
-            IconLoaderTask *task = new IconLoaderTask(pathToSend, iconSize, 12, this, filePath);
+            QString taskId = "HOME:" + filePath;
+
+            // 依然使用主 threadPool (因为主页大图需要点击即停，响应优先)
+            IconLoaderTask *task = new IconLoaderTask(pathToSend, iconSize, 12, this, taskId);
             task->setAutoDelete(true);
             threadPool->start(task);
         }
@@ -616,27 +631,30 @@ void MainWindow::onHomeGalleryClicked(QListWidgetItem *item)
 // 侧边栏右键菜单
 void MainWindow::onSidebarContextMenu(const QPoint &pos)
 {
-    QListWidgetItem *item = ui->modelList->itemAt(pos);
-    if (!item) return;
+    // 获取当前选中的所有项目
+    QList<QListWidgetItem*> selectedItems = ui->modelList->selectedItems();
 
-    QString baseName = item->text();
+    // 如果右键点击的位置不在选区内，Qt通常会清除选区并选中新项。
+    // 但为了保险，如果 selectedItems 为空，尝试获取点击位置的单项
+    if (selectedItems.isEmpty()) {
+        QListWidgetItem *item = ui->modelList->itemAt(pos);
+        if (item) selectedItems.append(item);
+    }
 
-    // 直接调用通用函数
-    showCollectionMenu(baseName, ui->modelList->mapToGlobal(pos));
+    if (selectedItems.isEmpty()) return;
+
+    // 调用重构后的菜单函数
+    showCollectionMenu(selectedItems, ui->modelList->mapToGlobal(pos));
 }
 
 void MainWindow::onBtnFavoriteClicked()
 {
-    // 获取当前详情页正在展示的模型
-    // 优先从 modelList 的当前选中项获取，这是最准确的
-    QListWidgetItem *item = ui->modelList->currentItem();
-    if (!item) return;
+    // 获取当前选中的模型（支持多选）
+    QList<QListWidgetItem*> selectedItems = ui->modelList->selectedItems();
+    if (selectedItems.isEmpty()) return;
 
-    QString baseName = item->text();
-
-    // 在按钮正下方弹出
     QPoint pos = ui->btnFavorite->mapToGlobal(QPoint(0, ui->btnFavorite->height()));
-    showCollectionMenu(baseName, pos);
+    showCollectionMenu(selectedItems, pos);
 }
 
 void MainWindow::onHomeGalleryContextMenu(const QPoint &pos)
@@ -644,14 +662,12 @@ void MainWindow::onHomeGalleryContextMenu(const QPoint &pos)
     QListWidgetItem *item = ui->homeGalleryList->itemAt(pos);
     if (!item) return; // 点击了空白处
 
-    // 注意：主页 Item 没有 text，我们需要从 data 里找或者通过 ToolTip
-    // 之前我们在 refreshHomeGallery 里设置了 tooltip 为 baseName
-    QString baseName = item->data(ROLE_MODEL_NAME).toString();
-    if (baseName.isEmpty()) baseName = item->toolTip();  // 后备方案
-    if (baseName.isEmpty()) return;
+    // 构造一个包含当前单项的列表
+    QList<QListWidgetItem*> items;
+    items.append(item);
 
     // 复用通用的菜单逻辑
-    showCollectionMenu(baseName, ui->homeGalleryList->mapToGlobal(pos));
+    showCollectionMenu(items, ui->homeGalleryList->mapToGlobal(pos));
 }
 
 // 生成竖版封面图标 (2:3)
@@ -935,6 +951,13 @@ void MainWindow::scanModels(const QString &path)
             continue;
         }
 
+        QString civitaiName = item->data(ROLE_CIVITAI_NAME).toString();
+        if (optUseCivitaiName && !civitaiName.isEmpty()) {
+            item->setText(civitaiName);
+        } else {
+            item->setText(baseName); // 默认使用文件名
+        }
+
         item->setIcon(placeholderIcon);
 
         // 9. 处理底模过滤器
@@ -945,6 +968,15 @@ void MainWindow::scanModels(const QString &path)
         }
 
         ui->modelList->addItem(item);
+        if (!previewPath.isEmpty()) {
+            // 【修改】添加 "SIDEBAR:" 前缀
+            QString taskId = "SIDEBAR:" + fullPath;
+
+            // 使用 backgroundThreadPool (静默加载)
+            IconLoaderTask *task = new IconLoaderTask(previewPath, 64, 8, this, taskId);
+            task->setAutoDelete(true);
+            backgroundThreadPool->start(task);
+        }
     }
 
     // 10. 恢复 UI 更新
@@ -1258,6 +1290,7 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
     QString filePath = item->data(ROLE_FILE_PATH).toString();
     QString modelDir = QFileInfo(filePath).absolutePath();
     ui->modelList->setProperty("current_model_dir", modelDir);
+
     if (currentMeta.filePath == filePath && !currentMeta.name.isEmpty()) {
         // 如果当前不在详情页（比如在主页），则只切换页面，不重新加载数据
         if (ui->mainStack->currentIndex() != 1) {
@@ -1277,7 +1310,7 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
     clearDetailView(); // 清空旧数据
 
     QString previewPath = item->data(ROLE_PREVIEW_PATH).toString();
-    QString baseName = item->text();
+    QString baseName = item->data(ROLE_MODEL_NAME).toString();
 
     ModelMeta meta;
     meta.name = baseName;
@@ -1504,8 +1537,24 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     // 1. 基础信息
     QString modelRealName = root["model"].toObject()["name"].toString();
     QString versionName = root["name"].toString();
+    QString fullName = modelRealName + " [" + versionName + "]"; // 组合名称
     meta.name = modelRealName + " [" + versionName + "]";
     meta.filePath = filePath;
+
+    // 更新 UI 列表项
+    // 找到对应的 Item (可能通过 localBaseName 查找)
+    for(int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
+            item->setData(ROLE_CIVITAI_NAME, fullName); // 更新缓存的名称
+
+            // 如果开启了选项，立即更新显示文本
+            if (optUseCivitaiName) {
+                item->setText(fullName);
+            }
+            break;
+        }
+    }
 
     // 2. 触发词 (保存为列表)
     meta.trainedWordsGroups.clear();
@@ -1801,11 +1850,35 @@ QIcon MainWindow::getFitIcon(const QString &path)
     return QIcon(base);
 }
 
-void MainWindow::onIconLoaded(const QString &filePath, const QImage &image)
+void MainWindow::onIconLoaded(const QString &id, const QImage &image)
 {
-    QPixmap originalPix = QPixmap::fromImage(image);
-    QIcon originalIcon(originalPix);
+    // =========================================================
+    // 1. 解析任务来源 (Parsing ID)
+    // =========================================================
+    QString filePath = id;
+    bool isSidebarTask = false;
+    bool isHomeTask = false;
 
+    // 判断是否有特定前缀
+    if (id.startsWith("SIDEBAR:")) {
+        isSidebarTask = true;
+        filePath = id.mid(8); // 去掉 "SIDEBAR:" 前缀 (长度为8)
+    } else if (id.startsWith("HOME:")) {
+        isHomeTask = true;
+        filePath = id.mid(5); // 去掉 "HOME:" 前缀 (长度为5)
+    } else {
+        // 兼容其他没有加前缀的情况（比如用户返图、详情页点击），默认都允许更新
+        isSidebarTask = true;
+        isHomeTask = true;
+    }
+
+    // =========================================================
+    // 2. 准备图片和 NSFW 处理逻辑
+    // =========================================================
+    QPixmap originalPix = QPixmap::fromImage(image);
+    QIcon originalIcon(originalPix); // 默认图标
+
+    // 延迟模糊计算 (Lambda)
     QPixmap blurredPix;
     auto getDisplayPix = [&](bool isNSFW) {
         if (optFilterNSFW && isNSFW && optNSFWMode == 1) {
@@ -1815,98 +1888,114 @@ void MainWindow::onIconLoaded(const QString &filePath, const QImage &image)
         return originalPix;
     };
 
-    // 1. 更新主页列表 (Home Gallery)
-    for(int i = 0; i < ui->homeGalleryList->count(); ++i) {
-        QListWidgetItem *item = ui->homeGalleryList->item(i);
-        if (item->data(ROLE_FILE_PATH).toString() == filePath) {
-            bool isNSFW = item->data(ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
-            if (optFilterNSFW && isNSFW && optNSFWMode == 1) {
-                if (blurredPix.isNull()) blurredPix = applyNSFWBlur(originalPix);
-                QPixmap roundedBlur = applyRoundedMask(blurredPix, 12);
-                item->setIcon(QIcon(roundedBlur));
-            } else {
-                item->setIcon(QIcon(originalPix));
-            }
-        }
-    }
-
-    // --- 更新侧边栏列表 (Sidebar) ---
-    for(int i = 0; i < ui->modelList->count(); ++i) {
-        QListWidgetItem *item = ui->modelList->item(i);
-        if (item->data(ROLE_FILE_PATH).toString() == filePath) {
-            bool isNSFW = item->data(ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
-            if (optFilterNSFW && isNSFW && optNSFWMode == 1) {
-                if (blurredPix.isNull()) blurredPix = applyNSFWBlur(originalPix);
-                // 侧边栏使用 getSquareIcon 处理样式
-                QPixmap roundedBlur = applyRoundedMask(blurredPix, 12);
-                item->setIcon(getSquareIcon(roundedBlur));
-            } else {
-                item->setIcon(getSquareIcon(originalPix));
-            }
-        }
-    }
-
-    for(int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
-        QTreeWidgetItem *parent = ui->collectionTree->topLevelItem(i);
-        // 遍历子节点 (模型)
-        for(int j = 0; j < parent->childCount(); ++j) {
-            QTreeWidgetItem *child = parent->child(j);
-            // 检查路径是否匹配
-            if (child->data(0, ROLE_FILE_PATH).toString() == filePath) {
-                // 如果启用了 NSFW 模糊，这里也要处理 (复用之前的逻辑)
-                bool isNSFW = child->data(0, ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
+    // =========================================================
+    // 3. 更新主页列表 (Home Gallery) - 仅限 HOME 或 通用任务
+    // =========================================================
+    if (isHomeTask) {
+        for(int i = 0; i < ui->homeGalleryList->count(); ++i) {
+            QListWidgetItem *item = ui->homeGalleryList->item(i);
+            // 匹配路径
+            if (item->data(ROLE_FILE_PATH).toString() == filePath) {
+                // 处理 NSFW
+                bool isNSFW = item->data(ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
                 if (optFilterNSFW && isNSFW && optNSFWMode == 1) {
                     if (blurredPix.isNull()) blurredPix = applyNSFWBlur(originalPix);
-                    // 侧边栏使用 getSquareIcon 处理样式
+                    // 主页使用圆角遮罩
                     QPixmap roundedBlur = applyRoundedMask(blurredPix, 12);
-                    child->setIcon(0, getSquareIcon(roundedBlur));
+                    item->setIcon(QIcon(roundedBlur));
                 } else {
-                    child->setIcon(0, getSquareIcon(originalPix));
+                    item->setIcon(QIcon(originalPix));
                 }
             }
         }
     }
 
-    // 2. 更新详情页预览列表 (Detail Gallery) - 新增逻辑
-    // 只有当当前在详情页时才需要更新，或者直接遍历layout
-    QLayout *layout = ui->layoutGallery;
-    if (layout) {
-        for (int i = 0; i < layout->count(); ++i) {
-            QLayoutItem *item = layout->itemAt(i);
-            if (item->widget()) {
-                QPushButton *btn = qobject_cast<QPushButton*>(item->widget());
-                if (btn) {
-                    // 检查我们在 updateDetailView 里绑定的全路径属性
-                    if (btn->property("fullImagePath").toString() == filePath) {
-                        bool isNSFW = btn->property("isNSFW").toBool();
-                        QPixmap p = getDisplayPix(isNSFW);
-                        btn->setIcon(QIcon(p));
-                        btn->setIconSize(QSize(90, 135));
-                        btn->setText("");
+    // =========================================================
+    // 4. 更新侧边栏 (Sidebar List & Tree) - 仅限 SIDEBAR 或 通用任务
+    // =========================================================
+    if (isSidebarTask) {
+        // --- A. 更新侧边栏列表 ---
+        for(int i = 0; i < ui->modelList->count(); ++i) {
+            QListWidgetItem *item = ui->modelList->item(i);
+            if (item->data(ROLE_FILE_PATH).toString() == filePath) {
+                bool isNSFW = item->data(ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
+                if (optFilterNSFW && isNSFW && optNSFWMode == 1) {
+                    if (blurredPix.isNull()) blurredPix = applyNSFWBlur(originalPix);
+                    // 侧边栏使用 getSquareIcon 处理样式 (方形+内边距)
+                    QPixmap roundedBlur = applyRoundedMask(blurredPix, 12);
+                    item->setIcon(getSquareIcon(roundedBlur));
+                } else {
+                    item->setIcon(getSquareIcon(originalPix));
+                }
+            }
+        }
+
+        // --- B. 更新收藏夹树状图 ---
+        for(int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
+            QTreeWidgetItem *parent = ui->collectionTree->topLevelItem(i);
+            // 遍历子节点 (模型)
+            for(int j = 0; j < parent->childCount(); ++j) {
+                QTreeWidgetItem *child = parent->child(j);
+                if (child->data(0, ROLE_FILE_PATH).toString() == filePath) {
+                    bool isNSFW = child->data(0, ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
+                    if (optFilterNSFW && isNSFW && optNSFWMode == 1) {
+                        if (blurredPix.isNull()) blurredPix = applyNSFWBlur(originalPix);
+                        QPixmap roundedBlur = applyRoundedMask(blurredPix, 12);
+                        child->setIcon(0, getSquareIcon(roundedBlur));
+                    } else {
+                        child->setIcon(0, getSquareIcon(originalPix));
                     }
                 }
             }
         }
     }
 
-    if (ui->listUserImages) {
-        for (int i = 0; i < ui->listUserImages->count(); ++i) {
-            QListWidgetItem *item = ui->listUserImages->item(i);
-            // 我们在 scanForUserImages 里把路径存到了 UserRole
-            if (item->data(ROLE_USER_IMAGE_PATH).toString() == filePath) {
-                item->setIcon(originalIcon);
+    // =========================================================
+    // 5. 更新详情页、返图、Hero
+    // =========================================================
+    // 逻辑：如果这是一个纯粹的 "SIDEBAR" 任务 (通常是64px小图)，
+    // 我们不希望它更新 Detail(100px+) 或 Hero(大图)，因为会变糊。
+    // 如果是 "HOME" (180px) 或 通用 (原图)，则允许更新。
+
+    bool allowHighResUpdate = !id.startsWith("SIDEBAR:");
+
+    if (allowHighResUpdate) {
+        // --- A. 详情页预览列表 (Detail Gallery) ---
+        QLayout *layout = ui->layoutGallery;
+        if (layout) {
+            for (int i = 0; i < layout->count(); ++i) {
+                QLayoutItem *item = layout->itemAt(i);
+                if (item->widget()) {
+                    QPushButton *btn = qobject_cast<QPushButton*>(item->widget());
+                    if (btn) {
+                        if (btn->property("fullImagePath").toString() == filePath) {
+                            bool isNSFW = btn->property("isNSFW").toBool();
+                            QPixmap p = getDisplayPix(isNSFW);
+                            btn->setIcon(QIcon(p));
+                            btn->setIconSize(QSize(90, 135));
+                            btn->setText("");
+                        }
+                    }
+                }
             }
         }
-    }
 
-    // if (filePath == currentMeta.previewPath) {
-    //     currentHeroPath = "";
-    //     transitionToImage(filePath);
-    // }
-    // 下面这行替换了上面的，修复了切换模型导致的动画闪烁问题，不过尚不清楚有无其他bug
-    if (filePath == currentMeta.previewPath) {
-        if (currentHeroPath != filePath) {
-            transitionToImage(filePath);
+        // --- B. 用户返图列表 (User Gallery) ---
+        if (ui->listUserImages) {
+            for (int i = 0; i < ui->listUserImages->count(); ++i) {
+                QListWidgetItem *item = ui->listUserImages->item(i);
+                if (item->data(ROLE_USER_IMAGE_PATH).toString() == filePath) {
+                    item->setIcon(originalIcon);
+                }
+            }
+        }
+
+        // --- C. Hero 大图过渡 ---
+        if (filePath == currentMeta.previewPath) {
+            // 只有当路径匹配且当前没有显示这张图时才刷新
+            if (currentHeroPath != filePath) {
+                transitionToImage(filePath);
+            }
         }
     }
 }
@@ -2019,110 +2108,157 @@ void MainWindow::onSearchTextChanged(const QString &text)
     refreshCollectionTreeView();
 }
 
-void MainWindow::showCollectionMenu(const QString &baseName, const QPoint &globalPos)
+void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const QPoint &globalPos)
 {
-    if (baseName.isEmpty()) return;
+    if (items.isEmpty()) return;
 
     QMenu menu(this);
 
-    // 1. 标题 (显示模型名)
-    QString displayName = baseName;
-    if (displayName.length() > 20) displayName = displayName.left(18) + "..";
-    QAction *titleAct = menu.addAction(displayName);
-    titleAct->setEnabled(false);
+    // 1. 标题逻辑
+    if (items.count() == 1) {
+        QListWidgetItem *first = items.first();
+        QString name = first->text();
 
-    // 如果当前正在某个收藏夹视图下，显示快捷移除 (保留之前的逻辑)
-    if (!currentCollectionFilter.isEmpty()) {
-        if (collections[currentCollectionFilter].contains(baseName)) {
-            QString removeText = QString("从当前 \"%1\" 移除").arg(currentCollectionFilter);
-            QAction *actQuickRemove = menu.addAction(removeText);
-            connect(actQuickRemove, &QAction::triggered, this, [this, baseName](){
-                collections[currentCollectionFilter].removeAll(baseName);
-                saveCollections();
-                refreshHomeGallery();
-                refreshCollectionTreeView();
-            });
+        if (name.isEmpty()) {
+            // 如果 text 为空（主页大图模式），尝试获取 Civitai 名
+            name = first->data(ROLE_CIVITAI_NAME).toString();
+            // 如果 Civitai 名也为空，获取文件名
+            if (name.isEmpty()) {
+                name = first->data(ROLE_MODEL_NAME).toString();
+            }
         }
+
+        if (name.length() > 20) name = name.left(18) + "..";
+        QAction *titleAct = menu.addAction(name);
+        titleAct->setEnabled(false);
+    } else {
+        QAction *titleAct = menu.addAction(QString("已选中 %1 个模型").arg(items.count()));
+        titleAct->setEnabled(false);
     }
 
     menu.addSeparator();
 
+    // 辅助 Lambda：获取 items 对应的所有 BaseName (用于收藏夹数据存储)
+    // 收藏夹系统始终使用 ROLE_MODEL_NAME (文件名) 作为 Key，不受显示名称影响
+    QStringList targetBaseNames;
+    for(auto *item : items) {
+        targetBaseNames.append(item->data(ROLE_MODEL_NAME).toString());
+    }
+
     // =========================================================
-    // 2. 核心修改：新增 "从收藏夹移除..." 二级菜单
+    // 2. "从收藏夹移除..."
     // =========================================================
     QMenu *removeMenu = menu.addMenu("从指定收藏夹移除...");
-    bool isInAnyCollection = false;
+    bool canRemoveAny = false;
 
     for (auto it = collections.begin(); it != collections.end(); ++it) {
         QString colName = it.key();
-        // 只有当模型【在】这个收藏夹里时，才添加到移除列表中
-        if (it.value().contains(baseName)) {
-            isInAnyCollection = true;
-            QAction *actRemove = removeMenu->addAction(colName);
-            connect(actRemove, &QAction::triggered, this, [this, colName, baseName](){
-                collections[colName].removeAll(baseName);
+        if (colName == FILTER_UNCATEGORIZED) continue;
+
+        // 检查选中的模型中，是否有任何一个在这个收藏夹里
+        // 逻辑：只要有一个在，就允许点击移除（移除操作只移除在里面的）
+        int countInCol = 0;
+        for (const QString &bn : targetBaseNames) {
+            if (it.value().contains(bn)) countInCol++;
+        }
+
+        if (countInCol > 0) {
+            canRemoveAny = true;
+            QString actionText = QString("%1 (%2)").arg(colName).arg(countInCol);
+            QAction *actRemove = removeMenu->addAction(actionText);
+
+            connect(actRemove, &QAction::triggered, this, [this, colName, targetBaseNames](){
+                int removedCount = 0;
+                for (const QString &bn : targetBaseNames) {
+                    if (collections[colName].contains(bn)) {
+                        collections[colName].removeAll(bn);
+                        removedCount++;
+                    }
+                }
                 saveCollections();
                 refreshHomeGallery();
                 refreshCollectionTreeView();
-                ui->statusbar->showMessage(QString("已从 %1 中移除").arg(colName), 2000);
+                ui->statusbar->showMessage(QString("已从 %1 移除 %2 个模型").arg(colName).arg(removedCount), 2000);
             });
         }
     }
-
-    // 如果该模型不在任何收藏夹，禁用这个菜单
-    if (!isInAnyCollection) {
-        removeMenu->setTitle("未加入任何收藏夹");
-        removeMenu->setEnabled(false);
-    }
+    if (!canRemoveAny) removeMenu->setEnabled(false);
 
     // =========================================================
-    // 3. "添加到收藏夹..." 二级菜单 (保持原有逻辑，带复选框)
+    // 3. "添加至收藏夹..."
     // =========================================================
     QMenu *addMenu = menu.addMenu("添加至收藏夹...");
 
     for (auto it = collections.begin(); it != collections.end(); ++it) {
         QString colName = it.key();
         if (colName == FILTER_UNCATEGORIZED) continue;
+
         QAction *action = addMenu->addAction(colName);
         action->setCheckable(true);
-        // 勾选状态反映当前是否在其中
-        action->setChecked(it.value().contains(baseName));
 
-        connect(action, &QAction::triggered, this, [this, colName, baseName, action](){
-            if (action->isChecked()) {
-                if (!collections[colName].contains(baseName))
-                    collections[colName].append(baseName);
+        // 状态检查逻辑：
+        // - 如果所有选中项都在该收藏夹 -> Checked
+        // - 如果部分在 -> (可选: PartiallyChecked，这里简单处理为 Unchecked)
+        // - 如果都不在 -> Unchecked
+        bool allIn = true;
+        for (const QString &bn : targetBaseNames) {
+            if (!it.value().contains(bn)) {
+                allIn = false;
+                break;
+            }
+        }
+        action->setChecked(allIn);
+
+        connect(action, &QAction::triggered, this, [this, colName, targetBaseNames, action](){
+            bool isAdding = action->isChecked(); // 触发后的状态
+            int count = 0;
+
+            if (isAdding) {
+                // 批量添加
+                for (const QString &bn : targetBaseNames) {
+                    if (!collections[colName].contains(bn)) {
+                        collections[colName].append(bn);
+                        count++;
+                    }
+                }
+                ui->statusbar->showMessage(QString("已将 %1 个模型加入 %2").arg(count).arg(colName), 2000);
             } else {
-                collections[colName].removeAll(baseName);
+                // 批量移除（取消勾选）
+                for (const QString &bn : targetBaseNames) {
+                    if (collections[colName].contains(bn)) {
+                        collections[colName].removeAll(bn);
+                        count++;
+                    }
+                }
+                ui->statusbar->showMessage(QString("已从 %1 移除 %2 个模型").arg(colName).arg(count), 2000);
             }
             saveCollections();
 
-            // 如果操作影响了当前视图，刷新
-            if (currentCollectionFilter == colName || !currentCollectionFilter.isEmpty()) {
-                refreshHomeGallery();
-            }
+            // 如果影响了当前视图，刷新
+            if (currentCollectionFilter == colName) refreshHomeGallery();
             refreshCollectionTreeView();
         });
     }
 
     addMenu->addSeparator();
     QAction *newAction = addMenu->addAction("新建收藏夹...");
-    connect(newAction, &QAction::triggered, this, [this, baseName](){
+    connect(newAction, &QAction::triggered, this, [this, targetBaseNames](){
         bool ok;
         QString text = QInputDialog::getText(this, "新建", "名称:", QLineEdit::Normal, "", &ok);
         if(ok && !text.isEmpty()) {
             if(!collections.contains(text)) {
-                collections[text] = QStringList() << baseName;
+                // 直接将选中的模型全部加入新收藏夹
+                collections[text] = targetBaseNames;
                 saveCollections();
                 refreshHomeCollectionsUI();
                 refreshCollectionTreeView();
+                ui->statusbar->showMessage(QString("新建收藏夹并加入 %1 个模型").arg(targetBaseNames.count()), 2000);
             }
         }
     });
 
     menu.exec(globalPos);
 }
-
 void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonPath)
 {
     // 初始化默认值 (方便排序)
@@ -2142,6 +2278,15 @@ void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonP
 
     QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
     QJsonObject root = doc.object();
+
+    // 读取模型真实名称
+    QString modelName = root["model"].toObject()["name"].toString();
+    QString versionName = root["name"].toString();
+    if (!modelName.isEmpty()) {
+        QString fullName = modelName;
+        if (!versionName.isEmpty()) fullName += " [" + versionName + "]";
+        item->setData(ROLE_CIVITAI_NAME, fullName); // 存入 UserRole
+    }
 
     // NSFW
     int coverLevel = 1; // 默认 Safe
@@ -2215,30 +2360,29 @@ void MainWindow::executeSort()
 
     // 2. 使用 Lambda 表达式排序
     std::sort(items.begin(), items.end(),
-              [sortType, &collator](QListWidgetItem *a, QListWidgetItem *b) { // 注意这里捕获了 &collator
+        [sortType, &collator](QListWidgetItem *a, QListWidgetItem *b) { // 注意这里捕获了 &collator
+        switch (sortType) {
+            case 0: // Name (A-Z)
+            {
+                QString nameA = a->text();
+                QString nameB = b->text();
+                return collator.compare(nameA, nameB) < 0;
+            }
 
-                  switch (sortType) {
-                  case 0: // Name (A-Z, Windows Explorer Style)
-                  {
-                      QString nameA = a->data(ROLE_MODEL_NAME).toString();
-                      QString nameB = b->data(ROLE_MODEL_NAME).toString();
-                      // 使用 collator 进行自然比较，结果 < 0 表示 A 在 B 前
-                      return collator.compare(nameA, nameB) < 0;
-                  }
+            case 1: // Date (Newest First -> Descending)
+                return a->data(ROLE_SORT_DATE).toLongLong() > b->data(ROLE_SORT_DATE).toLongLong();
 
-                  case 1: // Date (Newest First -> Descending)
-                      return a->data(ROLE_SORT_DATE).toLongLong() > b->data(ROLE_SORT_DATE).toLongLong();
+            case 2: // Downloads (High -> Descending)
+                return a->data(ROLE_SORT_DOWNLOADS).toInt() > b->data(ROLE_SORT_DOWNLOADS).toInt();
 
-                  case 2: // Downloads (High -> Descending)
-                      return a->data(ROLE_SORT_DOWNLOADS).toInt() > b->data(ROLE_SORT_DOWNLOADS).toInt();
+            case 3: // Likes (High -> Descending)
+                return a->data(ROLE_SORT_LIKES).toInt() > b->data(ROLE_SORT_LIKES).toInt();
 
-                  case 3: // Likes (High -> Descending)
-                      return a->data(ROLE_SORT_LIKES).toInt() > b->data(ROLE_SORT_LIKES).toInt();
-
-                  default:
-                      return false;
-                  }
-              });
+            default:
+                return false;
+            }
+        }
+    );
 
     // 3. 放回 ListWidget
     for(auto *item : items) {
@@ -3195,7 +3339,8 @@ void MainWindow::loadGlobalConfig() {
         optShowEmptyCollections         = root["show_empty_collections"].toBool(false);
         QString filterStr               = root["filter_tags_string"].toString(DEFAULT_FILTER_TAGS);
         optUseArrangedUA                = root["use_custom_ua"].toBool(false);
-        optSavedUAString           = root["custom_user_agent"].toString();
+        optSavedUAString                = root["custom_user_agent"].toString();
+        optUseCivitaiName               = root["use_civitai_name"].toBool(false);
 
         qDebug() << "Loaded User-Agent:" << currentUserAgent;
 
@@ -3247,6 +3392,7 @@ void MainWindow::loadGlobalConfig() {
     ui->chkUseCustomUserAgent->setChecked(optUseArrangedUA);
     ui->editUserAgent->setEnabled(optUseArrangedUA);
     if (!optSavedUAString.isEmpty()) {ui->editUserAgent->setText(optSavedUAString);}
+    ui->chkUseCivitaiName->setChecked(optUseCivitaiName);
 
     // ===============================
     // === 连接 Settings 页面的信号 ===
@@ -3291,6 +3437,7 @@ void MainWindow::loadGlobalConfig() {
     connect(ui->spinRenderThreads, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val){
         optRenderThreadCount = val;
         threadPool->setMaxThreadCount(val);
+        backgroundThreadPool->setMaxThreadCount(val);
         saveGlobalConfig();
     });
     // 树状态恢复
@@ -3371,6 +3518,13 @@ void MainWindow::loadGlobalConfig() {
         }
         saveGlobalConfig();
     });
+    // 刷新文字
+    connect(ui->chkUseCivitaiName, &QCheckBox::toggled, this, [this](bool checked){
+        optUseCivitaiName = checked;
+        updateModelListNames(); // 切换时立即刷新列表文字
+        executeSort();          // 刷新文字后可能需要重新排序
+        saveGlobalConfig();
+    });
 }
 
 void MainWindow::saveGlobalConfig() {
@@ -3393,6 +3547,7 @@ void MainWindow::saveGlobalConfig() {
     root["show_empty_collections"]      = optShowEmptyCollections;
     root["use_custom_ua"]               = ui->chkUseCustomUserAgent->isChecked();
     root["custom_user_agent"]           = ui->editUserAgent->text();
+    root["use_civitai_name"]            = optUseCivitaiName;
 
     if (optRestoreTreeState) {
         QJsonObject treeState;
@@ -3788,13 +3943,23 @@ void MainWindow::onCollectionTreeItemClicked(QTreeWidgetItem *item, int column)
 
 void MainWindow::onCollectionTreeContextMenu(const QPoint &pos)
 {
-    QTreeWidgetItem *item = ui->collectionTree->itemAt(pos);
-    if (!item) return;
+    // 获取点击位置的 Item (作为上下文判断依据)
+    QTreeWidgetItem *clickedItem = ui->collectionTree->itemAt(pos);
+    if (!clickedItem) return;
+
+    // 获取所有选中的 Items
+    QList<QTreeWidgetItem*> selectedTreeItems = ui->collectionTree->selectedItems();
+
+    // 如果右键点击的项不在选区内，Qt 的默认行为会清除选区并单选点击项。
+    // 这里做一个保险，如果选区为空，就把点击项加进去
+    if (selectedTreeItems.isEmpty()) {
+        selectedTreeItems.append(clickedItem);
+    }
 
     // 判断是收藏夹节点还是模型节点
-    if (item->data(0, ROLE_IS_COLLECTION_NODE).toBool()) {
+    if (clickedItem->data(0, ROLE_IS_COLLECTION_NODE).toBool()) {
         // --- 收藏夹节点右键菜单 ---
-        QString collectionName = item->data(0, ROLE_COLLECTION_NAME).toString();
+        QString collectionName = clickedItem->data(0, ROLE_COLLECTION_NAME).toString();
 
         QMenu menu(this);
         QAction *title = menu.addAction(QString("管理收藏夹: %1").arg(collectionName));
@@ -3845,11 +4010,33 @@ void MainWindow::onCollectionTreeContextMenu(const QPoint &pos)
             }
         }
     } else {
-        // --- 模型节点右键菜单 ---
-        QString baseName = item->data(0, ROLE_MODEL_NAME).toString();
-        if (baseName.isEmpty()) baseName = item->text(0);
-        // 复用通用的模型收藏菜单逻辑
-        showCollectionMenu(baseName, ui->collectionTree->mapToGlobal(pos));
+        // --- 模型节点逻辑 (核心修改：支持多选) ---
+
+        QList<QListWidgetItem*> targetListItems;
+
+        // 遍历所有选中的树节点
+        for (QTreeWidgetItem *tItem : selectedTreeItems) {
+            // 跳过选中的“文件夹”节点，只处理“模型”节点
+            if (tItem->data(0, ROLE_IS_COLLECTION_NODE).toBool()) continue;
+
+            QString baseName = tItem->data(0, ROLE_MODEL_NAME).toString();
+            if (baseName.isEmpty()) baseName = tItem->text(0); // 兜底
+
+            // 在 modelList 中查找对应的 Item (因为 showCollectionMenu 需要 QListWidgetItem)
+            // 优化：这里不需要每次都遍历 modelList，可以构建一个查找 Map，或者简单遍历
+            for (int i = 0; i < ui->modelList->count(); ++i) {
+                QListWidgetItem *listItem = ui->modelList->item(i);
+                if (listItem->data(ROLE_MODEL_NAME).toString() == baseName) {
+                    targetListItems.append(listItem);
+                    break;
+                }
+            }
+        }
+
+        // 如果找到了对应的模型列表项，弹出批量操作菜单
+        if (!targetListItems.isEmpty()) {
+            showCollectionMenu(targetListItems, ui->collectionTree->mapToGlobal(pos));
+        }
     }
 }
 
@@ -4334,4 +4521,27 @@ void MainWindow::saveUserGalleryCache() {
     if (file.open(QIODevice::WriteOnly)) {
         file.write(QJsonDocument(root).toJson(QJsonDocument::Compact)); // Compact 模式减小体积
     }
+}
+
+void MainWindow::updateModelListNames()
+{
+    // 暂时关闭排序，防止修改文本时列表乱跳
+    ui->modelList->setSortingEnabled(false);
+
+    for(int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+
+        // 获取文件名 (BaseName)
+        QString baseName = item->data(ROLE_MODEL_NAME).toString();
+        // 获取 Civitai 名
+        QString civitName = item->data(ROLE_CIVITAI_NAME).toString();
+
+        if (optUseCivitaiName && !civitName.isEmpty()) {
+            item->setText(civitName);
+        } else {
+            item->setText(baseName);
+        }
+    }
+
+    // 恢复排序 (executeSort 会处理)
 }
