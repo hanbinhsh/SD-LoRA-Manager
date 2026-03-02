@@ -6,11 +6,21 @@
 #include <QMouseEvent>
 #include <QMap>
 #include <QSet>
-#include <vector>
 #include <algorithm>
 #include <QMenu>
 #include <QClipboard>
 #include <QApplication>
+#include <QDialog>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QComboBox>
+#include <QSpinBox>
+#include <QDialogButtonBox>
+#include <QLabel>
+#include <QMessageBox>
+#include <QFileDialog>
+#include <QFile>
+#include <QTextStream>
 
 struct TagState {
     QString text;
@@ -244,6 +254,122 @@ protected:
                 QApplication::clipboard()->setText(list.join(", "));
             });
         }
+
+        QAction *actCopyEverything = menu.addAction("复制全部 Tags");
+        connect(actCopyEverything, &QAction::triggered, this, [this](){
+            QStringList list;
+            list.reserve(m_tags.size());
+            for (const auto &tag : m_tags) {
+                list.append(tag.text);
+            }
+            QApplication::clipboard()->setText(list.join(", "));
+        });
+
+        QAction *actCopyByRule = menu.addAction("批量复制 Tags...");
+        connect(actCopyByRule, &QAction::triggered, this, [this](){
+            if (m_tags.isEmpty()) return;
+
+            QDialog dlg(this);
+            dlg.setWindowTitle("批量复制 Tags");
+            dlg.setMinimumWidth(360);
+
+            QVBoxLayout *root = new QVBoxLayout(&dlg);
+            QLabel *lblMode = new QLabel("复制方式:", &dlg);
+            root->addWidget(lblMode);
+
+            QComboBox *modeBox = new QComboBox(&dlg);
+            modeBox->addItem("复制前 N 个 Tag（按使用次数排序）");
+            modeBox->addItem("复制使用次数 >= X 的 Tag");
+            root->addWidget(modeBox);
+
+            QHBoxLayout *valueRow = new QHBoxLayout();
+            QLabel *lblValue = new QLabel("N:", &dlg);
+            QSpinBox *spinValue = new QSpinBox(&dlg);
+            spinValue->setRange(1, qMax(1, m_tags.size()));
+            spinValue->setValue(qMin(20, m_tags.size()));
+            valueRow->addWidget(lblValue);
+            valueRow->addWidget(spinValue, 1);
+            root->addLayout(valueRow);
+
+            connect(modeBox, &QComboBox::currentIndexChanged, &dlg, [this, lblValue, spinValue](int idx){
+                if (idx == 0) {
+                    lblValue->setText("N:");
+                    spinValue->setRange(1, qMax(1, m_tags.size()));
+                    spinValue->setValue(qMin(20, m_tags.size()));
+                } else {
+                    int maxCount = 1;
+                    for (const auto &tag : m_tags) {
+                        if (tag.count > maxCount) maxCount = tag.count;
+                    }
+                    lblValue->setText("X:");
+                    spinValue->setRange(1, maxCount);
+                    spinValue->setValue(qMin(5, maxCount));
+                }
+            });
+
+            QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+            root->addWidget(buttons);
+            connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+            connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+            if (dlg.exec() != QDialog::Accepted) return;
+
+            QStringList out;
+            int inputValue = spinValue->value();
+            if (modeBox->currentIndex() == 0) {
+                int n = qMin(inputValue, m_tags.size());
+                out.reserve(n);
+                for (int i = 0; i < n; ++i) out.append(m_tags[i].text);
+            } else {
+                for (const auto &tag : m_tags) {
+                    if (tag.count >= inputValue) out.append(tag.text);
+                }
+            }
+
+            if (out.isEmpty()) {
+                QMessageBox::information(this, "提示", "没有符合条件的 Tag。");
+                return;
+            }
+            QApplication::clipboard()->setText(out.join(", "));
+        });
+
+        // ================= 新增导出 CSV 功能 =================
+        menu.addSeparator(); // 加上一条分隔线
+        QAction *actExportCsv = menu.addAction("导出 Tags 到 CSV...");
+        connect(actExportCsv, &QAction::triggered, this, [this](){
+            if (m_tags.isEmpty()) {
+                QMessageBox::information(this, "提示", "没有可导出的 Tag。");
+                return;
+            }
+
+            QString fileName = QFileDialog::getSaveFileName(this, "导出 Tags 到 CSV", "", "CSV Files (*.csv)");
+            if (fileName.isEmpty()) return;
+
+            QFile file(fileName);
+            if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                QMessageBox::warning(this, "错误", "无法写入文件。");
+                return;
+            }
+
+            QTextStream out(&file);
+            // 写入 UTF-8 BOM 头，保证生成的 CSV 在 Excel 中双击打开不会乱码
+            out << "\xEF\xBB\xBF";
+            out << "Tag,Count\n";
+
+            for (const auto &tag : m_tags) {
+                QString t = tag.text;
+                // CSV 格式转义：如果内容本身包含逗号、双引号或换行符，必须用双引号包起来，并且内部双引号要双写
+                if (t.contains('"') || t.contains(',') || t.contains('\n')) {
+                    t.replace("\"", "\"\"");
+                    t = "\"" + t + "\"";
+                }
+                out << t << "," << tag.count << "\n";
+            }
+            file.close();
+            QMessageBox::information(this, "成功", "导出成功！");
+        });
+
+        // =====================================================
 
         if (!menu.isEmpty()) menu.exec(event->globalPos());
     }
