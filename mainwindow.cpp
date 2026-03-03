@@ -24,8 +24,11 @@
 #include <QDirIterator>
 #include <QProcess>
 #include <QtEndian>
+#include <QTabWidget>
 
 #include "imageloader.h"
+#include "syncwidget.h"
+#include "promptparserwidget.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -3296,13 +3299,53 @@ void MainWindow::initMenuBar() {
     connect(actSet, &QAction::triggered, this, &MainWindow::onMenuSwitchToSettings);
     bar->addAction(actSet);
 
-    // 关于按钮
+    // 5. 工具页
+    if (!toolsTabWidget) { // 确保只初始化一次
+        toolsTabWidget = new QTabWidget(this);
+
+        // 创建子组件
+        SyncWidget *syncWidget = new SyncWidget(this);
+        PromptParserWidget *parserWidget = new PromptParserWidget(this);
+
+        // 将 MainWindow 的翻译字典传递给解析器
+        parserWidget->setTranslationMap(&translationMap);
+
+        // 添加 Tab
+        toolsTabWidget->addTab(syncWidget, "🔄 图片同步 / Sync");
+        toolsTabWidget->addTab(parserWidget, "📝 提示词解析 / Prompt");
+        toolsTabWidget->setTabPosition(QTabWidget::West);
+
+        toolsTabWidget->setAutoFillBackground(true);
+        QPalette pal = toolsTabWidget->palette();
+        pal.setColor(QPalette::Window, QColor("#1a1f29"));
+        toolsTabWidget->setPalette(pal);
+
+        // 样式
+        toolsTabWidget->setStyleSheet(
+            "QTabBar { background-color: #1a1f29; }"
+            "QTabWidget::pane { border: 1px solid #444; background-color: #1b2838; color: #dcdedf; } "
+            "QTabBar::tab { background: #1a1f29; color: #ccc; padding: 10px; } "
+            "QTabBar::tab:selected { background: #3d4450; color: #fff; font-weight: bold; }"
+            );
+
+        // 核心动作：加入堆栈
+        ui->rootStack->addWidget(toolsTabWidget);
+    }
+
+    QAction *actTools = new QAction("🛠️ 工具箱 / Tools", this);
+    actTools->setShortcut(QKeySequence("Ctrl+3"));
+    connect(actTools, &QAction::triggered, this, [this](){
+        ui->rootStack->setCurrentWidget(toolsTabWidget);
+    });
+    bar->addAction(actTools);
+
+    // 6. 关于按钮
     QAction *btnAbout = new QAction("ℹ️ 关于 / About");
-    btnAbout->setShortcut(QKeySequence("Ctrl+3"));
+    btnAbout->setShortcut(QKeySequence("Ctrl+4"));
     connect(btnAbout, &QAction::triggered, this, &MainWindow::onMenuSwitchToAbout);
     bar->addAction(btnAbout);
 
-    // 5. 强制显示 (防止被 hidden 属性隐藏)
+    // 7. 强制显示 (防止被 hidden 属性隐藏)
     bar->setVisible(true);
 }
 

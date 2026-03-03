@@ -1,0 +1,354 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SyncWidget</class>
+ <widget class="QWidget" name="SyncWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>956</width>
+    <height>657</height>
+   </rect>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">/* 基础背景 */
+QWidget#SyncWidget { background-color: #1b2838; color: #dcdedf; }
+
+/* 分组框样式 */
+QGroupBox { 
+    border: 1px solid #3d4d5d; 
+    margin-top: 20px; 
+    font-weight: bold; 
+    color: #66c0f4; 
+    border-radius: 4px; 
+}
+QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 5px; padding: 0 5px; }
+
+/* === 列表与日志框背景=== */
+QListWidget, QTextEdit#logOutput { 
+    background-color: #1a1f29; 
+    color: #acb2b8;
+    border: 1px solid #1a1f29; 
+    border-radius: 4px;
+    outline: none;
+}
+
+QTextEdit#logOutput { 
+    background-color: #131519; 
+    border: 1px solid #131519; 
+}
+
+QListWidget::viewport, QTextEdit#logOutput::viewport {
+    background-color: transparent;
+    border: none;
+}
+
+QListWidget::item { 
+    background-color: transparent; 
+    border: none; 
+    padding: 0px; 
+    margin: 0px; 
+}
+QListWidget::item:hover, QListWidget::item:selected { 
+    background-color: transparent; 
+    border: none; 
+}
+
+QWidget#rowWidget {
+    background-color: transparent;
+    border-radius: 4px;
+    margin: 2px;
+}
+QWidget#rowWidget:hover {
+    background-color: #212831;
+}
+
+/* 输入框样式 */
+QLineEdit { 
+    background-color: #131519; 
+    border: 1px solid #363c46; 
+    color: #dcdedf; 
+    padding: 4px; 
+    border-radius: 3px; 
+}
+
+/* 按钮样式 */
+QPushButton { 
+    background-color: #2a3f5a; 
+    border-radius: 2px; 
+    color: #66c0f4; 
+    border: none; 
+    padding: 6px 12px;
+    font-weight: bold;
+}
+QPushButton:hover { background-color: #3d5677; color: #ffffff; }
+
+/* 启动/停止按钮特殊颜色 */
+QPushButton#btnStart[running=&quot;true&quot;] { background-color: #3c1919; color: #ff4c4c; border: 1px solid #ff4c4c; }</string>
+  </property>
+  <layout class="QGridLayout" name="gridLayout">
+   <item row="0" column="0">
+    <layout class="QHBoxLayout" name="horizontalLayout">
+     <item>
+      <widget class="QCheckBox" name="chkAutoStart">
+       <property name="text">
+        <string>启动软件时自动开启同步 / Auto Start</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QCheckBox" name="chkWhitelist">
+       <property name="text">
+        <string>白名单验证 / Whitelist</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="label">
+       <property name="text">
+        <string>端口 / Port:</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="editPort">
+       <property name="maximumSize">
+        <size>
+         <width>80</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>12345</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="label_2">
+       <property name="text">
+        <string>AES Key:</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="editAesKey">
+       <property name="echoMode">
+        <enum>QLineEdit::EchoMode::PasswordEchoOnEdit</enum>
+       </property>
+       <property name="placeholderText">
+        <string>需与手机端一致</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacer">
+       <property name="orientation">
+        <enum>Qt::Orientation::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnStart">
+       <property name="text">
+        <string>▶ 启动服务 / Start</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item row="1" column="0">
+    <widget class="Line" name="line">
+     <property name="orientation">
+      <enum>Qt::Orientation::Horizontal</enum>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="0">
+    <widget class="QSplitter" name="splitter">
+     <property name="styleSheet">
+      <string notr="true">QSplitter::handle {
+background-color: #1b2838;
+}</string>
+     </property>
+     <property name="orientation">
+      <enum>Qt::Orientation::Horizontal</enum>
+     </property>
+     <widget class="QWidget" name="layoutWidget">
+      <layout class="QVBoxLayout" name="verticalLayout_2">
+       <item>
+        <widget class="QGroupBox" name="groupBox">
+         <property name="title">
+          <string>同步文件夹列表 / Sync Folders:</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout">
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QListWidget" name="listFolders">
+            <property name="styleSheet">
+             <string notr="true"/>
+            </property>
+            <property name="lineWidth">
+             <number>0</number>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_2">
+         <item>
+          <widget class="QPushButton" name="btnAddFolder">
+           <property name="text">
+            <string>添加文件夹 / Add</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="layoutWidget1">
+      <layout class="QVBoxLayout" name="verticalLayout_3">
+       <item>
+        <widget class="QGroupBox" name="groupBox_2">
+         <property name="title">
+          <string>待审核设备 / Pending Approval:</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout_5">
+          <property name="spacing">
+           <number>0</number>
+          </property>
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QListWidget" name="listDevices"/>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupBox_3">
+         <property name="title">
+          <string>已许可白名单 / Permitted:</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout_6">
+          <property name="spacing">
+           <number>0</number>
+          </property>
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QListWidget" name="listWhitelist"/>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupBox_4">
+         <property name="title">
+          <string>已连接设备 / Connected:</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout_7">
+          <property name="spacing">
+           <number>0</number>
+          </property>
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QListWidget" name="listActive"/>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="layoutWidget2">
+      <layout class="QVBoxLayout" name="verticalLayout_4">
+       <item>
+        <widget class="QGroupBox" name="groupBox_5">
+         <property name="title">
+          <string>服务日志 / Log:</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout_8">
+          <property name="spacing">
+           <number>0</number>
+          </property>
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QTextEdit" name="logOutput">
+            <property name="readOnly">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

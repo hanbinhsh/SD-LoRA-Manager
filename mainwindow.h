@@ -55,7 +55,7 @@ const int ROLE_USER_IMAGE_TAGS      = Qt::UserRole + 34;
 // 树状图占位符标记
 const int ROLE_IS_PLACEHOLDER       = Qt::UserRole + 40;
 
-const QString CURRENT_VERSION = "1.2.4";
+const QString CURRENT_VERSION = "1.3.0";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
@@ -182,6 +182,7 @@ private slots:
 private:
     Ui::MainWindow *ui;
     QSettings *settings;
+    QTabWidget *toolsTabWidget = nullptr;
     QNetworkAccessManager *netManager;
     QPixmap currentHeroPixmap;
     QString currentHeroPath;

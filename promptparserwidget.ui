@@ -1,0 +1,310 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PromptParserWidget</class>
+ <widget class="QWidget" name="PromptParserWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1100</width>
+    <height>750</height>
+   </rect>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">/* === 全局背景 (匹配 Mainwindow) === */
+QWidget#PromptParserWidget { 
+    background-color: #1b2838; 
+    color: #dcdedf; 
+}
+
+/* === 标题样式 === */
+QLabel { 
+    color: #8c96a0; 
+    font-weight: bold; 
+    font-size: 12px; 
+}
+
+/* === 核心：统一文本框与滚动区域样式 (复用 Mainwindow QTextBrowser 样式) === */
+QTextBrowser, QScrollArea { 
+    background-color: #16191e; 
+    border: 1px solid #31363d; 
+    border-radius: 3px; 
+    color: #acb2b8; 
+    padding: 2px; /* 给内容留一点呼吸空间，避免滚动条压文字 */
+}
+
+/* === 修复圆角白线问题 === */
+/* 将 ScrollArea 和 TextBrowser 的视口背景设为透明，
+   这样只会显示外层带有圆角的背景颜色，消除直角瑕疵 */
+QScrollArea::viewport, QTextBrowser::viewport {
+    background-color: transparent;
+    border: none;
+}
+
+/* Tag 容器内部背景也设为透明 */
+QWidget#scrollAreaWidgetContentsPos, QWidget#scrollAreaWidgetContentsNeg {
+    background-color: transparent;
+}
+
+/* === 图片上传框 === */
+QLabel#lblImage {
+    background-color: #16191e;
+    border: 2px dashed #363c46; /* 边框颜色加深一点 */
+    border-radius: 8px;
+    color: #5a6f8a;
+    font-size: 16px;
+}
+QLabel#lblImage:hover {
+    border: 2px dashed #66c0f4;
+    background-color: #1e252f;
+    color: #66c0f4;
+}
+
+/* === 翻译按钮 (复用 Mainwindow 功能按钮样式) === */
+QPushButton#btnTranslate {
+    background-color: #2a3f5a; 
+    border-radius: 2px; 
+    color: #66c0f4; 
+    border: none; 
+    font-weight: bold;
+}
+QPushButton#btnTranslate:hover { 
+    background-color: #3d5677; 
+    color: #ffffff; 
+}
+QPushButton#btnTranslate:checked { 
+    background-color: #66c0f4; 
+    color: #000000; 
+}
+</string>
+  </property>
+  <layout class="QHBoxLayout" name="horizontalLayout" stretch="1,2">
+   <property name="spacing">
+    <number>20</number>
+   </property>
+   <property name="leftMargin">
+    <number>30</number>
+   </property>
+   <property name="topMargin">
+    <number>20</number>
+   </property>
+   <property name="rightMargin">
+    <number>30</number>
+   </property>
+   <property name="bottomMargin">
+    <number>30</number>
+   </property>
+   <!-- 左侧：图片 + 参数 -->
+   <item>
+    <layout class="QVBoxLayout" name="layoutLeft">
+     <property name="spacing">
+      <number>10</number>
+     </property>
+     <item>
+      <widget class="QLabel" name="lblImage">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>350</width>
+         <height>350</height>
+        </size>
+       </property>
+       <property name="cursor">
+        <cursorShape>PointingHandCursor</cursorShape>
+       </property>
+       <property name="text">
+        <string>点击或拖拽图片到此处
+Click or Drag Image Here</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="lblParamsTitle">
+       <property name="text">
+        <string>生成参数 / Generation Parameters:</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QTextBrowser" name="txtParams">
+       <property name="maximumSize">
+        <size>
+         <width>16777215</width>
+         <height>120</height>
+        </size>
+       </property>
+       <property name="styleSheet">
+        <string>font-family: Consolas, monospace; padding: 8px;</string>
+       </property>
+       <property name="verticalScrollBarPolicy">
+        <enum>Qt::ScrollBarAsNeeded</enum>
+       </property>
+       <property name="placeholderText">
+        <string>Sampler, Steps, CFG, Seed...</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <!-- 右侧：Tag 区域 -->
+   <item>
+    <layout class="QVBoxLayout" name="layoutRight" stretch="0,1,0,1">
+     <property name="spacing">
+      <number>10</number>
+     </property>
+     <!-- 正向标题行 (含按钮) -->
+     <item>
+      <layout class="QHBoxLayout" name="horizontalLayout_2">
+       <property name="spacing">
+        <number>10</number>
+       </property>
+       <item>
+        <widget class="QLabel" name="lblPosTitle">
+         <property name="text">
+          <string>正面提示词 / Positive Tags:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="horizontalSpacer">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>40</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnTranslate">
+         <property name="minimumSize">
+          <size>
+           <width>28</width>
+           <height>28</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>28</width>
+           <height>28</height>
+          </size>
+         </property>
+         <property name="cursor">
+          <cursorShape>PointingHandCursor</cursorShape>
+         </property>
+         <property name="toolTip">
+          <string>显示/隐藏 Tag 翻译</string>
+         </property>
+         <property name="text">
+          <string>文</string>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <widget class="QScrollArea" name="scrollAreaPos">
+       <property name="widgetResizable">
+        <bool>true</bool>
+       </property>
+       <property name="verticalScrollBarPolicy">
+        <enum>Qt::ScrollBarAsNeeded</enum>
+       </property>
+       <widget class="QWidget" name="scrollAreaWidgetContentsPos">
+        <property name="geometry">
+         <rect>
+          <x>0</x>
+          <y>0</y>
+          <width>665</width>
+          <height>261</height>
+         </rect>
+        </property>
+        <layout class="QVBoxLayout" name="layoutTagsPos">
+         <property name="spacing">
+          <number>0</number>
+         </property>
+         <property name="leftMargin">
+          <number>5</number>
+         </property>
+         <property name="topMargin">
+          <number>5</number>
+         </property>
+         <property name="rightMargin">
+          <number>5</number>
+         </property>
+         <property name="bottomMargin">
+          <number>5</number>
+         </property>
+        </layout>
+       </widget>
+      </widget>
+     </item>
+     <!-- 负向区域 -->
+     <item>
+      <widget class="QLabel" name="lblNegTitle">
+       <property name="text">
+        <string>负面提示词 / Negative Tags:</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QScrollArea" name="scrollAreaNeg">
+       <property name="widgetResizable">
+        <bool>true</bool>
+       </property>
+       <property name="verticalScrollBarPolicy">
+        <enum>Qt::ScrollBarAsNeeded</enum>
+       </property>
+       <widget class="QWidget" name="scrollAreaWidgetContentsNeg">
+        <property name="geometry">
+         <rect>
+          <x>0</x>
+          <y>0</y>
+          <width>665</width>
+          <height>260</height>
+         </rect>
+        </property>
+        <layout class="QVBoxLayout" name="layoutTagsNeg">
+         <property name="spacing">
+          <number>0</number>
+         </property>
+         <property name="leftMargin">
+          <number>5</number>
+         </property>
+         <property name="topMargin">
+          <number>5</number>
+         </property>
+         <property name="rightMargin">
+          <number>5</number>
+         </property>
+         <property name="bottomMargin">
+          <number>5</number>
+         </property>
+        </layout>
+       </widget>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

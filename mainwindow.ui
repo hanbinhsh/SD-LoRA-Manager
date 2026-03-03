@@ -176,7 +176,7 @@ QPushButton[class=&quot;collectionBtn&quot;]:checked {
 
 QWidget#pageSettings { background-color: #1b2838; color: #dcdedf; }
 QGroupBox { border: 1px solid #3d4d5d; margin-top: 20px; font-weight: bold; color: #66c0f4; border-radius: 4px; }
-QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 10px; padding: 0 5px; }
+QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 5px; padding: 0 5px; }
 #editLoraPath, #editGalleryPath, #editTransPath { background-color: #16191e; border: 1px solid #363c46; padding: 5px; color: #fff; border-radius: 3px; }
 #btnBrowseLora, #btnBrowseGallery, #btnBrowseTrans, #btnResetUA { background-color: #2a3f5a; color: #fff; border: none; padding: 6px 12px; border-radius: 3px; }
 #btnBrowseLora:hove, #btnBrowseGallery:hover, #btnBrowseTrans:hover, #btnResetUA:hover { background-color: #3d5677; }
@@ -606,7 +606,7 @@ QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; lef
           </widget>
           <widget class="QStackedWidget" name="mainStack">
            <property name="currentIndex">
-            <number>1</number>
+            <number>0</number>
            </property>
            <widget class="QWidget" name="pageHome">
             <layout class="QVBoxLayout" name="verticalLayout_Home">
@@ -654,7 +654,7 @@ QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; lef
                   <x>0</x>
                   <y>0</y>
                   <width>999</width>
-                  <height>110</height>
+                  <height>112</height>
                  </rect>
                 </property>
                 <layout class="QHBoxLayout" name="layoutCollections">
@@ -783,8 +783,8 @@ New</string>
                  <rect>
                   <x>0</x>
                   <y>0</y>
-                  <width>989</width>
-                  <height>1038</height>
+                  <width>982</width>
+                  <height>1058</height>
                  </rect>
                 </property>
                 <property name="minimumSize">
@@ -1070,7 +1070,7 @@ New</string>
                               <rect>
                                <x>0</x>
                                <y>0</y>
-                               <width>663</width>
+                               <width>657</width>
                                <height>165</height>
                               </rect>
                              </property>
@@ -1575,8 +1575,8 @@ Hash: ...</string>
                                 <rect>
                                  <x>0</x>
                                  <y>0</y>
-                                 <width>278</width>
-                                 <height>78</height>
+                                 <width>434</width>
+                                 <height>220</height>
                                 </rect>
                                </property>
                               </widget>
@@ -2335,7 +2335,7 @@ Hash: ...</string>
      <x>0</x>
      <y>0</y>
      <width>1300</width>
-     <height>17</height>
+     <height>24</height>
     </rect>
    </property>
   </widget>
