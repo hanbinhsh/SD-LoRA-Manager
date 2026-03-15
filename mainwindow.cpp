@@ -21,6 +21,9 @@
 #include <QGraphicsScene>
 #include <QGraphicsPixmapItem>
 #include <QGraphicsBlurEffect>
+#include <QTextDocument>
+#include <QRegularExpression>
+#include <QImage>
 #include <QDirIterator>
 #include <QProcess>
 #include <QtEndian>
@@ -186,6 +189,14 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->btnOpenUrl, &QPushButton::clicked, this, &MainWindow::onOpenUrlClicked);
     connect(ui->btnScanLocal, &QPushButton::clicked, this, &MainWindow::onScanLocalClicked);
     connect(ui->btnForceUpdate, &QPushButton::clicked, this, &MainWindow::onForceUpdateClicked);
+    connect(ui->btnLocalMetaSave, &QPushButton::clicked, this, &MainWindow::onLocalMetaSaveClicked);
+    connect(ui->btnLocalMetaReset, &QPushButton::clicked, this, &MainWindow::onLocalMetaResetClicked);
+    connect(ui->btnEditMeta, &QPushButton::clicked, this, &MainWindow::onEditMetaTabClicked);
+    connect(ui->listEditImages, &QListWidget::currentRowChanged, this, &MainWindow::onEditImageSelectionChanged);
+    connect(ui->btnEditAddImage, &QPushButton::clicked, this, &MainWindow::onEditAddImageClicked);
+    connect(ui->btnEditReplaceImage, &QPushButton::clicked, this, &MainWindow::onEditReplaceImageClicked);
+    connect(ui->btnEditRemoveImage, &QPushButton::clicked, this, &MainWindow::onEditRemoveImageClicked);
+    connect(ui->btnEditSetCover, &QPushButton::clicked, this, &MainWindow::onEditSetCoverClicked);
     connect(ui->searchEdit, &QLineEdit::textChanged, this, &MainWindow::onSearchTextChanged);
     // 主页与画廊按钮
     connect(ui->btnHome, &QPushButton::clicked, this, &MainWindow::onHomeButtonClicked);
@@ -304,6 +315,15 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     loadUserGalleryCache();
+}
+
+QString forceWrap(const QString &text) { // 强制加入零宽空格换行
+    QString result;
+    for (int i = 0; i < text.length(); ++i) {
+        result += text[i];
+        result += QChar(0x200B); // 插入零宽空格
+    }
+    return result;
 }
 
 MainWindow::~MainWindow()
@@ -1026,6 +1046,8 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
         addBadge(QString("⇩ %1").arg(dlStr));
     }
     if (meta.thumbsUpCount > 0) addBadge(QString("👍 %1").arg(meta.thumbsUpCount));
+    if (meta.isLocalOnly) addBadge("LOCAL");
+    if (meta.isLocalEdited) addBadge("EDITED", true);
 
     ((QHBoxLayout*)ui->badgesFrame->layout())->addStretch(); // 左对齐
 
@@ -1112,17 +1134,27 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
             QString rawPath = QDir(modelDir).filePath(currentStandardBaseName + suffix);
             QString strictLocalPath = QFileInfo(rawPath).absoluteFilePath();
 
+            // 兼容：仅元数据时，如果封面路径存在但严格路径不存在，回退到 meta.previewPath
+            QString effectivePath = strictLocalPath;
+            if (i == 0 && !QFile::exists(effectivePath) && !meta.previewPath.isEmpty() && QFile::exists(meta.previewPath)) {
+                effectivePath = QFileInfo(meta.previewPath).absoluteFilePath();
+            }
+
             // 绑定标准化后的路径
-            thumbBtn->setProperty("fullImagePath", strictLocalPath);
+            thumbBtn->setProperty("fullImagePath", effectivePath);
             thumbBtn->installEventFilter(this);
 
-            if (QFile::exists(strictLocalPath)) {
+            if (QFile::exists(effectivePath)) {
                 thumbBtn->setText("Loading...");
-                IconLoaderTask *task = new IconLoaderTask(strictLocalPath, 100, 0, this, strictLocalPath, true);
+                IconLoaderTask *task = new IconLoaderTask(effectivePath, 100, 0, this, effectivePath, true);
                 task->setAutoDelete(true);
                 threadPool->start(task);
             } else {
-                if (i == 0) {
+                if (m_skipPreviewSync) {
+                    thumbBtn->setText("Skipped");
+                } else if (img.url.isEmpty()) {
+                    thumbBtn->setText("Missing");
+                } else if (i == 0) {
                     // 封面图正在下载
                     thumbBtn->setText("Downloading...");
                 } else {
@@ -1159,6 +1191,8 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
                                  .arg(meta.fileSizeMB, 0, 'f', 1)
                                  .arg(meta.sha256.left(10) + "...")
                                  .arg(addedStr));
+
+    updateLocalEditorFromMeta(meta);
 
     QTimer::singleShot(0, this, [this, meta](){
         ui->scrollAreaWidgetContents->adjustSize();
@@ -1225,7 +1259,11 @@ void MainWindow::onGalleryImageClicked(int index)
 void MainWindow::addBadge(QString text, bool isRed)
 {
     QLabel *lbl = new QLabel(text);
-    lbl->setProperty("class", isRed ? "tagRed" : "tag");
+    if (text == "LOCAL") {
+        lbl->setProperty("class", "tagGreen");
+    } else {
+        lbl->setProperty("class", isRed ? "tagRed" : "tag");
+    }
     ui->badgesFrame->layout()->addWidget(lbl);
 }
 
@@ -1264,6 +1302,301 @@ void MainWindow::clearDetailView()
     clearLayout(ui->badgesFrame->layout());
     clearLayout(ui->layoutTriggerStack);
     clearLayout(ui->layoutGallery);
+
+    // ui->widgetLocalMeta->setEnabled(false);
+    ui->groupEditImages->setEnabled(false);
+    ui->groupEditMeta->setEnabled(false);
+    ui->editLocalModelName->clear();
+    ui->editLocalVersion->clear();
+    ui->editLocalBaseModel->clear();
+    ui->editLocalType->clear();
+    ui->editLocalModelUrl->clear();
+    ui->editLocalCreatedAt->clear();
+    ui->editLocalDownloads->clear();
+    ui->editLocalLikes->clear();
+    ui->chkLocalNSFW->setChecked(false);
+    ui->textLocalTriggers->clear();
+    ui->textLocalDescription->clear();
+    ui->lblLocalMetaStatus->setText("状态: -");
+    ui->listEditImages->clear();
+    ui->lblEditImagePath->setText("文件: -");
+    ui->lblEditImageSize->setText("尺寸: -");
+    ui->textEditImgPrompt->clear();
+    ui->textEditImgNegPrompt->clear();
+    ui->editImgSampler->clear();
+    ui->editImgSteps->clear();
+    ui->editImgCfg->clear();
+    ui->editImgSeed->clear();
+    ui->spinImgNsfw->setValue(1);
+    currentEditImageIndex = -1;
+}
+
+void MainWindow::updateLocalEditorFromMeta(const ModelMeta &meta)
+{
+    // ui->widgetLocalMeta->setEnabled(true);
+    ui->groupEditImages->setEnabled(true);
+    ui->groupEditMeta->setEnabled(true);
+
+    QString modelName = meta.modelName.isEmpty() ? meta.name : meta.modelName;
+    ui->editLocalModelName->setText(modelName);
+    ui->editLocalVersion->setText(meta.versionName);
+    ui->editLocalBaseModel->setText(meta.baseModel);
+    ui->editLocalType->setText(meta.type);
+    ui->editLocalModelUrl->setText(meta.modelUrl);
+    ui->editLocalCreatedAt->setText(meta.createdAt);
+    ui->editLocalDownloads->setText(QString::number(meta.downloadCount));
+    ui->editLocalLikes->setText(QString::number(meta.thumbsUpCount));
+    ui->chkLocalNSFW->setChecked(meta.nsfw);
+    ui->textLocalTriggers->setPlainText(meta.trainedWordsGroups.join("\n"));
+
+    QString descPlain = meta.description;
+    if (!descPlain.isEmpty()) {
+        QTextDocument doc;
+        doc.setHtml(descPlain);
+        descPlain = doc.toPlainText();
+    }
+    ui->textLocalDescription->setPlainText(descPlain);
+
+    setLocalMetaStatus(meta);
+    refreshEditImages(meta);
+}
+
+void MainWindow::setLocalMetaStatus(const ModelMeta &meta)
+{
+    QString status;
+    QString color = "#8c96a0";
+    if (meta.isLocalOnly && meta.isLocalEdited) {
+        status = "状态: 本地模型 (已编辑)";
+        color = "#ffcc00";
+    } else if (meta.isLocalEdited) {
+        status = "状态: 已编辑 (本地元数据)";
+        color = "#ffcc00";
+    } else if (meta.isLocalOnly) {
+        status = "状态: 本地模型";
+        color = "#66c0f4";
+    } else {
+        status = "状态: Civitai 元数据";
+    }
+    ui->lblLocalMetaStatus->setText(status);
+    ui->lblLocalMetaStatus->setStyleSheet(QString("color: %1;").arg(color));
+}
+
+QString MainWindow::currentEditBaseName() const
+{
+    if (QListWidgetItem *item = ui->modelList->currentItem()) {
+        QString baseName = item->data(ROLE_MODEL_NAME).toString();
+        if (!baseName.isEmpty()) return baseName;
+        return item->text();
+    }
+    if (!currentMeta.filePath.isEmpty()) {
+        return QFileInfo(currentMeta.filePath).completeBaseName();
+    }
+    return QString();
+}
+
+QString MainWindow::currentEditModelDir() const
+{
+    if (QListWidgetItem *item = ui->modelList->currentItem()) {
+        QString filePath = item->data(ROLE_FILE_PATH).toString();
+        if (!filePath.isEmpty()) return QFileInfo(filePath).absolutePath();
+    }
+    if (!currentMeta.filePath.isEmpty()) {
+        return QFileInfo(currentMeta.filePath).absolutePath();
+    }
+    return currentLoraPath;
+}
+
+QString MainWindow::editPreviewPathForIndex(int index) const
+{
+    QString modelDir = currentEditModelDir();
+    QString baseName = currentEditBaseName();
+    if (modelDir.isEmpty() || baseName.isEmpty()) return QString();
+    return findLocalPreviewPath(modelDir, baseName, currentMeta.fileNameServer, index);
+}
+
+bool MainWindow::saveImageToPreviewPath(const QString &srcPath, const QString &destPath, int &outW, int &outH)
+{
+    outW = 0;
+    outH = 0;
+    if (srcPath.isEmpty() || destPath.isEmpty()) return false;
+
+    QImage img(srcPath);
+    if (img.isNull()) return false;
+
+    outW = img.width();
+    outH = img.height();
+
+    QFileInfo destInfo(destPath);
+    QDir().mkpath(destInfo.absolutePath());
+    if (QFile::exists(destPath)) QFile::remove(destPath);
+    return img.save(destPath, "PNG");
+}
+
+void MainWindow::applyParametersToImage(const QString &params, ImageInfo &img)
+{
+    if (params.isEmpty()) return;
+
+    QRegularExpression reSteps("Steps:\\s*(\\d+)", QRegularExpression::CaseInsensitiveOption);
+    QRegularExpression reSampler("Sampler:\\s*([^,]+)", QRegularExpression::CaseInsensitiveOption);
+    QRegularExpression reCfg("CFG\\s*scale:\\s*([0-9.]+)", QRegularExpression::CaseInsensitiveOption);
+    QRegularExpression reCfgAlt("CFG:\\s*([0-9.]+)", QRegularExpression::CaseInsensitiveOption);
+    QRegularExpression reSeed("Seed:\\s*([-0-9]+)", QRegularExpression::CaseInsensitiveOption);
+
+    QRegularExpressionMatch m;
+    m = reSteps.match(params);
+    if (m.hasMatch()) img.steps = m.captured(1).trimmed();
+    m = reSampler.match(params);
+    if (m.hasMatch()) img.sampler = m.captured(1).trimmed();
+    m = reCfg.match(params);
+    if (m.hasMatch()) img.cfgScale = m.captured(1).trimmed();
+    else {
+        m = reCfgAlt.match(params);
+        if (m.hasMatch()) img.cfgScale = m.captured(1).trimmed();
+    }
+    m = reSeed.match(params);
+    if (m.hasMatch()) img.seed = m.captured(1).trimmed();
+}
+
+void MainWindow::applyImageMetadataFromFile(const QString &srcPath, ImageInfo &img)
+{
+    if (srcPath.isEmpty()) return;
+    UserImageInfo info;
+    parsePngInfo(srcPath, info);
+    if (!info.prompt.isEmpty()) img.prompt = info.prompt;
+    if (!info.negativePrompt.isEmpty() && info.negativePrompt != "(empty)") {
+        img.negativePrompt = info.negativePrompt;
+    }
+    if (!info.parameters.isEmpty()) {
+        applyParametersToImage(info.parameters, img);
+    }
+}
+
+void MainWindow::refreshEditImages(const ModelMeta &meta)
+{
+    ui->listEditImages->clear();
+    currentEditImageIndex = -1;
+
+    QString baseName = currentEditBaseName();
+    QString modelDir = currentEditModelDir();
+
+    QList<ImageInfo> images = meta.images;
+    if (images.isEmpty()) {
+        QString coverPath = findLocalPreviewPath(modelDir, baseName, meta.fileNameServer, 0);
+        if (QFile::exists(coverPath)) {
+            QImageReader reader(coverPath);
+            ImageInfo img;
+            img.width = reader.size().width();
+            img.height = reader.size().height();
+            img.nsfwLevel = 1;
+            images.append(img);
+            currentMeta.images = images;
+        }
+    }
+
+    for (int i = 0; i < images.size(); ++i) {
+        QString title = (i == 0) ? "封面 / Cover" : QString("预览 %1").arg(i);
+        QListWidgetItem *item = new QListWidgetItem(title);
+        item->setData(Qt::UserRole, i);
+
+        QString path = findLocalPreviewPath(modelDir, baseName, meta.fileNameServer, i);
+        if (QFile::exists(path)) {
+            item->setIcon(getFitIcon(path));
+        } else if (i < meta.images.size() && !meta.images[i].url.isEmpty()) {
+            item->setText(title + " (Remote)");
+        } else {
+            item->setText(title + " (Missing)");
+        }
+
+        ui->listEditImages->addItem(item);
+    }
+
+    if (ui->listEditImages->count() > 0) {
+        ui->listEditImages->setCurrentRow(0);
+    } else {
+        ui->lblEditImagePath->setText("文件: -");
+        ui->lblEditImageSize->setText("尺寸: -");
+        ui->textEditImgPrompt->clear();
+        ui->textEditImgNegPrompt->clear();
+        ui->editImgSampler->clear();
+        ui->editImgSteps->clear();
+        ui->editImgCfg->clear();
+        ui->editImgSeed->clear();
+        ui->spinImgNsfw->setValue(1);
+    }
+}
+
+void MainWindow::commitEditImageFields()
+{
+    if (currentEditImageIndex < 0 || currentEditImageIndex >= currentMeta.images.size()) return;
+    ImageInfo &img = currentMeta.images[currentEditImageIndex];
+
+    img.prompt = ui->textEditImgPrompt->toPlainText().trimmed();
+    img.negativePrompt = ui->textEditImgNegPrompt->toPlainText().trimmed();
+    img.sampler = ui->editImgSampler->text().trimmed();
+    img.steps = ui->editImgSteps->text().trimmed();
+    img.cfgScale = ui->editImgCfg->text().trimmed();
+    img.seed = ui->editImgSeed->text().trimmed();
+    img.nsfwLevel = ui->spinImgNsfw->value();
+    img.nsfw = (img.nsfwLevel > 1);
+}
+
+void MainWindow::loadEditImageFields(int index)
+{
+    if (index < 0 || index >= currentMeta.images.size()) return;
+    const ImageInfo &img = currentMeta.images[index];
+
+    QString path = editPreviewPathForIndex(index);
+    ui->lblEditImagePath->setText(
+        path.isEmpty()
+        ? "文件: -"
+        : "文件: " + forceWrap(path)
+    );
+    if (img.width > 0 && img.height > 0) {
+        ui->lblEditImageSize->setText(QString("尺寸: %1 x %2").arg(img.width).arg(img.height));
+    } else {
+        ui->lblEditImageSize->setText("尺寸: -");
+    }
+
+    ui->textEditImgPrompt->setPlainText(img.prompt);
+    ui->textEditImgNegPrompt->setPlainText(img.negativePrompt);
+    ui->editImgSampler->setText(img.sampler);
+    ui->editImgSteps->setText(img.steps);
+    ui->editImgCfg->setText(img.cfgScale);
+    ui->editImgSeed->setText(img.seed);
+    ui->spinImgNsfw->setValue(img.nsfwLevel > 0 ? img.nsfwLevel : 1);
+}
+
+void MainWindow::onEditImageSelectionChanged(int row)
+{
+    if (row == currentEditImageIndex) return;
+    commitEditImageFields();
+    currentEditImageIndex = row;
+    loadEditImageFields(row);
+}
+
+int MainWindow::countLocalEditedModels() const
+{
+    int count = 0;
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (item->data(ROLE_LOCAL_EDITED).toBool()) count++;
+    }
+    return count;
+}
+
+bool MainWindow::confirmLocalEditOverwrite(QListWidgetItem *item)
+{
+    if (!item) return true;
+    if (!item->data(ROLE_LOCAL_EDITED).toBool()) return true;
+
+    QMessageBox::StandardButton reply = QMessageBox::warning(
+        this,
+        "本地元数据提示",
+        "当前模型存在本地/已编辑元数据，继续同步将覆盖本地修改。\n是否继续？",
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No
+    );
+    return reply == QMessageBox::Yes;
 }
 
 // ---------------------------------------------------------
@@ -1279,6 +1612,11 @@ void MainWindow::onActionOpenFolderTriggered() {
 }
 
 void MainWindow::onScanLocalClicked() {
+    int localCount = countLocalEditedModels();
+    if (localCount > 0) {
+        QMessageBox::information(this, "提示",
+                                 QString("检测到 %1 个本地/已编辑模型。\n刷新不会删除本地元数据，但后续同步可能覆盖本地修改。").arg(localCount));
+    }
     if (!currentLoraPath.isEmpty()) scanModels(currentLoraPath);
     executeSort();
 }
@@ -1294,6 +1632,7 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
     ui->btnFavorite->setVisible(true);
     ui->btnShowUserGallery->setVisible(true);
     ui->btnShowUserGallery->setEnabled(true);
+    ui->btnEditMeta->setVisible(true);
 
     QString filePath = item->data(ROLE_FILE_PATH).toString();
     QString modelDir = QFileInfo(filePath).absolutePath();
@@ -1321,9 +1660,12 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
     QString baseName = item->data(ROLE_MODEL_NAME).toString();
 
     ModelMeta meta;
+    meta.modelName = baseName;
+    meta.versionName = "";
     meta.name = baseName;
     meta.filePath = filePath;
     meta.previewPath = previewPath;
+    meta.fileName = QFileInfo(filePath).fileName();
 
     // 2. 尝试读取本地 JSON
     bool hasLocalData = readLocalJson(modelDir, baseName, meta);
@@ -1333,6 +1675,11 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
         currentMeta = meta;
         updateDetailView(meta);
     } else {
+        meta.isLocalOnly = true;
+        meta.isLocalEdited = false;
+        currentMeta = meta;
+        updateLocalEditorFromMeta(meta);
+
         // === 情况 B: 无本地数据，需要计算 Hash 然后联网 ===
 
         // UI 状态反馈：显示“正在分析模型...”
@@ -1369,20 +1716,447 @@ void MainWindow::onForceUpdateClicked() {
     QListWidgetItem *item = ui->modelList->currentItem();
     if (!item) return;
 
-    ui->statusbar->showMessage("正在连接 Civitai 获取元数据...");
+    if (!confirmLocalEditOverwrite(item)) return;
+    int localCount = countLocalEditedModels();
+    if (!item->data(ROLE_LOCAL_EDITED).toBool() && localCount > 0) {
+        QMessageBox::information(this, "提示",
+                                 QString("检测到 %1 个本地/已编辑模型。\n同步其它模型的元数据不会影响它们，但强制更新时请注意覆盖风险。").arg(localCount));
+    }
+
     ui->btnForceUpdate->setEnabled(false);
 
-    QString baseName = item->text();
+    QString baseName = item->data(ROLE_MODEL_NAME).toString();
+    if (baseName.isEmpty()) baseName = item->text();
     QString filePath = item->data(ROLE_FILE_PATH).toString();
+
+    QString modelDir = ui->modelList->property("current_model_dir").toString();
+    bool hasRemotePreview = false;
+    if (!modelDir.isEmpty()) {
+        QString jsonPath = QDir(modelDir).filePath(baseName + ".json");
+        QFile jsonFile(jsonPath);
+        if (jsonFile.exists() && jsonFile.open(QIODevice::ReadOnly)) {
+            QJsonDocument doc = QJsonDocument::fromJson(jsonFile.readAll());
+            QJsonObject root = doc.object();
+            QJsonArray images = root["images"].toArray();
+            if (!images.isEmpty()) {
+                QString url = images[0].toObject()["url"].toString();
+                if (!url.isEmpty()) hasRemotePreview = true;
+            }
+            jsonFile.close();
+        }
+    }
+    if (!hasRemotePreview && !currentMeta.images.isEmpty() && !currentMeta.images[0].url.isEmpty()) {
+        hasRemotePreview = true;
+    }
+    QString previewPath = findLocalPreviewPath(modelDir, baseName, currentMeta.fileNameServer, 0);
+    bool hasLocalPreview = !previewPath.isEmpty() && QFile::exists(previewPath);
+    if (hasRemotePreview && hasLocalPreview) {
+        QMessageBox msg(this);
+        msg.setWindowTitle("预览图同步");
+        msg.setText("检测到已同步的 Civitai 预览图，是否重新同步预览图？");
+        QPushButton *btnYes = msg.addButton("是", QMessageBox::YesRole);
+        QPushButton *btnMetaOnly = msg.addButton("仅元数据", QMessageBox::AcceptRole);
+        QPushButton *btnCancel = msg.addButton("取消同步", QMessageBox::RejectRole);
+        msg.setDefaultButton(btnMetaOnly);
+        msg.exec();
+
+        if (msg.clickedButton() == btnCancel) {
+            m_forceResyncPreview = false;
+            m_skipPreviewSync = false;
+            ui->btnForceUpdate->setEnabled(true);
+            ui->statusbar->showMessage("已取消同步", 2000);
+            return;
+        }
+
+        if (msg.clickedButton() == btnYes) {
+            m_forceResyncPreview = true;
+            m_skipPreviewSync = false;
+        } else if (msg.clickedButton() == btnMetaOnly) {
+            m_forceResyncPreview = false;
+            m_skipPreviewSync = true;
+        } else {
+            m_forceResyncPreview = false;
+            m_skipPreviewSync = false;
+        }
+    } else {
+        m_forceResyncPreview = false;
+        m_skipPreviewSync = false;
+    }
 
     QString hash = calculateFileHash(filePath);
     if (hash.isEmpty()) {
         ui->statusbar->showMessage("错误: 无法计算文件哈希");
         ui->btnForceUpdate->setEnabled(true);
+        m_forceResyncPreview = false;
+        m_skipPreviewSync = false;
         return;
     }
+    ui->statusbar->showMessage("正在连接 Civitai 获取元数据...");
     ui->modelList->setProperty("current_processing_file", baseName);
     fetchModelInfoFromCivitai(hash);
+}
+
+void MainWindow::onLocalMetaSaveClicked()
+{
+    QListWidgetItem *item = ui->modelList->currentItem();
+    if (!item) {
+        QMessageBox::information(this, "提示", "请先选择一个模型。");
+        return;
+    }
+
+    QString baseName = item->data(ROLE_MODEL_NAME).toString();
+    QString filePath = item->data(ROLE_FILE_PATH).toString();
+    if (baseName.isEmpty() || filePath.isEmpty()) return;
+
+    QString modelDir = QFileInfo(filePath).absolutePath();
+    QString jsonPath = QDir(modelDir).filePath(baseName + ".json");
+
+    QJsonObject root;
+    QFile jsonFile(jsonPath);
+    if (jsonFile.exists() && jsonFile.open(QIODevice::ReadOnly)) {
+        QJsonDocument doc = QJsonDocument::fromJson(jsonFile.readAll());
+        root = doc.object();
+        jsonFile.close();
+    }
+
+    QString modelName = ui->editLocalModelName->text().trimmed();
+    if (modelName.isEmpty()) modelName = baseName;
+    QString versionName = ui->editLocalVersion->text().trimmed();
+    QString baseModel = ui->editLocalBaseModel->text().trimmed();
+    QString type = ui->editLocalType->text().trimmed();
+    QString modelUrl = ui->editLocalModelUrl->text().trimmed();
+    QString createdAt = ui->editLocalCreatedAt->text().trimmed();
+    bool nsfw = ui->chkLocalNSFW->isChecked();
+    QString description = ui->textLocalDescription->toPlainText().trimmed();
+    bool okDownloads = false;
+    int downloads = ui->editLocalDownloads->text().trimmed().toInt(&okDownloads);
+    if (!okDownloads) downloads = 0;
+    bool okLikes = false;
+    int likes = ui->editLocalLikes->text().trimmed().toInt(&okLikes);
+    if (!okLikes) likes = 0;
+
+    QJsonObject modelObj = root["model"].toObject();
+    modelObj["name"] = modelName;
+    if (!type.isEmpty()) modelObj["type"] = type;
+    else modelObj.remove("type");
+    modelObj["nsfw"] = nsfw;
+    root["model"] = modelObj;
+
+    root["name"] = versionName;
+    if (!baseModel.isEmpty()) root["baseModel"] = baseModel;
+    else root.remove("baseModel");
+    root["description"] = description;
+
+    QStringList triggers;
+    const QStringList lines = ui->textLocalTriggers->toPlainText().split('\n', Qt::SkipEmptyParts);
+    for (QString line : lines) {
+        line = line.trimmed();
+        if (line.endsWith(",")) line.chop(1);
+        if (!line.isEmpty()) triggers.append(line);
+    }
+    QJsonArray twArray;
+    for (const QString &w : triggers) twArray.append(w);
+    root["trainedWords"] = twArray;
+
+    root["localEdited"] = true;
+    root["localEditedAt"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+
+    int modelId = root["modelId"].toInt();
+    if (!modelUrl.isEmpty()) {
+        root["modelUrl"] = modelUrl;
+        QRegularExpression re("/models/(\\d+)");
+        QRegularExpressionMatch match = re.match(modelUrl);
+        if (match.hasMatch()) {
+            modelId = match.captured(1).toInt();
+        }
+    } else {
+        root.remove("modelUrl");
+        modelId = 0;
+    }
+    root["modelId"] = modelId;
+
+    bool localOnly = root["localOnly"].toBool(false);
+    if (modelId <= 0) localOnly = true;
+    root["localOnly"] = localOnly;
+
+    QFileInfo fi(filePath);
+    double sizeKB = fi.exists() ? fi.size() / 1024.0 : 0.0;
+    QJsonArray files = root["files"].toArray();
+    QJsonObject fileObj = files.isEmpty() ? QJsonObject() : files[0].toObject();
+    if (sizeKB > 0) fileObj["sizeKB"] = sizeKB;
+    fileObj["name"] = fi.fileName();
+    if (files.isEmpty()) files.append(fileObj);
+    else files[0] = fileObj;
+    root["files"] = files;
+
+    if (!createdAt.isEmpty()) {
+        root["createdAt"] = createdAt;
+    } else {
+        root.remove("createdAt");
+    }
+
+    QJsonObject statsObj = root["stats"].toObject();
+    statsObj["downloadCount"] = downloads;
+    statsObj["thumbsUpCount"] = likes;
+    root["stats"] = statsObj;
+
+    commitEditImageFields();
+    QJsonArray imagesArr;
+    for (const ImageInfo &img : currentMeta.images) {
+        QJsonObject imgObj;
+        if (!img.url.isEmpty()) imgObj["url"] = img.url;
+        if (!img.hash.isEmpty()) imgObj["hash"] = img.hash;
+        if (img.width > 0) imgObj["width"] = img.width;
+        if (img.height > 0) imgObj["height"] = img.height;
+        if (img.nsfwLevel > 0) imgObj["nsfwLevel"] = img.nsfwLevel;
+        QJsonObject imgMeta;
+        if (!img.prompt.isEmpty()) imgMeta["prompt"] = img.prompt;
+        if (!img.negativePrompt.isEmpty()) imgMeta["negativePrompt"] = img.negativePrompt;
+        if (!img.sampler.isEmpty()) imgMeta["sampler"] = img.sampler;
+        bool okSteps = false;
+        int steps = img.steps.toInt(&okSteps);
+        if (okSteps) imgMeta["steps"] = steps;
+        else if (!img.steps.isEmpty()) imgMeta["steps"] = img.steps;
+        bool okCfg = false;
+        double cfg = img.cfgScale.toDouble(&okCfg);
+        if (okCfg) imgMeta["cfgScale"] = cfg;
+        else if (!img.cfgScale.isEmpty()) imgMeta["cfgScale"] = img.cfgScale;
+        bool okSeed = false;
+        qlonglong seed = img.seed.toLongLong(&okSeed);
+        if (okSeed) imgMeta["seed"] = seed;
+        else if (!img.seed.isEmpty()) imgMeta["seed"] = img.seed;
+        if (!imgMeta.isEmpty()) imgObj["meta"] = imgMeta;
+        imagesArr.append(imgObj);
+    }
+    root["images"] = imagesArr;
+
+    QFile saveFile(jsonPath);
+    if (!saveFile.open(QIODevice::WriteOnly)) {
+        QMessageBox::warning(this, "保存失败", "无法写入本地元数据文件。");
+        return;
+    }
+    saveFile.write(QJsonDocument(root).toJson());
+    saveFile.close();
+
+    // 重新读取并刷新详情
+    ModelMeta meta;
+    meta.filePath = filePath;
+    meta.previewPath = item->data(ROLE_PREVIEW_PATH).toString();
+    meta.fileName = fi.fileName();
+    if (readLocalJson(modelDir, baseName, meta)) {
+        currentMeta = meta;
+        updateDetailView(meta);
+    } else {
+        updateLocalEditorFromMeta(meta);
+    }
+
+    preloadItemMetadata(item, jsonPath);
+    QString civitaiName = item->data(ROLE_CIVITAI_NAME).toString();
+    if (optUseCivitaiName && !civitaiName.isEmpty()) {
+        item->setText(civitaiName);
+    } else {
+        item->setText(baseName);
+    }
+
+    ui->statusbar->showMessage("本地元数据已保存。", 2000);
+}
+
+void MainWindow::onLocalMetaResetClicked()
+{
+    QListWidgetItem *item = ui->modelList->currentItem();
+    if (!item) return;
+
+    QString baseName = item->data(ROLE_MODEL_NAME).toString();
+    QString filePath = item->data(ROLE_FILE_PATH).toString();
+    if (baseName.isEmpty() || filePath.isEmpty()) return;
+
+    QString modelDir = QFileInfo(filePath).absolutePath();
+    QString jsonPath = QDir(modelDir).filePath(baseName + ".json");
+
+    ModelMeta meta;
+    meta.modelName = baseName;
+    meta.versionName = "";
+    meta.name = baseName;
+    meta.filePath = filePath;
+    meta.previewPath = item->data(ROLE_PREVIEW_PATH).toString();
+    meta.fileName = QFileInfo(filePath).fileName();
+
+    if (QFile::exists(jsonPath) && readLocalJson(modelDir, baseName, meta)) {
+        currentMeta = meta;
+        updateDetailView(meta);
+        ui->statusbar->showMessage("已从本地元数据恢复。", 2000);
+    } else {
+        updateLocalEditorFromMeta(meta);
+        ui->statusbar->showMessage("未找到本地元数据文件，已恢复默认值。", 2000);
+    }
+}
+
+void MainWindow::onEditMetaTabClicked()
+{
+    if (!ui->modelList->currentItem()) {
+        QMessageBox::information(this, "提示", "请先选择一个模型。");
+        return;
+    }
+
+    int currentIndex = ui->detailContentStack->currentIndex();
+    int targetIndex = (currentIndex == 2) ? 0 : 2;
+
+    ui->scrollAreaWidgetContents->removeEventFilter(this);
+    ui->detailContentStack->setCurrentIndex(targetIndex);
+
+    if (targetIndex == 1) {
+        ui->detailContentStack->setFixedHeight(750);
+    } else if (targetIndex == 2) {
+        ui->detailContentStack->setFixedHeight(900);
+    } else {
+        ui->detailContentStack->setMinimumHeight(500);
+        ui->detailContentStack->setMaximumHeight(16777215);
+        QTimer::singleShot(0, this, [this](){
+            ui->scrollAreaWidgetContents->adjustSize();
+        });
+    }
+
+    QTimer::singleShot(50, this, [this, targetIndex](){
+        ui->scrollAreaWidgetContents->installEventFilter(this);
+        if (targetIndex == 0) {
+            ui->scrollAreaWidgetContents->adjustSize();
+        }
+        if (ui->backgroundLabel) {
+            ui->backgroundLabel->setGeometry(ui->scrollAreaWidgetContents->rect());
+        }
+        updateBackgroundImage();
+    });
+}
+
+void MainWindow::onEditAddImageClicked()
+{
+    if (!ui->modelList->currentItem()) {
+        QMessageBox::information(this, "提示", "请先选择一个模型。");
+        return;
+    }
+
+    commitEditImageFields();
+
+    QString srcPath = QFileDialog::getOpenFileName(this, "选择预览图片",
+                                                   currentEditModelDir(),
+                                                   "Image Files (*.png *.jpg *.jpeg *.webp)");
+    if (srcPath.isEmpty()) return;
+
+    QString baseName = currentEditBaseName();
+    QString modelDir = currentEditModelDir();
+    int index = currentMeta.images.size();
+    QString destPath = findLocalPreviewPath(modelDir, baseName, currentMeta.fileNameServer, index);
+
+    int w = 0, h = 0;
+    if (!saveImageToPreviewPath(srcPath, destPath, w, h)) {
+        QMessageBox::warning(this, "错误", "图片保存失败，请检查文件格式。");
+        return;
+    }
+
+    ImageInfo img;
+    img.url = "";
+    img.hash = "";
+    img.width = w;
+    img.height = h;
+    img.nsfwLevel = 1;
+    img.nsfw = false;
+    applyImageMetadataFromFile(srcPath, img);
+    currentMeta.images.append(img);
+    if (index == 0) {
+        currentMeta.previewPath = destPath;
+    }
+
+    refreshEditImages(currentMeta);
+    ui->listEditImages->setCurrentRow(index);
+}
+
+void MainWindow::onEditReplaceImageClicked()
+{
+    int row = ui->listEditImages->currentRow();
+    if (row < 0 || row >= currentMeta.images.size()) return;
+
+    commitEditImageFields();
+
+    QString srcPath = QFileDialog::getOpenFileName(this, "替换预览图片",
+                                                   currentEditModelDir(),
+                                                   "Image Files (*.png *.jpg *.jpeg *.webp)");
+    if (srcPath.isEmpty()) return;
+
+    QString destPath = editPreviewPathForIndex(row);
+    int w = 0, h = 0;
+    if (!saveImageToPreviewPath(srcPath, destPath, w, h)) {
+        QMessageBox::warning(this, "错误", "图片保存失败，请检查文件格式。");
+        return;
+    }
+
+    currentMeta.images[row].width = w;
+    currentMeta.images[row].height = h;
+    applyImageMetadataFromFile(srcPath, currentMeta.images[row]);
+    if (row == 0) {
+        currentMeta.previewPath = destPath;
+    }
+
+    refreshEditImages(currentMeta);
+    ui->listEditImages->setCurrentRow(row);
+}
+
+void MainWindow::onEditRemoveImageClicked()
+{
+    int row = ui->listEditImages->currentRow();
+    if (row < 0 || row >= currentMeta.images.size()) return;
+
+    QMessageBox::StandardButton reply = QMessageBox::question(
+        this, "删除预览图", "确定删除选中的预览图吗？", QMessageBox::Yes | QMessageBox::No, QMessageBox::No
+    );
+    if (reply != QMessageBox::Yes) return;
+
+    commitEditImageFields();
+
+    QString pathToRemove = editPreviewPathForIndex(row);
+    if (QFile::exists(pathToRemove)) QFile::remove(pathToRemove);
+
+    // 重新编号后续图片文件
+    for (int i = row + 1; i < currentMeta.images.size(); ++i) {
+        QString oldPath = editPreviewPathForIndex(i);
+        QString newPath = editPreviewPathForIndex(i - 1);
+        if (QFile::exists(oldPath)) {
+            if (QFile::exists(newPath)) QFile::remove(newPath);
+            QFile::rename(oldPath, newPath);
+        }
+    }
+
+    currentMeta.images.removeAt(row);
+    if (!currentMeta.images.isEmpty()) {
+        currentMeta.previewPath = editPreviewPathForIndex(0);
+    } else {
+        currentMeta.previewPath.clear();
+    }
+    refreshEditImages(currentMeta);
+    int nextRow = qMin(row, ui->listEditImages->count() - 1);
+    if (nextRow >= 0) ui->listEditImages->setCurrentRow(nextRow);
+}
+
+void MainWindow::onEditSetCoverClicked()
+{
+    int row = ui->listEditImages->currentRow();
+    if (row <= 0 || row >= currentMeta.images.size()) return;
+
+    commitEditImageFields();
+
+    qSwap(currentMeta.images[0], currentMeta.images[row]);
+
+    QString path0 = editPreviewPathForIndex(0);
+    QString pathN = editPreviewPathForIndex(row);
+    QString tempPath = path0 + ".swap";
+
+    if (QFile::exists(tempPath)) QFile::remove(tempPath);
+    if (QFile::exists(path0)) QFile::rename(path0, tempPath);
+    if (QFile::exists(pathN)) QFile::rename(pathN, path0);
+    if (QFile::exists(tempPath)) QFile::rename(tempPath, pathN);
+
+    currentMeta.previewPath = editPreviewPathForIndex(0);
+    refreshEditImages(currentMeta);
+    ui->listEditImages->setCurrentRow(0);
 }
 
 void MainWindow::fetchModelInfoFromCivitai(const QString &hash) {
@@ -1423,12 +2197,29 @@ bool MainWindow::readLocalJson(const QString &dirPath, const QString &baseName, 
     // 1. 基础名称
     QString modelName = root["model"].toObject()["name"].toString();
     QString versionName = root["name"].toString();
-    if (!modelName.isEmpty()) meta.name = modelName + " [" + versionName + "]";
+    meta.modelName = modelName;
+    meta.versionName = versionName;
+    if (meta.modelName.isEmpty()) meta.modelName = baseName;
+    if (!meta.modelName.isEmpty()) {
+        meta.name = meta.versionName.isEmpty() ? meta.modelName : meta.modelName + " [" + meta.versionName + "]";
+    }
 
     // ID (用于打开网页)
     int modelId = root["modelId"].toInt();
-    if (modelId > 0) {
+    meta.modelId = modelId;
+    QString customUrl = root["modelUrl"].toString();
+    if (!customUrl.isEmpty()) {
+        meta.modelUrl = customUrl;
+    } else if (modelId > 0) {
         meta.modelUrl = QString("https://civitai.com/models/%1").arg(modelId);
+    }
+    meta.isLocalEdited = root["localEdited"].toBool(false);
+    meta.isLocalOnly = root["localOnly"].toBool(false);
+    if (!meta.isLocalOnly && modelId <= 0 && meta.modelUrl.isEmpty()) {
+        meta.isLocalOnly = true;
+    }
+    if (meta.fileName.isEmpty() && !meta.filePath.isEmpty()) {
+        meta.fileName = QFileInfo(meta.filePath).fileName();
     }
 
     // 2. 解析触发词组
@@ -1535,6 +2326,9 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
         );
 
         transitionToImage("");
+        m_forceResyncPreview = false;
+        m_skipPreviewSync = false;
+        ui->statusbar->showMessage("元数据获取失败", 3000);
         return;
     }
 
@@ -1546,8 +2340,13 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     QString modelRealName = root["model"].toObject()["name"].toString();
     QString versionName = root["name"].toString();
     QString fullName = modelRealName + " [" + versionName + "]"; // 组合名称
-    meta.name = modelRealName + " [" + versionName + "]";
+    meta.modelName = modelRealName;
+    meta.versionName = versionName;
+    meta.name = fullName;
     meta.filePath = filePath;
+    meta.fileName = QFileInfo(filePath).fileName();
+    meta.isLocalEdited = false;
+    meta.isLocalOnly = false;
 
     // 更新 UI 列表项
     // 找到对应的 Item (可能通过 localBaseName 查找)
@@ -1555,6 +2354,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
         QListWidgetItem *item = ui->modelList->item(i);
         if (item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
             item->setData(ROLE_CIVITAI_NAME, fullName); // 更新缓存的名称
+            item->setData(ROLE_LOCAL_EDITED, false);
 
             // 如果开启了选项，立即更新显示文本
             if (optUseCivitaiName) {
@@ -1574,6 +2374,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     }
 
     int modelId = root["modelId"].toInt();
+    meta.modelId = modelId;
     if (modelId > 0) meta.modelUrl = QString("https://civitai.com/models/%1").arg(modelId);
 
     meta.baseModel = root["baseModel"].toString();
@@ -1629,34 +2430,53 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
         // 强制使用本地文件名构造图片路径，解决重名和冲突问题
         QString savePath = QDir::cleanPath(QDir(modelDir).filePath(localBaseName + ".preview.png"));
 
-        if (!QFile::exists(savePath)) {
-            QNetworkRequest req((QUrl(meta.images[0].url)));
-
-            req.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
-            req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-
-            QNetworkReply *imgReply = netManager->get(req);
-
-            // === 关键：把本地文件名和保存路径都传给图片下载回调 ===
-            imgReply->setProperty("localBaseName", localBaseName);
-            imgReply->setProperty("savePath", savePath);
-
-            connect(imgReply, &QNetworkReply::finished, this, [this, imgReply](){
-                this->onImageDownloaded(imgReply);
-            });
-
-            // 暂时先把 meta 的路径设为这个（虽然还没下载完），以便保存到 JSON
-            meta.previewPath = savePath;
+        if (m_skipPreviewSync) {
+            if (QFile::exists(savePath)) {
+                meta.previewPath = savePath;
+            }
         } else {
-            meta.previewPath = savePath;
+            if (m_forceResyncPreview && QFile::exists(savePath)) {
+                QFile::remove(savePath);
+            }
+
+            if (!QFile::exists(savePath)) {
+                QNetworkRequest req((QUrl(meta.images[0].url)));
+
+                req.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
+                req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+
+                QNetworkReply *imgReply = netManager->get(req);
+
+                // === 关键：把本地文件名和保存路径都传给图片下载回调 ===
+                imgReply->setProperty("localBaseName", localBaseName);
+                imgReply->setProperty("savePath", savePath);
+
+                connect(imgReply, &QNetworkReply::finished, this, [this, imgReply](){
+                    this->onImageDownloaded(imgReply);
+                });
+
+                // 暂时先把 meta 的路径设为这个（虽然还没下载完），以便保存到 JSON
+                meta.previewPath = savePath;
+            } else {
+                meta.previewPath = savePath;
+            }
         }
     }
+
+    // 强制更新后清理本地编辑标记
+    root["localEdited"] = false;
+    root.remove("localEditedAt");
+    root["localOnly"] = false;
+    root.remove("modelUrl");
 
     // 保存并更新UI
     saveLocalMetadata(modelDir, localBaseName, root);
 
     currentMeta = meta; // 缓存到成员变量
     updateDetailView(meta);
+    m_forceResyncPreview = false;
+    m_skipPreviewSync = false;
+    ui->statusbar->showMessage("元数据已更新", 2000);
 }
 
 void MainWindow::onImageDownloaded(QNetworkReply *reply)
@@ -1703,7 +2523,7 @@ void MainWindow::onImageDownloaded(QNetworkReply *reply)
                 item->setIcon(newIcon);
             }
         }
-        
+
         if (ui->layoutGallery) {
             for (int k = 0; k < ui->layoutGallery->count(); ++k) {
                 if (QLayoutItem *li = ui->layoutGallery->itemAt(k)) {
@@ -2008,7 +2828,7 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
     }
 }
 
-QString MainWindow::findLocalPreviewPath(const QString &dirPath, const QString &currentBaseName, const QString &serverFileName, int imgIndex)
+QString MainWindow::findLocalPreviewPath(const QString &dirPath, const QString &currentBaseName, const QString &serverFileName, int imgIndex) const
 {
     if (dirPath.isEmpty()) return "";
     QDir dir(dirPath);
@@ -2275,6 +3095,7 @@ void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonP
     item->setData(ROLE_SORT_LIKES, 0);
     item->setData(ROLE_FILTER_BASE, "Unknown");
     item->setData(ROLE_NSFW_LEVEL, 1);
+    item->setData(ROLE_LOCAL_EDITED, false);
 
     // === 读取本地文件时间 (下载/添加时间) ===
     QString filePath = item->data(ROLE_FILE_PATH).toString();
@@ -2306,6 +3127,8 @@ void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonP
         if (!versionName.isEmpty()) fullName += " [" + versionName + "]";
         item->setData(ROLE_CIVITAI_NAME, fullName); // 存入 UserRole
     }
+    bool localEdited = root["localEdited"].toBool(false) || root["localOnly"].toBool(false);
+    item->setData(ROLE_LOCAL_EDITED, localEdited);
 
     // NSFW
     int coverLevel = 1; // 默认 Safe
@@ -2678,7 +3501,7 @@ void MainWindow::processNextDownload()
 // ==========================================
 void MainWindow::onToggleDetailTab() {
     int currentIndex = ui->detailContentStack->currentIndex();
-    int nextIndex = (currentIndex == 0) ? 1 : 0;
+    int nextIndex = (currentIndex == 1) ? 0 : 1;
 
     ui->scrollAreaWidgetContents->removeEventFilter(this);
 
@@ -2729,6 +3552,7 @@ void MainWindow::onRescanUserClicked() {
         scanForUserImages("");
     }
 }
+
 void MainWindow::onSetSdFolderClicked() {
     QString dir = QFileDialog::getExistingDirectory(this, "选择 SD 输出目录 (outputs/txt2img-images)", sdOutputFolder);
     if (!dir.isEmpty()) {
@@ -3195,8 +4019,10 @@ void MainWindow::onGalleryButtonClicked()
     // 隐藏/禁用一些不相关的按钮
     ui->btnForceUpdate->setVisible(false);
     ui->btnOpenUrl->setVisible(false);
+    ui->btnEditMeta->setVisible(false);
     ui->btnFavorite->setVisible(false);
     ui->btnShowUserGallery->setVisible(false);
+    ui->btnEditMeta->setVisible(false);
 
     // 5. 清除背景图 (或者你可以放一张默认的图库壁纸)
     currentHeroPath = "";
@@ -3885,7 +4711,7 @@ void MainWindow::onUserGalleryContextMenu(const QPoint &pos)
     QAction *actCopyPath = menu.addAction("复制路径 / Copy Path");
 
     QAction *selected = menu.exec(ui->listUserImages->mapToGlobal(pos));
-    
+
     if (selected == actCopyGenParams) {
         QStringList parts;
 

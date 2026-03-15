@@ -28,8 +28,8 @@ QLineEdit { background-color: #131519; border: 1px solid #363c46; color: #dcdedf
 #btnHome, #btnGallery { background-color: transparent; text-align: left; padding-left: 10px; font-size: 14px; font-weight: bold; color: #fff; }
 #btnHome:hover, #btnGallery:hover { background-color: #3d4450; }
 
-#btnScanLocal, #btnForceUpdate, #btnOpenUrl, #btnFavorite, #btnShowUserGallery { background-color: #2a3f5a; border-radius: 2px; color: #66c0f4; border: none; }
-#btnScanLocal:hover, #btnForceUpdate:hover, #btnOpenUrl:hover, #btnFavorite:hover, #btnShowUserGallery:hover { background-color: #3d5677; color: #ffffff; }
+#btnScanLocal, #btnForceUpdate, #btnOpenUrl, #btnFavorite, #btnShowUserGallery, #btnEditMeta { background-color: #2a3f5a; border-radius: 2px; color: #66c0f4; border: none; }
+#btnScanLocal:hover, #btnForceUpdate:hover, #btnOpenUrl:hover, #btnFavorite:hover, #btnShowUserGallery:hover, #btnEditMeta:hover { background-color: #3d5677; color: #ffffff; }
 
 /* 绿色复制按钮 */
 QPushButton[class=&quot;copyBtn&quot;] { background-color: #5c7e10; color: white; border: none; border-radius: 2px; font-weight: bold; }
@@ -44,6 +44,7 @@ QPushButton[class=&quot;copyBtn&quot;]:pressed { background-color: #4c6b0c; }
 /* 标签 */
 QLabel[class=&quot;tag&quot;] { background-color: #2a3f5a; color: #66c0f4; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; }
 QLabel[class=&quot;tagRed&quot;] { background-color: #3c1919; color: #ff4c4c; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; border: 1px solid #ff4c4c; }
+QLabel[class=&quot;tagGreen&quot;] { background-color: #1f3520; color: #7ee081; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; border: 1px solid #7ee081; }
 
 /* 标题 */
 #label_GalleryTitle, #label_DescTitle, #label_FileTitle, #label_TriggerTitle {
@@ -97,6 +98,18 @@ QTextBrowser { background-color: #16191e; border: 1px solid #31363d; color: #acb
     border: none;
     color: #acb2b8;
 }
+
+#textLocalDescription, #textLocalTriggers, #textEditImgPrompt, #textEditImgNegPrompt {
+    background-color: #16191e;
+    border: 1px solid #31363d;
+    color: #acb2b8;
+    border-radius: 3px;
+    padding: 6px;
+}
+#lblLocalMetaStatus { color: #8c96a0; }
+#btnLocalMetaSave, #btnLocalMetaReset { background-color: #2a3f5a; border-radius: 2px; color: #66c0f4; border: none; padding: 6px 12px; }
+#btnLocalMetaSave:hover, #btnLocalMetaReset:hover { background-color: #3d5677; color: #ffffff; }
+#listEditImages { background-color: #1a1f29; border: 1px solid #31363d; color: #acb2b8; }
 
 /* 标题 */
 QLabel[class=&quot;sectionTitle&quot;] { color: #fff; font-weight: bold; letter-spacing: 1px; font-size: 14px; border-bottom: 1px solid #3d4d5d; padding-bottom: 5px; margin-top: 15px; }
@@ -784,7 +797,7 @@ New</string>
                   <x>0</x>
                   <y>0</y>
                   <width>982</width>
-                  <height>1058</height>
+                  <height>1462</height>
                  </rect>
                 </property>
                 <property name="minimumSize">
@@ -906,7 +919,7 @@ New</string>
                      </spacer>
                     </item>
                     <item>
-                     <widget class="QPushButton" name="btnForceUpdate">
+                     <widget class="QPushButton" name="btnEditMeta">
                       <property name="minimumSize">
                        <size>
                         <width>40</width>
@@ -914,10 +927,10 @@ New</string>
                        </size>
                       </property>
                       <property name="toolTip">
-                       <string>强制更新元数据</string>
+                       <string>编辑元数据</string>
                       </property>
                       <property name="text">
-                       <string>↻</string>
+                       <string>✎</string>
                       </property>
                      </widget>
                     </item>
@@ -950,6 +963,22 @@ New</string>
                       </property>
                       <property name="text">
                        <string>♥</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QPushButton" name="btnForceUpdate">
+                      <property name="minimumSize">
+                       <size>
+                        <width>40</width>
+                        <height>40</height>
+                       </size>
+                      </property>
+                      <property name="toolTip">
+                       <string>强制更新元数据</string>
+                      </property>
+                      <property name="text">
+                       <string>↻</string>
                       </property>
                      </widget>
                     </item>
@@ -1197,29 +1226,46 @@ New</string>
                            </widget>
                           </item>
                           <item>
-                           <widget class="QLabel" name="label_TriggerTitle">
-                            <property name="minimumSize">
-                             <size>
-                              <width>0</width>
-                              <height>40</height>
-                             </size>
-                            </property>
-                            <property name="maximumSize">
-                             <size>
-                              <width>16777215</width>
-                              <height>40</height>
-                             </size>
-                            </property>
-                            <property name="text">
-                             <string>TRIGGER WORDS / 触发词</string>
-                            </property>
-                            <property name="class" stdset="0">
-                             <string>sectionTitle</string>
-                            </property>
-                           </widget>
-                          </item>
-                          <item>
-                           <layout class="QVBoxLayout" name="layoutTriggerStack"/>
+                           <layout class="QVBoxLayout" name="verticalLayout_8">
+                            <item>
+                             <widget class="QLabel" name="label_TriggerTitle">
+                              <property name="minimumSize">
+                               <size>
+                                <width>0</width>
+                                <height>40</height>
+                               </size>
+                              </property>
+                              <property name="maximumSize">
+                               <size>
+                                <width>16777215</width>
+                                <height>40</height>
+                               </size>
+                              </property>
+                              <property name="text">
+                               <string>TRIGGER WORDS / 触发词</string>
+                              </property>
+                              <property name="class" stdset="0">
+                               <string>sectionTitle</string>
+                              </property>
+                             </widget>
+                            </item>
+                            <item>
+                             <layout class="QVBoxLayout" name="layoutTriggerStack"/>
+                            </item>
+                            <item>
+                             <spacer name="verticalSpacer_2">
+                              <property name="orientation">
+                               <enum>Qt::Orientation::Vertical</enum>
+                              </property>
+                              <property name="sizeHint" stdset="0">
+                               <size>
+                                <width>20</width>
+                                <height>40</height>
+                               </size>
+                              </property>
+                             </spacer>
+                            </item>
+                           </layout>
                           </item>
                          </layout>
                         </item>
@@ -1576,7 +1622,7 @@ Hash: ...</string>
                                  <x>0</x>
                                  <y>0</y>
                                  <width>434</width>
-                                 <height>220</height>
+                                 <height>422</height>
                                 </rect>
                                </property>
                               </widget>
@@ -1584,6 +1630,484 @@ Hash: ...</string>
                             </item>
                            </layout>
                           </widget>
+                         </widget>
+                        </item>
+                       </layout>
+                      </widget>
+                      <widget class="QWidget" name="pageEditMeta">
+                       <layout class="QHBoxLayout" name="horizontalLayout_EditMeta">
+                        <property name="spacing">
+                         <number>20</number>
+                        </property>
+                        <property name="leftMargin">
+                         <number>30</number>
+                        </property>
+                        <property name="topMargin">
+                         <number>20</number>
+                        </property>
+                        <property name="rightMargin">
+                         <number>30</number>
+                        </property>
+                        <property name="bottomMargin">
+                         <number>30</number>
+                        </property>
+                        <item>
+                         <widget class="QGroupBox" name="groupEditImages">
+                          <property name="title">
+                           <string>预览图片 / Preview Images</string>
+                          </property>
+                          <layout class="QVBoxLayout" name="layoutEditImages">
+                           <item>
+                            <widget class="QListWidget" name="listEditImages">
+                             <property name="minimumSize">
+                              <size>
+                               <width>320</width>
+                               <height>260</height>
+                              </size>
+                             </property>
+                             <property name="iconSize">
+                              <size>
+                               <width>90</width>
+                               <height>135</height>
+                              </size>
+                             </property>
+                             <property name="movement">
+                              <enum>QListView::Movement::Static</enum>
+                             </property>
+                             <property name="resizeMode">
+                              <enum>QListView::ResizeMode::Adjust</enum>
+                             </property>
+                             <property name="spacing">
+                              <number>8</number>
+                             </property>
+                             <property name="viewMode">
+                              <enum>QListView::ViewMode::IconMode</enum>
+                             </property>
+                            </widget>
+                           </item>
+                           <item>
+                            <layout class="QHBoxLayout" name="layoutEditImageButtons">
+                             <item>
+                              <widget class="QPushButton" name="btnEditAddImage">
+                               <property name="text">
+                                <string>添加图片</string>
+                               </property>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QPushButton" name="btnEditReplaceImage">
+                               <property name="text">
+                                <string>替换图片</string>
+                               </property>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QPushButton" name="btnEditRemoveImage">
+                               <property name="text">
+                                <string>删除</string>
+                               </property>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QPushButton" name="btnEditSetCover">
+                               <property name="text">
+                                <string>设为封面</string>
+                               </property>
+                              </widget>
+                             </item>
+                            </layout>
+                           </item>
+                           <item>
+                            <widget class="QLabel" name="lblEditImagePath">
+                             <property name="sizePolicy">
+                              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                               <horstretch>0</horstretch>
+                               <verstretch>0</verstretch>
+                              </sizepolicy>
+                             </property>
+                             <property name="text">
+                              <string>文件: -</string>
+                             </property>
+                             <property name="textFormat">
+                              <enum>Qt::TextFormat::RichText</enum>
+                             </property>
+                             <property name="wordWrap">
+                              <bool>true</bool>
+                             </property>
+                            </widget>
+                           </item>
+                           <item>
+                            <widget class="QLabel" name="lblEditImageSize">
+                             <property name="text">
+                              <string>尺寸: -</string>
+                             </property>
+                            </widget>
+                           </item>
+                           <item>
+                            <widget class="QLabel" name="label_EditImgPrompt">
+                             <property name="text">
+                              <string>Prompt / 正向提示词</string>
+                             </property>
+                            </widget>
+                           </item>
+                           <item>
+                            <widget class="QTextEdit" name="textEditImgPrompt">
+                             <property name="minimumSize">
+                              <size>
+                               <width>0</width>
+                               <height>80</height>
+                              </size>
+                             </property>
+                            </widget>
+                           </item>
+                           <item>
+                            <widget class="QLabel" name="label_EditImgNegPrompt">
+                             <property name="text">
+                              <string>Negative Prompt / 负向提示词</string>
+                             </property>
+                            </widget>
+                           </item>
+                           <item>
+                            <widget class="QTextEdit" name="textEditImgNegPrompt">
+                             <property name="minimumSize">
+                              <size>
+                               <width>0</width>
+                               <height>60</height>
+                              </size>
+                             </property>
+                            </widget>
+                           </item>
+                           <item>
+                            <layout class="QGridLayout" name="gridEditImgParams">
+                             <property name="horizontalSpacing">
+                              <number>10</number>
+                             </property>
+                             <property name="verticalSpacing">
+                              <number>6</number>
+                             </property>
+                             <item row="0" column="2">
+                              <widget class="QLabel" name="label_EditImgSteps">
+                               <property name="text">
+                                <string>Steps</string>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="0" column="0">
+                              <widget class="QLabel" name="label_EditImgSampler">
+                               <property name="text">
+                                <string>Sampler</string>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="4" column="1">
+                              <widget class="QSpinBox" name="spinImgNsfw">
+                               <property name="minimum">
+                                <number>0</number>
+                               </property>
+                               <property name="maximum">
+                                <number>16</number>
+                               </property>
+                               <property name="value">
+                                <number>1</number>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="0" column="3">
+                              <widget class="QLineEdit" name="editImgSteps"/>
+                             </item>
+                             <item row="4" column="0">
+                              <widget class="QLabel" name="label_EditImgNsfw">
+                               <property name="text">
+                                <string>NSFW Level</string>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="2" column="1">
+                              <widget class="QLineEdit" name="editImgCfg"/>
+                             </item>
+                             <item row="0" column="1">
+                              <widget class="QLineEdit" name="editImgSampler"/>
+                             </item>
+                             <item row="2" column="0">
+                              <widget class="QLabel" name="label_EditImgCfg">
+                               <property name="text">
+                                <string>CFG</string>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="2" column="3">
+                              <widget class="QLineEdit" name="editImgSeed"/>
+                             </item>
+                             <item row="2" column="2">
+                              <widget class="QLabel" name="label_EditImgSeed">
+                               <property name="text">
+                                <string>Seed</string>
+                               </property>
+                              </widget>
+                             </item>
+                            </layout>
+                           </item>
+                          </layout>
+                         </widget>
+                        </item>
+                        <item>
+                         <widget class="QGroupBox" name="groupEditMeta">
+                          <property name="title">
+                           <string>MODEL METADATA / 模型元数据</string>
+                          </property>
+                          <layout class="QVBoxLayout" name="layoutEditMetaRight">
+                           <item>
+                            <layout class="QGridLayout" name="gridLayoutLocalMeta">
+                             <property name="leftMargin">
+                              <number>0</number>
+                             </property>
+                             <property name="topMargin">
+                              <number>0</number>
+                             </property>
+                             <property name="rightMargin">
+                              <number>0</number>
+                             </property>
+                             <property name="bottomMargin">
+                              <number>0</number>
+                             </property>
+                             <property name="horizontalSpacing">
+                              <number>10</number>
+                             </property>
+                             <property name="verticalSpacing">
+                              <number>8</number>
+                             </property>
+                             <item row="3" column="0">
+                              <widget class="QLabel" name="label_LocalMetaBase">
+                               <property name="text">
+                                <string>Base Model</string>
+                               </property>
+                               <property name="alignment">
+                                <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="0" column="0">
+                              <widget class="QLabel" name="label_LocalMetaStatus">
+                               <property name="text">
+                                <string>状态 / Status</string>
+                               </property>
+                               <property name="alignment">
+                                <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="10" column="0">
+                              <widget class="QLabel" name="label_LocalMetaTriggers">
+                               <property name="text">
+                                <string>触发词 / Trigger Words</string>
+                               </property>
+                               <property name="alignment">
+                                <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="6" column="0">
+                              <widget class="QLabel" name="label_LocalMetaCreatedAt">
+                               <property name="text">
+                                <string>Created At</string>
+                               </property>
+                               <property name="alignment">
+                                <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="4" column="1">
+                              <widget class="QLineEdit" name="editLocalType"/>
+                             </item>
+                             <item row="7" column="0">
+                              <widget class="QLabel" name="label_LocalMetaDownloads">
+                               <property name="text">
+                                <string>Downloads</string>
+                               </property>
+                               <property name="alignment">
+                                <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="5" column="0">
+                              <widget class="QLabel" name="label_LocalMetaUrl">
+                               <property name="text">
+                                <string>URL</string>
+                               </property>
+                               <property name="alignment">
+                                <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="8" column="0">
+                              <widget class="QLabel" name="label_LocalMetaLikes">
+                               <property name="text">
+                                <string>Likes</string>
+                               </property>
+                               <property name="alignment">
+                                <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="3" column="1">
+                              <widget class="QLineEdit" name="editLocalBaseModel"/>
+                             </item>
+                             <item row="1" column="0">
+                              <widget class="QLabel" name="label_LocalMetaModel">
+                               <property name="text">
+                                <string>模型名 / Model</string>
+                               </property>
+                               <property name="alignment">
+                                <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="1" column="1">
+                              <widget class="QLineEdit" name="editLocalModelName"/>
+                             </item>
+                             <item row="11" column="0">
+                              <widget class="QLabel" name="label_LocalMetaDesc">
+                               <property name="text">
+                                <string>简介 / Description</string>
+                               </property>
+                               <property name="alignment">
+                                <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="8" column="1">
+                              <widget class="QLineEdit" name="editLocalLikes"/>
+                             </item>
+                             <item row="0" column="1">
+                              <widget class="QLabel" name="lblLocalMetaStatus">
+                               <property name="text">
+                                <string>状态: -</string>
+                               </property>
+                               <property name="wordWrap">
+                                <bool>true</bool>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="9" column="1">
+                              <widget class="QCheckBox" name="chkLocalNSFW"/>
+                             </item>
+                             <item row="5" column="1">
+                              <widget class="QLineEdit" name="editLocalModelUrl"/>
+                             </item>
+                             <item row="7" column="1">
+                              <widget class="QLineEdit" name="editLocalDownloads"/>
+                             </item>
+                             <item row="6" column="1">
+                              <widget class="QLineEdit" name="editLocalCreatedAt"/>
+                             </item>
+                             <item row="4" column="0">
+                              <widget class="QLabel" name="label_LocalMetaType">
+                               <property name="text">
+                                <string>类型 / Type</string>
+                               </property>
+                               <property name="alignment">
+                                <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="2" column="0">
+                              <widget class="QLabel" name="label_LocalMetaVersion">
+                               <property name="text">
+                                <string>版本 / Version</string>
+                               </property>
+                               <property name="alignment">
+                                <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="11" column="1">
+                              <widget class="QTextEdit" name="textLocalDescription">
+                               <property name="minimumSize">
+                                <size>
+                                 <width>0</width>
+                                 <height>90</height>
+                                </size>
+                               </property>
+                               <property name="placeholderText">
+                                <string>支持纯文本描述</string>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="10" column="1">
+                              <widget class="QTextEdit" name="textLocalTriggers">
+                               <property name="minimumSize">
+                                <size>
+                                 <width>0</width>
+                                 <height>80</height>
+                                </size>
+                               </property>
+                               <property name="placeholderText">
+                                <string>每行一组，或使用逗号分隔</string>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="9" column="0">
+                              <widget class="QLabel" name="label_LocalMetaNSFW">
+                               <property name="text">
+                                <string>NSFW</string>
+                               </property>
+                               <property name="alignment">
+                                <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+                               </property>
+                              </widget>
+                             </item>
+                             <item row="2" column="1">
+                              <widget class="QLineEdit" name="editLocalVersion"/>
+                             </item>
+                             <item row="12" column="0" colspan="2">
+                              <layout class="QHBoxLayout" name="horizontalLayout_LocalMetaButtons">
+                               <item>
+                                <widget class="QPushButton" name="btnLocalMetaSave">
+                                 <property name="minimumSize">
+                                  <size>
+                                   <width>0</width>
+                                   <height>0</height>
+                                  </size>
+                                 </property>
+                                 <property name="text">
+                                  <string>保存 / Save</string>
+                                 </property>
+                                </widget>
+                               </item>
+                               <item>
+                                <spacer name="horizontalSpacer">
+                                 <property name="orientation">
+                                  <enum>Qt::Orientation::Horizontal</enum>
+                                 </property>
+                                 <property name="sizeType">
+                                  <enum>QSizePolicy::Policy::Fixed</enum>
+                                 </property>
+                                 <property name="sizeHint" stdset="0">
+                                  <size>
+                                   <width>10</width>
+                                   <height>20</height>
+                                  </size>
+                                 </property>
+                                </spacer>
+                               </item>
+                               <item>
+                                <widget class="QPushButton" name="btnLocalMetaReset">
+                                 <property name="minimumSize">
+                                  <size>
+                                   <width>0</width>
+                                   <height>0</height>
+                                  </size>
+                                 </property>
+                                 <property name="text">
+                                  <string>重置 / Reset</string>
+                                 </property>
+                                </widget>
+                               </item>
+                              </layout>
+                             </item>
+                            </layout>
+                           </item>
+                          </layout>
                          </widget>
                         </item>
                        </layout>
@@ -1655,7 +2179,7 @@ Hash: ...</string>
            <item row="0" column="0">
             <widget class="QLabel" name="lblSetLora">
              <property name="text">
-              <string>LoRA 模型文件夹:</string>
+              <string>模型文件夹 / Model:</string>
              </property>
             </widget>
            </item>
@@ -1679,7 +2203,7 @@ Hash: ...</string>
            <item row="1" column="0">
             <widget class="QLabel" name="lblSetGallery">
              <property name="text">
-              <string>图库 (SD Output) 文件夹:</string>
+              <string>图库文件夹 / Gallery:</string>
              </property>
             </widget>
            </item>
@@ -1745,7 +2269,7 @@ Hash: ...</string>
               <string>勾选后使用右侧文本框的内容作为 UA；未勾选则每次启动随机生成。</string>
              </property>
              <property name="text">
-              <string>自定义 UA (Custom User-Agent):</string>
+              <string>自定义 UA / Custom User-Agent:</string>
              </property>
             </widget>
            </item>
@@ -1765,7 +2289,7 @@ Hash: ...</string>
               <string>生成一个随机的现代浏览器 UA 填入框中</string>
              </property>
              <property name="text">
-              <string>生成随机 (Random)</string>
+              <string>随机 / Random</string>
              </property>
             </widget>
            </item>
@@ -1783,7 +2307,7 @@ Hash: ...</string>
              <item row="0" column="0">
               <widget class="QLabel" name="lblThreads">
                <property name="text">
-                <string>图片渲染线程数 (Render Threads):</string>
+                <string>图片渲染线程数 / Render Threads:</string>
                </property>
               </widget>
              </item>
@@ -1831,7 +2355,7 @@ Hash: ...</string>
                 <string>勾选后将搜索子目录下的模型文件。</string>
                </property>
                <property name="text">
-                <string>递归扫描 LoRA 子文件夹 (Recursive Scan for LoRA)</string>
+                <string>递归扫描 LoRA 子文件夹 / Recursive Scan for LoRA</string>
                </property>
               </widget>
              </item>
@@ -1841,7 +2365,7 @@ Hash: ...</string>
                 <string>勾选后将搜索子目录下的图片文件。默认关闭以提高性能。</string>
                </property>
                <property name="text">
-                <string>递归扫描图库子文件夹 (Recursive Scan for Gallery)</string>
+                <string>递归扫描图库子文件夹 / Recursive Scan for Gallery</string>
                </property>
               </widget>
              </item>
@@ -1861,7 +2385,7 @@ Hash: ...</string>
              <item row="0" column="0">
               <widget class="QLabel" name="lblBlur">
                <property name="text">
-                <string>背景模糊半径 (Blur Radius):</string>
+                <string>背景模糊半径 / Blur Radius:</string>
                </property>
               </widget>
              </item>
@@ -1871,7 +2395,7 @@ Hash: ...</string>
                 <string>如果取消勾选，不包含任何模型（或被搜索过滤后为空）的收藏夹将不会显示在侧边栏中。</string>
                </property>
                <property name="text">
-                <string>显示空的收藏夹 (Show Empty Collections)</string>
+                <string>显示空的收藏夹 / Show Empty Collections</string>
                </property>
                <property name="checked">
                 <bool>false</bool>
@@ -1929,7 +2453,7 @@ Hash: ...</string>
                 <string>下次启动时，保持当前收藏夹的展开状态和滚动条位置。</string>
                </property>
                <property name="text">
-                <string>启动时恢复菜单 (Restore Menu on Startup)</string>
+                <string>启动时恢复菜单 / Restore Menu on Startup</string>
                </property>
                <property name="checked">
                 <bool>true</bool>
@@ -1942,7 +2466,7 @@ Hash: ...</string>
                 <string>开启后会先将原图缩小再模糊，能极大提高大图背景的生成速度。</string>
                </property>
                <property name="text">
-                <string>模糊前缩放图片 (Scale before blur)</string>
+                <string>模糊前缩放图片 / Scale before blur</string>
                </property>
               </widget>
              </item>
@@ -1952,7 +2476,7 @@ Hash: ...</string>
                 <string>勾选后，如果本地存在 JSON 元数据，将显示模型的真实名称（如 'ChilloutMix [Pruned]'）而非文件名。</string>
                </property>
                <property name="text">
-                <string>使用 Civitai 模型名称 (Use Civitai Name)</string>
+                <string>使用 Civitai 模型名称 / Use Civitai Name</string>
                </property>
               </widget>
              </item>
@@ -1968,7 +2492,7 @@ Hash: ...</string>
              <item>
               <widget class="QCheckBox" name="chkFilterNSFW">
                <property name="text">
-                <string>开启 NSFW 内容过滤 (Enable NSFW Filter)</string>
+                <string>开启 NSFW 内容过滤 / Enable NSFW Filter</string>
                </property>
               </widget>
              </item>
@@ -1977,21 +2501,21 @@ Hash: ...</string>
                <item>
                 <widget class="QLabel" name="lblNSFWMode">
                  <property name="text">
-                  <string>过滤模式 (Filter Mode):</string>
+                  <string>过滤模式 / Filter Mode:</string>
                  </property>
                 </widget>
                </item>
                <item>
                 <widget class="QRadioButton" name="radioNSFW_Hide">
                  <property name="text">
-                  <string>完全不显示 (Hide)</string>
+                  <string>隐藏 / Hide</string>
                  </property>
                 </widget>
                </item>
                <item>
                 <widget class="QRadioButton" name="radioNSFW_Blur">
                  <property name="text">
-                  <string>高斯模糊 (Blur)</string>
+                  <string>模糊 / Blur</string>
                  </property>
                 </widget>
                </item>
@@ -2074,7 +2598,7 @@ Hash: ...</string>
               <string>默认开启。如果提示词之间使用了换行符而没有逗号，开启此项可正确识别为两个独立的 Tag。</string>
              </property>
              <property name="text">
-              <string>使用换行符作为分隔符 (Treat Newlines as Separators)</string>
+              <string>使用换行符作为分隔符 / Treat Newlines as Separators</string>
              </property>
              <property name="checked">
               <bool>true</bool>
@@ -2084,7 +2608,7 @@ Hash: ...</string>
            <item row="1" column="0">
             <widget class="QLabel" name="lblFilterTags">
              <property name="text">
-              <string>过滤关键词 (Filter Tags):</string>
+              <string>过滤关键词 / Filter Tags:</string>
              </property>
             </widget>
            </item>
@@ -2113,7 +2637,7 @@ Hash: ...</string>
               </string>
              </property>
              <property name="text">
-              <string>↺ Reset</string>
+              <string>↺</string>
              </property>
             </widget>
            </item>
@@ -2205,7 +2729,7 @@ Hash: ...</string>
         <item>
          <widget class="QLabel" name="lblAboutVersion">
           <property name="text">
-           <string>Version 1.2.0</string>
+           <string>Version 1.3.1</string>
           </property>
           <property name="alignment">
            <set>Qt::AlignmentFlag::AlignCenter</set>

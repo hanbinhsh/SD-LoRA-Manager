@@ -42,6 +42,7 @@ const int ROLE_SORT_DOWNLOADS       = Qt::UserRole + 11;  // 存储下载量 (in
 const int ROLE_SORT_LIKES           = Qt::UserRole + 12;  // 存储点赞量 (int)
 const int ROLE_FILTER_BASE          = Qt::UserRole + 13;  // 存储底模名称 (QString)
 const int ROLE_SORT_ADDED           = Qt::UserRole + 14;  // 存储本地文件创建时间 (qint64)
+const int ROLE_LOCAL_EDITED         = Qt::UserRole + 15;  // 标记本地/已编辑模型 (bool)
 // 收藏夹树状图
 const int ROLE_IS_COLLECTION_NODE   = Qt::UserRole + 20;  // 标记这是一个收藏夹节点
 const int ROLE_COLLECTION_NAME      = Qt::UserRole + 21;  // 存储收藏夹名称
@@ -55,7 +56,7 @@ const int ROLE_USER_IMAGE_TAGS      = Qt::UserRole + 34;
 // 树状图占位符标记
 const int ROLE_IS_PLACEHOLDER       = Qt::UserRole + 40;
 
-const QString CURRENT_VERSION = "1.3.0";
+const QString CURRENT_VERSION = "1.3.1";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
@@ -103,6 +104,8 @@ struct UserImageInfo {
 
 struct ModelMeta {
     QString fileName;
+    QString modelName;
+    QString versionName;
     QString name;
     QString filePath;
     QString previewPath;
@@ -118,6 +121,9 @@ struct ModelMeta {
     double fileSizeMB;
     QString sha256;
     QString fileNameServer;
+    int modelId = 0;
+    bool isLocalEdited = false;
+    bool isLocalOnly = false;
     QList<ImageInfo> images;
 };
 
@@ -178,6 +184,14 @@ private slots:
     void onMenuSwitchToAbout();
     void onCheckUpdateClicked();
     void onUpdateApiReceived(QNetworkReply *reply);
+    void onLocalMetaSaveClicked();
+    void onLocalMetaResetClicked();
+    void onEditMetaTabClicked();
+    void onEditImageSelectionChanged(int row);
+    void onEditAddImageClicked();
+    void onEditReplaceImageClicked();
+    void onEditRemoveImageClicked();
+    void onEditSetCoverClicked();
 
 private:
     Ui::MainWindow *ui;
@@ -206,7 +220,7 @@ private:
 
     // 生成一个适合主页大图的 Icon (2:3比例)
     QIcon getRoundedSquareIcon(const QString &path, int size, int radius);
-    QString findLocalPreviewPath(const QString &dirPath, const QString &currentBaseName, const QString &serverFileName, int imgIndex);
+    QString findLocalPreviewPath(const QString &dirPath, const QString &currentBaseName, const QString &serverFileName, int imgIndex) const;
     QString calculateFileHash(const QString &filePath);
     void fetchModelInfoFromCivitai(const QString &hash);
     void saveLocalMetadata(const QString &modelDir, const QString &baseName, const QJsonObject &data);
@@ -217,6 +231,19 @@ private:
     void showFullImageDialog(const QString &imagePath);
     QIcon getFitIcon(const QString &path);
     void updateBackgroundImage();
+    void updateLocalEditorFromMeta(const ModelMeta &meta);
+    void setLocalMetaStatus(const ModelMeta &meta);
+    int countLocalEditedModels() const;
+    bool confirmLocalEditOverwrite(QListWidgetItem *item);
+    void refreshEditImages(const ModelMeta &meta);
+    void loadEditImageFields(int index);
+    void commitEditImageFields();
+    QString currentEditBaseName() const;
+    QString currentEditModelDir() const;
+    QString editPreviewPathForIndex(int index) const;
+    bool saveImageToPreviewPath(const QString &srcPath, const QString &destPath, int &outW, int &outH);
+    void applyImageMetadataFromFile(const QString &srcPath, ImageInfo &img);
+    void applyParametersToImage(const QString &params, ImageInfo &img);
     void showCollectionMenu(const QList<QListWidgetItem*> &items, const QPoint &globalPos);
     // 快速读取单个 JSON 的元数据用于列表显示
     void preloadItemMetadata(QListWidgetItem *item, const QString &jsonPath);
@@ -237,6 +264,10 @@ private:
     void executeSort();
     // 执行筛选
     void executeFilter();
+
+    int currentEditImageIndex = -1;
+    bool m_forceResyncPreview = false;
+    bool m_skipPreviewSync = false;
 
     QFutureWatcher<QString> *hashWatcher;
     QString currentProcessingPath;
