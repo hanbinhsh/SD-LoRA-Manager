@@ -17,6 +17,9 @@ qt_add_executable(SD_LoRA_Manager
     mainwindow.cpp
     mainwindow.h
     mainwindow.ui
+    pathlistdialog.h
+    pathlistdialog.cpp
+    pathlistdialog.ui
     imageloader.h
     resources.qrc
     app.rc

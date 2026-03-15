@@ -3,7 +3,6 @@
 
 #include <QMainWindow>
 #include <QListWidgetItem>
-#include <QSettings>
 #include <QDir>
 #include <QFileInfo>
 #include <QNetworkAccessManager>
@@ -14,6 +13,7 @@
 #include <QCryptographicHash>
 #include <QGraphicsDropShadowEffect>
 #include <QMap>
+#include <QSet>
 #include <QPointer>
 #include <QPushButton>
 #include <QThreadPool>
@@ -195,7 +195,6 @@ private slots:
 
 private:
     Ui::MainWindow *ui;
-    QSettings *settings;
     QTabWidget *toolsTabWidget = nullptr;
     QNetworkAccessManager *netManager;
     QPixmap currentHeroPixmap;
@@ -214,6 +213,7 @@ private:
     void refreshHomeGallery(); // 刷新主页下方的图库
 
     void scanModels(const QString &path);
+    void scanModels(const QStringList &paths);
     void updateDetailView(const ModelMeta &meta);
     void clearDetailView();
     QIcon getSquareIcon(const QPixmap &srcPix);
@@ -320,9 +320,11 @@ private:
     void saveUserGalleryCache();
 
     // === 配置变量 ===
-    QString currentLoraPath;                            // LoRA文件夹
+    QStringList loraPaths;                              // LoRA文件夹列表
+    QStringList galleryPaths;                           // 图库路径列表
+    QString currentLoraPath;                            // LoRA主路径 (兼容)
     QString translationCsvPath;                         // 翻译文件路径
-    QString sdOutputFolder;                             // 图库路径
+    QString sdOutputFolder;                             // 图库主路径 (兼容)
     QString optSavedUAString        = "";               // 设置的UA
     bool    optLoraRecursive        = false;            // 递归搜索Lora文件夹
     bool    optGalleryRecursive     = false;            // 递归搜索图库文件夹
@@ -342,9 +344,6 @@ private:
     // 保存与加载
     void loadGlobalConfig();        // 加载配置
     void saveGlobalConfig();        // 保存配置
-    // 从注册表加载路径
-    void loadPathSettings();
-    void savePathSettings();
     // 设置辅助变量
     QSet<QString> startupExpandedCollections; // 启动时从文件读出的展开项
     int startupTreeScrollPos;                 // 启动时从文件读出的滚动位置
@@ -352,6 +351,13 @@ private:
     // 设置辅助函数
     QString getRandomUserAgent();             // 获取随机 UA
     void updateModelListNames();              // 刷新列表显示名称的辅助函数
+
+    QStringList normalizePathList(const QStringList &paths) const;
+    QString formatPathListForEdit(const QStringList &paths) const;
+    QStringList collectValidPaths(const QStringList &paths) const;
+    void applyPathListsToUi();
+    bool editLoraPaths(bool rescanAfter);
+    bool editGalleryPaths(bool rescanAfter);
 };
 
 #endif // MAINWINDOW_H

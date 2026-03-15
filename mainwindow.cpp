@@ -30,6 +30,7 @@
 #include <QTabWidget>
 
 #include "imageloader.h"
+#include "pathlistdialog.h"
 #include "syncwidget.h"
 #include "promptparserwidget.h"
 
@@ -123,13 +124,11 @@ MainWindow::MainWindow(QWidget *parent)
     });
     placeholderIcon = generatePlaceholderIcon();
 
-    settings = new QSettings("MyAiTools", "LoraManager", this);
     netManager = new QNetworkAccessManager(this);
 
     // === 1. 初始化菜单栏 ===
     initMenuBar();
     // === 2. 加载配置 ===
-    loadPathSettings();   // 从注册表读路径
     loadGlobalConfig();   // 从 JSON 读选项
     // === 应用线程数 ===
     threadPool->setMaxThreadCount(optRenderThreadCount);
@@ -307,7 +306,7 @@ MainWindow::MainWindow(QWidget *parent)
     QTimer::singleShot(10, this, [this](){
         ui->statusbar->showMessage("正在扫描本地模型库...");
         loadCollections();
-        if (!currentLoraPath.isEmpty()) scanModels(currentLoraPath);
+        if (!loraPaths.isEmpty()) scanModels(loraPaths);
         ui->comboSort->setCurrentIndex(0);
         executeSort();
         refreshCollectionTreeView();
@@ -903,6 +902,11 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 
 void MainWindow::scanModels(const QString &path)
 {
+    scanModels(QStringList() << path);
+}
+
+void MainWindow::scanModels(const QStringList &paths)
+{
     // 1. 锁定 UI 更新，防止闪烁
     ui->modelList->setUpdatesEnabled(false);
     ui->modelList->clear();
@@ -926,79 +930,83 @@ void MainWindow::scanModels(const QString &path)
         iterFlags = QDirIterator::Subdirectories; // 开启递归
     }
 
-    // 5. 初始化迭代器
-    // 构造函数签名: QDirIterator(path, nameFilters, filters, flags)
-    QDirIterator it(path, nameFilters, dirFilters, iterFlags);
-
     int scannedCount = 0;
 
-    while (it.hasNext()) {
-        it.next();
-        QFileInfo fileInfo = it.fileInfo();
-        scannedCount++;
+    // 5. 遍历多个路径
+    for (const QString &path : paths) {
+        if (path.isEmpty() || !QDir(path).exists()) continue;
 
-        QString baseName = fileInfo.completeBaseName();
-        QString fullPath = fileInfo.absoluteFilePath();
+        // 构造函数签名: QDirIterator(path, nameFilters, filters, flags)
+        QDirIterator it(path, nameFilters, dirFilters, iterFlags);
 
-        // 获取当前文件所在的目录 (递归模式下可能是子目录)
-        QDir currentFileDir = fileInfo.dir();
+        while (it.hasNext()) {
+            it.next();
+            QFileInfo fileInfo = it.fileInfo();
+            scannedCount++;
 
-        // 6. 寻找预览图
-        QString previewPath = "";
-        QStringList imgExts = {".preview.png", ".png", ".jpg", ".jpeg"};
-        for (const QString &ext : imgExts) {
-            // 在当前模型文件的同级目录下找图片
-            QString tryPath = currentFileDir.absoluteFilePath(baseName + ext);
-            if (QFile::exists(tryPath)) {
-                previewPath = tryPath;
-                break;
+            QString baseName = fileInfo.completeBaseName();
+            QString fullPath = fileInfo.absoluteFilePath();
+
+            // 获取当前文件所在的目录 (递归模式下可能是子目录)
+            QDir currentFileDir = fileInfo.dir();
+
+            // 6. 寻找预览图
+            QString previewPath = "";
+            QStringList imgExts = {".preview.png", ".png", ".jpg", ".jpeg"};
+            for (const QString &ext : imgExts) {
+                // 在当前模型文件的同级目录下找图片
+                QString tryPath = currentFileDir.absoluteFilePath(baseName + ext);
+                if (QFile::exists(tryPath)) {
+                    previewPath = tryPath;
+                    break;
+                }
             }
-        }
 
-        // 7. 创建列表项
-        QListWidgetItem *item = new QListWidgetItem(baseName);
-        item->setToolTip(fullPath);
-        item->setData(ROLE_MODEL_NAME, baseName);
-        item->setData(ROLE_FILE_PATH, fullPath);
-        item->setData(ROLE_PREVIEW_PATH, previewPath);
+            // 7. 创建列表项
+            QListWidgetItem *item = new QListWidgetItem(baseName);
+            item->setToolTip(fullPath);
+            item->setData(ROLE_MODEL_NAME, baseName);
+            item->setData(ROLE_FILE_PATH, fullPath);
+            item->setData(ROLE_PREVIEW_PATH, previewPath);
 
-        QString jsonPath = currentFileDir.filePath(baseName + ".json");
-        preloadItemMetadata(item, jsonPath);
+            QString jsonPath = currentFileDir.filePath(baseName + ".json");
+            preloadItemMetadata(item, jsonPath);
 
-        int nsfwLevel = item->data(ROLE_NSFW_LEVEL).toInt();
-        bool isNSFW = nsfwLevel > optNSFWLevel;
+            int nsfwLevel = item->data(ROLE_NSFW_LEVEL).toInt();
+            bool isNSFW = nsfwLevel > optNSFWLevel;
 
-        if (optFilterNSFW && isNSFW && optNSFWMode == 0) {
-            // 如果开启过滤 + 是NSFW + 模式为隐藏(0) -> 直接删除item并跳过
-            delete item;
-            continue;
-        }
+            if (optFilterNSFW && isNSFW && optNSFWMode == 0) {
+                // 如果开启过滤 + 是NSFW + 模式为隐藏(0) -> 直接删除item并跳过
+                delete item;
+                continue;
+            }
 
-        QString civitaiName = item->data(ROLE_CIVITAI_NAME).toString();
-        if (optUseCivitaiName && !civitaiName.isEmpty()) {
-            item->setText(civitaiName);
-        } else {
-            item->setText(baseName); // 默认使用文件名
-        }
+            QString civitaiName = item->data(ROLE_CIVITAI_NAME).toString();
+            if (optUseCivitaiName && !civitaiName.isEmpty()) {
+                item->setText(civitaiName);
+            } else {
+                item->setText(baseName); // 默认使用文件名
+            }
 
-        item->setIcon(placeholderIcon);
+            item->setIcon(placeholderIcon);
 
-        // 9. 处理底模过滤器
-        QString baseModel = item->data(ROLE_FILTER_BASE).toString();
-        if (!baseModel.isEmpty() && !foundBaseModels.contains(baseModel)) {
-            foundBaseModels.insert(baseModel);
-            ui->comboBaseModel->addItem(baseModel);
-        }
+            // 9. 处理底模过滤器
+            QString baseModel = item->data(ROLE_FILTER_BASE).toString();
+            if (!baseModel.isEmpty() && !foundBaseModels.contains(baseModel)) {
+                foundBaseModels.insert(baseModel);
+                ui->comboBaseModel->addItem(baseModel);
+            }
 
-        ui->modelList->addItem(item);
-        if (!previewPath.isEmpty()) {
-            // 【修改】添加 "SIDEBAR:" 前缀
-            QString taskId = "SIDEBAR:" + fullPath;
+            ui->modelList->addItem(item);
+            if (!previewPath.isEmpty()) {
+                // 【修改】添加 "SIDEBAR:" 前缀
+                QString taskId = "SIDEBAR:" + fullPath;
 
-            // 使用 backgroundThreadPool (静默加载)
-            IconLoaderTask *task = new IconLoaderTask(previewPath, 64, 8, this, taskId);
-            task->setAutoDelete(true);
-            backgroundThreadPool->start(task);
+                // 使用 backgroundThreadPool (静默加载)
+                IconLoaderTask *task = new IconLoaderTask(previewPath, 64, 8, this, taskId);
+                task->setAutoDelete(true);
+                backgroundThreadPool->start(task);
+            }
         }
     }
 
@@ -1603,12 +1611,7 @@ bool MainWindow::confirmLocalEditOverwrite(QListWidgetItem *item)
 // 文件与网络部分
 // ---------------------------------------------------------
 void MainWindow::onActionOpenFolderTriggered() {
-    QString dir = QFileDialog::getExistingDirectory(this, "选择 LoRA 文件夹", currentLoraPath);
-    if (!dir.isEmpty()) {
-        currentLoraPath = dir;
-        settings->setValue("lora_path", currentLoraPath);
-        scanModels(currentLoraPath);
-    }
+    editLoraPaths(true);
 }
 
 void MainWindow::onScanLocalClicked() {
@@ -1617,7 +1620,11 @@ void MainWindow::onScanLocalClicked() {
         QMessageBox::information(this, "提示",
                                  QString("检测到 %1 个本地/已编辑模型。\n刷新不会删除本地元数据，但后续同步可能覆盖本地修改。").arg(localCount));
     }
-    if (!currentLoraPath.isEmpty()) scanModels(currentLoraPath);
+    if (!loraPaths.isEmpty()) {
+        scanModels(loraPaths);
+    } else {
+        QMessageBox::information(this, "提示", "请先设置 LoRA 路径。");
+    }
     executeSort();
 }
 
@@ -3554,20 +3561,7 @@ void MainWindow::onRescanUserClicked() {
 }
 
 void MainWindow::onSetSdFolderClicked() {
-    QString dir = QFileDialog::getExistingDirectory(this, "选择 SD 输出目录 (outputs/txt2img-images)", sdOutputFolder);
-    if (!dir.isEmpty()) {
-        sdOutputFolder = dir;
-        // 保存配置
-        QString configDir = qApp->applicationDirPath() + "/config";
-        QDir().mkpath(configDir);
-        QJsonObject root;
-        root["sd_folder"] = sdOutputFolder;
-        QFile file(configDir + "/user_gallery.json");
-        if (file.open(QIODevice::WriteOnly)) {
-            file.write(QJsonDocument(root).toJson());
-        }
-        onRescanUserClicked();
-    }
+    editGalleryPaths(true);
 }
 
 
@@ -3577,9 +3571,10 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     tagFlowWidget->setData({}); // 清空 Tag
 
     // 1. 检查目录
-    if (sdOutputFolder.isEmpty() || !QDir(sdOutputFolder).exists()) {
+    QStringList validGalleryPaths = collectValidPaths(galleryPaths);
+    if (validGalleryPaths.isEmpty()) {
         ui->textUserPrompt->setText("<span style='color:orange'>请先点击右上方按钮设置 Stable Diffusion 图片输出目录。</span>");
-        QMessageBox::warning(this, "目录无效", "设置的 SD 输出目录不存在或为空：\n" + sdOutputFolder);
+        QMessageBox::warning(this, "目录无效", "设置的 SD 输出目录不存在或为空。");
         return;
     }
 
@@ -3667,70 +3662,76 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     bool recursive = optGalleryRecursive;
     // 开启异步任务
     QFuture<QPair<QList<UserImageInfo>, QMap<QString, UserImageInfo>>> future = QtConcurrent::run(
-        [this, searchKeys, isGlobalMode, recursive, scanPrefix, currentCacheCopy]() {
+        [this, searchKeys, isGlobalMode, recursive, scanPrefix, currentCacheCopy, validGalleryPaths]() {
 
             QList<UserImageInfo> results;
             QMap<QString, UserImageInfo> newCacheUpdates; // 用于收集需要更新到主缓存的数据
 
             QDirIterator::IteratorFlag iterFlag = recursive ? QDirIterator::Subdirectories : QDirIterator::NoIteratorFlags;
-            QDirIterator it(sdOutputFolder, QStringList() << "*.png" << "*.jpg" << "*.jpeg", QDir::Files, iterFlag);
+            QSet<QString> visited;
 
             int scannedFiles = 0;
             int cacheHits = 0;
 
-            while (it.hasNext()) {
-                QString path = it.next();
-                QFileInfo fi = it.fileInfo();
-                qint64 currentModified = fi.lastModified().toMSecsSinceEpoch();
+            for (const QString &root : validGalleryPaths) {
+                QDirIterator it(root, QStringList() << "*.png" << "*.jpg" << "*.jpeg", QDir::Files, iterFlag);
+                while (it.hasNext()) {
+                    QString path = it.next();
+                    if (visited.contains(path)) continue;
+                    visited.insert(path);
 
-                scannedFiles++;
-                if (scannedFiles % 100 == 0) { // 稍微降低一点 UI 刷新频率
-                    QMetaObject::invokeMethod(this, [this, scannedFiles, cacheHits](){
-                        ui->statusbar->showMessage(QString("扫描中... (%1 张, 缓存命中 %2)").arg(scannedFiles).arg(cacheHits));
-                    });
-                }
+                    QFileInfo fi = it.fileInfo();
+                    qint64 currentModified = fi.lastModified().toMSecsSinceEpoch();
 
-                UserImageInfo info;
-                bool needParse = true;
-
-                // === 核心优化：检查缓存 ===
-                if (currentCacheCopy.contains(path)) {
-                    const UserImageInfo &cachedInfo = currentCacheCopy.value(path);
-                    if (cachedInfo.lastModified == currentModified) {
-                        // 命中缓存！直接使用，不需要 open 文件
-                        info = cachedInfo;
-                        needParse = false;
-                        cacheHits++;
+                    scannedFiles++;
+                    if (scannedFiles % 100 == 0) { // 稍微降低一点 UI 刷新频率
+                        QMetaObject::invokeMethod(this, [this, scannedFiles, cacheHits](){
+                            ui->statusbar->showMessage(QString("扫描中... (%1 张, 缓存命中 %2)").arg(scannedFiles).arg(cacheHits));
+                        });
                     }
-                }
 
-                // 如果没命中缓存，或者文件被修改过，则解析
-                if (needParse) {
-                    info.path = path;
-                    info.lastModified = currentModified;
-                    parsePngInfo(path, info); // 解析 I/O 操作
+                    UserImageInfo info;
+                    bool needParse = true;
 
-                    // 记录到更新列表
-                    newCacheUpdates.insert(path, info);
-                }
-
-                // === 筛选逻辑 ===
-                if (info.prompt.isEmpty()) continue;
-
-                bool matched = false;
-                if (isGlobalMode) {
-                    matched = true;
-                } else {
-                    for (const QString &key : searchKeys) {
-                        if (info.prompt.contains(key, Qt::CaseInsensitive)) {
-                            matched = true;
-                            break;
+                    // === 核心优化：检查缓存 ===
+                    if (currentCacheCopy.contains(path)) {
+                        const UserImageInfo &cachedInfo = currentCacheCopy.value(path);
+                        if (cachedInfo.lastModified == currentModified) {
+                            // 命中缓存！直接使用，不需要 open 文件
+                            info = cachedInfo;
+                            needParse = false;
+                            cacheHits++;
                         }
                     }
-                }
 
-                if (matched) {
-                    results.append(info);
+                    // 如果没命中缓存，或者文件被修改过，则解析
+                    if (needParse) {
+                        info.path = path;
+                        info.lastModified = currentModified;
+                        parsePngInfo(path, info); // 解析 I/O 操作
+
+                        // 记录到更新列表
+                        newCacheUpdates.insert(path, info);
+                    }
+
+                    // === 筛选逻辑 ===
+                    if (info.prompt.isEmpty()) continue;
+
+                    bool matched = false;
+                    if (isGlobalMode) {
+                        matched = true;
+                    } else {
+                        for (const QString &key : searchKeys) {
+                            if (info.prompt.contains(key, Qt::CaseInsensitive)) {
+                                matched = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (matched) {
+                        results.append(info);
+                    }
                 }
             }
 
@@ -4183,27 +4184,6 @@ void MainWindow::onMenuSwitchToSettings() {
     ui->rootStack->setCurrentIndex(1);
 }
 
-// === 路径加载与保存 (注册表) ===
-void MainWindow::loadPathSettings() {
-    // 读取 LoRA 路径
-    currentLoraPath = settings->value("lora_path").toString();
-    // 读取 Gallery 路径 (迁移到注册表)
-    sdOutputFolder = settings->value("gallery_path").toString();
-    translationCsvPath = settings->value("translation_path").toString();
-    if (ui->editLoraPath) ui->editLoraPath->setText(currentLoraPath);
-    if (ui->editGalleryPath) ui->editGalleryPath->setText(sdOutputFolder);
-    if (ui->editTransPath) ui->editTransPath->setText(translationCsvPath);
-    if (!translationCsvPath.isEmpty()) {
-        loadTranslationCSV(translationCsvPath);
-    }
-}
-
-void MainWindow::savePathSettings() {
-    settings->setValue("lora_path", currentLoraPath);
-    settings->setValue("gallery_path", sdOutputFolder);
-    settings->setValue("translation_path", translationCsvPath);
-}
-
 // === 全局配置加载与保存 (JSON) ===
 void MainWindow::loadGlobalConfig() {
     QString configPath = qApp->applicationDirPath() + "/config/settings.json";
@@ -4232,6 +4212,30 @@ void MainWindow::loadGlobalConfig() {
 
         qDebug() << "Loaded User-Agent:" << currentUserAgent;
 
+        auto readPathList = [](const QJsonObject &obj, const QString &arrayKey, const QStringList &fallbackKeys) {
+            QStringList out;
+            if (obj.contains(arrayKey) && obj[arrayKey].isArray()) {
+                QJsonArray arr = obj[arrayKey].toArray();
+                for (const auto &val : arr) {
+                    QString path = val.toString().trimmed();
+                    if (!path.isEmpty()) out.append(path);
+                }
+                return out;
+            }
+            for (const QString &key : fallbackKeys) {
+                QString val = obj.value(key).toString().trimmed();
+                if (!val.isEmpty()) {
+                    out.append(val);
+                    break;
+                }
+            }
+            return out;
+        };
+
+        loraPaths = normalizePathList(readPathList(root, "lora_paths", {"lora_path"}));
+        galleryPaths = normalizePathList(readPathList(root, "gallery_paths", {"gallery_path", "sd_folder"}));
+        translationCsvPath = root["translation_path"].toString().trimmed();
+
         // 解析过滤词
         optFilterTags = filterStr.split(',', Qt::SkipEmptyParts);
         for(QString &s : optFilterTags) s = s.trimmed();
@@ -4254,6 +4258,11 @@ void MainWindow::loadGlobalConfig() {
         if (optBlurRadius < 0) optBlurRadius = 0;
         if (optBlurRadius > 100) optBlurRadius = 100;
         if (optRenderThreadCount < 1) optRenderThreadCount = 4;
+    }
+
+    applyPathListsToUi();
+    if (!translationCsvPath.isEmpty()) {
+        loadTranslationCSV(translationCsvPath);
     }
 
     // 将配置应用到 UI 控件 (初始化 UI 状态)
@@ -4420,6 +4429,13 @@ void MainWindow::saveGlobalConfig() {
     QDir().mkpath(configDir);
 
     QJsonObject root;
+    QJsonArray loraArr;
+    for (const QString &path : loraPaths) loraArr.append(path);
+    QJsonArray galleryArr;
+    for (const QString &path : galleryPaths) galleryArr.append(path);
+    root["lora_paths"]                 = loraArr;
+    root["gallery_paths"]              = galleryArr;
+    root["translation_path"]           = translationCsvPath;
     root["lora_recursive"]              = optLoraRecursive;
     root["gallery_recursive"]           = optGalleryRecursive;
     root["blur_radius"]                 = optBlurRadius;
@@ -4470,27 +4486,95 @@ void MainWindow::saveGlobalConfig() {
     }
 }
 
+QStringList MainWindow::normalizePathList(const QStringList &paths) const
+{
+    QStringList result;
+    QSet<QString> seen;
+    for (QString path : paths) {
+        path = path.trimmed();
+        if (path.isEmpty()) continue;
+        QString normalized = QFileInfo(path).absoluteFilePath();
+        if (seen.contains(normalized)) continue;
+        seen.insert(normalized);
+        result.append(normalized);
+    }
+    return result;
+}
+
+QString MainWindow::formatPathListForEdit(const QStringList &paths) const
+{
+    return paths.join("; ");
+}
+
+QStringList MainWindow::collectValidPaths(const QStringList &paths) const
+{
+    QStringList valid;
+    for (const QString &path : paths) {
+        if (!path.isEmpty() && QDir(path).exists()) {
+            valid.append(path);
+        }
+    }
+    return valid;
+}
+
+void MainWindow::applyPathListsToUi()
+{
+    currentLoraPath = loraPaths.value(0);
+    sdOutputFolder = galleryPaths.value(0);
+
+    if (ui->editLoraPath) ui->editLoraPath->setText(formatPathListForEdit(loraPaths));
+    if (ui->editGalleryPath) ui->editGalleryPath->setText(formatPathListForEdit(galleryPaths));
+    if (ui->editTransPath) ui->editTransPath->setText(translationCsvPath);
+}
+
+bool MainWindow::editLoraPaths(bool rescanAfter)
+{
+    PathListDialog dlg(this);
+    dlg.setDialogTitle("LoRA 路径管理");
+    dlg.setHintText("可添加多个 LoRA 模型目录。支持多路径扫描。");
+    dlg.setPaths(loraPaths);
+
+    if (dlg.exec() != QDialog::Accepted) return false;
+
+    loraPaths = normalizePathList(dlg.paths());
+    applyPathListsToUi();
+    saveGlobalConfig();
+
+    if (rescanAfter && !loraPaths.isEmpty()) {
+        scanModels(loraPaths);
+    }
+    return true;
+}
+
+bool MainWindow::editGalleryPaths(bool rescanAfter)
+{
+    PathListDialog dlg(this);
+    dlg.setDialogTitle("图库路径管理");
+    dlg.setHintText("可添加多个图库目录。支持多路径扫描。");
+    dlg.setPaths(galleryPaths);
+
+    if (dlg.exec() != QDialog::Accepted) return false;
+
+    galleryPaths = normalizePathList(dlg.paths());
+    applyPathListsToUi();
+    saveGlobalConfig();
+
+    if (rescanAfter) {
+        onRescanUserClicked();
+    }
+    return true;
+}
+
 // === 设置页交互 ===
 
 void MainWindow::onBrowseLoraPath() {
-    QString dir = QFileDialog::getExistingDirectory(this, "选择 LoRA 文件夹", currentLoraPath);
-    if (!dir.isEmpty()) {
-        currentLoraPath = dir;
-        ui->editLoraPath->setText(dir);
-        savePathSettings();
-        // 立即触发重新扫描? 或者等用户切回库时扫描?
-        // 体验最好的是询问，这里简单起见，如果切回库会自动刷新(如果没有，可以手动刷新)
+    if (editLoraPaths(false)) {
         QMessageBox::information(this, "提示", "LoRA 路径已更新，请返回库界面点击刷新按钮。");
     }
 }
 
 void MainWindow::onBrowseGalleryPath() {
-    QString dir = QFileDialog::getExistingDirectory(this, "选择图库文件夹", sdOutputFolder);
-    if (!dir.isEmpty()) {
-        sdOutputFolder = dir;
-        ui->editGalleryPath->setText(dir);
-        savePathSettings();
-    }
+    editGalleryPaths(false);
 }
 
 void MainWindow::onSettingsChanged() {
@@ -4646,7 +4730,7 @@ void MainWindow::onBrowseTranslationPath() {
         ui->editTransPath->setText(fileName);
 
         // 保存到配置
-        settings->setValue("translation_path", translationCsvPath);
+        saveGlobalConfig();
 
         // 立即加载
         loadTranslationCSV(translationCsvPath);
