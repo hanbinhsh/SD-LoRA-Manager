@@ -30,7 +30,9 @@
 #include <QTabWidget>
 
 #include "imageloader.h"
+#include "llmpromptwidget.h"
 #include "pathlistdialog.h"
+#include "tagbrowserwidget.h"
 #include "syncwidget.h"
 #include "promptparserwidget.h"
 
@@ -137,6 +139,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->btnBrowseLora, &QPushButton::clicked, this, &MainWindow::onBrowseLoraPath);
     connect(ui->btnBrowseGallery, &QPushButton::clicked, this, &MainWindow::onBrowseGalleryPath);
     connect(ui->btnBrowseTrans, &QPushButton::clicked, this, &MainWindow::onBrowseTranslationPath);
+    connect(ui->btnClearGalleryCache, &QPushButton::clicked, this, &MainWindow::onClearUserGalleryCacheClicked);
 
     // 样式设置
     QGraphicsDropShadowEffect *shadow = new QGraphicsDropShadowEffect(this);
@@ -294,6 +297,10 @@ MainWindow::MainWindow(QWidget *parent)
     bgResizeTimer->setSingleShot(true);
     // 当定时器时间到，执行更新背景函数
     connect(bgResizeTimer, &QTimer::timeout, this, &MainWindow::updateBackgroundImage);
+
+    detailGalleryBuildTimer = new QTimer(this);
+    detailGalleryBuildTimer->setSingleShot(true);
+    connect(detailGalleryBuildTimer, &QTimer::timeout, this, &MainWindow::buildGalleryBatch);
 
     if (ui->backgroundLabel && ui->scrollAreaWidgetContents) {
         ui->scrollAreaWidgetContents->installEventFilter(this);
@@ -1100,93 +1107,7 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
     clearLayout(ui->layoutGallery);
     downloadQueue.clear();
     isDownloading = false;
-
-    if (meta.images.isEmpty()) {
-        ui->layoutGallery->addWidget(new QLabel("No preview images."));
-    } else {
-        // === 核心修复：获取绝对标准化的模型目录 ===
-        QFileInfo modelFileInfo(meta.filePath);
-        QString modelDir = modelFileInfo.absolutePath();
-        QString currentStandardBaseName;
-
-        QListWidgetItem *listItem = ui->modelList->currentItem();
-        if (listItem) {
-            currentStandardBaseName = listItem->data(ROLE_MODEL_NAME).toString();
-        }
-        if (currentStandardBaseName.isEmpty()) {
-            currentStandardBaseName = modelFileInfo.completeBaseName();
-        }
-
-        for (int i = 0; i < meta.images.count(); ++i) {
-            const ImageInfo &img = meta.images[i];
-
-            // === NSFW 过滤逻辑 ===
-            bool isNsfw = (img.nsfwLevel > optNSFWLevel);
-            if (optFilterNSFW && isNsfw) {
-                if (optNSFWMode == 0) {
-                    continue; // 模式 0：直接跳过这张图，不生成按钮
-                }
-            }
-
-            QPushButton *thumbBtn = new QPushButton();
-            thumbBtn->setFixedSize(100, 150);
-            thumbBtn->setCheckable(true);
-            thumbBtn->setAutoExclusive(true);
-            thumbBtn->setCursor(Qt::PointingHandCursor);
-            thumbBtn->setProperty("class", "galleryThumb");
-            thumbBtn->setProperty("isNSFW", isNsfw);
-
-            // 计算文件名
-            QString suffix = (i == 0) ? ".preview.png" : QString(".preview.%1.png").arg(i);
-            // === 强制使用 QFileInfo 再次标准化路径字符串 ===
-            QString rawPath = QDir(modelDir).filePath(currentStandardBaseName + suffix);
-            QString strictLocalPath = QFileInfo(rawPath).absoluteFilePath();
-
-            // 兼容：仅元数据时，如果封面路径存在但严格路径不存在，回退到 meta.previewPath
-            QString effectivePath = strictLocalPath;
-            if (i == 0 && !QFile::exists(effectivePath) && !meta.previewPath.isEmpty() && QFile::exists(meta.previewPath)) {
-                effectivePath = QFileInfo(meta.previewPath).absoluteFilePath();
-            }
-
-            // 绑定标准化后的路径
-            thumbBtn->setProperty("fullImagePath", effectivePath);
-            thumbBtn->installEventFilter(this);
-
-            if (QFile::exists(effectivePath)) {
-                thumbBtn->setText("Loading...");
-                IconLoaderTask *task = new IconLoaderTask(effectivePath, 100, 0, this, effectivePath, true);
-                task->setAutoDelete(true);
-                threadPool->start(task);
-            } else {
-                if (m_skipPreviewSync) {
-                    thumbBtn->setText("Skipped");
-                } else if (img.url.isEmpty()) {
-                    thumbBtn->setText("Missing");
-                } else if (i == 0) {
-                    // 封面图正在下载
-                    thumbBtn->setText("Downloading...");
-                } else {
-                    // 后续图进入队列，确保传入的是 strictLocalPath
-                    thumbBtn->setText("Queueing...");
-                    enqueueDownload(img.url, strictLocalPath, thumbBtn);
-                }
-            }
-
-            connect(thumbBtn, &QPushButton::clicked, this, [this, i](){
-                onGalleryImageClicked(i);
-            });
-            ui->layoutGallery->addWidget(thumbBtn);
-        }
-        ui->layoutGallery->addStretch();
-
-        if (ui->layoutGallery->count() > 0) {
-            QPushButton *firstBtn = qobject_cast<QPushButton*>(ui->layoutGallery->itemAt(0)->widget());
-            if (firstBtn) {
-                firstBtn->setChecked(true);
-                onGalleryImageClicked(0);
-            }
-        }
-    }
+    beginGalleryBuild(meta);
 
     // 5. 右侧信息
     ui->textDescription->setHtml(meta.description);
@@ -1202,10 +1123,147 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
 
     updateLocalEditorFromMeta(meta);
 
+    if (!meta.images.isEmpty()) {
+        onGalleryImageClicked(0);
+    }
+
     QTimer::singleShot(0, this, [this, meta](){
         ui->scrollAreaWidgetContents->adjustSize();
         transitionToImage(meta.previewPath);
     });
+}
+
+void MainWindow::cancelGalleryBuild()
+{
+    ++galleryBuildToken;
+    pendingGalleryIndices.clear();
+    pendingGalleryMeta = ModelMeta();
+    pendingGalleryModelDir.clear();
+    pendingGalleryBaseName.clear();
+    if (detailGalleryBuildTimer) {
+        detailGalleryBuildTimer->stop();
+    }
+}
+
+void MainWindow::beginGalleryBuild(const ModelMeta &meta)
+{
+    cancelGalleryBuild();
+
+    if (meta.images.isEmpty()) {
+        ui->layoutGallery->addWidget(new QLabel("No preview images."));
+        return;
+    }
+
+    pendingGalleryMeta = meta;
+    QFileInfo modelFileInfo(meta.filePath);
+    pendingGalleryModelDir = modelFileInfo.absolutePath();
+
+    if (QListWidgetItem *listItem = ui->modelList->currentItem()) {
+        pendingGalleryBaseName = listItem->data(ROLE_MODEL_NAME).toString();
+    }
+    if (pendingGalleryBaseName.isEmpty()) {
+        pendingGalleryBaseName = modelFileInfo.completeBaseName();
+    }
+
+    for (int i = 0; i < meta.images.count(); ++i) {
+        pendingGalleryIndices.append(i);
+    }
+
+    const int initialBatch = qMin(8, pendingGalleryIndices.size());
+    for (int i = 0; i < initialBatch; ++i) {
+        int imageIndex = pendingGalleryIndices.takeFirst();
+        addGalleryThumbButton(pendingGalleryMeta, imageIndex, pendingGalleryModelDir, pendingGalleryBaseName);
+    }
+
+    if (ui->layoutGallery->count() > 0) {
+        QPushButton *firstBtn = qobject_cast<QPushButton*>(ui->layoutGallery->itemAt(0)->widget());
+        if (firstBtn) {
+            firstBtn->setChecked(true);
+        }
+    }
+
+    if (!pendingGalleryIndices.isEmpty()) {
+        detailGalleryBuildTimer->start(0);
+    } else {
+        ui->layoutGallery->addStretch();
+    }
+}
+
+void MainWindow::buildGalleryBatch()
+{
+    if (pendingGalleryIndices.isEmpty()) {
+        if (ui->layoutGallery->count() == 0 || ui->layoutGallery->itemAt(ui->layoutGallery->count() - 1)->spacerItem() == nullptr) {
+            ui->layoutGallery->addStretch();
+        }
+        return;
+    }
+
+    const int batchSize = 12;
+    for (int i = 0; i < batchSize && !pendingGalleryIndices.isEmpty(); ++i) {
+        int imageIndex = pendingGalleryIndices.takeFirst();
+        addGalleryThumbButton(pendingGalleryMeta, imageIndex, pendingGalleryModelDir, pendingGalleryBaseName);
+    }
+
+    if (!pendingGalleryIndices.isEmpty()) {
+        detailGalleryBuildTimer->start(0);
+    } else {
+        ui->layoutGallery->addStretch();
+    }
+}
+
+void MainWindow::addGalleryThumbButton(const ModelMeta &meta, int index, const QString &modelDir, const QString &baseName)
+{
+    if (index < 0 || index >= meta.images.count()) return;
+
+    const ImageInfo &img = meta.images[index];
+    bool isNsfw = (img.nsfwLevel > optNSFWLevel);
+    if (optFilterNSFW && isNsfw && optNSFWMode == 0) {
+        return;
+    }
+
+    QPushButton *thumbBtn = new QPushButton();
+    thumbBtn->setFixedSize(100, 150);
+    thumbBtn->setCheckable(true);
+    thumbBtn->setAutoExclusive(true);
+    thumbBtn->setCursor(Qt::PointingHandCursor);
+    thumbBtn->setProperty("class", "galleryThumb");
+    thumbBtn->setProperty("isNSFW", isNsfw);
+
+    QString suffix = (index == 0) ? ".preview.png" : QString(".preview.%1.png").arg(index);
+    QString rawPath = QDir(modelDir).filePath(baseName + suffix);
+    QString strictLocalPath = QFileInfo(rawPath).absoluteFilePath();
+
+    QString effectivePath = strictLocalPath;
+    if (index == 0 && !QFile::exists(effectivePath) && !meta.previewPath.isEmpty() && QFile::exists(meta.previewPath)) {
+        effectivePath = QFileInfo(meta.previewPath).absoluteFilePath();
+    }
+
+    thumbBtn->setProperty("fullImagePath", effectivePath);
+    thumbBtn->installEventFilter(this);
+
+    if (QFile::exists(effectivePath)) {
+        thumbBtn->setText("Loading...");
+        IconLoaderTask *task = new IconLoaderTask(effectivePath, 100, 0, this, effectivePath, true);
+        task->setAutoDelete(true);
+        threadPool->start(task);
+    } else {
+        if (m_skipPreviewSync) {
+            thumbBtn->setText("Skipped");
+        } else if (img.url.isEmpty()) {
+            thumbBtn->setText("Missing");
+        } else if (index == 0) {
+            thumbBtn->setText("Downloading...");
+        } else {
+            thumbBtn->setText("Queueing...");
+            enqueueDownload(img.url, strictLocalPath, thumbBtn);
+        }
+    }
+
+    connect(thumbBtn, &QPushButton::clicked, this, [this, index](){
+        onGalleryImageClicked(index);
+    });
+
+    ui->layoutGallery->addWidget(thumbBtn);
 }
 
 void MainWindow::onGalleryImageClicked(int index)
@@ -1288,6 +1346,7 @@ void MainWindow::clearLayout(QLayout *layout)
 
 void MainWindow::clearDetailView()
 {
+    cancelGalleryBuild();
     ui->lblModelName->setText("请选择一个模型 / Select a Model");
     ui->lblModelName->setStyleSheet(
         "color: #fff;"
@@ -3572,6 +3631,23 @@ void MainWindow::onSetSdFolderClicked() {
     editGalleryPaths(true);
 }
 
+void MainWindow::onClearUserGalleryCacheClicked()
+{
+    QMessageBox::StandardButton reply = QMessageBox::question(
+        this,
+        "清除图库缓存",
+        "这会删除本地图库提示词缓存文件，下次扫描图库时会重新解析所有图片。\n是否继续？",
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No
+    );
+    if (reply != QMessageBox::Yes) return;
+
+    imageCache.clear();
+    QString cachePath = qApp->applicationDirPath() + "/config/user_gallery_cache.json";
+    QFile::remove(cachePath);
+    ui->statusbar->showMessage("本地图库缓存已清除", 3000);
+}
+
 
 void MainWindow::scanForUserImages(const QString &loraBaseName) {
     ui->listUserImages->clear();
@@ -4140,14 +4216,26 @@ void MainWindow::initMenuBar() {
 
         // 创建子组件
         SyncWidget *syncWidget = new SyncWidget(this);
-        PromptParserWidget *parserWidget = new PromptParserWidget(this);
+        parserWidget = new PromptParserWidget(this);
+        tagBrowserWidget = new TagBrowserWidget(this);
+        llmPromptWidget = new LlmPromptWidget(this);
 
         // 将 MainWindow 的翻译字典传递给解析器
         parserWidget->setTranslationMap(&translationMap);
+        tagBrowserWidget->setCsvPath(translationCsvPath);
+        llmPromptWidget->setLibraryPaths(loraPaths, galleryPaths);
+        connect(tagBrowserWidget, &TagBrowserWidget::csvSaved, this, [this](const QString &path){
+            translationCsvPath = path;
+            loadTranslationCSV(path);
+            if (parserWidget) parserWidget->setTranslationMap(&translationMap);
+            saveGlobalConfig();
+        });
 
         // 添加 Tab
         toolsTabWidget->addTab(syncWidget, "🔄 图片同步 / Sync");
         toolsTabWidget->addTab(parserWidget, "📝 提示词解析 / Prompt");
+        toolsTabWidget->addTab(tagBrowserWidget, "🏷️ Tag 浏览 / Tag");
+        toolsTabWidget->addTab(llmPromptWidget, "🤖 大模型提示词 / LLM");
         toolsTabWidget->setTabPosition(QTabWidget::West);
 
         toolsTabWidget->setAutoFillBackground(true);
@@ -4436,7 +4524,14 @@ void MainWindow::saveGlobalConfig() {
     QString configDir = qApp->applicationDirPath() + "/config";
     QDir().mkpath(configDir);
 
+    QString configPath = configDir + "/settings.json";
     QJsonObject root;
+    QFile readFile(configPath);
+    if (readFile.open(QIODevice::ReadOnly)) {
+        root = QJsonDocument::fromJson(readFile.readAll()).object();
+        readFile.close();
+    }
+
     QJsonArray loraArr;
     for (const QString &path : loraPaths) loraArr.append(path);
     QJsonArray galleryArr;
@@ -4488,7 +4583,7 @@ void MainWindow::saveGlobalConfig() {
         root["tree_state"] = treeState;
     }
 
-    QFile file(configDir + "/settings.json");
+    QFile file(configPath);
     if (file.open(QIODevice::WriteOnly)) {
         file.write(QJsonDocument(root).toJson());
     }
@@ -4533,6 +4628,8 @@ void MainWindow::applyPathListsToUi()
     if (ui->editLoraPath) ui->editLoraPath->setText(formatPathListForEdit(loraPaths));
     if (ui->editGalleryPath) ui->editGalleryPath->setText(formatPathListForEdit(galleryPaths));
     if (ui->editTransPath) ui->editTransPath->setText(translationCsvPath);
+    if (tagBrowserWidget) tagBrowserWidget->setCsvPath(translationCsvPath);
+    if (llmPromptWidget) llmPromptWidget->setLibraryPaths(loraPaths, galleryPaths);
 }
 
 bool MainWindow::editLoraPaths(bool rescanAfter)
@@ -4742,6 +4839,8 @@ void MainWindow::onBrowseTranslationPath() {
 
         // 立即加载
         loadTranslationCSV(translationCsvPath);
+        if (parserWidget) parserWidget->setTranslationMap(&translationMap);
+        if (tagBrowserWidget) tagBrowserWidget->setCsvPath(translationCsvPath);
 
         QMessageBox::information(this, "设置", "翻译词表已加载。");
     }

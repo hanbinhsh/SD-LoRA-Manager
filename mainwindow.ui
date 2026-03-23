@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1300</width>
-    <height>880</height>
+    <height>909</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -191,8 +191,8 @@ QWidget#pageSettings { background-color: #1b2838; color: #dcdedf; }
 QGroupBox { border: 1px solid #3d4d5d; margin-top: 20px; font-weight: bold; color: #66c0f4; border-radius: 4px; }
 QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 5px; padding: 0 5px; }
 #editLoraPath, #editGalleryPath, #editTransPath { background-color: #16191e; border: 1px solid #363c46; padding: 5px; color: #fff; border-radius: 3px; }
-#btnBrowseLora, #btnBrowseGallery, #btnBrowseTrans, #btnResetUA { background-color: #2a3f5a; color: #fff; border: none; padding: 6px 12px; border-radius: 3px; }
-#btnBrowseLora:hove, #btnBrowseGallery:hover, #btnBrowseTrans:hover, #btnResetUA:hover { background-color: #3d5677; }
+#btnBrowseLora, #btnBrowseGallery, #btnBrowseTrans, #btnResetUA, #btnClearGalleryCache { background-color: #2a3f5a; color: #fff; border: none; padding: 6px 12px; border-radius: 3px; }
+#btnBrowseLora:hove, #btnBrowseGallery:hover, #btnBrowseTrans:hover, #btnResetUA:hover, #btnClearGalleryCache:hover { background-color: #3d5677; }
 
 /* Sidebar Tab 按钮 */
 #sidebarTabFrame {
@@ -796,7 +796,7 @@ New</string>
                  <rect>
                   <x>0</x>
                   <y>0</y>
-                  <width>982</width>
+                  <width>743</width>
                   <height>1462</height>
                  </rect>
                 </property>
@@ -1099,7 +1099,7 @@ New</string>
                               <rect>
                                <x>0</x>
                                <y>0</y>
-                               <width>657</width>
+                               <width>478</width>
                                <height>165</height>
                               </rect>
                              </property>
@@ -1621,8 +1621,8 @@ Hash: ...</string>
                                 <rect>
                                  <x>0</x>
                                  <y>0</y>
-                                 <width>434</width>
-                                 <height>422</height>
+                                 <width>278</width>
+                                 <height>78</height>
                                 </rect>
                                </property>
                               </widget>
@@ -2176,34 +2176,13 @@ Hash: ...</string>
            <string>路径设置 / Paths</string>
           </property>
           <layout class="QGridLayout" name="gridLayout_Paths">
-           <item row="0" column="0">
-            <widget class="QLabel" name="lblSetLora">
-             <property name="text">
-              <string>模型文件夹 / Model:</string>
-             </property>
-            </widget>
-           </item>
-           <item row="0" column="1">
-            <widget class="QLineEdit" name="editLoraPath">
-             <property name="readOnly">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-           <item row="0" column="2">
-            <widget class="QPushButton" name="btnBrowseLora">
+           <item row="3" column="2">
+            <widget class="QPushButton" name="btnClearGalleryCache">
              <property name="cursor">
               <cursorShape>PointingHandCursor</cursorShape>
              </property>
              <property name="text">
-              <string>浏览...</string>
-             </property>
-            </widget>
-           </item>
-           <item row="1" column="0">
-            <widget class="QLabel" name="lblSetGallery">
-             <property name="text">
-              <string>图库文件夹 / Gallery:</string>
+              <string>清除</string>
              </property>
             </widget>
            </item>
@@ -2224,10 +2203,51 @@ Hash: ...</string>
              </property>
             </widget>
            </item>
+           <item row="0" column="2">
+            <widget class="QPushButton" name="btnBrowseLora">
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
+             <property name="text">
+              <string>浏览...</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="0">
+            <widget class="QLabel" name="lblSetLora">
+             <property name="text">
+              <string>模型文件夹 / Model:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="lblSetGallery">
+             <property name="text">
+              <string>图库文件夹 / Gallery:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="2">
+            <widget class="QPushButton" name="btnBrowseTrans">
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
+             <property name="text">
+              <string>浏览...</string>
+             </property>
+            </widget>
+           </item>
            <item row="2" column="0">
             <widget class="QLabel" name="lblSetTrans">
              <property name="text">
               <string>Tag 翻译表 (CSV):</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QLineEdit" name="editLoraPath">
+             <property name="readOnly">
+              <bool>true</bool>
              </property>
             </widget>
            </item>
@@ -2241,13 +2261,20 @@ Hash: ...</string>
              </property>
             </widget>
            </item>
-           <item row="2" column="2">
-            <widget class="QPushButton" name="btnBrowseTrans">
-             <property name="cursor">
-              <cursorShape>PointingHandCursor</cursorShape>
-             </property>
+           <item row="3" column="1">
+            <widget class="QLabel" name="lblGalleryCacheHint">
              <property name="text">
-              <string>浏览...</string>
+              <string>清除 `user_gallery_cache.json`，下次扫描会重新解析本地图库提示词。</string>
+             </property>
+             <property name="wordWrap">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="0">
+            <widget class="QLabel" name="lblSetTrans_2">
+             <property name="text">
+              <string>清除缓存:</string>
              </property>
             </widget>
            </item>

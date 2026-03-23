@@ -20,6 +20,12 @@ qt_add_executable(SD_LoRA_Manager
     pathlistdialog.h
     pathlistdialog.cpp
     pathlistdialog.ui
+    tagbrowserwidget.h
+    tagbrowserwidget.cpp
+    tagbrowserwidget.ui
+    llmpromptwidget.h
+    llmpromptwidget.cpp
+    llmpromptwidget.ui
     imageloader.h
     resources.qrc
     app.rc

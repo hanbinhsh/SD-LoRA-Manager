@@ -1,0 +1,708 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>LlmPromptWidget</class>
+ <widget class="QWidget" name="LlmPromptWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1265</width>
+    <height>780</height>
+   </rect>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QWidget#LlmPromptWidget { background-color: #1b2838; color: #dcdedf; }
+QTabWidget::pane, QGroupBox {
+    border: 1px solid #3d4d5d;
+    background-color: #1e252f;
+    border-radius: 4px;
+}
+QGroupBox {
+    margin-top: 14px;
+    font-weight: bold;
+    color: #66c0f4;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 8px;
+    padding: 0 4px;
+}
+QLineEdit, QComboBox, QPlainTextEdit, QListWidget, QDoubleSpinBox, QSpinBox {
+    background-color: #16191e;
+    border: 1px solid #31363d;
+    color: #dcdedf;
+    border-radius: 3px;
+    padding: 4px;
+}
+QPushButton {
+    background-color: #2a3f5a;
+    border-radius: 2px;
+    color: #66c0f4;
+    border: none;
+    padding: 6px 12px;
+}
+QPushButton:hover { background-color: #3d5677; color: #ffffff; }
+QLabel#lblGenerateStatus { color: #8c96a0; }</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayoutRoot">
+   <property name="leftMargin">
+    <number>18</number>
+   </property>
+   <property name="topMargin">
+    <number>18</number>
+   </property>
+   <property name="rightMargin">
+    <number>18</number>
+   </property>
+   <property name="bottomMargin">
+    <number>18</number>
+   </property>
+   <item>
+    <widget class="QTabWidget" name="tabMain">
+     <property name="currentIndex">
+      <number>0</number>
+     </property>
+     <widget class="QWidget" name="pageGenerate">
+      <attribute name="title">
+       <string>提示词生成</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayoutGenerate">
+       <property name="spacing">
+        <number>10</number>
+       </property>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayoutTop">
+         <item>
+          <widget class="QComboBox" name="comboTaskType">
+           <item>
+            <property name="text">
+             <string>人物替换</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>服装替换</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>偏好提示词生成</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>图片调整</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="editContextKeywords">
+           <property name="placeholderText">
+            <string>上下文检索关键词，可留空自动从指令中提取</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnRefreshCandidates">
+           <property name="text">
+            <string>刷新候选上下文</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayoutMain" stretch="3,2">
+         <item>
+          <layout class="QVBoxLayout" name="verticalLayoutLeft">
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_2">
+             <item>
+              <widget class="QGroupBox" name="groupInstruction">
+               <property name="title">
+                <string>任务输入</string>
+               </property>
+               <layout class="QVBoxLayout" name="verticalLayoutInstruction">
+                <item>
+                 <widget class="QPlainTextEdit" name="textInstruction">
+                  <property name="placeholderText">
+                   <string>例如：把提示词里的人物 Arisu 换成 Mika，保留教室构图与蓝白色调，并尽量选择合适的 LoRA。</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPlainTextEdit" name="textSourcePrompt">
+                  <property name="placeholderText">
+                   <string>原始提示词，可为空；如果是人物/服装替换，建议粘贴原 prompt。</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QGroupBox" name="groupPreference">
+               <property name="title">
+                <string>用户偏好摘要</string>
+               </property>
+               <layout class="QVBoxLayout" name="verticalLayoutPreference">
+                <item>
+                 <layout class="QHBoxLayout" name="horizontalLayoutPreferenceTop">
+                  <item>
+                   <widget class="QCheckBox" name="chkUsePreference">
+                    <property name="text">
+                     <string>生成时加入偏好摘要</string>
+                    </property>
+                    <property name="checked">
+                     <bool>true</bool>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPushButton" name="btnAnalyzePreference">
+                    <property name="text">
+                     <string>从历史图库分析</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </item>
+                <item>
+                 <widget class="QPlainTextEdit" name="textPreferenceSummary">
+                  <property name="placeholderText">
+                   <string>会基于 user_gallery_cache.json 中的历史 prompt 统计高频 tag、LoRA 与负面词。</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QGroupBox" name="groupResult">
+             <property name="title">
+              <string>生成结果</string>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayoutResult">
+              <item>
+               <widget class="QToolButton" name="btnToggleThinking">
+                <property name="text">
+                 <string>显示思考内容</string>
+                </property>
+                <property name="checkable">
+                 <bool>true</bool>
+                </property>
+                <property name="checked">
+                 <bool>false</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPlainTextEdit" name="textThinking">
+                <property name="maximumSize">
+                 <size>
+                  <width>16777215</width>
+                  <height>160</height>
+                 </size>
+                </property>
+                <property name="visible">
+                 <bool>false</bool>
+                </property>
+                <property name="readOnly">
+                 <bool>true</bool>
+                </property>
+                <property name="placeholderText">
+                 <string>如果模型返回 reasoning / thinking 内容，会显示在这里。</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPlainTextEdit" name="textResult">
+                <property name="placeholderText">
+                 <string>LLM 返回的推荐 LoRA、正向提示词、负向提示词和说明会显示在这里。</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayoutResultButtons">
+                <item>
+                 <widget class="QLabel" name="lblGenerateStatus">
+                  <property name="text">
+                   <string>待命</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <spacer name="horizontalSpacerResult">
+                  <property name="orientation">
+                   <enum>Qt::Orientation::Horizontal</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>40</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnCopyPrompt">
+                  <property name="text">
+                   <string>复制提示词</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnCopyResult">
+                  <property name="text">
+                   <string>复制结果</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnStopGenerate">
+                  <property name="enabled">
+                   <bool>false</bool>
+                  </property>
+                  <property name="text">
+                   <string>停止生成</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnGenerate">
+                  <property name="text">
+                   <string>生成提示词</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+             </layout>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <layout class="QVBoxLayout" name="verticalLayoutRight">
+           <item>
+            <widget class="QGroupBox" name="groupContextOptions">
+             <property name="title">
+              <string>上下文策略</string>
+             </property>
+             <layout class="QHBoxLayout" name="horizontalLayoutContextOptions">
+              <item>
+               <layout class="QGridLayout" name="gridLayout">
+                <item row="0" column="0">
+                 <widget class="QCheckBox" name="chkAutoContext">
+                  <property name="text">
+                   <string>自动勾选前几项候选资源</string>
+                  </property>
+                  <property name="checked">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="1">
+                 <widget class="QCheckBox" name="chkSendSelectedImages">
+                  <property name="text">
+                   <string>发送所选图片给大模型</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="0">
+                 <widget class="QCheckBox" name="chkUseTriggerWords">
+                  <property name="text">
+                   <string>自动读取触发词</string>
+                  </property>
+                  <property name="checked">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="1">
+                 <widget class="QCheckBox" name="chkUsePreviewPrompts">
+                  <property name="text">
+                   <string>自动读取预览图提示词</string>
+                  </property>
+                  <property name="checked">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item row="2" column="0">
+                 <widget class="QCheckBox" name="chkManualTriggerWords">
+                  <property name="text">
+                   <string>手动输入触发词</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="2" column="1">
+                 <widget class="QCheckBox" name="chkManualLoraPrompts">
+                  <property name="text">
+                   <string>手动输入Lora提示词</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="0">
+                 <widget class="QLabel" name="labelCandidateLimit">
+                  <property name="text">
+                   <string>候选数</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="1">
+                 <widget class="QSpinBox" name="spinCandidateLimit">
+                  <property name="minimum">
+                   <number>3</number>
+                  </property>
+                  <property name="maximum">
+                   <number>50</number>
+                  </property>
+                  <property name="value">
+                   <number>12</number>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QGroupBox" name="groupManualContext">
+             <property name="title">
+              <string>手动补充上下文</string>
+             </property>
+             <layout class="QHBoxLayout" name="horizontalLayoutManualContext">
+              <item>
+               <widget class="QPlainTextEdit" name="textManualTriggerWords">
+                <property name="placeholderText">
+                 <string>手动输入触发词，多个用逗号或换行分隔。</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPlainTextEdit" name="textManualLoraPrompts">
+                <property name="placeholderText">
+                 <string>手动输入 LoRA 预览图提示词，供大模型参考人物特征、服装和风格。</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QGroupBox" name="groupLoraCandidates">
+             <property name="title">
+              <string>LoRA 候选</string>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayoutLoraCandidates">
+              <item>
+               <widget class="QListWidget" name="listLoraCandidates"/>
+              </item>
+              <item>
+               <widget class="QLabel" name="lblLoraSelectionSummary">
+                <property name="text">
+                 <string>已勾选 0 / 0 个 LoRA</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QGroupBox" name="groupImageCandidates">
+             <property name="title">
+              <string>参考图片</string>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayoutImageCandidates">
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayoutImagesTop">
+                <item>
+                 <widget class="QPushButton" name="btnAddManualImages">
+                  <property name="text">
+                   <string>手动添加图片</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <spacer name="horizontalSpacerImages">
+                  <property name="orientation">
+                   <enum>Qt::Orientation::Horizontal</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>40</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <widget class="QListWidget" name="listImageCandidates"/>
+              </item>
+              <item>
+               <widget class="QLabel" name="lblImageSelectionSummary">
+                <property name="text">
+                 <string>已勾选 0 / 0 张图片</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+          </layout>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="pageSettings">
+      <attribute name="title">
+       <string>大模型设置</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayoutSettings">
+       <property name="spacing">
+        <number>12</number>
+       </property>
+       <item>
+        <widget class="QGroupBox" name="groupConnection">
+         <property name="title">
+          <string>连接与模型</string>
+         </property>
+         <layout class="QGridLayout" name="gridLayoutConnection">
+          <item row="4" column="0">
+           <widget class="QCheckBox" name="chkStopModelAfterGenerate">
+            <property name="text">
+             <string>生成后停止</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="labelTemperature">
+            <property name="text">
+             <string>Temperature</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="4">
+           <widget class="QComboBox" name="comboModel">
+            <property name="editable">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1">
+           <widget class="QLabel" name="label">
+            <property name="text">
+             <string>生成完成后停止大模型（ollama stop 模型名）</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0">
+           <widget class="QLabel" name="labelEndpoint">
+            <property name="text">
+             <string>Ollama Endpoint</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="3">
+           <widget class="QLabel" name="labelCustomOptions">
+            <property name="text">
+             <string>自定义参数</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="5">
+           <widget class="QPushButton" name="btnFetchModels">
+            <property name="text">
+             <string>刷新</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="editEndpoint"/>
+          </item>
+          <item row="2" column="1">
+           <widget class="QDoubleSpinBox" name="spinTemperature">
+            <property name="decimals">
+             <number>2</number>
+            </property>
+            <property name="minimum">
+             <double>0.000000000000000</double>
+            </property>
+            <property name="maximum">
+             <double>2.000000000000000</double>
+            </property>
+            <property name="singleStep">
+             <double>0.050000000000000</double>
+            </property>
+            <property name="value">
+             <double>0.400000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="3">
+           <widget class="QLabel" name="labelModel">
+            <property name="text">
+             <string>模型</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="4">
+           <widget class="QLineEdit" name="editCustomOptions">
+            <property name="toolTip">
+             <string>以命令行风格输入 Ollama options。支持 --presence_penalty 1.0、--top_p 0.8、--top_k 20、--repeat_penalty 1.12 等，会自动写入请求的 options。</string>
+            </property>
+            <property name="placeholderText">
+             <string>例如：--presence_penalty 1.0 --top_p 0.8 --top_k 20 --repeat_penalty 1.12</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QTabWidget" name="tabAdvancedConfig">
+         <property name="currentIndex">
+          <number>0</number>
+         </property>
+         <widget class="QWidget" name="pagePromptTemplate">
+          <attribute name="title">
+           <string>提示词设置</string>
+          </attribute>
+          <layout class="QHBoxLayout" name="horizontalLayout">
+           <item>
+            <layout class="QVBoxLayout" name="verticalLayout" stretch="0,1,0">
+             <item>
+              <layout class="QHBoxLayout" name="horizontalLayoutTemplateTask">
+               <item>
+                <widget class="QLabel" name="lblPromptTemplateTask">
+                 <property name="text">
+                  <string>当前模板任务</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QComboBox" name="comboTemplateTaskType">
+                 <item>
+                  <property name="text">
+                   <string>人物替换</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>服装替换</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>偏好提示词生成</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>图片调整</string>
+                  </property>
+                 </item>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QSplitter" name="splitter">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
+               </property>
+               <widget class="QPlainTextEdit" name="textPromptTemplate">
+                <property name="placeholderText">
+                 <string>编辑发给系统的提示词模板。</string>
+                </property>
+               </widget>
+               <widget class="QTextBrowser" name="textPlaceholderHelp">
+                <property name="minimumSize">
+                 <size>
+                  <width>0</width>
+                  <height>180</height>
+                 </size>
+                </property>
+               </widget>
+              </widget>
+             </item>
+             <item>
+              <layout class="QHBoxLayout" name="horizontalLayoutPromptTemplateButtons">
+               <item>
+                <spacer name="horizontalSpacerTemplate">
+                 <property name="orientation">
+                  <enum>Qt::Orientation::Horizontal</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>40</width>
+                   <height>20</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+               <item>
+                <widget class="QPushButton" name="btnResetPromptTemplate">
+                 <property name="text">
+                  <string>重置模板</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="pageLastRequest">
+          <attribute name="title">
+           <string>上次发送内容</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="verticalLayoutLastRequest">
+           <item>
+            <widget class="QPlainTextEdit" name="textLastRequest">
+             <property name="readOnly">
+              <bool>true</bool>
+             </property>
+             <property name="placeholderText">
+              <string>这里会显示上次发给大模型的请求内容。</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="pageSystemPrompt">
+          <attribute name="title">
+           <string>System Prompt</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="verticalLayoutSystemPrompt">
+           <item>
+            <widget class="QPlainTextEdit" name="textSystemPrompt"/>
+           </item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

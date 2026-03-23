@@ -65,6 +65,10 @@ QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
+class PromptParserWidget;
+class TagBrowserWidget;
+class LlmPromptWidget;
+
 struct DownloadTask {
     QString url;
     QString savePath;
@@ -177,6 +181,7 @@ private slots:
     void onSettingsChanged(); // 通用改变处理
     void onBlurSliderChanged(int value);
     void onSetSdFolderClicked();
+    void onClearUserGalleryCacheClicked();
 
     void onBrowseTranslationPath();
     void onUserGalleryContextMenu(const QPoint &pos);
@@ -196,6 +201,9 @@ private slots:
 private:
     Ui::MainWindow *ui;
     QTabWidget *toolsTabWidget = nullptr;
+    PromptParserWidget *parserWidget = nullptr;
+    TagBrowserWidget *tagBrowserWidget = nullptr;
+    LlmPromptWidget *llmPromptWidget = nullptr;
     QNetworkAccessManager *netManager;
     QPixmap currentHeroPixmap;
     QString currentHeroPath;
@@ -259,6 +267,10 @@ private:
     void updateBackgroundDuringTransition();
     void enqueueDownload(const QString &url, const QString &savePath, QPushButton *btn);
     void processNextDownload();
+    void beginGalleryBuild(const ModelMeta &meta);
+    void buildGalleryBatch();
+    void addGalleryThumbButton(const ModelMeta &meta, int index, const QString &modelDir, const QString &baseName);
+    void cancelGalleryBuild();
 
     // 执行排序
     void executeSort();
@@ -277,6 +289,12 @@ private:
     QIcon placeholderIcon;
 
     QTimer *bgResizeTimer;
+    QTimer *detailGalleryBuildTimer = nullptr;
+    ModelMeta pendingGalleryMeta;
+    QString pendingGalleryModelDir;
+    QString pendingGalleryBaseName;
+    QList<int> pendingGalleryIndices;
+    int galleryBuildToken = 0;
 
     QQueue<DownloadTask> downloadQueue; // 任务队列
     bool isDownloading = false;         // 当前是否有任务在运行
