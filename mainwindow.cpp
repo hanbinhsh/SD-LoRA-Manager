@@ -1735,6 +1735,7 @@ void MainWindow::onForceUpdateClicked() {
     QString baseName = item->data(ROLE_MODEL_NAME).toString();
     if (baseName.isEmpty()) baseName = item->text();
     QString filePath = item->data(ROLE_FILE_PATH).toString();
+    ui->modelList->setProperty("current_processing_path", filePath);
 
     QString modelDir = ui->modelList->property("current_model_dir").toString();
     bool hasRemotePreview = false;
@@ -2173,6 +2174,9 @@ void MainWindow::fetchModelInfoFromCivitai(const QString &hash) {
     QString modelDir = ui->modelList->property("current_model_dir").toString();
     QString urlStr = QString("https://civitai.com/api/v1/model-versions/by-hash/%1").arg(hash);
     QString filePath = ui->modelList->property("current_processing_path").toString();
+    if (modelDir.isEmpty() && !filePath.isEmpty()) {
+        modelDir = QFileInfo(filePath).absolutePath();
+    }
     QNetworkRequest request((QUrl(urlStr)));
 
     request.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
@@ -2314,6 +2318,10 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     QString filePath = reply->property("filePath").toString();
     reply->deleteLater();
     ui->btnForceUpdate->setEnabled(true);
+
+    if (modelDir.isEmpty() && !filePath.isEmpty()) {
+        modelDir = QFileInfo(filePath).absolutePath();
+    }
 
     if (reply->error() != QNetworkReply::NoError) {
         clearLayout(ui->layoutTriggerStack); // 清空触发词区域
