@@ -118,6 +118,8 @@ LlmPromptWidget::LlmPromptWidget(QWidget *parent)
     connect(ui->comboTaskType, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &LlmPromptWidget::onTaskTypeChanged);
     connect(ui->comboTemplateTaskType, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &LlmPromptWidget::onTemplateTaskTypeChanged);
     connect(ui->textPromptTemplate, &QPlainTextEdit::textChanged, this, &LlmPromptWidget::onPromptTemplateEdited);
+    connect(ui->textTaskGuidance, &QPlainTextEdit::textChanged, this, &LlmPromptWidget::onTaskGuidanceEdited);
+    connect(ui->textImageAttachmentNote, &QPlainTextEdit::textChanged, this, &LlmPromptWidget::onImageAttachmentNoteEdited);
     connect(ui->btnToggleThinking, &QToolButton::toggled, this, &LlmPromptWidget::onThinkingToggled);
     connect(ui->listLoraCandidates, &QListWidget::itemChanged, this, &LlmPromptWidget::onCandidateItemChanged);
     connect(ui->listImageCandidates, &QListWidget::itemChanged, this, &LlmPromptWidget::onCandidateItemChanged);
@@ -219,6 +221,22 @@ void LlmPromptWidget::persistCurrentPromptTemplate()
     m_taskPromptTemplates.insert(currentTaskKey(), ui->textPromptTemplate->toPlainText());
 }
 
+void LlmPromptWidget::loadTaskPromptFieldsForTask(const QString &taskKey)
+{
+    m_syncingTaskPromptFields = true;
+    ui->textTaskGuidance->setPlainText(m_taskGuidances.value(taskKey, defaultTaskGuidance(taskKey)));
+    ui->textImageAttachmentNote->setPlainText(m_taskImageAttachmentNotes.value(taskKey, defaultImageAttachmentNote(taskKey)));
+    m_syncingTaskPromptFields = false;
+}
+
+void LlmPromptWidget::persistCurrentTaskPromptFields()
+{
+    if (m_syncingTaskPromptFields) return;
+    const QString taskKey = currentTaskKey();
+    m_taskGuidances.insert(taskKey, ui->textTaskGuidance->toPlainText());
+    m_taskImageAttachmentNotes.insert(taskKey, ui->textImageAttachmentNote->toPlainText());
+}
+
 void LlmPromptWidget::updateContextSelectionSummary()
 {
     int loraChecked = 0;
@@ -248,6 +266,7 @@ void LlmPromptWidget::loadSettings()
         ui->comboModel->setEditText(root["llm_model"].toString());
         ui->spinTemperature->setValue(root["llm_temperature"].toDouble(0.4));
         ui->spinCandidateLimit->setValue(root["llm_candidate_limit"].toInt(12));
+        ui->spinPreferenceTopCount->setValue(root["llm_preference_top_count"].toInt(15));
         ui->editCustomOptions->setText(root["llm_custom_options"].toString());
         QString savedTaskKey = root["llm_task_type"].toString();
         int savedTaskIndex = 0;
@@ -280,14 +299,24 @@ void LlmPromptWidget::loadSettings()
             if (value.isEmpty()) value = legacyPromptTemplate;
             if (value.isEmpty()) value = defaultPromptTemplate(taskKey);
             m_taskPromptTemplates.insert(taskKey, value);
+
+            QString guidance = root["llm_task_guidance_" + taskKey].toString();
+            if (guidance.isEmpty()) guidance = defaultTaskGuidance(taskKey);
+            m_taskGuidances.insert(taskKey, guidance);
+
+            QString attachmentNote = root["llm_image_attachment_note_" + taskKey].toString();
+            if (attachmentNote.isEmpty()) attachmentNote = defaultImageAttachmentNote(taskKey);
+            m_taskImageAttachmentNotes.insert(taskKey, attachmentNote);
         }
         loadPromptTemplateForTask(currentTaskKey());
+        loadTaskPromptFieldsForTask(currentTaskKey());
         return;
     }
 
     ui->editEndpoint->setText("http://127.0.0.1:11434");
     ui->spinTemperature->setValue(0.4);
     ui->spinCandidateLimit->setValue(12);
+    ui->spinPreferenceTopCount->setValue(15);
     ui->editCustomOptions->clear();
     ui->comboTaskType->setCurrentIndex(0);
     ui->chkAutoContext->setChecked(true);
@@ -308,7 +337,16 @@ void LlmPromptWidget::loadSettings()
     m_taskPromptTemplates.insert(kTaskOutfitReplace, defaultPromptTemplate(kTaskOutfitReplace));
     m_taskPromptTemplates.insert(kTaskPreferenceGenerate, defaultPromptTemplate(kTaskPreferenceGenerate));
     m_taskPromptTemplates.insert(kTaskImageAdjust, defaultPromptTemplate(kTaskImageAdjust));
+    m_taskGuidances.insert(kTaskCharacterReplace, defaultTaskGuidance(kTaskCharacterReplace));
+    m_taskGuidances.insert(kTaskOutfitReplace, defaultTaskGuidance(kTaskOutfitReplace));
+    m_taskGuidances.insert(kTaskPreferenceGenerate, defaultTaskGuidance(kTaskPreferenceGenerate));
+    m_taskGuidances.insert(kTaskImageAdjust, defaultTaskGuidance(kTaskImageAdjust));
+    m_taskImageAttachmentNotes.insert(kTaskCharacterReplace, defaultImageAttachmentNote(kTaskCharacterReplace));
+    m_taskImageAttachmentNotes.insert(kTaskOutfitReplace, defaultImageAttachmentNote(kTaskOutfitReplace));
+    m_taskImageAttachmentNotes.insert(kTaskPreferenceGenerate, defaultImageAttachmentNote(kTaskPreferenceGenerate));
+    m_taskImageAttachmentNotes.insert(kTaskImageAdjust, defaultImageAttachmentNote(kTaskImageAdjust));
     loadPromptTemplateForTask(currentTaskKey());
+    loadTaskPromptFieldsForTask(currentTaskKey());
 }
 
 void LlmPromptWidget::saveSettings() const
@@ -324,6 +362,7 @@ void LlmPromptWidget::saveSettings() const
     root["llm_model"] = ui->comboModel->currentText().trimmed();
     root["llm_temperature"] = ui->spinTemperature->value();
     root["llm_candidate_limit"] = ui->spinCandidateLimit->value();
+    root["llm_preference_top_count"] = ui->spinPreferenceTopCount->value();
     root["llm_custom_options"] = ui->editCustomOptions->text().trimmed();
     root["llm_task_type"] = currentTaskKey();
     root["llm_auto_context"] = ui->chkAutoContext->isChecked();
@@ -340,6 +379,8 @@ void LlmPromptWidget::saveSettings() const
     const QStringList taskKeys = {kTaskCharacterReplace, kTaskOutfitReplace, kTaskPreferenceGenerate, kTaskImageAdjust};
     for (const QString &taskKey : taskKeys) {
         root["llm_prompt_template_" + taskKey] = m_taskPromptTemplates.value(taskKey, defaultPromptTemplate(taskKey));
+        root["llm_task_guidance_" + taskKey] = m_taskGuidances.value(taskKey, defaultTaskGuidance(taskKey));
+        root["llm_image_attachment_note_" + taskKey] = m_taskImageAttachmentNotes.value(taskKey, defaultImageAttachmentNote(taskKey));
     }
 
     if (file.open(QIODevice::WriteOnly)) {
@@ -748,6 +789,49 @@ QString LlmPromptWidget::defaultPromptTemplate(const QString &taskKey) const
         "说明:\n";
 }
 
+QString LlmPromptWidget::defaultTaskGuidance(const QString &taskKey) const
+{
+    if (taskKey == kTaskCharacterReplace) {
+        return
+            "Rewrite the Stable Diffusion prompt according to the instruction. "
+            "This is character replacement. Preserve composition, camera, outfit, lighting, quality tags, and non-character style LoRAs. "
+            "Replace only the old character identity and old character LoRA with the new character. "
+            "If a selected replacement LoRA exists, add its exact insertion tag into the positive prompt. "
+            "Never place any LoRA syntax or LoRA weight fragments into the negative prompt. "
+            "Do not drop clothing tags unless explicitly requested.";
+    }
+
+    if (taskKey == kTaskOutfitReplace) {
+        return
+            "Rewrite the Stable Diffusion prompt according to the instruction. "
+            "This is outfit replacement. Preserve character identity, pose, scene, lighting, and style tags unless explicitly changed. "
+            "Only replace the clothing-related content. "
+            "Keep useful LoRAs, and never place LoRA syntax into the negative prompt.";
+    }
+
+    if (taskKey == kTaskImageAdjust) {
+        return
+            "Rewrite the Stable Diffusion prompt according to the instruction. "
+            "This is image-based prompt refinement. Compare the current prompt, the user's complaint, and any attached or referenced image prompts. "
+            "Identify missing, inaccurate, or underdescribed visual details, then refine the prompt so the next generation better matches the intended image. "
+            "Preserve the existing subject, composition, style, and useful quality tags unless the user explicitly asks to change them. "
+            "If the user intended a checkered skirt but wrote striped skirt or omitted the skirt description, correct the clothing description explicitly. "
+            "Do not invent large scene changes. Prefer precise tag additions or substitutions over full rewrites when possible.";
+    }
+
+    return
+        "Generate a user-preferred Stable Diffusion prompt based on history and references. "
+        "You may choose suitable local LoRAs from the provided list.";
+}
+
+QString LlmPromptWidget::defaultImageAttachmentNote(const QString &taskKey) const
+{
+    if (taskKey == kTaskImageAdjust) {
+        return "Selected reference images may be attached in the request. Use them to identify missing clothing, props, textures, and other visual details that should be corrected in the next prompt.";
+    }
+    return "Selected reference images may be attached in the request. Use them to refine character features, outfit details, and prompt fidelity.";
+}
+
 QString LlmPromptWidget::renderPromptTemplate(const QHash<QString, QString> &values) const
 {
     QString taskKey = currentTaskKey();
@@ -783,6 +867,7 @@ QString LlmPromptWidget::preferenceSummary() const
         }
     }
 
+    const int topLimit = ui->spinPreferenceTopCount->value();
     auto topList = [](const QMap<QString, int> &map, int limit) {
         QList<QPair<QString, int>> pairs;
         for (auto it = map.begin(); it != map.end(); ++it) {
@@ -801,9 +886,10 @@ QString LlmPromptWidget::preferenceSummary() const
 
     QString summary;
     summary += QString("History images: %1\n").arg(items.size());
-    summary += "Top positive tags: " + topList(tagCounts, 20).join(", ") + "\n";
-    summary += "Top LoRAs: " + topList(loraCounts, 10).join(", ") + "\n";
-    summary += "Top negative tags: " + topList(negativeCounts, 15).join(", ");
+    summary += QString("Top count setting: %1\n").arg(topLimit);
+    summary += "Top positive tags: " + topList(tagCounts, topLimit).join(", ") + "\n";
+    summary += "Top LoRAs: " + topList(loraCounts, topLimit).join(", ") + "\n";
+    summary += "Top negative tags: " + topList(negativeCounts, topLimit).join(", ");
     return summary.trimmed();
 }
 
@@ -885,36 +971,9 @@ QString LlmPromptWidget::buildGenerationPrompt() const
         ? ui->textManualLoraPrompts->toPlainText().trimmed()
         : QString();
 
-    QString taskGuidance;
-    if (taskKey == kTaskCharacterReplace) {
-        taskGuidance =
-            "Rewrite the Stable Diffusion prompt according to the instruction. "
-            "This is character replacement. Preserve composition, camera, outfit, lighting, quality tags, and non-character style LoRAs. "
-            "Replace only the old character identity and old character LoRA with the new character. "
-            "If a selected replacement LoRA exists, add its exact insertion tag into the positive prompt. "
-            "Never place any LoRA syntax or LoRA weight fragments into the negative prompt. "
-            "Do not drop clothing tags unless explicitly requested.";
-    } else if (taskKey == kTaskOutfitReplace) {
-        taskGuidance =
-            "Rewrite the Stable Diffusion prompt according to the instruction. "
-            "This is outfit replacement. Preserve character identity, pose, scene, lighting, and style tags unless explicitly changed. "
-            "Only replace the clothing-related content. "
-            "Keep useful LoRAs, and never place LoRA syntax into the negative prompt.";
-    } else if (taskKey == kTaskImageAdjust) {
-        taskGuidance =
-            "Rewrite the Stable Diffusion prompt according to the instruction. "
-            "This is image-based prompt refinement. Compare the current prompt, the user's complaint, and any attached or referenced image prompts. "
-            "Identify missing, inaccurate, or underdescribed visual details, then refine the prompt so the next generation better matches the intended image. "
-            "Preserve the existing subject, composition, style, and useful quality tags unless the user explicitly asks to change them. "
-            "If the user intended a checkered skirt but wrote striped skirt or omitted the skirt description, correct the clothing description explicitly. "
-            "Do not invent large scene changes. Prefer precise tag additions or substitutions over full rewrites when possible.";
-    } else {
-        taskGuidance =
-            "Generate a user-preferred Stable Diffusion prompt based on history and references. "
-            "You may choose suitable local LoRAs from the provided list.";
-    }
+    QString taskGuidance = m_taskGuidances.value(taskKey, defaultTaskGuidance(taskKey)).trimmed();
     QString imageAttachmentNote = ui->chkSendSelectedImages->isChecked()
-        ? "Selected reference images may be attached in the request. Use them to refine character features, outfit details, and prompt fidelity."
+        ? m_taskImageAttachmentNotes.value(taskKey, defaultImageAttachmentNote(taskKey)).trimmed()
         : QString();
 
     QHash<QString, QString> values;
@@ -1387,7 +1446,10 @@ void LlmPromptWidget::onResetPromptTemplateClicked()
     QString taskKey = currentTaskKey();
     QString text = defaultPromptTemplate(taskKey);
     m_taskPromptTemplates.insert(taskKey, text);
+    m_taskGuidances.insert(taskKey, defaultTaskGuidance(taskKey));
+    m_taskImageAttachmentNotes.insert(taskKey, defaultImageAttachmentNote(taskKey));
     loadPromptTemplateForTask(taskKey);
+    loadTaskPromptFieldsForTask(taskKey);
     updateStatus(taskLabelForKey(taskKey) + " 的提示词模板已重置");
 }
 
@@ -1400,6 +1462,7 @@ void LlmPromptWidget::onTaskTypeChanged(int)
     }
 
     loadPromptTemplateForTask(currentTaskKey());
+    loadTaskPromptFieldsForTask(currentTaskKey());
 
     if (currentTaskKey() == kTaskImageAdjust) {
         ui->textInstruction->setPlaceholderText("例如：这张图想保留整体构图，但把裙子从 striped skirt 改成更明确的 checkered skirt，并补全袜子与袖口细节。");
@@ -1418,12 +1481,23 @@ void LlmPromptWidget::onPromptTemplateEdited()
     persistCurrentPromptTemplate();
 }
 
+void LlmPromptWidget::onTaskGuidanceEdited()
+{
+    persistCurrentTaskPromptFields();
+}
+
+void LlmPromptWidget::onImageAttachmentNoteEdited()
+{
+    persistCurrentTaskPromptFields();
+}
+
 void LlmPromptWidget::onTemplateTaskTypeChanged(int index)
 {
     if (m_syncingTaskTypeSelectors) return;
     m_syncingTaskTypeSelectors = true;
     ui->comboTaskType->setCurrentIndex(index);
     loadPromptTemplateForTask(taskKeyForIndex(index));
+    loadTaskPromptFieldsForTask(taskKeyForIndex(index));
     m_syncingTaskTypeSelectors = false;
 }
 

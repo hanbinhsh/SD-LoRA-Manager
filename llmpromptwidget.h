@@ -38,6 +38,8 @@ private slots:
     void onTaskTypeChanged(int index);
     void onTemplateTaskTypeChanged(int index);
     void onPromptTemplateEdited();
+    void onTaskGuidanceEdited();
+    void onImageAttachmentNoteEdited();
     void onCandidateItemChanged(QListWidgetItem *item);
     void onThinkingToggled(bool checked);
 
@@ -69,7 +71,10 @@ private:
     QString m_lastRenderedPrompt;
     QString m_activeModelName;
     QHash<QString, QString> m_taskPromptTemplates;
+    QHash<QString, QString> m_taskGuidances;
+    QHash<QString, QString> m_taskImageAttachmentNotes;
     bool m_syncingPromptTemplateEditor = false;
+    bool m_syncingTaskPromptFields = false;
     bool m_syncingTaskTypeSelectors = false;
 
     void loadSettings();
@@ -82,6 +87,8 @@ private:
     bool isReplacementTask(const QString &taskKey) const;
     void loadPromptTemplateForTask(const QString &taskKey);
     void persistCurrentPromptTemplate();
+    void loadTaskPromptFieldsForTask(const QString &taskKey);
+    void persistCurrentTaskPromptFields();
     void updateContextSelectionSummary();
 
     QStringList extractKeywords() const;
@@ -99,6 +106,8 @@ private:
     QStringList parseReplaceInstruction(QString *oldTarget = nullptr, QString *newTarget = nullptr) const;
     QString buildConservativeReplacementPrompt() const;
     QString defaultPromptTemplate(const QString &taskKey) const;
+    QString defaultTaskGuidance(const QString &taskKey) const;
+    QString defaultImageAttachmentNote(const QString &taskKey) const;
     QString renderPromptTemplate(const QHash<QString, QString> &values) const;
     QString buildGenerationPrompt() const;
     QJsonObject buildGenerationOptions() const;
