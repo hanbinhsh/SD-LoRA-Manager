@@ -28,6 +28,7 @@ public:
 private slots:
     void onFetchModelsClicked();
     void onRefreshCandidatesClicked();
+    void onClearCandidateSelectionsClicked();
     void onAnalyzePreferenceClicked();
     void onGenerateClicked();
     void onStopGenerateClicked();

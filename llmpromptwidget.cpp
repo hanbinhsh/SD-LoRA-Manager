@@ -23,6 +23,8 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QScrollBar>
+#include <QSignalBlocker>
+#include <QSet>
 #include <QTextEdit>
 #include <QTimer>
 #include <algorithm>
@@ -89,6 +91,11 @@ QString escapeAnglePromptSyntax(QString text)
         captured.replace('>', "&gt;");
         text.replace(start, length, captured);
     }
+
+    // Fallback for streaming/incomplete tags like "<lora:name:1" (without closing '>').
+    static const QRegularExpression incompleteRe("<\\s*(lora|lyco|lokr|locon|hypernet|embedding)\\s*:",
+                                                 QRegularExpression::CaseInsensitiveOption);
+    text.replace(incompleteRe, "&lt;\\1:");
     return text;
 }
 
@@ -136,6 +143,7 @@ LlmPromptWidget::LlmPromptWidget(QWidget *parent)
 
     connect(ui->btnFetchModels, &QPushButton::clicked, this, &LlmPromptWidget::onFetchModelsClicked);
     connect(ui->btnRefreshCandidates, &QPushButton::clicked, this, &LlmPromptWidget::onRefreshCandidatesClicked);
+    connect(ui->btnClearCandidateSelections, &QPushButton::clicked, this, &LlmPromptWidget::onClearCandidateSelectionsClicked);
     connect(ui->btnAnalyzePreference, &QPushButton::clicked, this, &LlmPromptWidget::onAnalyzePreferenceClicked);
     connect(ui->btnGenerate, &QPushButton::clicked, this, &LlmPromptWidget::onGenerateClicked);
     connect(ui->btnStopGenerate, &QPushButton::clicked, this, &LlmPromptWidget::onStopGenerateClicked);
@@ -313,6 +321,7 @@ void LlmPromptWidget::loadSettings()
         ui->chkUsePreference->setChecked(root["llm_use_preference"].toBool(true));
         ui->chkUseTriggerWords->setChecked(root["llm_use_trigger_words"].toBool(true));
         ui->chkUsePreviewPrompts->setChecked(root["llm_use_preview_prompts"].toBool(true));
+        ui->chkIncludeImagePromptsInContext->setChecked(root["llm_include_image_prompts_in_context"].toBool(true));
         ui->chkSendSelectedImages->setChecked(root["llm_send_selected_images"].toBool(false));
         ui->chkStopModelAfterGenerate->setChecked(root["llm_stop_model_after_generate"].toBool(false));
         ui->chkManualTriggerWords->setChecked(root["llm_manual_trigger_words_enabled"].toBool(false));
@@ -356,6 +365,7 @@ void LlmPromptWidget::loadSettings()
     ui->chkUsePreference->setChecked(true);
     ui->chkUseTriggerWords->setChecked(true);
     ui->chkUsePreviewPrompts->setChecked(true);
+    ui->chkIncludeImagePromptsInContext->setChecked(true);
     ui->chkSendSelectedImages->setChecked(false);
     ui->chkStopModelAfterGenerate->setChecked(false);
     ui->chkManualTriggerWords->setChecked(false);
@@ -403,6 +413,7 @@ void LlmPromptWidget::saveSettings() const
     root["llm_use_preference"] = ui->chkUsePreference->isChecked();
     root["llm_use_trigger_words"] = ui->chkUseTriggerWords->isChecked();
     root["llm_use_preview_prompts"] = ui->chkUsePreviewPrompts->isChecked();
+    root["llm_include_image_prompts_in_context"] = ui->chkIncludeImagePromptsInContext->isChecked();
     root["llm_send_selected_images"] = ui->chkSendSelectedImages->isChecked();
     root["llm_stop_model_after_generate"] = ui->chkStopModelAfterGenerate->isChecked();
     root["llm_manual_trigger_words_enabled"] = ui->chkManualTriggerWords->isChecked();
@@ -962,11 +973,21 @@ QString LlmPromptWidget::selectedLoraContext() const
 QString LlmPromptWidget::selectedImageContext() const
 {
     QStringList lines;
+    const bool includeImagePrompts = ui->chkIncludeImagePromptsInContext->isChecked();
     for (int i = 0; i < ui->listImageCandidates->count(); ++i) {
         QListWidgetItem *item = ui->listImageCandidates->item(i);
         if (item->checkState() != Qt::Checked) continue;
-        QString prompt = item->data(Qt::UserRole + 1).toString();
-        lines.append(QString("%1\nPrompt: %2").arg(item->data(Qt::UserRole).toString(), prompt));
+
+        const QString imagePath = item->data(Qt::UserRole).toString();
+        const QString imageName = QFileInfo(imagePath).fileName();
+        const QString prompt = item->data(Qt::UserRole + 1).toString().trimmed();
+
+        QStringList one;
+        one.append(QString("Image: %1").arg(imageName.isEmpty() ? item->text() : imageName));
+        if (includeImagePrompts && !prompt.isEmpty()) {
+            one.append(QString("Prompt: %1").arg(prompt));
+        }
+        lines.append(one.join("\n"));
     }
     return lines.join("\n\n");
 }
@@ -1304,6 +1325,30 @@ void LlmPromptWidget::onFetchModelsClicked()
 
 void LlmPromptWidget::onRefreshCandidatesClicked()
 {
+    const bool hadPreviousLoraCandidates = (ui->listLoraCandidates->count() > 0);
+    const bool hadPreviousImageCandidates = (ui->listImageCandidates->count() > 0);
+
+    QSet<QString> previouslyCheckedLoraPaths;
+    for (int i = 0; i < ui->listLoraCandidates->count(); ++i) {
+        QListWidgetItem *item = ui->listLoraCandidates->item(i);
+        if (!item || item->checkState() != Qt::Checked) continue;
+        const QString path = item->data(Qt::UserRole).toString();
+        if (!path.isEmpty()) previouslyCheckedLoraPaths.insert(path);
+    }
+
+    struct PreviousImageCandidate {
+        QString label;
+        QString prompt;
+    };
+    QHash<QString, PreviousImageCandidate> previouslyCheckedImageCandidates;
+    for (int i = 0; i < ui->listImageCandidates->count(); ++i) {
+        QListWidgetItem *item = ui->listImageCandidates->item(i);
+        if (!item || item->checkState() != Qt::Checked) continue;
+        const QString path = item->data(Qt::UserRole).toString();
+        if (path.isEmpty()) continue;
+        previouslyCheckedImageCandidates.insert(path, {item->text(), item->data(Qt::UserRole + 1).toString()});
+    }
+
     ui->listLoraCandidates->clear();
     ui->listImageCandidates->clear();
 
@@ -1355,8 +1400,31 @@ void LlmPromptWidget::onRefreshCandidatesClicked()
         if (!meta.triggerWords.isEmpty()) tip << ("Trigger: " + meta.triggerWords.join(", "));
         if (!meta.previewPrompts.isEmpty()) tip << ("Preview: " + meta.previewPrompts.first().left(200));
         item->setToolTip(tip.join("\n"));
-        bool autoCheck = ui->chkAutoContext->isChecked() && i < 3;
-        item->setCheckState(autoCheck ? Qt::Checked : Qt::Unchecked);
+        const bool autoCheck = ui->chkAutoContext->isChecked() && !hadPreviousLoraCandidates && i < 3;
+        const bool checked = previouslyCheckedLoraPaths.contains(path) || autoCheck;
+        item->setCheckState(checked ? Qt::Checked : Qt::Unchecked);
+        ui->listLoraCandidates->addItem(item);
+    }
+
+    auto listContainsPath = [](QListWidget *list, const QString &path) {
+        for (int i = 0; i < list->count(); ++i) {
+            QListWidgetItem *item = list->item(i);
+            if (item && item->data(Qt::UserRole).toString() == path) return true;
+        }
+        return false;
+    };
+
+    for (const QString &path : std::as_const(previouslyCheckedLoraPaths)) {
+        if (path.isEmpty() || listContainsPath(ui->listLoraCandidates, path) || !QFileInfo::exists(path)) continue;
+        LoraMetadataInfo meta = readLoraMetadata(path);
+        QListWidgetItem *item = new QListWidgetItem(meta.displayName.isEmpty() ? QFileInfo(path).completeBaseName() : meta.displayName);
+        item->setData(Qt::UserRole, path);
+        QStringList tip;
+        tip << path << meta.insertionTag;
+        if (!meta.triggerWords.isEmpty()) tip << ("Trigger: " + meta.triggerWords.join(", "));
+        if (!meta.previewPrompts.isEmpty()) tip << ("Preview: " + meta.previewPrompts.first().left(200));
+        item->setToolTip(tip.join("\n"));
+        item->setCheckState(Qt::Checked);
         ui->listLoraCandidates->addItem(item);
     }
 
@@ -1381,11 +1449,38 @@ void LlmPromptWidget::onRefreshCandidatesClicked()
         if (!item.prompt.isEmpty()) {
             label += " | " + item.prompt.left(80);
         }
-        appendUniqueImageCandidate(label, item.path, item.prompt, ui->chkAutoContext->isChecked() && i < 3);
+        const bool autoCheck = ui->chkAutoContext->isChecked() && !hadPreviousImageCandidates && i < 3;
+        const bool checked = previouslyCheckedImageCandidates.contains(item.path) || autoCheck;
+        appendUniqueImageCandidate(label, item.path, item.prompt, checked);
+    }
+
+    for (auto it = previouslyCheckedImageCandidates.constBegin(); it != previouslyCheckedImageCandidates.constEnd(); ++it) {
+        if (it.key().isEmpty()) continue;
+        if (!listContainsPath(ui->listImageCandidates, it.key())) {
+            appendUniqueImageCandidate(it.value().label, it.key(), it.value().prompt, true);
+        }
     }
 
     updateContextSelectionSummary();
     updateStatus(QString("已刷新候选上下文: %1 个 LoRA, %2 张图片").arg(ui->listLoraCandidates->count()).arg(ui->listImageCandidates->count()));
+}
+
+void LlmPromptWidget::onClearCandidateSelectionsClicked()
+{
+    const QSignalBlocker blockerLora(ui->listLoraCandidates);
+    const QSignalBlocker blockerImage(ui->listImageCandidates);
+
+    for (int i = 0; i < ui->listLoraCandidates->count(); ++i) {
+        QListWidgetItem *item = ui->listLoraCandidates->item(i);
+        if (item) item->setCheckState(Qt::Unchecked);
+    }
+    for (int i = 0; i < ui->listImageCandidates->count(); ++i) {
+        QListWidgetItem *item = ui->listImageCandidates->item(i);
+        if (item) item->setCheckState(Qt::Unchecked);
+    }
+
+    updateContextSelectionSummary();
+    updateStatus("已取消选择所有候选 LoRA 和图片");
 }
 
 void LlmPromptWidget::onAnalyzePreferenceClicked()
@@ -1436,6 +1531,7 @@ void LlmPromptWidget::onGenerateClicked()
     ui->textThinking->clear();
     ui->btnToggleThinking->setChecked(false);
     ui->btnToggleThinking->setEnabled(false);
+    ui->btnContinueConversation->setEnabled(false);
     ui->btnGenerate->setEnabled(false);
     ui->btnStopGenerate->setEnabled(true);
 
@@ -1525,24 +1621,19 @@ void LlmPromptWidget::onContinueConversationClicked()
     }
 
     QStringList contextLines;
-    contextLines << QString("这是一次 Stable Diffusion 提示词继续修改对话。当前任务类型：%1。").arg(ui->comboTaskType->currentText());
-
     QString instruction = ui->textInstruction->toPlainText().trimmed();
     if (!instruction.isEmpty()) {
-        contextLines << "原始用户要求：" << instruction;
+        contextLines << instruction;
     }
 
     QString sourcePrompt = ui->textSourcePrompt->toPlainText().trimmed();
     if (!sourcePrompt.isEmpty()) {
-        contextLines << "\n原始提示词：" << sourcePrompt;
+        contextLines << sourcePrompt;
     }
 
     if (!m_lastRenderedPrompt.trimmed().isEmpty()) {
-        contextLines << "\n上一轮发给模型的提示词：" << m_lastRenderedPrompt.trimmed();
+        contextLines << m_lastRenderedPrompt.trimmed();
     }
-
-    contextLines << "\n后续用户会继续提出修改要求。请基于上一轮助手回复继续调整，而不是从头改写。";
-    contextLines << "保留未被要求修改的部分，并保持 Stable Diffusion / LoRA 语法，例如 <lora:...>。";
 
     ContinueConversationDialog dlg(this);
     dlg.setConnectionContext(endpointBaseUrl(),
@@ -1550,7 +1641,7 @@ void LlmPromptWidget::onContinueConversationClicked()
                              ui->textSystemPrompt->toPlainText(),
                              buildGenerationOptions());
     dlg.setInitialConversation(ui->comboTaskType->currentText(),
-                               contextLines.join("\n"),
+                               contextLines.join("\n\n"),
                                assistantReply);
     dlg.exec();
 }

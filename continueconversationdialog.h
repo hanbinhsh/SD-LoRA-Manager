@@ -5,12 +5,16 @@
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QPointer>
+#include <QSet>
 
 namespace Ui {
 class ContinueConversationDialog;
 }
 
 class QNetworkReply;
+class QResizeEvent;
+class QShowEvent;
+class QTimer;
 
 class ContinueConversationDialog : public QDialog
 {
@@ -27,6 +31,10 @@ public:
     void setInitialConversation(const QString &taskLabel,
                                 const QString &contextMessage,
                                 const QString &assistantReply);
+
+protected:
+    void resizeEvent(QResizeEvent *event) override;
+    void showEvent(QShowEvent *event) override;
 
 private slots:
     void onSendClicked();
@@ -56,15 +64,26 @@ private:
     QString m_pendingAssistantThinking;
     QStringList m_pendingImagePaths;
     QString m_taskLabel;
+    QString m_inflightUserText;
+    QStringList m_inflightUserImages;
+    bool m_inflightUserAppended = false;
+    QString m_streamReportedError;
+    QSet<int> m_expandedThinkingMessageIndices;
+    bool m_pendingThinkingExpanded = false;
+    bool m_conversationRefreshScheduled = false;
+    bool m_refreshScrollToBottomPending = false;
+    QTimer *m_conversationRefreshTimer = nullptr;
 
     void updateStatus(const QString &text, bool isError = false);
-    void updateConversationView();
+    void updateConversationView(bool scrollToBottom = true);
+    void requestConversationRefresh(bool scrollToBottom = true);
     void updateThinkingView();
     void updateImageInfoLabel();
     QJsonArray buildMessagesPayload() const;
     static QString markdownToHtml(const QString &markdown);
     void processStreamChunk(const QByteArray &chunk);
     void processStreamLine(const QByteArray &line);
+    void rollbackInflightUserInput();
 };
 
 #endif // CONTINUECONVERSATIONDIALOG_H

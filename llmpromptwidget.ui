@@ -42,6 +42,10 @@ QPushButton {
     padding: 6px 12px;
 }
 QPushButton:hover { background-color: #3d5677; color: #ffffff; }
+QPushButton:disabled {
+    background-color: #2a3038;
+    color: #7f8791;
+}
 QLabel#lblGenerateStatus { color: #8c96a0; }</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayoutRoot">
@@ -104,9 +108,36 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
           </widget>
          </item>
          <item>
-          <widget class="QPushButton" name="btnRefreshCandidates">
+          <widget class="QLabel" name="labelCandidateLimit">
+           <property name="text">
+            <string>候选数</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="spinCandidateLimit">
+           <property name="minimum">
+            <number>3</number>
+           </property>
+           <property name="maximum">
+            <number>50</number>
+           </property>
+           <property name="value">
+            <number>12</number>
+           </property>
+          </widget>
+         </item>
+         <item>
+         <widget class="QPushButton" name="btnRefreshCandidates">
            <property name="text">
             <string>刷新候选上下文</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnClearCandidateSelections">
+           <property name="text">
+            <string>取消选择候选</string>
            </property>
           </widget>
          </item>
@@ -222,6 +253,13 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
                  </widget>
                 </item>
                 <item>
+                 <widget class="QCheckBox" name="chkEnableThink">
+                  <property name="text">
+                   <string>开启思考</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
                  <spacer name="horizontalSpacerThinkingTop">
                   <property name="orientation">
                    <enum>Qt::Orientation::Horizontal</enum>
@@ -233,6 +271,23 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
                    </size>
                   </property>
                  </spacer>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnUnloadModel">
+                  <property name="text">
+                   <string>停止模型</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnStopGenerate">
+                  <property name="enabled">
+                   <bool>false</bool>
+                  </property>
+                  <property name="text">
+                   <string>停止生成</string>
+                  </property>
+                 </widget>
                 </item>
                 <item>
                  <widget class="QPushButton" name="btnContinueConversation">
@@ -294,20 +349,6 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
                   </property>
                  </spacer>
                 </item>
-               <item>
-                 <widget class="QCheckBox" name="chkEnableThink">
-                  <property name="text">
-                   <string>开启思考</string>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QPushButton" name="btnUnloadModel">
-                  <property name="text">
-                   <string>停止模型</string>
-                  </property>
-                 </widget>
-                </item>
                 <item>
                  <widget class="QPushButton" name="btnCopyPrompt">
                   <property name="text">
@@ -319,16 +360,6 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
                  <widget class="QPushButton" name="btnCopyResult">
                   <property name="text">
                    <string>复制结果</string>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QPushButton" name="btnStopGenerate">
-                  <property name="enabled">
-                   <bool>false</bool>
-                  </property>
-                  <property name="text">
-                   <string>停止生成</string>
                   </property>
                  </widget>
                 </item>
@@ -407,26 +438,6 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
                   </property>
                  </widget>
                 </item>
-                <item row="3" column="0">
-                 <widget class="QLabel" name="labelCandidateLimit">
-                  <property name="text">
-                   <string>候选数</string>
-                  </property>
-                 </widget>
-                </item>
-                <item row="3" column="1">
-                 <widget class="QSpinBox" name="spinCandidateLimit">
-                  <property name="minimum">
-                   <number>3</number>
-                  </property>
-                  <property name="maximum">
-                   <number>50</number>
-                  </property>
-                  <property name="value">
-                   <number>12</number>
-                  </property>
-                 </widget>
-                </item>
                </layout>
               </item>
              </layout>
@@ -462,14 +473,14 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
              </property>
              <layout class="QVBoxLayout" name="verticalLayoutLoraCandidates">
               <item>
-               <widget class="QListWidget" name="listLoraCandidates"/>
-              </item>
-              <item>
                <widget class="QLabel" name="lblLoraSelectionSummary">
                 <property name="text">
                  <string>已勾选 0 / 0 个 LoRA</string>
                 </property>
                </widget>
+              </item>
+              <item>
+               <widget class="QListWidget" name="listLoraCandidates"/>
               </item>
              </layout>
             </widget>
@@ -486,6 +497,16 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
                  <widget class="QPushButton" name="btnAddManualImages">
                   <property name="text">
                    <string>手动添加图片</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QCheckBox" name="chkIncludeImagePromptsInContext">
+                  <property name="text">
+                   <string>在提示词中包含图片参数</string>
+                  </property>
+                  <property name="checked">
+                   <bool>true</bool>
                   </property>
                  </widget>
                 </item>
@@ -648,6 +669,19 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
               </widget>
              </item>
              <item>
+              <spacer name="horizontalSpacer">
+               <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>40</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+             <item>
               <widget class="QComboBox" name="comboTemplateTaskType">
                <item>
                 <property name="text">
@@ -776,6 +810,16 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
            </item>
           </layout>
          </widget>
+         <widget class="QWidget" name="pageSystemPrompt">
+          <attribute name="title">
+           <string>系统提示词</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="verticalLayoutSystemPrompt">
+           <item>
+            <widget class="QPlainTextEdit" name="textSystemPrompt"/>
+           </item>
+          </layout>
+         </widget>
          <widget class="QWidget" name="pageLastRequest">
           <attribute name="title">
            <string>上次发送内容</string>
@@ -790,16 +834,6 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
               <string>这里会显示上次发给大模型的请求内容。</string>
              </property>
             </widget>
-           </item>
-          </layout>
-         </widget>
-         <widget class="QWidget" name="pageSystemPrompt">
-          <attribute name="title">
-           <string>System Prompt</string>
-          </attribute>
-          <layout class="QVBoxLayout" name="verticalLayoutSystemPrompt">
-           <item>
-            <widget class="QPlainTextEdit" name="textSystemPrompt"/>
            </item>
           </layout>
          </widget>
