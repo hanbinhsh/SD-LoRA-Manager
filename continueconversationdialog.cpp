@@ -1,14 +1,20 @@
 #include "continueconversationdialog.h"
 #include "ui_continueconversationdialog.h"
 
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollBar>
+#include <QTextDocumentFragment>
+#include <QToolButton>
 #include <utility>
 
 namespace {
@@ -52,8 +58,14 @@ ContinueConversationDialog::ContinueConversationDialog(QWidget *parent)
 
     connect(ui->btnSend, &QPushButton::clicked, this, &ContinueConversationDialog::onSendClicked);
     connect(ui->btnStop, &QPushButton::clicked, this, &ContinueConversationDialog::onStopClicked);
+    connect(ui->btnAddImages, &QPushButton::clicked, this, &ContinueConversationDialog::onAddImagesClicked);
+    connect(ui->btnClearImages, &QPushButton::clicked, this, &ContinueConversationDialog::onClearImagesClicked);
+    connect(ui->btnToggleThinking, &QToolButton::toggled, this, &ContinueConversationDialog::onThinkingToggled);
 
     ui->btnStop->setEnabled(false);
+    ui->btnToggleThinking->setEnabled(false);
+    ui->textThinking->setVisible(false);
+    updateImageInfoLabel();
 }
 
 ContinueConversationDialog::~ContinueConversationDialog()
@@ -79,19 +91,24 @@ void ContinueConversationDialog::setInitialConversation(const QString &taskLabel
 {
     m_taskLabel = taskLabel;
     m_messages.clear();
+    m_pendingAssistantReply.clear();
+    m_pendingAssistantThinking.clear();
+    m_pendingImagePaths.clear();
 
     if (!m_systemPrompt.trimmed().isEmpty()) {
-        m_messages.append({"system", m_systemPrompt.trimmed()});
+        m_messages.append({"system", m_systemPrompt.trimmed(), QString(), {}});
     }
     if (!contextMessage.trimmed().isEmpty()) {
-        m_messages.append({"user", contextMessage.trimmed()});
+        m_messages.append({"user", contextMessage.trimmed(), QString(), {}});
     }
     if (!assistantReply.trimmed().isEmpty()) {
-        m_messages.append({"assistant", assistantReply});
+        m_messages.append({"assistant", assistantReply, QString(), {}});
     }
 
     ui->lblConversationInfo->setText(QString("任务：%1").arg(taskLabel.isEmpty() ? "继续修改" : taskLabel));
     updateConversationView();
+    updateThinkingView();
+    updateImageInfoLabel();
 }
 
 void ContinueConversationDialog::updateStatus(const QString &text, bool isError)
@@ -100,26 +117,113 @@ void ContinueConversationDialog::updateStatus(const QString &text, bool isError)
     ui->lblStatus->setStyleSheet(isError ? "color:#ff7b7b;" : "color:#8c96a0;");
 }
 
+QString ContinueConversationDialog::markdownToHtml(const QString &markdown)
+{
+    QString normalized = markdown;
+    normalized.replace("\r\n", "\n");
+    normalized.replace('\r', '\n');
+    return QTextDocumentFragment::fromMarkdown(normalized).toHtml();
+}
+
 void ContinueConversationDialog::updateConversationView()
 {
-    QStringList parts;
+    QStringList bubbles;
     for (const ChatMessage &message : std::as_const(m_messages)) {
         if (message.role == "system") continue;
-        QString content = message.content;
+        QString contentMarkdown = message.content;
         if (message.role == "assistant") {
-            content = escapeAnglePromptSyntax(content);
+            contentMarkdown = escapeAnglePromptSyntax(contentMarkdown);
         }
-        parts << QString("### %1\n\n%2").arg(roleLabel(message.role), content);
+
+        QStringList imageLines;
+        for (const QString &path : message.imagePaths) {
+            imageLines.append(QString("`[图片] %1`").arg(QFileInfo(path).fileName()));
+        }
+        if (!imageLines.isEmpty()) {
+            if (!contentMarkdown.trimmed().isEmpty()) contentMarkdown += "\n\n";
+            contentMarkdown += imageLines.join("\n");
+        }
+
+        const bool isUser = (message.role == "user");
+        const QString bubbleClass = isUser ? "user" : "assistant";
+        const QString title = QString("<div class='title'>%1</div>").arg(roleLabel(message.role));
+        const QString body = QString("<div class='body'>%1</div>").arg(markdownToHtml(contentMarkdown));
+        bubbles << QString("<div class='row %1'><div class='bubble %1'>%2%3</div></div>")
+                       .arg(bubbleClass, title, body);
     }
 
     if (!m_pendingAssistantReply.isEmpty()) {
-        parts << QString("### 助手\n\n%1").arg(escapeAnglePromptSyntax(m_pendingAssistantReply));
+        QString body = QString("<div class='body'>%1</div>").arg(markdownToHtml(escapeAnglePromptSyntax(m_pendingAssistantReply)));
+        bubbles << QString("<div class='row assistant'><div class='bubble assistant'><div class='title'>助手</div>%1</div></div>").arg(body);
     }
 
-    ui->textConversation->setMarkdown(parts.join("\n\n"));
+    const QString html =
+        "<html><head><style>"
+        "body{background:#16191e;color:#dcdedf;font-family:'Microsoft YaHei UI',sans-serif;}"
+        ".row{margin:10px 0;display:flex;}"
+        ".row.user{justify-content:flex-end;}"
+        ".row.assistant{justify-content:flex-start;}"
+        ".bubble{max-width:78%;border-radius:10px;padding:10px 12px;line-height:1.5;border:1px solid #31363d;}"
+        ".bubble.user{background:#27425f;color:#eaf4ff;border-color:#3f6b95;}"
+        ".bubble.assistant{background:#1f2834;color:#dcdedf;border-color:#3a4654;}"
+        ".title{font-size:12px;opacity:0.85;margin-bottom:4px;}"
+        ".body{font-size:13px;}"
+        ".body pre{background:#11161c;border:1px solid #2e3742;border-radius:6px;padding:8px;white-space:pre-wrap;}"
+        ".body code{background:#11161c;border-radius:4px;padding:1px 4px;}"
+        "</style></head><body>" + bubbles.join("\n") + "</body></html>";
+    ui->textConversation->setHtml(html);
     if (ui->textConversation->verticalScrollBar()) {
         ui->textConversation->verticalScrollBar()->setValue(ui->textConversation->verticalScrollBar()->maximum());
     }
+}
+
+void ContinueConversationDialog::updateThinkingView()
+{
+    QString thinkingText;
+    if (!m_pendingAssistantThinking.trimmed().isEmpty()) {
+        thinkingText = m_pendingAssistantThinking;
+    } else {
+        for (int i = m_messages.size() - 1; i >= 0; --i) {
+            if (m_messages[i].role == "assistant" && !m_messages[i].thinking.trimmed().isEmpty()) {
+                thinkingText = m_messages[i].thinking;
+                break;
+            }
+        }
+    }
+
+    ui->textThinking->setPlainText(thinkingText.trimmed());
+    const bool hasThinking = !thinkingText.trimmed().isEmpty();
+    ui->btnToggleThinking->setEnabled(hasThinking);
+    if (!hasThinking) {
+        ui->btnToggleThinking->setChecked(false);
+        ui->textThinking->setVisible(false);
+        ui->btnToggleThinking->setText("显示思考内容");
+    } else if (ui->btnToggleThinking->isChecked()) {
+        ui->textThinking->setVisible(true);
+        ui->btnToggleThinking->setText("隐藏思考内容");
+    } else {
+        ui->textThinking->setVisible(false);
+        ui->btnToggleThinking->setText("显示思考内容");
+    }
+}
+
+void ContinueConversationDialog::updateImageInfoLabel()
+{
+    if (m_pendingImagePaths.isEmpty()) {
+        ui->lblImageInfo->setText("图片：未选择");
+        return;
+    }
+
+    QStringList names;
+    for (const QString &path : std::as_const(m_pendingImagePaths)) {
+        names.append(QFileInfo(path).fileName());
+        if (names.size() >= 3) break;
+    }
+    QString suffix = m_pendingImagePaths.size() > 3 ? " ..." : "";
+    ui->lblImageInfo->setText(QString("图片：%1 张（%2%3）")
+                                  .arg(m_pendingImagePaths.size())
+                                  .arg(names.join(", "))
+                                  .arg(suffix));
 }
 
 QJsonArray ContinueConversationDialog::buildMessagesPayload() const
@@ -129,6 +233,15 @@ QJsonArray ContinueConversationDialog::buildMessagesPayload() const
         QJsonObject obj;
         obj["role"] = message.role;
         obj["content"] = message.content;
+        if (!message.imagePaths.isEmpty()) {
+            QJsonArray images;
+            for (const QString &path : message.imagePaths) {
+                QFile file(path);
+                if (!file.exists() || !file.open(QIODevice::ReadOnly)) continue;
+                images.append(QString::fromLatin1(file.readAll().toBase64()));
+            }
+            if (!images.isEmpty()) obj["images"] = images;
+        }
         messages.append(obj);
     }
     return messages;
@@ -148,10 +261,14 @@ void ContinueConversationDialog::onSendClicked()
         return;
     }
 
-    m_messages.append({"user", userText});
+    m_messages.append({"user", userText, QString(), m_pendingImagePaths});
     m_pendingAssistantReply.clear();
+    m_pendingAssistantThinking.clear();
     updateConversationView();
+    updateThinkingView();
     ui->textUserInput->clear();
+    m_pendingImagePaths.clear();
+    updateImageInfoLabel();
     ui->btnSend->setEnabled(false);
     ui->btnStop->setEnabled(true);
     updateStatus("正在继续对话...");
@@ -160,6 +277,7 @@ void ContinueConversationDialog::onSendClicked()
     payload["model"] = m_modelName;
     payload["messages"] = buildMessagesPayload();
     payload["stream"] = true;
+    payload["think"] = ui->chkEnableThinking->isChecked();
     payload["options"] = m_options;
 
     QNetworkRequest request(QUrl(m_endpointBaseUrl + "/api/chat"));
@@ -200,9 +318,11 @@ void ContinueConversationDialog::onSendClicked()
         }
 
         if (!m_pendingAssistantReply.trimmed().isEmpty()) {
-            m_messages.append({"assistant", m_pendingAssistantReply});
+            m_messages.append({"assistant", m_pendingAssistantReply, m_pendingAssistantThinking, {}});
             m_pendingAssistantReply.clear();
+            m_pendingAssistantThinking.clear();
             updateConversationView();
+            updateThinkingView();
         }
 
         updateStatus(canceled ? "已停止继续对话" : "继续对话完成");
@@ -215,6 +335,37 @@ void ContinueConversationDialog::onStopClicked()
     ui->btnStop->setEnabled(false);
     updateStatus("正在停止继续对话...");
     m_activeReply->abort();
+}
+
+void ContinueConversationDialog::onAddImagesClicked()
+{
+    QStringList files = QFileDialog::getOpenFileNames(this,
+                                                      "选择参考图片",
+                                                      QString(),
+                                                      "Images (*.png *.jpg *.jpeg *.webp *.bmp)");
+    if (files.isEmpty()) return;
+
+    for (const QString &path : files) {
+        if (!m_pendingImagePaths.contains(path)) {
+            m_pendingImagePaths.append(path);
+        }
+    }
+    updateImageInfoLabel();
+    updateStatus(QString("已选择 %1 张图片，将随下一条消息发送").arg(m_pendingImagePaths.size()));
+}
+
+void ContinueConversationDialog::onClearImagesClicked()
+{
+    m_pendingImagePaths.clear();
+    updateImageInfoLabel();
+    updateStatus("已清空待发送图片");
+}
+
+void ContinueConversationDialog::onThinkingToggled(bool checked)
+{
+    const bool hasThinking = !ui->textThinking->toPlainText().trimmed().isEmpty();
+    ui->textThinking->setVisible(checked && hasThinking);
+    ui->btnToggleThinking->setText(checked ? "隐藏思考内容" : "显示思考内容");
 }
 
 void ContinueConversationDialog::processStreamChunk(const QByteArray &chunk)
@@ -241,14 +392,28 @@ void ContinueConversationDialog::processStreamLine(const QByteArray &line)
 
     const QJsonObject root = doc.object();
     QString piece;
+    QString thinkingPiece;
     if (root["message"].isObject()) {
-        piece = root["message"].toObject()["content"].toString();
+        const QJsonObject message = root["message"].toObject();
+        piece = message["content"].toString();
+        thinkingPiece = message["thinking"].toString();
+        if (thinkingPiece.isEmpty()) thinkingPiece = message["reasoning"].toString();
     }
     if (piece.isEmpty()) {
         piece = root["response"].toString();
     }
+    if (thinkingPiece.isEmpty()) {
+        thinkingPiece = root["thinking"].toString();
+    }
+    if (thinkingPiece.isEmpty()) {
+        thinkingPiece = root["reasoning"].toString();
+    }
     if (!piece.isEmpty()) {
         m_pendingAssistantReply += piece;
         updateConversationView();
+    }
+    if (!thinkingPiece.isEmpty()) {
+        m_pendingAssistantThinking += thinkingPiece;
+        updateThinkingView();
     }
 }

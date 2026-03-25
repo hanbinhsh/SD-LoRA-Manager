@@ -15,7 +15,7 @@
   </property>
   <property name="styleSheet">
    <string notr="true">QDialog#ContinueConversationDialog { background-color: #1b2838; color: #dcdedf; }
-QTextBrowser, QPlainTextEdit, QLabel {
+QTextBrowser, QPlainTextEdit, QLabel, QCheckBox {
     color: #dcdedf;
 }
 QTextBrowser, QPlainTextEdit {
@@ -69,9 +69,19 @@ QPushButton:hover { background-color: #3d5677; color: #ffffff; }</string>
       </spacer>
      </item>
      <item>
-      <widget class="QLabel" name="lblModelInfo">
+     <widget class="QLabel" name="lblModelInfo">
        <property name="text">
         <string>模型：未设置</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QCheckBox" name="chkEnableThinking">
+       <property name="text">
+        <string>思考模式</string>
+       </property>
+       <property name="checked">
+        <bool>true</bool>
        </property>
       </widget>
      </item>
@@ -88,17 +98,84 @@ QPushButton:hover { background-color: #3d5677; color: #ffffff; }</string>
     </widget>
    </item>
    <item>
+    <widget class="QToolButton" name="btnToggleThinking">
+     <property name="text">
+      <string>显示思考内容</string>
+     </property>
+     <property name="checkable">
+      <bool>true</bool>
+     </property>
+     <property name="checked">
+      <bool>false</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTextBrowser" name="textThinking">
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>180</height>
+      </size>
+     </property>
+     <property name="visible">
+      <bool>false</bool>
+     </property>
+     <property name="placeholderText">
+      <string>思考模型的 reasoning/thinking 内容会显示在这里。</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QPlainTextEdit" name="textUserInput">
      <property name="minimumSize">
       <size>
        <width>0</width>
-       <height>110</height>
+       <height>72</height>
       </size>
      </property>
      <property name="placeholderText">
       <string>继续输入修改要求，例如：保持整体不变，把裙子改成棋盘格，并补全袜子和袖口细节。</string>
      </property>
     </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayoutImages">
+     <item>
+      <widget class="QLabel" name="lblImageInfo">
+       <property name="text">
+        <string>图片：未选择</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacerImages">
+       <property name="orientation">
+        <enum>Qt::Orientation::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnAddImages">
+       <property name="text">
+        <string>上传图片</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnClearImages">
+       <property name="text">
+        <string>清空图片</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
    </item>
    <item>
     <layout class="QHBoxLayout" name="horizontalLayoutFooter">

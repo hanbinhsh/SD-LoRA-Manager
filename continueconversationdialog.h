@@ -31,11 +31,16 @@ public:
 private slots:
     void onSendClicked();
     void onStopClicked();
+    void onAddImagesClicked();
+    void onClearImagesClicked();
+    void onThinkingToggled(bool checked);
 
 private:
     struct ChatMessage {
         QString role;
         QString content;
+        QString thinking;
+        QStringList imagePaths;
     };
 
     Ui::ContinueConversationDialog *ui;
@@ -48,11 +53,16 @@ private:
     QJsonObject m_options;
     QString m_streamBuffer;
     QString m_pendingAssistantReply;
+    QString m_pendingAssistantThinking;
+    QStringList m_pendingImagePaths;
     QString m_taskLabel;
 
     void updateStatus(const QString &text, bool isError = false);
     void updateConversationView();
+    void updateThinkingView();
+    void updateImageInfoLabel();
     QJsonArray buildMessagesPayload() const;
+    static QString markdownToHtml(const QString &markdown);
     void processStreamChunk(const QByteArray &chunk);
     void processStreamLine(const QByteArray &line);
 };
