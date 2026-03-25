@@ -17,10 +17,12 @@
 #include <QListWidgetItem>
 #include <QMessageBox>
 #include <QNetworkReply>
+#include <QAbstractScrollArea>
 #include <QPlainTextEdit>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QScrollBar>
+#include <QTextEdit>
 #include <QTimer>
 #include <algorithm>
 #include <limits>
@@ -66,6 +68,29 @@ ParsedThinkingBlocks splitThinkingBlocks(const QString &text)
     return parsed;
 }
 
+QString escapeAnglePromptSyntax(QString text)
+{
+    static const QRegularExpression re("<\\s*(lora|lyco|lokr|locon|hypernet|embedding)\\s*:[^>\\n]+>",
+                                       QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatchIterator it = re.globalMatch(text);
+    QList<QPair<int, int>> ranges;
+    while (it.hasNext()) {
+        QRegularExpressionMatch match = it.next();
+        ranges.append(qMakePair(match.capturedStart(), match.capturedLength()));
+    }
+
+    for (int i = ranges.size() - 1; i >= 0; --i) {
+        const int start = ranges[i].first;
+        const int length = ranges[i].second;
+        QString captured = text.mid(start, length);
+        captured.replace('&', "&amp;");
+        captured.replace('<', "&lt;");
+        captured.replace('>', "&gt;");
+        text.replace(start, length, captured);
+    }
+    return text;
+}
+
 QString normalizeStreamPiece(QString chunk)
 {
     chunk.replace("\r\n", "\n");
@@ -90,10 +115,12 @@ QString combineThinkingText(const QString &dedicatedThinking, const QString &emb
     return result.trimmed();
 }
 
-void scrollPlainTextEditToBottom(QPlainTextEdit *edit)
+void scrollTextViewportToBottom(QWidget *widget)
 {
-    if (!edit) return;
-    QScrollBar *scrollBar = edit->verticalScrollBar();
+    if (!widget) return;
+    QAbstractScrollArea *scrollArea = qobject_cast<QAbstractScrollArea*>(widget);
+    if (!scrollArea) return;
+    QScrollBar *scrollBar = scrollArea->verticalScrollBar();
     if (!scrollBar) return;
     scrollBar->setValue(scrollBar->maximum());
 }
@@ -663,7 +690,10 @@ QString LlmPromptWidget::buildConservativeReplacementPrompt() const
     for (int i = 0; i < ui->listLoraCandidates->count(); ++i) {
         QListWidgetItem *item = ui->listLoraCandidates->item(i);
         if (item->checkState() != Qt::Checked) continue;
-        selectedTags.append(QString("<lora:%1:1>").arg(QFileInfo(item->data(Qt::UserRole).toString()).completeBaseName()));
+        QString baseName = QFileInfo(item->data(Qt::UserRole).toString()).completeBaseName();
+        QString baseNorm = normalizeLooseText(baseName);
+        if (!oldNorm.isEmpty() && baseNorm.contains(oldNorm)) continue;
+        selectedTags.append(QString("<lora:%1:1>").arg(baseName));
     }
 
     QStringList kept;
@@ -902,7 +932,7 @@ QString LlmPromptWidget::selectedLoraContext() const
         LoraMetadataInfo meta = readLoraMetadata(item->data(Qt::UserRole).toString());
         QStringList one;
         one.append(QString("Name: %1").arg(meta.displayName));
-        one.append(QString("Path: %1").arg(meta.filePath));
+        // one.append(QString("Path: %1").arg(meta.filePath));
         one.append(QString("Insertion tag: %1").arg(meta.insertionTag));
         if (ui->chkUseTriggerWords->isChecked() && !meta.triggerWords.isEmpty()) {
             one.append("Trigger words: " + meta.triggerWords.join(", "));
@@ -1077,28 +1107,55 @@ QString LlmPromptWidget::postProcessGenerationResult(const QString &text) const
     QString result = text;
     if (result.trimmed().isEmpty()) return result;
 
+    QString oldTarget;
+    QString newTarget;
+    parseReplaceInstruction(&oldTarget, &newTarget);
+    const QString oldNorm = normalizeLooseText(oldTarget);
+    const QString newNorm = normalizeLooseText(newTarget);
+
     auto normalizedSectionName = [](const QString &line) {
         QString trimmed = line.trimmed();
-        trimmed.remove(' ');
-        if (trimmed.startsWith("推荐LoRA:")) return QString("推荐LoRA");
-        if (trimmed.startsWith("正向提示词:")) return QString("正向提示词");
-        if (trimmed.startsWith("负向提示词:")) return QString("负向提示词");
-        if (trimmed.startsWith("说明:")) return QString("说明");
-        if (trimmed.startsWith("风格理由:")) return QString("风格理由");
+        trimmed.remove(QRegularExpression("^#+\\s*"));
+        trimmed.remove(QRegularExpression("^[-*]+\\s*"));
+        trimmed.replace("**", "");
+        trimmed.replace("__", "");
+        trimmed.replace('`', "");
+        trimmed.replace("：", ":");
+        QString compact = trimmed;
+        compact.remove(' ');
+        if (compact.startsWith("推荐LoRA") || compact.startsWith("推荐Lora")) return QString("推荐LoRA");
+        if (compact.startsWith("正向提示词") || compact.startsWith("正面提示词")) return QString("正向提示词");
+        if (compact.startsWith("负向提示词") || compact.startsWith("负面提示词")) return QString("负向提示词");
+        if (compact.startsWith("关键修改说明") || compact.startsWith("修改说明") || compact.startsWith("说明") || compact.startsWith("为什么这样修改")) return QString("说明");
+        if (compact.startsWith("风格理由")) return QString("风格理由");
         return QString();
+    };
+
+    auto extractBodyAfterHeading = [](const QString &line) {
+        QString normalized = line;
+        normalized.replace("：", ":");
+        int colon = normalized.indexOf(':');
+        return colon >= 0 ? normalized.mid(colon + 1).trimmed() : QString();
+    };
+
+    auto joinPromptSection = [](const QStringList &lines) {
+        QStringList cleaned;
+        for (QString line : lines) {
+            QString trimmed = line.trimmed();
+            if (trimmed.isEmpty()) continue;
+            cleaned.append(trimmed);
+        }
+        return cleaned.join(" ");
     };
 
     QStringList originalLines = result.split('\n');
     QHash<QString, QStringList> sections;
-    QStringList order;
     QString currentSection;
     for (const QString &line : originalLines) {
         QString section = normalizedSectionName(line);
         if (!section.isEmpty()) {
             currentSection = section;
-            if (!order.contains(section)) order.append(section);
-            int colon = line.indexOf(':');
-            QString body = colon >= 0 ? line.mid(colon + 1).trimmed() : QString();
+            QString body = extractBodyAfterHeading(line);
             if (!body.isEmpty()) sections[section].append(body);
         } else if (!currentSection.isEmpty() && !line.trimmed().isEmpty()) {
             sections[currentSection].append(line.trimmed());
@@ -1106,24 +1163,39 @@ QString LlmPromptWidget::postProcessGenerationResult(const QString &text) const
     }
 
     QStringList selectedTags;
+    QStringList mandatoryPositiveTags;
     for (int i = 0; i < ui->listLoraCandidates->count(); ++i) {
         QListWidgetItem *item = ui->listLoraCandidates->item(i);
         if (item->checkState() != Qt::Checked) continue;
-        selectedTags.append(QString("<lora:%1:1>").arg(QFileInfo(item->data(Qt::UserRole).toString()).completeBaseName()));
+        QString baseName = QFileInfo(item->data(Qt::UserRole).toString()).completeBaseName();
+        QString baseNorm = normalizeLooseText(baseName);
+        if (!oldNorm.isEmpty() && baseNorm.contains(oldNorm)) continue;
+
+        QString tag = QString("<lora:%1:1>").arg(baseName);
+        selectedTags.append(tag);
+        if (!newNorm.isEmpty() && baseNorm.contains(newNorm)) {
+            mandatoryPositiveTags.append(tag);
+        }
     }
 
-    QString recoBody = sections.value("推荐LoRA").join(", ").trimmed();
-    QString posBody = sections.value("正向提示词").join(", ").trimmed();
-    QString negBody = sections.value("负向提示词").join(", ").trimmed();
+    if (sections.isEmpty()) {
+        return result.trimmed();
+    }
+
+    QString recoBody = sections.value("推荐LoRA").join("\n").trimmed();
+    QString posBody = joinPromptSection(sections.value("正向提示词")).trimmed();
+    QString negBody = joinPromptSection(sections.value("负向提示词")).trimmed();
     QString explainBody = sections.value("说明").join("\n").trimmed();
     if (explainBody.isEmpty()) explainBody = sections.value("风格理由").join("\n").trimmed();
 
-    if (recoBody.isEmpty() && !selectedTags.isEmpty()) {
+    if (recoBody.isEmpty() && !mandatoryPositiveTags.isEmpty()) {
+        recoBody = mandatoryPositiveTags.join(", ");
+    } else if (recoBody.isEmpty() && !selectedTags.isEmpty()) {
         recoBody = selectedTags.join(", ");
     }
 
-    if (!selectedTags.isEmpty()) {
-        for (const QString &tag : selectedTags) {
+    if (!mandatoryPositiveTags.isEmpty()) {
+        for (const QString &tag : mandatoryPositiveTags) {
             if (!posBody.contains(tag, Qt::CaseInsensitive)) {
                 posBody = posBody.isEmpty() ? tag : (tag + ", " + posBody);
             }
@@ -1388,7 +1460,7 @@ void LlmPromptWidget::onGenerateClicked()
             ui->btnGenerate->setEnabled(true);
             ui->btnStopGenerate->setEnabled(false);
             ParsedThinkingBlocks parsed = splitThinkingBlocks(m_streamResponseText);
-            ui->textResult->setPlainText(parsed.visibleText.trimmed());
+            ui->textResult->setMarkdown(escapeAnglePromptSyntax(parsed.visibleText));
             ui->textThinking->setPlainText(combineThinkingText(m_streamThinkingText, parsed.thinkingText));
             ui->btnToggleThinking->setEnabled(!ui->textThinking->toPlainText().trimmed().isEmpty());
             m_activeModelName.clear();
@@ -1424,7 +1496,8 @@ void LlmPromptWidget::onCopyPromptClicked()
 
 void LlmPromptWidget::onCopyResultClicked()
 {
-    QApplication::clipboard()->setText(ui->textResult->toPlainText());
+    QString rawResult = splitThinkingBlocks(m_streamResponseText).visibleText;
+    QApplication::clipboard()->setText(rawResult.isEmpty() ? ui->textResult->toMarkdown() : rawResult);
     updateStatus("结果已复制到剪贴板");
 }
 
@@ -1559,10 +1632,10 @@ void LlmPromptWidget::processStreamLine(const QByteArray &line)
 
     ParsedThinkingBlocks parsed = splitThinkingBlocks(m_streamResponseText);
     QString combinedThinking = combineThinkingText(m_streamThinkingText, parsed.thinkingText);
-    ui->textResult->setPlainText(parsed.visibleText.trimmed());
+    ui->textResult->setMarkdown(escapeAnglePromptSyntax(parsed.visibleText));
     ui->textThinking->setPlainText(combinedThinking);
-    scrollPlainTextEditToBottom(ui->textResult);
-    scrollPlainTextEditToBottom(ui->textThinking);
+    scrollTextViewportToBottom(ui->textResult);
+    scrollTextViewportToBottom(ui->textThinking);
     bool hasThinking = !combinedThinking.isEmpty();
     ui->btnToggleThinking->setEnabled(hasThinking);
     if (hasThinking && ui->btnToggleThinking->isChecked()) {
@@ -1581,7 +1654,7 @@ void LlmPromptWidget::finishStreaming(const QString &modelName, bool canceled)
 
     ParsedThinkingBlocks parsed = splitThinkingBlocks(m_streamResponseText);
     QString finalThinking = combineThinkingText(m_streamThinkingText, parsed.thinkingText);
-    QString finalResponse = parsed.visibleText.trimmed();
+    QString finalResponse = parsed.visibleText;
 
     ui->btnGenerate->setEnabled(true);
     ui->btnStopGenerate->setEnabled(false);
@@ -1593,10 +1666,10 @@ void LlmPromptWidget::finishStreaming(const QString &modelName, bool canceled)
     }
 
     if (!finalResponse.isEmpty()) {
-        ui->textResult->setPlainText(postProcessGenerationResult(finalResponse));
+        ui->textResult->setMarkdown(escapeAnglePromptSyntax(finalResponse));
     }
-    scrollPlainTextEditToBottom(ui->textResult);
-    scrollPlainTextEditToBottom(ui->textThinking);
+    scrollTextViewportToBottom(ui->textResult);
+    scrollTextViewportToBottom(ui->textThinking);
 
     if (canceled) {
         m_activeModelName.clear();
