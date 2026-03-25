@@ -1,3 +1,4 @@
+#include "continueconversationdialog.h"
 #include "llmpromptwidget.h"
 #include "ui_llmpromptwidget.h"
 
@@ -138,6 +139,8 @@ LlmPromptWidget::LlmPromptWidget(QWidget *parent)
     connect(ui->btnAnalyzePreference, &QPushButton::clicked, this, &LlmPromptWidget::onAnalyzePreferenceClicked);
     connect(ui->btnGenerate, &QPushButton::clicked, this, &LlmPromptWidget::onGenerateClicked);
     connect(ui->btnStopGenerate, &QPushButton::clicked, this, &LlmPromptWidget::onStopGenerateClicked);
+    connect(ui->btnUnloadModel, &QPushButton::clicked, this, &LlmPromptWidget::onUnloadModelClicked);
+    connect(ui->btnContinueConversation, &QPushButton::clicked, this, &LlmPromptWidget::onContinueConversationClicked);
     connect(ui->btnCopyPrompt, &QPushButton::clicked, this, &LlmPromptWidget::onCopyPromptClicked);
     connect(ui->btnCopyResult, &QPushButton::clicked, this, &LlmPromptWidget::onCopyResultClicked);
     connect(ui->btnAddManualImages, &QPushButton::clicked, this, &LlmPromptWidget::onAddManualImagesClicked);
@@ -154,6 +157,7 @@ LlmPromptWidget::LlmPromptWidget(QWidget *parent)
     ui->listLoraCandidates->setSelectionMode(QAbstractItemView::ExtendedSelection);
     ui->listImageCandidates->setSelectionMode(QAbstractItemView::ExtendedSelection);
     ui->btnToggleThinking->setEnabled(false);
+    ui->btnContinueConversation->setEnabled(false);
     ui->textPlaceholderHelp->setHtml(
         "<b>占位符说明</b><br>"
         "当前编辑的是所选任务类型的专属模板。切换任务后会自动切换到对应模板。<br>"
@@ -295,6 +299,7 @@ void LlmPromptWidget::loadSettings()
         ui->spinCandidateLimit->setValue(root["llm_candidate_limit"].toInt(12));
         ui->spinPreferenceTopCount->setValue(root["llm_preference_top_count"].toInt(15));
         ui->editCustomOptions->setText(root["llm_custom_options"].toString());
+        ui->chkEnableThink->setChecked(root["llm_enable_think"].toBool(false));
         QString savedTaskKey = root["llm_task_type"].toString();
         int savedTaskIndex = 0;
         for (int i = 0; i < ui->comboTaskType->count(); ++i) {
@@ -345,6 +350,7 @@ void LlmPromptWidget::loadSettings()
     ui->spinCandidateLimit->setValue(12);
     ui->spinPreferenceTopCount->setValue(15);
     ui->editCustomOptions->clear();
+    ui->chkEnableThink->setChecked(false);
     ui->comboTaskType->setCurrentIndex(0);
     ui->chkAutoContext->setChecked(true);
     ui->chkUsePreference->setChecked(true);
@@ -391,6 +397,7 @@ void LlmPromptWidget::saveSettings() const
     root["llm_candidate_limit"] = ui->spinCandidateLimit->value();
     root["llm_preference_top_count"] = ui->spinPreferenceTopCount->value();
     root["llm_custom_options"] = ui->editCustomOptions->text().trimmed();
+    root["llm_enable_think"] = ui->chkEnableThink->isChecked();
     root["llm_task_type"] = currentTaskKey();
     root["llm_auto_context"] = ui->chkAutoContext->isChecked();
     root["llm_use_preference"] = ui->chkUsePreference->isChecked();
@@ -1090,6 +1097,7 @@ QJsonObject LlmPromptWidget::buildGenerationPayload(const QString &modelName) co
     payload["prompt"] = m_lastRenderedPrompt.isEmpty() ? buildGenerationPrompt() : m_lastRenderedPrompt;
     payload["system"] = ui->textSystemPrompt->toPlainText();
     payload["stream"] = true;
+    payload["think"] = ui->chkEnableThink->isChecked();
 
     const QStringList imagePayloads = selectedImagePayloads();
     if (!imagePayloads.isEmpty()) {
@@ -1420,6 +1428,7 @@ void LlmPromptWidget::onGenerateClicked()
     m_streamBuffer.clear();
     m_streamResponseText.clear();
     m_streamThinkingText.clear();
+    m_lastAssistantVisibleText.clear();
     m_activeModelName = modelName;
 
     updateStatus("正在调用 Ollama 生成提示词...");
@@ -1460,9 +1469,11 @@ void LlmPromptWidget::onGenerateClicked()
             ui->btnGenerate->setEnabled(true);
             ui->btnStopGenerate->setEnabled(false);
             ParsedThinkingBlocks parsed = splitThinkingBlocks(m_streamResponseText);
+            m_lastAssistantVisibleText = parsed.visibleText;
             ui->textResult->setMarkdown(escapeAnglePromptSyntax(parsed.visibleText));
             ui->textThinking->setPlainText(combineThinkingText(m_streamThinkingText, parsed.thinkingText));
             ui->btnToggleThinking->setEnabled(!ui->textThinking->toPlainText().trimmed().isEmpty());
+            ui->btnContinueConversation->setEnabled(!m_lastAssistantVisibleText.trimmed().isEmpty());
             m_activeModelName.clear();
             updateStatus("Ollama 调用失败: " + errorText, true);
             return;
@@ -1482,6 +1493,66 @@ void LlmPromptWidget::onStopGenerateClicked()
         QProcess::startDetached("ollama", QStringList() << "stop" << m_activeModelName);
     }
     m_activeGenerateReply->abort();
+}
+
+void LlmPromptWidget::onUnloadModelClicked()
+{
+    QString modelName = ui->comboModel->currentText().trimmed();
+    if (modelName.isEmpty()) {
+        updateStatus("请先选择或输入要停止的模型", true);
+        QMessageBox::information(this, "提示", "请先选择或输入模型名。");
+        return;
+    }
+
+    bool started = QProcess::startDetached("ollama", QStringList() << "stop" << modelName);
+    if (started) {
+        updateStatus("已请求停止模型: " + modelName);
+    } else {
+        updateStatus("停止模型失败: " + modelName, true);
+        QMessageBox::warning(this, "错误", "无法执行 ollama stop，请检查 Ollama 是否可用。");
+    }
+}
+
+void LlmPromptWidget::onContinueConversationClicked()
+{
+    QString assistantReply = m_lastAssistantVisibleText.trimmed();
+    if (assistantReply.isEmpty()) {
+        assistantReply = splitThinkingBlocks(m_streamResponseText).visibleText.trimmed();
+    }
+    if (assistantReply.isEmpty()) {
+        QMessageBox::information(this, "提示", "当前还没有可继续修改的模型输出。");
+        return;
+    }
+
+    QStringList contextLines;
+    contextLines << QString("这是一次 Stable Diffusion 提示词继续修改对话。当前任务类型：%1。").arg(ui->comboTaskType->currentText());
+
+    QString instruction = ui->textInstruction->toPlainText().trimmed();
+    if (!instruction.isEmpty()) {
+        contextLines << "原始用户要求：" << instruction;
+    }
+
+    QString sourcePrompt = ui->textSourcePrompt->toPlainText().trimmed();
+    if (!sourcePrompt.isEmpty()) {
+        contextLines << "\n原始提示词：" << sourcePrompt;
+    }
+
+    if (!m_lastRenderedPrompt.trimmed().isEmpty()) {
+        contextLines << "\n上一轮发给模型的提示词：" << m_lastRenderedPrompt.trimmed();
+    }
+
+    contextLines << "\n后续用户会继续提出修改要求。请基于上一轮助手回复继续调整，而不是从头改写。";
+    contextLines << "保留未被要求修改的部分，并保持 Stable Diffusion / LoRA 语法，例如 <lora:...>。";
+
+    ContinueConversationDialog dlg(this);
+    dlg.setConnectionContext(endpointBaseUrl(),
+                             ui->comboModel->currentText().trimmed(),
+                             ui->textSystemPrompt->toPlainText(),
+                             buildGenerationOptions());
+    dlg.setInitialConversation(ui->comboTaskType->currentText(),
+                               contextLines.join("\n"),
+                               assistantReply);
+    dlg.exec();
 }
 
 void LlmPromptWidget::onCopyPromptClicked()
@@ -1632,12 +1703,14 @@ void LlmPromptWidget::processStreamLine(const QByteArray &line)
 
     ParsedThinkingBlocks parsed = splitThinkingBlocks(m_streamResponseText);
     QString combinedThinking = combineThinkingText(m_streamThinkingText, parsed.thinkingText);
+    m_lastAssistantVisibleText = parsed.visibleText;
     ui->textResult->setMarkdown(escapeAnglePromptSyntax(parsed.visibleText));
     ui->textThinking->setPlainText(combinedThinking);
     scrollTextViewportToBottom(ui->textResult);
     scrollTextViewportToBottom(ui->textThinking);
     bool hasThinking = !combinedThinking.isEmpty();
     ui->btnToggleThinking->setEnabled(hasThinking);
+    ui->btnContinueConversation->setEnabled(!m_lastAssistantVisibleText.trimmed().isEmpty());
     if (hasThinking && ui->btnToggleThinking->isChecked()) {
         ui->textThinking->setVisible(true);
     } else if (!hasThinking) {
@@ -1655,11 +1728,13 @@ void LlmPromptWidget::finishStreaming(const QString &modelName, bool canceled)
     ParsedThinkingBlocks parsed = splitThinkingBlocks(m_streamResponseText);
     QString finalThinking = combineThinkingText(m_streamThinkingText, parsed.thinkingText);
     QString finalResponse = parsed.visibleText;
+    m_lastAssistantVisibleText = finalResponse;
 
     ui->btnGenerate->setEnabled(true);
     ui->btnStopGenerate->setEnabled(false);
     ui->textThinking->setPlainText(finalThinking);
     ui->btnToggleThinking->setEnabled(!finalThinking.isEmpty());
+    ui->btnContinueConversation->setEnabled(!m_lastAssistantVisibleText.trimmed().isEmpty());
     if (finalThinking.isEmpty()) {
         ui->btnToggleThinking->setChecked(false);
         ui->textThinking->setVisible(false);

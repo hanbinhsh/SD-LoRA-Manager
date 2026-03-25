@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ContinueConversationDialog</class>
+ <widget class="QDialog" name="ContinueConversationDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>920</width>
+    <height>760</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>继续对话修改</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QDialog#ContinueConversationDialog { background-color: #1b2838; color: #dcdedf; }
+QTextBrowser, QPlainTextEdit, QLabel {
+    color: #dcdedf;
+}
+QTextBrowser, QPlainTextEdit {
+    background-color: #16191e;
+    border: 1px solid #31363d;
+    border-radius: 3px;
+    padding: 6px;
+}
+QPushButton {
+    background-color: #2a3f5a;
+    border-radius: 2px;
+    color: #66c0f4;
+    border: none;
+    padding: 6px 12px;
+}
+QPushButton:hover { background-color: #3d5677; color: #ffffff; }</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayoutRoot">
+   <property name="leftMargin">
+    <number>16</number>
+   </property>
+   <property name="topMargin">
+    <number>16</number>
+   </property>
+   <property name="rightMargin">
+    <number>16</number>
+   </property>
+   <property name="bottomMargin">
+    <number>16</number>
+   </property>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayoutHeader">
+     <item>
+      <widget class="QLabel" name="lblConversationInfo">
+       <property name="text">
+        <string>任务：继续修改</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacerHeader">
+       <property name="orientation">
+        <enum>Qt::Orientation::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="lblModelInfo">
+       <property name="text">
+        <string>模型：未设置</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QTextBrowser" name="textConversation">
+     <property name="openExternalLinks">
+      <bool>false</bool>
+     </property>
+     <property name="placeholderText">
+      <string>这里会显示当前继续对话的上下文和后续修改记录。</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPlainTextEdit" name="textUserInput">
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>110</height>
+      </size>
+     </property>
+     <property name="placeholderText">
+      <string>继续输入修改要求，例如：保持整体不变，把裙子改成棋盘格，并补全袜子和袖口细节。</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayoutFooter">
+     <item>
+      <widget class="QLabel" name="lblStatus">
+       <property name="text">
+        <string>待命</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacerFooter">
+       <property name="orientation">
+        <enum>Qt::Orientation::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnStop">
+       <property name="text">
+        <string>停止</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnSend">
+       <property name="text">
+        <string>发送继续修改</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnClose">
+       <property name="text">
+        <string>关闭</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <connections>
+  <connection>
+   <sender>btnClose</sender>
+   <signal>clicked()</signal>
+   <receiver>ContinueConversationDialog</receiver>
+   <slot>accept()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>830</x>
+     <y>720</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>458</x>
+     <y>379</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
+ <resources/>
+</ui>

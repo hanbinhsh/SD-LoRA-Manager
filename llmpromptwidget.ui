@@ -207,17 +207,41 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
              </property>
              <layout class="QVBoxLayout" name="verticalLayoutResult">
               <item>
-               <widget class="QToolButton" name="btnToggleThinking">
-                <property name="text">
-                 <string>显示思考内容</string>
-                </property>
-                <property name="checkable">
-                 <bool>true</bool>
-                </property>
-                <property name="checked">
-                 <bool>false</bool>
-                </property>
-               </widget>
+               <layout class="QHBoxLayout" name="horizontalLayoutThinkingTop">
+                <item>
+                 <widget class="QToolButton" name="btnToggleThinking">
+                  <property name="text">
+                   <string>显示思考内容</string>
+                  </property>
+                  <property name="checkable">
+                   <bool>true</bool>
+                  </property>
+                  <property name="checked">
+                   <bool>false</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <spacer name="horizontalSpacerThinkingTop">
+                  <property name="orientation">
+                   <enum>Qt::Orientation::Horizontal</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>40</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnContinueConversation">
+                  <property name="text">
+                   <string>继续该对话</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
               </item>
               <item>
                <widget class="QPlainTextEdit" name="textThinking">
@@ -269,6 +293,20 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
                    </size>
                   </property>
                  </spacer>
+                </item>
+               <item>
+                 <widget class="QCheckBox" name="chkEnableThink">
+                  <property name="text">
+                   <string>开启思考</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnUnloadModel">
+                  <property name="text">
+                   <string>停止模型</string>
+                  </property>
+                 </widget>
                 </item>
                 <item>
                  <widget class="QPushButton" name="btnCopyPrompt">

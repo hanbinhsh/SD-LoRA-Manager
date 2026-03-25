@@ -31,6 +31,8 @@ private slots:
     void onAnalyzePreferenceClicked();
     void onGenerateClicked();
     void onStopGenerateClicked();
+    void onUnloadModelClicked();
+    void onContinueConversationClicked();
     void onCopyPromptClicked();
     void onCopyResultClicked();
     void onAddManualImagesClicked();
@@ -70,6 +72,7 @@ private:
     QString m_streamThinkingText;
     QString m_lastRenderedPrompt;
     QString m_activeModelName;
+    QString m_lastAssistantVisibleText;
     QHash<QString, QString> m_taskPromptTemplates;
     QHash<QString, QString> m_taskGuidances;
     QHash<QString, QString> m_taskImageAttachmentNotes;
