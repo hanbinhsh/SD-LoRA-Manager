@@ -206,6 +206,10 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->btnAddCollection, &QPushButton::clicked, this, &MainWindow::onCreateCollection);
     connect(ui->btnGallery, &QPushButton::clicked, this, &MainWindow::onGalleryButtonClicked);
 
+    ui->listEditImages->setUniformItemSizes(true);
+    ui->listEditImages->setGridSize(QSize(118, 186));
+    ui->listEditImages->setWordWrap(false);
+
     // === 用户图库页面初始化 ===
     // 1. 初始化 Tag 流式控件，放入 XML 定义好的 scrollAreaTags 中
     tagFlowWidget = new TagFlowWidget();
@@ -637,7 +641,6 @@ void MainWindow::onHomeGalleryClicked(QListWidgetItem *item)
     if (targetPath.isEmpty()) return;
 
     cancelPendingTasks();
-    ui->mainStack->setCurrentIndex(1);
 
     // 2. 在侧边栏 (modelList) 中寻找匹配该路径的项
     QListWidgetItem* matchItem = nullptr;
@@ -1347,6 +1350,7 @@ void MainWindow::clearLayout(QLayout *layout)
 void MainWindow::clearDetailView()
 {
     cancelGalleryBuild();
+    editImagesNeedRefresh = false;
     ui->lblModelName->setText("请选择一个模型 / Select a Model");
     ui->lblModelName->setStyleSheet(
         "color: #fff;"
@@ -1425,7 +1429,10 @@ void MainWindow::updateLocalEditorFromMeta(const ModelMeta &meta)
     ui->textLocalDescription->setPlainText(descPlain);
 
     setLocalMetaStatus(meta);
-    refreshEditImages(meta);
+    editImagesNeedRefresh = true;
+    if (ui->detailContentStack->currentIndex() == 2) {
+        refreshEditImages(meta);
+    }
 }
 
 void MainWindow::setLocalMetaStatus(const ModelMeta &meta)
@@ -1540,6 +1547,10 @@ void MainWindow::applyImageMetadataFromFile(const QString &srcPath, ImageInfo &i
 
 void MainWindow::refreshEditImages(const ModelMeta &meta)
 {
+    editImagesNeedRefresh = false;
+    ++editImageLoadToken;
+    const int currentToken = editImageLoadToken;
+
     ui->listEditImages->clear();
     currentEditImageIndex = -1;
 
@@ -1564,14 +1575,27 @@ void MainWindow::refreshEditImages(const ModelMeta &meta)
         QString title = (i == 0) ? "封面 / Cover" : QString("预览 %1").arg(i);
         QListWidgetItem *item = new QListWidgetItem(title);
         item->setData(Qt::UserRole, i);
+        item->setData(ROLE_EDIT_IMAGE_PATH, QString());
+        item->setTextAlignment(Qt::AlignHCenter);
+        item->setSizeHint(QSize(114, 182));
 
         QString path = findLocalPreviewPath(modelDir, baseName, meta.fileNameServer, i);
         if (QFile::exists(path)) {
-            item->setIcon(getFitIcon(path));
+            item->setData(ROLE_EDIT_IMAGE_PATH, path);
+            item->setIcon(placeholderIcon);
+            item->setText(title);
+            item->setToolTip(title + " (Loading...)");
+
+            QString taskId = QString("EDITIMG|%1|%2|%3").arg(currentToken).arg(i).arg(path);
+            IconLoaderTask *task = new IconLoaderTask(path, 100, 0, this, taskId, true);
+            task->setAutoDelete(true);
+            threadPool->start(task);
         } else if (i < meta.images.size() && !meta.images[i].url.isEmpty()) {
-            item->setText(title + " (Remote)");
+            item->setText(title);
+            item->setToolTip(title + " (Remote)");
         } else {
-            item->setText(title + " (Missing)");
+            item->setText(title);
+            item->setToolTip(title + " (Missing)");
         }
 
         ui->listEditImages->addItem(item);
@@ -1719,8 +1743,9 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
         // 更好的做法是 cancel，但 SHA 计算很难中途 cancel，所以我们用标志位判断
     }
 
-    ui->mainStack->setCurrentIndex(1); // 进详情页
-    clearDetailView(); // 清空旧数据
+    if (ui->mainStack->currentIndex() != 1) {
+        ui->mainStack->setCurrentIndex(1); // 立即进入详情页
+    }
 
     QString previewPath = item->data(ROLE_PREVIEW_PATH).toString();
     QString baseName = item->data(ROLE_MODEL_NAME).toString();
@@ -1739,7 +1764,12 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
     if (hasLocalData) {
         // === 情况 A: 有本地数据，直接显示 (秒开) ===
         currentMeta = meta;
+        ui->scrollAreaWidgetContents->setUpdatesEnabled(false);
         updateDetailView(meta);
+        QTimer::singleShot(0, this, [this]() {
+            ui->scrollAreaWidgetContents->setUpdatesEnabled(true);
+            ui->scrollAreaWidgetContents->update();
+        });
     } else {
         meta.isLocalOnly = true;
         meta.isLocalEdited = false;
@@ -2070,6 +2100,9 @@ void MainWindow::onEditMetaTabClicked()
 
     ui->scrollAreaWidgetContents->removeEventFilter(this);
     ui->detailContentStack->setCurrentIndex(targetIndex);
+    if (targetIndex == 2 && editImagesNeedRefresh) {
+        refreshEditImages(currentMeta);
+    }
 
     if (targetIndex == 1) {
         ui->detailContentStack->setFixedHeight(750);
@@ -2547,7 +2580,12 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     saveLocalMetadata(modelDir, localBaseName, root);
 
     currentMeta = meta; // 缓存到成员变量
+    ui->scrollAreaWidgetContents->setUpdatesEnabled(false);
     updateDetailView(meta);
+    QTimer::singleShot(0, this, [this]() {
+        ui->scrollAreaWidgetContents->setUpdatesEnabled(true);
+        ui->scrollAreaWidgetContents->update();
+    });
     m_forceResyncPreview = false;
     m_skipPreviewSync = false;
     ui->statusbar->showMessage("元数据已更新", 2000);
@@ -2754,6 +2792,32 @@ QIcon MainWindow::getFitIcon(const QString &path)
 
 void MainWindow::onIconLoaded(const QString &id, const QImage &image)
 {
+    if (id.startsWith("EDITIMG|")) {
+        const QStringList parts = id.split('|');
+        if (parts.size() >= 4) {
+            bool okToken = false;
+            bool okIndex = false;
+            const int token = parts[1].toInt(&okToken);
+            const int index = parts[2].toInt(&okIndex);
+            const QString path = parts[3];
+
+            if (okToken && okIndex &&
+                token == editImageLoadToken &&
+                index >= 0 && index < ui->listEditImages->count()) {
+                QListWidgetItem *item = ui->listEditImages->item(index);
+                if (item &&
+                    item->data(Qt::UserRole).toInt() == index &&
+                    item->data(ROLE_EDIT_IMAGE_PATH).toString() == path) {
+                    item->setIcon(QIcon(QPixmap::fromImage(image)));
+                    const QString title = (index == 0) ? "封面 / Cover" : QString("预览 %1").arg(index);
+                    item->setText(title);
+                    item->setToolTip(path);
+                }
+            }
+        }
+        return;
+    }
+
     // =========================================================
     // 1. 解析任务来源 (Parsing ID)
     // =========================================================
@@ -3037,6 +3101,40 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
         QAction *titleAct = menu.addAction(QString("已选中 %1 个模型").arg(items.count()));
         titleAct->setEnabled(false);
     }
+
+    menu.addSeparator();
+
+    // 打开模型文件所在位置
+    QStringList targetFilePaths;
+    for (QListWidgetItem *item : items) {
+        if (!item) continue;
+        QString path = item->data(ROLE_FILE_PATH).toString().trimmed();
+        if (path.isEmpty()) continue;
+        if (!targetFilePaths.contains(path)) targetFilePaths.append(path);
+    }
+
+    QAction *actOpenModelLocation = menu.addAction("打开模型位置 / Show Model in Folder");
+    actOpenModelLocation->setEnabled(!targetFilePaths.isEmpty());
+    connect(actOpenModelLocation, &QAction::triggered, this, [this, targetFilePaths]() {
+        if (targetFilePaths.isEmpty()) return;
+
+        const QString filePath = targetFilePaths.first();
+#ifdef Q_OS_WIN
+        QProcess *process = new QProcess(this);
+        process->setProgram("explorer.exe");
+        QString nativePath = QDir::toNativeSeparators(filePath);
+        process->setNativeArguments(QString("/select,\"%1\"").arg(nativePath));
+        process->start();
+        connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                process, &QProcess::deleteLater);
+#else
+        QFileInfo fi(filePath);
+        QDesktopServices::openUrl(QUrl::fromLocalFile(fi.absolutePath()));
+#endif
+        if (targetFilePaths.size() > 1) {
+            ui->statusbar->showMessage(QString("已打开首个模型位置（共选中 %1 个）").arg(targetFilePaths.size()), 2500);
+        }
+    });
 
     menu.addSeparator();
 
@@ -4555,6 +4653,7 @@ void MainWindow::saveGlobalConfig() {
     root["use_custom_ua"]               = ui->chkUseCustomUserAgent->isChecked();
     root["custom_user_agent"]           = ui->editUserAgent->text();
     root["use_civitai_name"]            = optUseCivitaiName;
+    root.remove("model_switch_delay_ms");
 
     if (optRestoreTreeState) {
         QJsonObject treeState;
@@ -5015,7 +5114,6 @@ void MainWindow::onCollectionTreeItemClicked(QTreeWidgetItem *item, int column)
         if (matchItem) {
             ui->modelList->setCurrentItem(matchItem);
             onModelListClicked(matchItem);
-            ui->mainStack->setCurrentIndex(1); // 跳转详情页
         }
     }
 }

@@ -53,10 +53,11 @@ const int ROLE_USER_IMAGE_PROMPT    = Qt::UserRole + 31;
 const int ROLE_USER_IMAGE_NEG       = Qt::UserRole + 32;
 const int ROLE_USER_IMAGE_PARAMS    = Qt::UserRole + 33;
 const int ROLE_USER_IMAGE_TAGS      = Qt::UserRole + 34;
+const int ROLE_EDIT_IMAGE_PATH      = Qt::UserRole + 35;
 // 树状图占位符标记
 const int ROLE_IS_PLACEHOLDER       = Qt::UserRole + 40;
 
-const QString CURRENT_VERSION = "1.3.1";
+const QString CURRENT_VERSION = "1.3.2";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
@@ -278,6 +279,8 @@ private:
     void executeFilter();
 
     int currentEditImageIndex = -1;
+    int editImageLoadToken = 0;
+    bool editImagesNeedRefresh = false;
     bool m_forceResyncPreview = false;
     bool m_skipPreviewSync = false;
 

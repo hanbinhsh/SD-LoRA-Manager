@@ -4,6 +4,8 @@
 #include <QSortFilterProxyModel>
 #include <QStandardItemModel>
 #include <QWidget>
+#include <QPair>
+#include <QVector>
 
 namespace Ui {
 class TagBrowserWidget;
@@ -43,11 +45,15 @@ private:
     QStandardItemModel *m_model;
     QSortFilterProxyModel *m_proxy;
     QString m_csvPath;
+    bool m_csvLoaded = false;
     bool m_dirty = false;
     bool m_loading = false;
+    int m_loadGeneration = 0;
 
     QStringList parseCsvLine(const QString &line) const;
     QString escapeCsvField(const QString &value) const;
+    void ensureCsvLoadedForEditing();
+    void setLoadingState(bool loading, const QString &message = QString());
     void loadCsv();
     void updateStatusLabel();
 };
