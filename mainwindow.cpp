@@ -290,6 +290,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 设置 Splitter
     ui->splitter->setSizes(QList<int>() << 260 << 1000);
+    ui->splitterUser->setSizes(QList<int>() << 480 << 435);
 
     // 默认显示主页 (Page 0)
     ui->rootStack->setCurrentIndex(0);          // 库页面

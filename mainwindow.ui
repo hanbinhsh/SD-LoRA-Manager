@@ -82,6 +82,11 @@ QScrollArea {
     border: none;
 }
 
+#splitterParameter::handle {
+    background-color: transparent;
+    border: none;
+}
+
 #scrollAreaCollections {
     border: none;
 }
@@ -796,7 +801,7 @@ New</string>
                  <rect>
                   <x>0</x>
                   <y>0</y>
-                  <width>698</width>
+                  <width>985</width>
                   <height>1429</height>
                  </rect>
                 </property>
@@ -1099,7 +1104,7 @@ New</string>
                               <rect>
                                <x>0</x>
                                <y>0</y>
-                               <width>444</width>
+                               <width>660</width>
                                <height>165</height>
                               </rect>
                              </property>
@@ -1396,7 +1401,7 @@ Hash: ...</string>
                        </layout>
                       </widget>
                       <widget class="QWidget" name="pageLocalGallery">
-                       <layout class="QVBoxLayout" name="verticalLayout_LocalScan">
+                       <layout class="QVBoxLayout" name="verticalLayout_LocalScan" stretch="0,1">
                         <property name="spacing">
                          <number>10</number>
                         </property>
@@ -1523,7 +1528,7 @@ Hash: ...</string>
                         <item>
                          <widget class="QSplitter" name="splitterUser">
                           <property name="orientation">
-                           <enum>Qt::Orientation::Vertical</enum>
+                           <enum>Qt::Orientation::Horizontal</enum>
                           </property>
                           <property name="handleWidth">
                            <number>10</number>
@@ -1561,10 +1566,7 @@ Hash: ...</string>
                            </property>
                           </widget>
                           <widget class="QWidget" name="userStatsContainer" native="true">
-                           <layout class="QHBoxLayout" name="layoutUserBottom">
-                            <property name="spacing">
-                             <number>10</number>
-                            </property>
+                           <layout class="QVBoxLayout" name="verticalLayout_6">
                             <property name="leftMargin">
                              <number>0</number>
                             </property>
@@ -1578,52 +1580,58 @@ Hash: ...</string>
                              <number>0</number>
                             </property>
                             <item>
-                             <widget class="QTextBrowser" name="textUserPrompt">
-                              <property name="minimumSize">
-                               <size>
-                                <width>300</width>
-                                <height>100</height>
-                               </size>
+                             <widget class="QSplitter" name="splitterParameter">
+                              <property name="orientation">
+                               <enum>Qt::Orientation::Vertical</enum>
                               </property>
-                              <property name="maximumSize">
-                               <size>
-                                <width>16777215</width>
-                                <height>16777215</height>
-                               </size>
+                              <property name="handleWidth">
+                               <number>10</number>
                               </property>
-                              <property name="placeholderText">
-                               <string>选择图片查看参数...</string>
-                              </property>
-                             </widget>
-                            </item>
-                            <item>
-                             <widget class="QScrollArea" name="scrollAreaTags">
-                              <property name="minimumSize">
-                               <size>
-                                <width>300</width>
-                                <height>100</height>
-                               </size>
-                              </property>
-                              <property name="maximumSize">
-                               <size>
-                                <width>16777215</width>
-                                <height>16777215</height>
-                               </size>
-                              </property>
-                              <property name="frameShape">
-                               <enum>QFrame::Shape::NoFrame</enum>
-                              </property>
-                              <property name="widgetResizable">
-                               <bool>true</bool>
-                              </property>
-                              <widget class="QWidget" name="tagFlowContainer">
-                               <property name="geometry">
-                                <rect>
-                                 <x>0</x>
-                                 <y>0</y>
-                                 <width>278</width>
-                                 <height>78</height>
-                                </rect>
+                              <widget class="QScrollArea" name="scrollAreaTags">
+                               <property name="minimumSize">
+                                <size>
+                                 <width>300</width>
+                                 <height>100</height>
+                                </size>
+                               </property>
+                               <property name="maximumSize">
+                                <size>
+                                 <width>16777215</width>
+                                 <height>16777215</height>
+                                </size>
+                               </property>
+                               <property name="frameShape">
+                                <enum>QFrame::Shape::NoFrame</enum>
+                               </property>
+                               <property name="widgetResizable">
+                                <bool>true</bool>
+                               </property>
+                               <widget class="QWidget" name="tagFlowContainer">
+                                <property name="geometry">
+                                 <rect>
+                                  <x>0</x>
+                                  <y>0</y>
+                                  <width>435</width>
+                                  <height>271</height>
+                                 </rect>
+                                </property>
+                               </widget>
+                              </widget>
+                              <widget class="QTextBrowser" name="textUserPrompt">
+                               <property name="minimumSize">
+                                <size>
+                                 <width>300</width>
+                                 <height>100</height>
+                                </size>
+                               </property>
+                               <property name="maximumSize">
+                                <size>
+                                 <width>16777215</width>
+                                 <height>16777215</height>
+                                </size>
+                               </property>
+                               <property name="placeholderText">
+                                <string>选择图片查看参数...</string>
                                </property>
                               </widget>
                              </widget>

@@ -128,7 +128,7 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
           </widget>
          </item>
          <item>
-         <widget class="QPushButton" name="btnRefreshCandidates">
+          <widget class="QPushButton" name="btnRefreshCandidates">
            <property name="text">
             <string>刷新候选上下文</string>
            </property>
@@ -717,68 +717,61 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
                <string>编辑发给系统的提示词模板。</string>
               </property>
              </widget>
-             <widget class="QWidget" name="verticalLayoutWidget">
-              <layout class="QVBoxLayout" name="verticalLayout_2">
+             <widget class="QWidget" name="">
+              <layout class="QHBoxLayout" name="horizontalLayout">
                <item>
-                <layout class="QHBoxLayout" name="horizontalLayout">
+                <layout class="QVBoxLayout" name="verticalLayout_4">
                  <item>
-                  <layout class="QVBoxLayout" name="verticalLayout"/>
+                  <widget class="QLabel" name="labelImageAttachmentNote">
+                   <property name="text">
+                    <string>Image Attachment Note 占位符内容</string>
+                   </property>
+                  </widget>
                  </item>
                  <item>
-                  <layout class="QVBoxLayout" name="verticalLayout_4">
-                   <item>
-                    <widget class="QLabel" name="labelImageAttachmentNote">
-                     <property name="text">
-                      <string>Image Attachment Note 占位符内容</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item>
-                    <widget class="QPlainTextEdit" name="textImageAttachmentNote">
-                     <property name="minimumSize">
-                      <size>
-                       <width>0</width>
-                       <height>70</height>
-                      </size>
-                     </property>
-                     <property name="placeholderText">
-                      <string>编辑当前任务在发送参考图片时附带的说明文字。</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item>
-                    <widget class="QLabel" name="labelTaskGuidance">
-                     <property name="text">
-                      <string>Task Guidance 占位符内容</string>
-                     </property>
-                    </widget>
-                   </item>
-                   <item>
-                    <widget class="QPlainTextEdit" name="textTaskGuidance">
-                     <property name="minimumSize">
-                      <size>
-                       <width>0</width>
-                       <height>90</height>
-                      </size>
-                     </property>
-                     <property name="placeholderText">
-                      <string>编辑当前任务的 task_guidance 内容。</string>
-                     </property>
-                    </widget>
-                   </item>
-                  </layout>
-                 </item>
-                 <item>
-                  <widget class="QTextBrowser" name="textPlaceholderHelp">
+                  <widget class="QPlainTextEdit" name="textImageAttachmentNote">
                    <property name="minimumSize">
                     <size>
                      <width>0</width>
-                     <height>180</height>
+                     <height>70</height>
                     </size>
+                   </property>
+                   <property name="placeholderText">
+                    <string>编辑当前任务在发送参考图片时附带的说明文字。</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="labelTaskGuidance">
+                   <property name="text">
+                    <string>Task Guidance 占位符内容</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPlainTextEdit" name="textTaskGuidance">
+                   <property name="minimumSize">
+                    <size>
+                     <width>0</width>
+                     <height>90</height>
+                    </size>
+                   </property>
+                   <property name="placeholderText">
+                    <string>编辑当前任务的 task_guidance 内容。</string>
                    </property>
                   </widget>
                  </item>
                 </layout>
+               </item>
+               <item>
+                <widget class="QTextBrowser" name="textPlaceholderHelp">
+                 <property name="minimumSize">
+                  <size>
+                   <width>0</width>
+                   <height>180</height>
+                  </size>
+                 </property>
+                </widget>
                </item>
               </layout>
              </widget>
