@@ -73,6 +73,7 @@ class LlmPromptWidget;
 struct DownloadTask {
     QString url;
     QString savePath;
+    QString localBaseName;
     QPointer<QPushButton> button; // 使用 QPointer 防止按钮被销毁后野指针崩溃
 };
 
@@ -239,6 +240,7 @@ private:
     void downloadThumbnail(const QString &url, const QString &savePath, QPushButton *button);
     void showFullImageDialog(const QString &imagePath);
     QIcon getFitIcon(const QString &path);
+    void applyDownloadedPreviewToUi(const QString &localBaseName, const QString &savePath);
     void updateBackgroundImage();
     void updateLocalEditorFromMeta(const ModelMeta &meta);
     void setLocalMetaStatus(const ModelMeta &meta);
@@ -266,7 +268,7 @@ private:
     QVariantAnimation *transitionAnim = nullptr; // 动画控制器
     void transitionToImage(const QString &path);
     void updateBackgroundDuringTransition();
-    void enqueueDownload(const QString &url, const QString &savePath, QPushButton *btn);
+    void enqueueDownload(const QString &url, const QString &savePath, QPushButton *btn, const QString &localBaseName);
     void processNextDownload();
     void beginGalleryBuild(const ModelMeta &meta);
     void buildGalleryBatch();

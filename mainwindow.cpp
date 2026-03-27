@@ -1231,6 +1231,7 @@ void MainWindow::addGalleryThumbButton(const ModelMeta &meta, int index, const Q
     thumbBtn->setCursor(Qt::PointingHandCursor);
     thumbBtn->setProperty("class", "galleryThumb");
     thumbBtn->setProperty("isNSFW", isNsfw);
+    thumbBtn->setContextMenuPolicy(Qt::CustomContextMenu);
 
     QString suffix = (index == 0) ? ".preview.png" : QString(".preview.%1.png").arg(index);
     QString rawPath = QDir(modelDir).filePath(baseName + suffix);
@@ -1242,6 +1243,10 @@ void MainWindow::addGalleryThumbButton(const ModelMeta &meta, int index, const Q
     }
 
     thumbBtn->setProperty("fullImagePath", effectivePath);
+    thumbBtn->setProperty("downloadUrl", img.url);
+    thumbBtn->setProperty("savePath", strictLocalPath);
+    thumbBtn->setProperty("localBaseName", baseName);
+    thumbBtn->setProperty("imageIndex", index);
     thumbBtn->installEventFilter(this);
 
     if (QFile::exists(effectivePath)) {
@@ -1254,16 +1259,60 @@ void MainWindow::addGalleryThumbButton(const ModelMeta &meta, int index, const Q
             thumbBtn->setText("Skipped");
         } else if (img.url.isEmpty()) {
             thumbBtn->setText("Missing");
-        } else if (index == 0) {
-            thumbBtn->setText("Downloading...");
         } else {
-            thumbBtn->setText("Queueing...");
-            enqueueDownload(img.url, strictLocalPath, thumbBtn);
+            thumbBtn->setText(index == 0 ? "Downloading..." : "Queueing...");
+            enqueueDownload(img.url, strictLocalPath, thumbBtn, baseName);
         }
     }
 
     connect(thumbBtn, &QPushButton::clicked, this, [this, index](){
         onGalleryImageClicked(index);
+    });
+    connect(thumbBtn, &QPushButton::customContextMenuRequested, this, [this, thumbBtn](const QPoint &pos){
+        if (!thumbBtn) return;
+
+        const QString downloadUrl = thumbBtn->property("downloadUrl").toString();
+        const QString savePath = QFileInfo(thumbBtn->property("savePath").toString()).absoluteFilePath();
+        const QString localBaseName = thumbBtn->property("localBaseName").toString();
+        const int imageIndex = thumbBtn->property("imageIndex").toInt();
+
+        QMenu menu(this);
+        QAction *actRedownload = menu.addAction("重新下载 / Re-download");
+        actRedownload->setEnabled(!downloadUrl.isEmpty() && !savePath.isEmpty());
+
+        QAction *actOpenLocation = menu.addAction("打开所在位置 / Show in Folder");
+        actOpenLocation->setEnabled(!savePath.isEmpty());
+
+        QAction *chosen = menu.exec(thumbBtn->mapToGlobal(pos));
+        if (!chosen) return;
+
+        if (chosen == actRedownload) {
+            if (QFile::exists(savePath)) {
+                QFile::remove(savePath);
+            }
+            thumbBtn->setIcon(QIcon());
+            thumbBtn->setText(imageIndex == 0 ? "Downloading..." : "Queueing...");
+            enqueueDownload(downloadUrl, savePath, thumbBtn, localBaseName);
+            return;
+        }
+
+        if (chosen == actOpenLocation) {
+#ifdef Q_OS_WIN
+            QProcess *process = new QProcess(this);
+            process->setProgram("explorer.exe");
+            const QString nativePath = QDir::toNativeSeparators(savePath);
+            if (QFile::exists(savePath)) {
+                process->setNativeArguments(QString("/select,\"%1\"").arg(nativePath));
+            } else {
+                process->setNativeArguments(QString("\"%1\"").arg(QDir::toNativeSeparators(QFileInfo(savePath).absolutePath())));
+            }
+            process->start();
+            connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                    process, &QProcess::deleteLater);
+#else
+            QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(savePath).absolutePath()));
+#endif
+        }
     });
 
     ui->layoutGallery->addWidget(thumbBtn);
@@ -2545,28 +2594,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
             if (m_forceResyncPreview && QFile::exists(savePath)) {
                 QFile::remove(savePath);
             }
-
-            if (!QFile::exists(savePath)) {
-                QNetworkRequest req((QUrl(meta.images[0].url)));
-
-                req.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
-                req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-
-                QNetworkReply *imgReply = netManager->get(req);
-
-                // === 关键：把本地文件名和保存路径都传给图片下载回调 ===
-                imgReply->setProperty("localBaseName", localBaseName);
-                imgReply->setProperty("savePath", savePath);
-
-                connect(imgReply, &QNetworkReply::finished, this, [this, imgReply](){
-                    this->onImageDownloaded(imgReply);
-                });
-
-                // 暂时先把 meta 的路径设为这个（虽然还没下载完），以便保存到 JSON
-                meta.previewPath = savePath;
-            } else {
-                meta.previewPath = savePath;
-            }
+            meta.previewPath = savePath;
         }
     }
 
@@ -2612,51 +2640,57 @@ void MainWindow::onImageDownloaded(QNetworkReply *reply)
     if (file.open(QIODevice::WriteOnly)) {
         file.write(imgData);
         file.close();
+        applyDownloadedPreviewToUi(localBaseName, savePath);
+    }
+}
 
-        QIcon newIcon = getSquareIcon(QPixmap(savePath)); // 或者 getFitIcon
-        QIcon fitIcon = getFitIcon(savePath);
+void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const QString &savePath)
+{
+    if (localBaseName.isEmpty() || savePath.isEmpty()) return;
 
-        for(int i = 0; i < ui->modelList->count(); ++i) {
-            QListWidgetItem *item = ui->modelList->item(i);
-            // 必须比对 UserRole (即 baseName) 或 FILE_PATH
-            if (item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
-                item->setData(ROLE_PREVIEW_PATH, savePath); // 更新数据
-                item->setIcon(newIcon); // 刷新图标
-            }
+    QIcon newIcon = getSquareIcon(QPixmap(savePath));
+    QIcon fitIcon = getFitIcon(savePath);
+
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
+            item->setData(ROLE_PREVIEW_PATH, savePath);
+            item->setIcon(newIcon);
         }
+    }
 
-        for(int i = 0; i < ui->homeGalleryList->count(); ++i) {
-            QListWidgetItem *item = ui->homeGalleryList->item(i);
-            // 检查 Item 对应的文件路径是否包含 localBaseName
-            QString itemPath = item->data(ROLE_FILE_PATH).toString();
-            QFileInfo fi(itemPath);
-            if (fi.completeBaseName() == localBaseName) {
-                item->setData(ROLE_PREVIEW_PATH, savePath);
-                item->setIcon(newIcon);
-            }
+    for (int i = 0; i < ui->homeGalleryList->count(); ++i) {
+        QListWidgetItem *item = ui->homeGalleryList->item(i);
+        QString itemPath = item->data(ROLE_FILE_PATH).toString();
+        QFileInfo fi(itemPath);
+        if (fi.completeBaseName() == localBaseName) {
+            item->setData(ROLE_PREVIEW_PATH, savePath);
+            item->setIcon(newIcon);
         }
+    }
 
-        if (ui->layoutGallery) {
-            for (int k = 0; k < ui->layoutGallery->count(); ++k) {
-                if (QLayoutItem *li = ui->layoutGallery->itemAt(k)) {
-                    if (QPushButton *btn = qobject_cast<QPushButton*>(li->widget())) {
-                        QString btnPath = QFileInfo(btn->property("fullImagePath").toString()).absoluteFilePath();
-                        if (btnPath == savePath) {
-                            btn->setIcon(fitIcon);
-                            btn->setIconSize(QSize(90, 135));
-                            btn->setText(""); // 清除文字
-                        }
+    if (ui->layoutGallery) {
+        for (int k = 0; k < ui->layoutGallery->count(); ++k) {
+            if (QLayoutItem *li = ui->layoutGallery->itemAt(k)) {
+                if (QPushButton *btn = qobject_cast<QPushButton*>(li->widget())) {
+                    QString btnPath = QFileInfo(btn->property("savePath").toString()).absoluteFilePath();
+                    if (btnPath == savePath) {
+                        btn->setProperty("fullImagePath", savePath);
+                        btn->setIcon(fitIcon);
+                        btn->setIconSize(QSize(90, 135));
+                        btn->setText("");
                     }
                 }
             }
         }
+    }
 
-        QListWidgetItem *currentItem = ui->modelList->currentItem();
-        if (currentItem && currentItem->data(ROLE_MODEL_NAME).toString() == localBaseName) {
-            if (savePath.endsWith(".preview.png")) {
-                currentHeroPath = "";
-                transitionToImage(savePath);
-            }
+    QListWidgetItem *currentItem = ui->modelList->currentItem();
+    if (currentItem && currentItem->data(ROLE_MODEL_NAME).toString() == localBaseName) {
+        if (savePath.endsWith(".preview.png")) {
+            currentMeta.previewPath = savePath;
+            currentHeroPath = "";
+            transitionToImage(savePath);
         }
     }
 }
@@ -3592,11 +3626,12 @@ void MainWindow::updateBackgroundDuringTransition()
 }
 
 // 1. 入队函数
-void MainWindow::enqueueDownload(const QString &url, const QString &savePath, QPushButton *btn)
+void MainWindow::enqueueDownload(const QString &url, const QString &savePath, QPushButton *btn, const QString &localBaseName)
 {
     DownloadTask task;
     task.url = url;
     task.savePath = savePath;
+    task.localBaseName = localBaseName;
     task.button = btn;
 
     downloadQueue.enqueue(task);
@@ -3653,9 +3688,12 @@ void MainWindow::processNextDownload()
                 file.write(data);
                 file.close();
 
+                applyDownloadedPreviewToUi(task.localBaseName, cleanedSavePath);
+
                 if (task.button) {
                     QString currentBtnPath = QFileInfo(task.button->property("fullImagePath").toString()).absoluteFilePath();
-                    if (currentBtnPath == cleanedSavePath) {
+                    QString savePathProp = QFileInfo(task.button->property("savePath").toString()).absoluteFilePath();
+                    if (currentBtnPath == cleanedSavePath || savePathProp == cleanedSavePath) {
                         IconLoaderTask *iconTask = new IconLoaderTask(cleanedSavePath, 100, 0, this, cleanedSavePath, true);
                         iconTask->setAutoDelete(true);
                         threadPool->start(iconTask);
