@@ -364,6 +364,7 @@ private:
     bool    optUseArrangedUA        = false;            // 使用自定义UA
     QStringList optFilterTags       = DEFAULT_FILTER_TAGS.split(',', Qt::SkipEmptyParts);    // 过滤词列表 (存储清洗后的列表)
     bool    optUseCivitaiName = false;                  // 使用json中的模型名称
+    bool    optSuppressLocalWarnings = false;           // 隐藏本地模型总量提醒
     // 保存与加载
     void loadGlobalConfig();        // 加载配置
     void saveGlobalConfig();        // 保存配置

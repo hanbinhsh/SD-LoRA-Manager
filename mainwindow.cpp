@@ -1754,7 +1754,7 @@ void MainWindow::onActionOpenFolderTriggered() {
 
 void MainWindow::onScanLocalClicked() {
     int localCount = countLocalEditedModels();
-    if (localCount > 0) {
+    if (!optSuppressLocalWarnings && localCount > 0) {
         QMessageBox::information(this, "提示",
                                  QString("检测到 %1 个本地/已编辑模型。\n刷新不会删除本地元数据，但后续同步可能覆盖本地修改。").arg(localCount));
     }
@@ -1869,7 +1869,7 @@ void MainWindow::onForceUpdateClicked() {
 
     if (!confirmLocalEditOverwrite(item)) return;
     int localCount = countLocalEditedModels();
-    if (!item->data(ROLE_LOCAL_EDITED).toBool() && localCount > 0) {
+    if (!optSuppressLocalWarnings && !item->data(ROLE_LOCAL_EDITED).toBool() && localCount > 0) {
         QMessageBox::information(this, "提示",
                                  QString("检测到 %1 个本地/已编辑模型。\n同步其它模型的元数据不会影响它们，但强制更新时请注意覆盖风险。").arg(localCount));
     }
@@ -2656,12 +2656,14 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
 
     QIcon newIcon = getSquareIcon(QPixmap(savePath));
     QIcon fitIcon = getFitIcon(savePath);
+    bool modelListUpdated = false;
 
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *item = ui->modelList->item(i);
         if (item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
             item->setData(ROLE_PREVIEW_PATH, savePath);
             item->setIcon(newIcon);
+            modelListUpdated = true;
         }
     }
 
@@ -2674,6 +2676,23 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
             item->setIcon(newIcon);
         }
     }
+
+    if (modelListUpdated) {
+        for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
+            QTreeWidgetItem *parent = ui->collectionTree->topLevelItem(i);
+            for (int j = 0; j < parent->childCount(); ++j) {
+                QTreeWidgetItem *child = parent->child(j);
+                if (child->data(0, ROLE_MODEL_NAME).toString() == localBaseName) {
+                    child->setData(0, ROLE_PREVIEW_PATH, savePath);
+                    child->setIcon(0, newIcon);
+                }
+            }
+        }
+        ui->modelList->viewport()->update();
+        ui->modelList->update();
+        ui->collectionTree->viewport()->update();
+    }
+    ui->homeGalleryList->viewport()->update();
 
     if (ui->layoutGallery) {
         for (int k = 0; k < ui->layoutGallery->count(); ++k) {
@@ -4447,6 +4466,7 @@ void MainWindow::loadGlobalConfig() {
         optUseArrangedUA                = root["use_custom_ua"].toBool(false);
         optSavedUAString                = root["custom_user_agent"].toString();
         optUseCivitaiName               = root["use_civitai_name"].toBool(false);
+        optSuppressLocalWarnings        = root["suppress_local_model_warnings"].toBool(false);
 
         qDebug() << "Loaded User-Agent:" << currentUserAgent;
 
@@ -4528,6 +4548,7 @@ void MainWindow::loadGlobalConfig() {
     ui->editUserAgent->setEnabled(optUseArrangedUA);
     if (!optSavedUAString.isEmpty()) {ui->editUserAgent->setText(optSavedUAString);}
     ui->chkUseCivitaiName->setChecked(optUseCivitaiName);
+    ui->chkSuppressLocalWarnings->setChecked(optSuppressLocalWarnings);
 
     // ===============================
     // === 连接 Settings 页面的信号 ===
@@ -4660,6 +4681,10 @@ void MainWindow::loadGlobalConfig() {
         executeSort();          // 刷新文字后可能需要重新排序
         saveGlobalConfig();
     });
+    connect(ui->chkSuppressLocalWarnings, &QCheckBox::toggled, this, [this](bool checked){
+        optSuppressLocalWarnings = checked;
+        saveGlobalConfig();
+    });
 }
 
 void MainWindow::saveGlobalConfig() {
@@ -4697,6 +4722,7 @@ void MainWindow::saveGlobalConfig() {
     root["use_custom_ua"]               = ui->chkUseCustomUserAgent->isChecked();
     root["custom_user_agent"]           = ui->editUserAgent->text();
     root["use_civitai_name"]            = optUseCivitaiName;
+    root["suppress_local_model_warnings"] = optSuppressLocalWarnings;
     root.remove("model_switch_delay_ms");
 
     if (optRestoreTreeState) {

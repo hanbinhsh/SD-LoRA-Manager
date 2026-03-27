@@ -796,8 +796,8 @@ New</string>
                  <rect>
                   <x>0</x>
                   <y>0</y>
-                  <width>743</width>
-                  <height>1462</height>
+                  <width>698</width>
+                  <height>1429</height>
                  </rect>
                 </property>
                 <property name="minimumSize">
@@ -1099,7 +1099,7 @@ New</string>
                               <rect>
                                <x>0</x>
                                <y>0</y>
-                               <width>478</width>
+                               <width>444</width>
                                <height>165</height>
                               </rect>
                              </property>
@@ -1680,20 +1680,20 @@ Hash: ...</string>
                              <property name="spacing">
                               <number>8</number>
                              </property>
-                             <property name="uniformItemSizes">
-                              <bool>true</bool>
-                             </property>
                              <property name="gridSize">
                               <size>
                                <width>118</width>
                                <height>186</height>
                               </size>
                              </property>
-                             <property name="wordWrap">
-                              <bool>false</bool>
-                             </property>
                              <property name="viewMode">
                               <enum>QListView::ViewMode::IconMode</enum>
+                             </property>
+                             <property name="uniformItemSizes">
+                              <bool>true</bool>
+                             </property>
+                             <property name="wordWrap">
+                              <bool>false</bool>
                              </property>
                             </widget>
                            </item>
@@ -2336,85 +2336,7 @@ Hash: ...</string>
          </widget>
         </item>
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_4" stretch="1,1">
-          <item>
-           <widget class="QGroupBox" name="groupPerformance">
-            <property name="title">
-             <string>性能 / Performance</string>
-            </property>
-            <layout class="QGridLayout" name="gridLayout_Perf">
-             <item row="0" column="0">
-              <widget class="QLabel" name="lblThreads">
-               <property name="text">
-                <string>图片渲染线程数 / Render Threads:</string>
-               </property>
-              </widget>
-             </item>
-             <item row="0" column="1">
-              <widget class="QSpinBox" name="spinRenderThreads">
-               <property name="toolTip">
-                <string>同时加载图片的数量。默认 4。设置过高可能会卡顿。</string>
-               </property>
-               <property name="minimum">
-                <number>1</number>
-               </property>
-               <property name="maximum">
-                <number>32</number>
-               </property>
-               <property name="value">
-                <number>4</number>
-               </property>
-              </widget>
-             </item>
-             <item row="0" column="2">
-              <spacer name="horizontalSpacer_Perf">
-               <property name="orientation">
-                <enum>Qt::Orientation::Horizontal</enum>
-               </property>
-               <property name="sizeHint" stdset="0">
-                <size>
-                 <width>40</width>
-                 <height>20</height>
-                </size>
-               </property>
-              </spacer>
-             </item>
-            </layout>
-           </widget>
-          </item>
-          <item>
-           <widget class="QGroupBox" name="groupScan">
-            <property name="title">
-             <string>扫描选项 / Scanning Options</string>
-            </property>
-            <layout class="QVBoxLayout" name="verticalLayout_ScanOpts">
-             <item>
-              <widget class="QCheckBox" name="chkRecursiveLora">
-               <property name="toolTip">
-                <string>勾选后将搜索子目录下的模型文件。</string>
-               </property>
-               <property name="text">
-                <string>递归扫描 LoRA 子文件夹 / Recursive Scan for LoRA</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QCheckBox" name="chkRecursiveGallery">
-               <property name="toolTip">
-                <string>勾选后将搜索子目录下的图片文件。默认关闭以提高性能。</string>
-               </property>
-               <property name="text">
-                <string>递归扫描图库子文件夹 / Recursive Scan for Gallery</string>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </widget>
-          </item>
-         </layout>
-        </item>
-        <item>
-         <layout class="QHBoxLayout" name="horizontalLayout" stretch="1,1">
+         <layout class="QHBoxLayout" name="horizontalLayout" stretch="1,0">
           <item>
            <widget class="QGroupBox" name="groupAppearance">
             <property name="title">
@@ -2519,109 +2441,197 @@ Hash: ...</string>
                </property>
               </widget>
              </item>
+             <item row="6" column="0" colspan="3">
+              <widget class="QCheckBox" name="chkSuppressLocalWarnings">
+               <property name="toolTip">
+                <string>勾选后，不再弹出“检测到 X 个本地/已编辑模型”的总量提醒；单个模型的覆盖确认仍会保留。</string>
+               </property>
+               <property name="text">
+                <string>不显示本地模型总量警告 / Hide Local Model Count Warning</string>
+               </property>
+              </widget>
+             </item>
             </layout>
            </widget>
           </item>
           <item>
-           <widget class="QGroupBox" name="groupNSFW">
-            <property name="title">
-             <string>内容过滤 / NSFW Filter</string>
-            </property>
-            <layout class="QVBoxLayout" name="verticalLayout_NSFW">
-             <item>
-              <widget class="QCheckBox" name="chkFilterNSFW">
-               <property name="text">
-                <string>开启 NSFW 内容过滤 / Enable NSFW Filter</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <layout class="QHBoxLayout" name="horizontalLayout_NSFWMode">
-               <item>
-                <widget class="QLabel" name="lblNSFWMode">
+           <layout class="QVBoxLayout" name="verticalLayout_4">
+            <item>
+             <widget class="QGroupBox" name="groupPerformance">
+              <property name="title">
+               <string>性能 / Performance</string>
+              </property>
+              <layout class="QGridLayout" name="gridLayout_Perf">
+               <item row="0" column="0">
+                <widget class="QLabel" name="lblThreads">
                  <property name="text">
-                  <string>过滤模式 / Filter Mode:</string>
+                  <string>图片渲染线程数 / Render Threads:</string>
                  </property>
                 </widget>
                </item>
-               <item>
-                <widget class="QRadioButton" name="radioNSFW_Hide">
-                 <property name="text">
-                  <string>隐藏 / Hide</string>
+               <item row="0" column="1">
+                <widget class="QSpinBox" name="spinRenderThreads">
+                 <property name="toolTip">
+                  <string>同时加载图片的数量。默认 4。设置过高可能会卡顿。</string>
                  </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QRadioButton" name="radioNSFW_Blur">
-                 <property name="text">
-                  <string>模糊 / Blur</string>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <spacer name="horizontalSpacer_NSFW">
-                 <property name="orientation">
-                  <enum>Qt::Orientation::Horizontal</enum>
-                 </property>
-                 <property name="sizeHint" stdset="0">
-                  <size>
-                   <width>0</width>
-                   <height>0</height>
-                  </size>
-                 </property>
-                </spacer>
-               </item>
-              </layout>
-             </item>
-             <item>
-              <layout class="QHBoxLayout" name="horizontalLayout_NSFWLevel">
-               <item>
-                <widget class="QLabel" name="lblNSFWLevel">
-                 <property name="text">
-                  <string>过滤等级阈值 (Level &gt; X):</string>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QSpinBox" name="spinNSFWLevel">
                  <property name="minimum">
                   <number>1</number>
                  </property>
                  <property name="maximum">
-                  <number>100</number>
+                  <number>32</number>
                  </property>
                  <property name="value">
-                  <number>1</number>
+                  <number>4</number>
                  </property>
                 </widget>
                </item>
-               <item>
-                <widget class="QLabel" name="lblNSFWHint">
-                 <property name="styleSheet">
-                  <string>color: #666; font-size: 11px;</string>
-                 </property>
-                 <property name="text">
-                  <string>(Civitai 标准: 1=正常, &gt;1 包含不同程度成人内容)</string>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <spacer name="horizontalSpacer_NSFW2">
+               <item row="0" column="2">
+                <spacer name="horizontalSpacer_Perf">
                  <property name="orientation">
                   <enum>Qt::Orientation::Horizontal</enum>
                  </property>
                  <property name="sizeHint" stdset="0">
                   <size>
-                   <width>0</width>
-                   <height>0</height>
+                   <width>40</width>
+                   <height>20</height>
                   </size>
                  </property>
                 </spacer>
                </item>
               </layout>
-             </item>
-            </layout>
-           </widget>
+             </widget>
+            </item>
+            <item>
+             <widget class="QGroupBox" name="groupScan">
+              <property name="title">
+               <string>扫描选项 / Scanning Options</string>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_ScanOpts">
+               <item>
+                <widget class="QCheckBox" name="chkRecursiveLora">
+                 <property name="toolTip">
+                  <string>勾选后将搜索子目录下的模型文件。</string>
+                 </property>
+                 <property name="text">
+                  <string>递归扫描 LoRA 子文件夹 / Recursive Scan for LoRA</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QCheckBox" name="chkRecursiveGallery">
+                 <property name="toolTip">
+                  <string>勾选后将搜索子目录下的图片文件。默认关闭以提高性能。</string>
+                 </property>
+                 <property name="text">
+                  <string>递归扫描图库子文件夹 / Recursive Scan for Gallery</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <widget class="QGroupBox" name="groupNSFW">
+              <property name="title">
+               <string>内容过滤 / NSFW Filter</string>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_NSFW">
+               <item>
+                <widget class="QCheckBox" name="chkFilterNSFW">
+                 <property name="text">
+                  <string>开启 NSFW 内容过滤 / Enable NSFW Filter</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="horizontalLayout_NSFWMode">
+                 <item>
+                  <widget class="QLabel" name="lblNSFWMode">
+                   <property name="text">
+                    <string>过滤模式 / Filter Mode:</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QRadioButton" name="radioNSFW_Hide">
+                   <property name="text">
+                    <string>隐藏 / Hide</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QRadioButton" name="radioNSFW_Blur">
+                   <property name="text">
+                    <string>模糊 / Blur</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <spacer name="horizontalSpacer_NSFW">
+                   <property name="orientation">
+                    <enum>Qt::Orientation::Horizontal</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>0</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="horizontalLayout_NSFWLevel">
+                 <item>
+                  <widget class="QLabel" name="lblNSFWLevel">
+                   <property name="text">
+                    <string>过滤等级阈值 (Level &gt; X):</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QSpinBox" name="spinNSFWLevel">
+                   <property name="minimum">
+                    <number>1</number>
+                   </property>
+                   <property name="maximum">
+                    <number>100</number>
+                   </property>
+                   <property name="value">
+                    <number>1</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="lblNSFWHint">
+                   <property name="styleSheet">
+                    <string>color: #666; font-size: 11px;</string>
+                   </property>
+                   <property name="text">
+                    <string>(Civitai 标准: 1=正常, &gt;1 包含不同程度成人内容)</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <spacer name="horizontalSpacer_NSFW2">
+                   <property name="orientation">
+                    <enum>Qt::Orientation::Horizontal</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>0</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                </layout>
+               </item>
+              </layout>
+             </widget>
+            </item>
+           </layout>
           </item>
          </layout>
         </item>
@@ -2898,7 +2908,7 @@ Hash: ...</string>
      <x>0</x>
      <y>0</y>
      <width>1300</width>
-     <height>24</height>
+     <height>20</height>
     </rect>
    </property>
   </widget>
