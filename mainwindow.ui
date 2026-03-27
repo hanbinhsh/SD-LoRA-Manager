@@ -1571,13 +1571,13 @@ Hash: ...</string>
                              <number>0</number>
                             </property>
                             <property name="topMargin">
-                             <number>0</number>
+                             <number>1</number>
                             </property>
                             <property name="rightMargin">
                              <number>0</number>
                             </property>
                             <property name="bottomMargin">
-                             <number>0</number>
+                             <number>1</number>
                             </property>
                             <item>
                              <widget class="QSplitter" name="splitterParameter">
@@ -1612,7 +1612,7 @@ Hash: ...</string>
                                   <x>0</x>
                                   <y>0</y>
                                   <width>435</width>
-                                  <height>271</height>
+                                  <height>270</height>
                                  </rect>
                                 </property>
                                </widget>
