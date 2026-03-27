@@ -571,7 +571,10 @@ void MainWindow::refreshHomeGallery()
 
         int nsfwLevel = sideItem->data(ROLE_NSFW_LEVEL).toInt();
         bool isNSFW = nsfwLevel > optNSFWLevel;
-        QString baseName = sideItem->text();
+        QString modelKey = sideItem->data(ROLE_MODEL_NAME).toString();
+        if (modelKey.isEmpty()) modelKey = QFileInfo(sideItem->data(ROLE_FILE_PATH).toString()).completeBaseName();
+        QString displayName = sideItem->text();
+        if (displayName.isEmpty()) displayName = modelKey;
         QString previewPath = sideItem->data(ROLE_PREVIEW_PATH).toString();
         QString filePath = sideItem->data(ROLE_FILE_PATH).toString();
         QString itemBaseModel = sideItem->data(ROLE_FILTER_BASE).toString();
@@ -582,7 +585,9 @@ void MainWindow::refreshHomeGallery()
         }
 
         if (!searchText.isEmpty()) {
-            if (!baseName.contains(searchText, Qt::CaseInsensitive)) continue;
+            bool matchDisplay = displayName.contains(searchText, Qt::CaseInsensitive);
+            bool matchKey = modelKey.contains(searchText, Qt::CaseInsensitive);
+            if (!matchDisplay && !matchKey) continue;
         }
 
         if (targetBaseModel != "All") {
@@ -595,7 +600,7 @@ void MainWindow::refreshHomeGallery()
                 // 检查这个 baseName 是否存在于任何一个已有的收藏夹 List 中
                 bool categorized = false;
                 for (auto it = collections.begin(); it != collections.end(); ++it) {
-                    if (it.value().contains(baseName)) {
+                    if (it.value().contains(modelKey)) {
                         categorized = true;
                         break;
                     }
@@ -604,16 +609,17 @@ void MainWindow::refreshHomeGallery()
             } else {
                 // 正常的收藏夹筛选逻辑
                 QStringList list = collections.value(currentCollectionFilter);
-                if (!list.contains(baseName)) continue;
+                if (!list.contains(modelKey)) continue;
             }
         }
 
         QListWidgetItem *item = new QListWidgetItem();
-        item->setToolTip(baseName);
+        item->setToolTip(displayName);
         item->setData(ROLE_FILE_PATH, filePath);
         item->setData(ROLE_PREVIEW_PATH, previewPath);
         item->setData(ROLE_NSFW_LEVEL, nsfwLevel);
-        item->setData(ROLE_MODEL_NAME, baseName);
+        item->setData(ROLE_MODEL_NAME, modelKey);
+        item->setData(ROLE_CIVITAI_NAME, sideItem->data(ROLE_CIVITAI_NAME));
 
         item->setIcon(placeholderIcon);
         ui->homeGalleryList->addItem(item);
