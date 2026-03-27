@@ -310,6 +310,9 @@ private:
     void scanForUserImages(const QString &loraBaseName);
     void parsePngInfo(const QString &path, UserImageInfo &info);
     void updateUserStats(const QList<UserImageInfo> &images);
+    void resetUserImageThumbLoading();
+    void scheduleVisibleUserImageThumbLoad();
+    void dispatchVisibleUserImageThumbLoad();
 
     QString getSafetensorsInternalName(const QString &path);
 
@@ -339,6 +342,9 @@ private:
 
     // Key: 文件绝对路径, Value: 缓存的图片信息
     QMap<QString, UserImageInfo> imageCache;
+    QSet<QString> queuedUserImageThumbPaths;
+    QSet<QString> loadedUserImageThumbPaths;
+    QTimer *userImageThumbLoadTimer = nullptr;
     void loadUserGalleryCache();
     void saveUserGalleryCache();
 

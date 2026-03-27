@@ -159,6 +159,13 @@ MainWindow::MainWindow(QWidget *parent)
     // 2. 设置滚轮滚一下移动的像素距离
     ui->homeGalleryList->verticalScrollBar()->setSingleStep(40);
     ui->listUserImages->verticalScrollBar()->setSingleStep(40);
+    userImageThumbLoadTimer = new QTimer(this);
+    userImageThumbLoadTimer->setSingleShot(true);
+    connect(userImageThumbLoadTimer, &QTimer::timeout, this, &MainWindow::dispatchVisibleUserImageThumbLoad);
+    connect(ui->listUserImages->verticalScrollBar(), &QScrollBar::valueChanged, this, [this]() {
+        scheduleVisibleUserImageThumbLoad();
+    });
+    ui->listUserImages->viewport()->installEventFilter(this);
 
     ui->collectionTree->setHeaderHidden(true); // 隐藏 "Collection / Model" 表头
 
@@ -895,6 +902,11 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 bgResizeTimer->start(0); // 稍微增加一点延迟，减少高频模糊计算
             }
         }
+    }
+
+    if (watched == ui->listUserImages->viewport() &&
+        (event->type() == QEvent::Resize || event->type() == QEvent::Show)) {
+        scheduleVisibleUserImageThumbLoad();
     }
 
     if (event->type() == QEvent::MouseButtonDblClick) {
@@ -3007,13 +3019,20 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
         }
 
         // --- B. 用户返图列表 (User Gallery) ---
+        bool userImageUpdated = false;
         if (ui->listUserImages) {
             for (int i = 0; i < ui->listUserImages->count(); ++i) {
                 QListWidgetItem *item = ui->listUserImages->item(i);
                 if (item->data(ROLE_USER_IMAGE_PATH).toString() == filePath) {
                     item->setIcon(originalIcon);
+                    userImageUpdated = true;
                 }
             }
+        }
+        if (userImageUpdated) {
+            queuedUserImageThumbPaths.remove(filePath);
+            loadedUserImageThumbPaths.insert(filePath);
+            scheduleVisibleUserImageThumbLoad();
         }
 
         // --- C. Hero 大图过渡 ---
@@ -3810,11 +3829,93 @@ void MainWindow::onClearUserGalleryCacheClicked()
     ui->statusbar->showMessage("本地图库缓存已清除", 3000);
 }
 
+void MainWindow::resetUserImageThumbLoading()
+{
+    queuedUserImageThumbPaths.clear();
+    loadedUserImageThumbPaths.clear();
+    if (userImageThumbLoadTimer) {
+        userImageThumbLoadTimer->stop();
+    }
+}
+
+void MainWindow::scheduleVisibleUserImageThumbLoad()
+{
+    if (!userImageThumbLoadTimer) return;
+    userImageThumbLoadTimer->start(30);
+}
+
+void MainWindow::dispatchVisibleUserImageThumbLoad()
+{
+    if (!ui->listUserImages || ui->listUserImages->count() == 0) return;
+
+    const QRect visibleRect = ui->listUserImages->viewport()->rect();
+    if (visibleRect.isEmpty()) return;
+
+    const QRect prefetchRect = visibleRect.adjusted(-visibleRect.width(),
+                                                    -visibleRect.height(),
+                                                    visibleRect.width(),
+                                                    visibleRect.height());
+    const QPoint centerPoint = visibleRect.center();
+
+    struct ThumbCandidate {
+        int priority = 2;
+        int distance = 0;
+        QString path;
+    };
+
+    QList<ThumbCandidate> candidates;
+    candidates.reserve(ui->listUserImages->count());
+
+    for (int i = 0; i < ui->listUserImages->count(); ++i) {
+        QListWidgetItem *item = ui->listUserImages->item(i);
+        if (!item || item->isHidden()) continue;
+
+        const QString path = item->data(ROLE_USER_IMAGE_PATH).toString();
+        if (path.isEmpty()) continue;
+        if (loadedUserImageThumbPaths.contains(path) || queuedUserImageThumbPaths.contains(path)) continue;
+
+        const QRect itemRect = ui->listUserImages->visualItemRect(item);
+        if (!itemRect.isValid() || itemRect.isEmpty()) continue;
+
+        ThumbCandidate candidate;
+        candidate.path = path;
+        candidate.distance = qAbs(itemRect.center().y() - centerPoint.y()) + qAbs(itemRect.center().x() - centerPoint.x());
+        if (itemRect.intersects(visibleRect)) {
+            candidate.priority = 0;
+        } else if (itemRect.intersects(prefetchRect)) {
+            candidate.priority = 1;
+        }
+        candidates.append(candidate);
+    }
+
+    if (candidates.isEmpty()) return;
+
+    std::sort(candidates.begin(), candidates.end(), [](const ThumbCandidate &a, const ThumbCandidate &b) {
+        if (a.priority != b.priority) return a.priority < b.priority;
+        return a.distance < b.distance;
+    });
+
+    const int threadCount = qMax(1, threadPool ? threadPool->maxThreadCount() : 4);
+    const int maxLaunchPerPass = qMax(8, threadCount * 2);
+    int launched = 0;
+    for (const ThumbCandidate &candidate : candidates) {
+        if (candidate.priority > 1 && launched >= threadCount) break;
+        if (launched >= maxLaunchPerPass) break;
+
+        IconLoaderTask *task = new IconLoaderTask(candidate.path, 140, 4, this, candidate.path);
+        task->setAutoDelete(true);
+        threadPool->start(task);
+        queuedUserImageThumbPaths.insert(candidate.path);
+        ++launched;
+    }
+}
+
 
 void MainWindow::scanForUserImages(const QString &loraBaseName) {
     ui->listUserImages->clear();
     ui->textUserPrompt->clear();
     tagFlowWidget->setData({}); // 清空 Tag
+    resetUserImageThumbLoading();
 
     // 1. 检查目录
     QStringList validGalleryPaths = collectValidPaths(galleryPaths);
@@ -4023,13 +4124,9 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
             item->setData(ROLE_USER_IMAGE_TAGS, info.cleanTags);
             item->setIcon(placeholderIcon);
             ui->listUserImages->addItem(item);
-
-            // 启动缩略图加载
-            IconLoaderTask *task = new IconLoaderTask(info.path, 140, 4, this, info.path);
-            task->setAutoDelete(true);
-            threadPool->start(task);
         }
         ui->listUserImages->setUpdatesEnabled(true);
+        scheduleVisibleUserImageThumbLoad();
 
         updateUserStats(results);
         watcher->deleteLater();

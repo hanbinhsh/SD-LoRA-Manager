@@ -21,6 +21,10 @@
 #include <QFileDialog>
 #include <QFile>
 #include <QTextStream>
+#include <QPaintEvent>
+#include <QResizeEvent>
+#include <QContextMenuEvent>
+#include <QPixmap>
 
 struct TagState {
     QString text;
@@ -49,19 +53,18 @@ public:
         for(const auto &pair : sorted) {
             m_tags.append({pair.first, pair.second, false, QRect()});
         }
-        update();
-        updateGeometry();
+        invalidateLayoutAndCache();
     }
 
     void setTranslationMap(const QHash<QString, QString> *map) {
         m_translationMap = map;
-        update();
+        invalidateLayoutAndCache();
     }
 
     void setShowTranslation(bool show) {
+        if (m_showTranslation == show) return;
         m_showTranslation = show;
-        update();
-        updateGeometry();
+        invalidateLayoutAndCache();
     }
 
     QSet<QString> getSelectedTags() const {
@@ -83,6 +86,125 @@ protected:
     int m_calculatedHeight = 0;
     const QHash<QString, QString> *m_translationMap = nullptr;
     bool m_showTranslation = false;
+    bool m_layoutDirty = true;
+    bool m_cacheDirty = true;
+    int m_layoutWidth = -1;
+    QPixmap m_cachedPixmap;
+
+    void invalidateLayoutAndCache() {
+        m_layoutDirty = true;
+        m_cacheDirty = true;
+        updateGeometry();
+        update();
+    }
+
+    void ensureLayout() {
+        const int widgetWidth = qMax(1, width());
+        if (!m_layoutDirty && m_layoutWidth == widgetWidth) return;
+
+        m_layoutWidth = widgetWidth;
+        m_layoutDirty = false;
+        m_cacheDirty = true;
+
+        int x = 0;
+        int y = 0;
+        const int paddingX = 10;
+        const int marginX = 6;
+        const int marginY = 6;
+
+        QFont fontEn = font();
+        fontEn.setPixelSize(12);
+
+        QFont fontCn = font();
+        fontCn.setPixelSize(10);
+
+        QFontMetrics fmEn(fontEn);
+        QFontMetrics fmCn(fontCn);
+        const int itemH = m_showTranslation ? 42 : 26;
+
+        for (int i = 0; i < m_tags.size(); ++i) {
+            TagState &tag = m_tags[i];
+            const QString line1 = QString("%1  %2").arg(tag.text).arg(tag.count);
+            QString line2;
+            if (m_showTranslation) {
+                line2 = tryGetTranslation(tag.text);
+            }
+
+            int textW = fmEn.horizontalAdvance(line1);
+            if (!line2.isEmpty()) {
+                textW = qMax(textW, fmCn.horizontalAdvance(line2));
+            }
+
+            const int itemW = textW + paddingX * 2;
+            if (x + itemW > widgetWidth && x > 0) {
+                x = 0;
+                y += itemH + marginY;
+            }
+
+            tag.rect = QRect(x, y, itemW, itemH);
+            x += itemW + marginX;
+        }
+
+        const int newHeight = m_tags.isEmpty() ? 50 : (y + itemH + 20);
+        if (m_calculatedHeight != newHeight) {
+            m_calculatedHeight = newHeight;
+            if (minimumHeight() != m_calculatedHeight) {
+                setMinimumHeight(m_calculatedHeight);
+            }
+            updateGeometry();
+        }
+    }
+
+    void rebuildCache() {
+        ensureLayout();
+
+        const QSize cacheSize(qMax(1, width()), qMax(1, m_calculatedHeight));
+        const qreal dpr = qMax<qreal>(1.0, devicePixelRatioF());
+        m_cachedPixmap = QPixmap(cacheSize * dpr);
+        m_cachedPixmap.setDevicePixelRatio(dpr);
+        m_cachedPixmap.fill(Qt::transparent);
+
+        QPainter p(&m_cachedPixmap);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setRenderHint(QPainter::TextAntialiasing);
+        p.setRenderHint(QPainter::SmoothPixmapTransform, false);
+
+        QFont fontEn = font();
+        fontEn.setPixelSize(12);
+
+        QFont fontCn = font();
+        fontCn.setPixelSize(10);
+
+        for (const TagState &tag : m_tags) {
+            const QString line1 = QString("%1  %2").arg(tag.text).arg(tag.count);
+            const QString line2 = m_showTranslation ? tryGetTranslation(tag.text) : QString();
+
+            const QColor bgColor = tag.selected ? QColor("#66c0f4") : QColor("#2a3f5a");
+            p.setBrush(bgColor);
+            p.setPen(Qt::NoPen);
+            p.drawRoundedRect(tag.rect, 4, 4);
+
+            if (m_showTranslation) {
+                p.setFont(fontEn);
+                p.setPen(tag.selected ? QColor("#000000") : QColor("#dcdedf"));
+                QRect rectLine1(tag.rect.x(), tag.rect.y() + 2, tag.rect.width(), 20);
+                p.drawText(rectLine1, Qt::AlignCenter, line1);
+
+                if (!line2.isEmpty()) {
+                    p.setFont(fontCn);
+                    p.setPen(tag.selected ? QColor("#333333") : QColor("#8c96a0"));
+                    QRect rectLine2(tag.rect.x(), tag.rect.y() + 20, tag.rect.width(), 18);
+                    p.drawText(rectLine2, Qt::AlignCenter, line2);
+                }
+            } else {
+                p.setFont(fontEn);
+                p.setPen(tag.selected ? QColor("#000000") : QColor("#dcdedf"));
+                p.drawText(tag.rect, Qt::AlignCenter, line1);
+            }
+        }
+
+        m_cacheDirty = false;
+    }
 
     // === 新增：模糊匹配查找函数 ===
     QString tryGetTranslation(const QString &key) const {
@@ -112,106 +234,35 @@ protected:
 
     void paintEvent(QPaintEvent *event) override {
         Q_UNUSED(event);
-        QPainter p(this);
-        p.setRenderHint(QPainter::Antialiasing);
+        const QSize expectedSize(qMax(1, width()), qMax(1, m_calculatedHeight));
+        const qreal expectedDpr = qMax<qreal>(1.0, devicePixelRatioF());
+        const QSize cachedLogicalSize(
+            qRound(m_cachedPixmap.width() / qMax<qreal>(1.0, m_cachedPixmap.devicePixelRatio())),
+            qRound(m_cachedPixmap.height() / qMax<qreal>(1.0, m_cachedPixmap.devicePixelRatio()))
+        );
 
-        int x = 0;
-        int y = 0;
-        int paddingX = 10;
-        int marginX = 6;
-        int marginY = 6;
-        int widgetWidth = width();
-
-        QFont fontEn = p.font();
-        fontEn.setPixelSize(12);
-
-        QFont fontCn = p.font();
-        fontCn.setPixelSize(10);
-
-        p.setFont(fontEn);
-        QFontMetrics fmEn(fontEn);
-        QFontMetrics fmCn(fontCn);
-
-        // 统一的高度设定
-        // 如果开启翻译模式，强制所有 Tag 都是 42px 高
-        // 如果关闭，则是 26px
-        int itemH = m_showTranslation ? 42 : 26;
-
-        for (int i = 0; i < m_tags.size(); ++i) {
-            TagState &tag = m_tags[i];
-
-            QString line1 = QString("%1  %2").arg(tag.text).arg(tag.count);
-            QString line2 = "";
-
-            // 只有开启模式时才去查字典
-            if (m_showTranslation) {
-                line2 = tryGetTranslation(tag.text);
-            }
-
-            // 计算宽度
-            int textW = fmEn.horizontalAdvance(line1);
-            if (!line2.isEmpty()) {
-                int cnW = fmCn.horizontalAdvance(line2);
-                if (cnW > textW) textW = cnW;
-            }
-
-            int itemW = textW + paddingX * 2;
-
-            // 换行逻辑
-            if (x + itemW > widgetWidth && x > 0) {
-                x = 0;
-                y += (itemH + marginY);
-            }
-
-            tag.rect = QRect(x, y, itemW, itemH);
-
-            // 绘制背景
-            QColor bgColor = tag.selected ? QColor("#66c0f4") : QColor("#2a3f5a");
-            p.setBrush(bgColor);
-            p.setPen(Qt::NoPen);
-            p.drawRoundedRect(tag.rect, 4, 4);
-
-            if (m_showTranslation) {
-                // === 双行模式 (统一高度) ===
-
-                // 第一行：英文 (始终显示)
-                p.setFont(fontEn);
-                p.setPen(tag.selected ? QColor("#000000") : QColor("#dcdedf"));
-                QRect rectLine1(x, y + 2, itemW, 20);
-                p.drawText(rectLine1, Qt::AlignCenter, line1);
-
-                // 第二行：中文 (有就显示，没有就空着，但高度保留)
-                if (!line2.isEmpty()) {
-                    p.setFont(fontCn);
-                    p.setPen(tag.selected ? QColor("#333333") : QColor("#8c96a0"));
-                    QRect rectLine2(x, y + 20, itemW, 18);
-                    p.drawText(rectLine2, Qt::AlignCenter, line2);
-                } else {
-                    // 可选：如果没有翻译，画个小横杠或者什么都不画
-                    // p.setFont(fontCn);
-                    // p.setPen(tag.selected ? QColor("#555555") : QColor("#4a5f7a"));
-                    // QRect rectLine2(x, y + 20, itemW, 18);
-                    // p.drawText(rectLine2, Qt::AlignCenter, "-");
-                }
-            }
-            else {
-                // === 单行模式 ===
-                p.setFont(fontEn);
-                p.setPen(tag.selected ? QColor("#000000") : QColor("#dcdedf"));
-                p.drawText(tag.rect, Qt::AlignCenter, line1);
-            }
-
-            x += (itemW + marginX);
+        if (m_cacheDirty ||
+            m_layoutDirty ||
+            m_cachedPixmap.isNull() ||
+            cachedLogicalSize != expectedSize ||
+            !qFuzzyCompare(m_cachedPixmap.devicePixelRatio(), expectedDpr)) {
+            rebuildCache();
         }
 
-        m_calculatedHeight = y + itemH + 20;
+        QPainter p(this);
+        p.setRenderHint(QPainter::TextAntialiasing);
+        p.drawPixmap(0, 0, m_cachedPixmap);
+    }
 
-        if (minimumHeight() != m_calculatedHeight) {
-            setMinimumHeight(m_calculatedHeight);
+    void resizeEvent(QResizeEvent *event) override {
+        QWidget::resizeEvent(event);
+        if (event->size().width() != event->oldSize().width()) {
+            invalidateLayoutAndCache();
         }
     }
 
     void mousePressEvent(QMouseEvent *event) override {
+        ensureLayout();
         if (event->button() == Qt::LeftButton) {
             bool changed = false;
             for (int i = 0; i < m_tags.size(); ++i) {
@@ -222,6 +273,7 @@ protected:
                 }
             }
             if (changed) {
+                m_cacheDirty = true;
                 update();
                 emit filterChanged(getSelectedTags());
             }
@@ -230,6 +282,7 @@ protected:
     }
 
     void contextMenuEvent(QContextMenuEvent *event) override {
+        ensureLayout();
         QString clickedTag;
         for (const auto &tag : m_tags) {
             if (tag.rect.contains(event->pos())) {
