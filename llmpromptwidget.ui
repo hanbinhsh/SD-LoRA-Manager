@@ -558,59 +558,48 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
           <string>连接与模型</string>
          </property>
          <layout class="QGridLayout" name="gridLayoutConnection">
-          <item row="4" column="0">
-           <widget class="QCheckBox" name="chkStopModelAfterGenerate">
-            <property name="text">
-             <string>生成后停止</string>
-            </property>
-           </widget>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="editEndpoint"/>
           </item>
-          <item row="2" column="0">
-           <widget class="QLabel" name="labelTemperature">
-            <property name="text">
-             <string>Temperature</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="4">
-           <widget class="QComboBox" name="comboModel">
-            <property name="editable">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="1">
-           <widget class="QLabel" name="label">
-            <property name="text">
-             <string>生成完成后停止大模型（ollama stop 模型名）</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="0">
-           <widget class="QLabel" name="labelEndpoint">
-            <property name="text">
-             <string>Ollama Endpoint</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="3">
+          <item row="3" column="3">
            <widget class="QLabel" name="labelCustomOptions">
             <property name="text">
              <string>自定义参数</string>
             </property>
            </widget>
           </item>
-          <item row="0" column="5">
-           <widget class="QPushButton" name="btnFetchModels">
+          <item row="3" column="4">
+           <widget class="QLineEdit" name="editCustomOptions">
+            <property name="toolTip">
+             <string>以命令行风格输入参数。Ollama 会写入 options；LM Studio 会写入 OpenAI 兼容请求顶层。支持 --presence_penalty 1.0、--top_p 0.8、--top_k 20、--repeat_penalty 1.12 等。</string>
+            </property>
+            <property name="placeholderText">
+             <string>例如：--presence_penalty 1.0 --top_p 0.8 --top_k 20 --repeat_penalty 1.12</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="labelTemperature">
             <property name="text">
-             <string>刷新</string>
+             <string>Temperature</string>
             </property>
            </widget>
           </item>
           <item row="0" column="1">
-           <widget class="QLineEdit" name="editEndpoint"/>
+           <widget class="QComboBox" name="comboBackend">
+            <item>
+             <property name="text">
+              <string>Ollama</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>LM Studio</string>
+             </property>
+            </item>
+           </widget>
           </item>
-          <item row="2" column="1">
+          <item row="3" column="1">
            <widget class="QDoubleSpinBox" name="spinTemperature">
             <property name="decimals">
              <number>2</number>
@@ -629,6 +618,20 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
             </property>
            </widget>
           </item>
+          <item row="0" column="0">
+           <widget class="QLabel" name="labelBackend">
+            <property name="text">
+             <string>API 类型</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="labelEndpoint">
+            <property name="text">
+             <string>API Endpoint</string>
+            </property>
+           </widget>
+          </item>
           <item row="0" column="3">
            <widget class="QLabel" name="labelModel">
             <property name="text">
@@ -636,13 +639,31 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
             </property>
            </widget>
           </item>
-          <item row="2" column="4">
-           <widget class="QLineEdit" name="editCustomOptions">
-            <property name="toolTip">
-             <string>以命令行风格输入 Ollama options。支持 --presence_penalty 1.0、--top_p 0.8、--top_k 20、--repeat_penalty 1.12 等，会自动写入请求的 options。</string>
+          <item row="0" column="4">
+           <widget class="QComboBox" name="comboModel">
+            <property name="editable">
+             <bool>true</bool>
             </property>
-            <property name="placeholderText">
-             <string>例如：--presence_penalty 1.0 --top_p 0.8 --top_k 20 --repeat_penalty 1.12</string>
+           </widget>
+          </item>
+          <item row="0" column="5">
+           <widget class="QPushButton" name="btnFetchModels">
+            <property name="text">
+             <string>刷新</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="3">
+           <widget class="QCheckBox" name="chkStopModelAfterGenerate">
+            <property name="text">
+             <string>生成后停止</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="4">
+           <widget class="QLabel" name="label">
+            <property name="text">
+             <string>Ollama 会执行 ollama stop；LM Studio 需在其界面中停止</string>
             </property>
            </widget>
           </item>
@@ -658,7 +679,7 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
           <attribute name="title">
            <string>提示词设置</string>
           </attribute>
-          <layout class="QVBoxLayout" name="verticalLayout_5">
+          <layout class="QVBoxLayout" name="verticalLayout">
            <item>
             <layout class="QHBoxLayout" name="horizontalLayoutTemplateTask">
              <item>
@@ -708,74 +729,69 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
             </layout>
            </item>
            <item>
-            <widget class="QSplitter" name="splitter">
-             <property name="orientation">
-              <enum>Qt::Orientation::Horizontal</enum>
-             </property>
-             <widget class="QPlainTextEdit" name="textPromptTemplate">
-              <property name="placeholderText">
-               <string>编辑发给系统的提示词模板。</string>
-              </property>
-             </widget>
-             <widget class="QWidget" name="">
-              <layout class="QHBoxLayout" name="horizontalLayout">
+            <layout class="QHBoxLayout" name="horizontalLayout">
+             <item>
+              <widget class="QPlainTextEdit" name="textPromptTemplate">
+               <property name="placeholderText">
+                <string>编辑发给系统的提示词模板。</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <layout class="QVBoxLayout" name="verticalLayout_4">
                <item>
-                <layout class="QVBoxLayout" name="verticalLayout_4">
-                 <item>
-                  <widget class="QLabel" name="labelImageAttachmentNote">
-                   <property name="text">
-                    <string>Image Attachment Note 占位符内容</string>
-                   </property>
-                  </widget>
-                 </item>
-                 <item>
-                  <widget class="QPlainTextEdit" name="textImageAttachmentNote">
-                   <property name="minimumSize">
-                    <size>
-                     <width>0</width>
-                     <height>70</height>
-                    </size>
-                   </property>
-                   <property name="placeholderText">
-                    <string>编辑当前任务在发送参考图片时附带的说明文字。</string>
-                   </property>
-                  </widget>
-                 </item>
-                 <item>
-                  <widget class="QLabel" name="labelTaskGuidance">
-                   <property name="text">
-                    <string>Task Guidance 占位符内容</string>
-                   </property>
-                  </widget>
-                 </item>
-                 <item>
-                  <widget class="QPlainTextEdit" name="textTaskGuidance">
-                   <property name="minimumSize">
-                    <size>
-                     <width>0</width>
-                     <height>90</height>
-                    </size>
-                   </property>
-                   <property name="placeholderText">
-                    <string>编辑当前任务的 task_guidance 内容。</string>
-                   </property>
-                  </widget>
-                 </item>
-                </layout>
+                <widget class="QLabel" name="labelImageAttachmentNote">
+                 <property name="text">
+                  <string>Image Attachment Note 占位符内容</string>
+                 </property>
+                </widget>
                </item>
                <item>
-                <widget class="QTextBrowser" name="textPlaceholderHelp">
+                <widget class="QPlainTextEdit" name="textImageAttachmentNote">
                  <property name="minimumSize">
                   <size>
                    <width>0</width>
-                   <height>180</height>
+                   <height>70</height>
                   </size>
+                 </property>
+                 <property name="placeholderText">
+                  <string>编辑当前任务在发送参考图片时附带的说明文字。</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelTaskGuidance">
+                 <property name="text">
+                  <string>Task Guidance 占位符内容</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPlainTextEdit" name="textTaskGuidance">
+                 <property name="minimumSize">
+                  <size>
+                   <width>0</width>
+                   <height>90</height>
+                  </size>
+                 </property>
+                 <property name="placeholderText">
+                  <string>编辑当前任务的 task_guidance 内容。</string>
                  </property>
                 </widget>
                </item>
               </layout>
-             </widget>
-            </widget>
+             </item>
+             <item>
+              <widget class="QTextBrowser" name="textPlaceholderHelp">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>180</height>
+                </size>
+               </property>
+              </widget>
+             </item>
+            </layout>
            </item>
            <item>
             <layout class="QHBoxLayout" name="horizontalLayoutPromptTemplateButtons">

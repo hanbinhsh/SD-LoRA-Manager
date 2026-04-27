@@ -155,6 +155,15 @@ LlmPromptWidget::LlmPromptWidget(QWidget *parent)
     connect(ui->btnResetPromptTemplate, &QPushButton::clicked, this, &LlmPromptWidget::onResetPromptTemplateClicked);
     connect(ui->comboTaskType, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &LlmPromptWidget::onTaskTypeChanged);
     connect(ui->comboTemplateTaskType, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &LlmPromptWidget::onTemplateTaskTypeChanged);
+    connect(ui->comboBackend, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+        const QString endpoint = ui->editEndpoint->text().trimmed();
+        if (index == 1 && (endpoint.isEmpty() || endpoint == "http://127.0.0.1:11434")) {
+            ui->editEndpoint->setText("http://127.0.0.1:1234");
+        } else if (index == 0 && (endpoint.isEmpty() || endpoint == "http://127.0.0.1:1234")) {
+            ui->editEndpoint->setText("http://127.0.0.1:11434");
+        }
+        saveSettings();
+    });
     connect(ui->textPromptTemplate, &QPlainTextEdit::textChanged, this, &LlmPromptWidget::onPromptTemplateEdited);
     connect(ui->textTaskGuidance, &QPlainTextEdit::textChanged, this, &LlmPromptWidget::onTaskGuidanceEdited);
     connect(ui->textImageAttachmentNote, &QPlainTextEdit::textChanged, this, &LlmPromptWidget::onImageAttachmentNoteEdited);
@@ -207,6 +216,16 @@ QString LlmPromptWidget::settingsPath() const
     QString configDir = qApp->applicationDirPath() + "/config";
     QDir().mkpath(configDir);
     return configDir + "/settings.json";
+}
+
+LlmPromptWidget::LlmBackend LlmPromptWidget::currentBackend() const
+{
+    return ui->comboBackend->currentIndex() == 1 ? LlmBackend::LmStudio : LlmBackend::Ollama;
+}
+
+QString LlmPromptWidget::currentBackendName() const
+{
+    return currentBackend() == LlmBackend::LmStudio ? "LM Studio" : "Ollama";
 }
 
 QString LlmPromptWidget::endpointBaseUrl() const
@@ -301,6 +320,9 @@ void LlmPromptWidget::loadSettings()
     if (file.open(QIODevice::ReadOnly)) {
         QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
         QJsonObject root = doc.object();
+        const QString backend = root["llm_backend"].toString("ollama").toLower();
+        QSignalBlocker backendBlocker(ui->comboBackend);
+        ui->comboBackend->setCurrentIndex(backend == "lmstudio" ? 1 : 0);
         ui->editEndpoint->setText(root["llm_endpoint"].toString("http://127.0.0.1:11434"));
         ui->comboModel->setEditText(root["llm_model"].toString());
         ui->spinTemperature->setValue(root["llm_temperature"].toDouble(0.4));
@@ -354,6 +376,8 @@ void LlmPromptWidget::loadSettings()
         return;
     }
 
+    QSignalBlocker backendBlocker(ui->comboBackend);
+    ui->comboBackend->setCurrentIndex(0);
     ui->editEndpoint->setText("http://127.0.0.1:11434");
     ui->spinTemperature->setValue(0.4);
     ui->spinCandidateLimit->setValue(12);
@@ -401,6 +425,7 @@ void LlmPromptWidget::saveSettings() const
         file.close();
     }
 
+    root["llm_backend"] = currentBackend() == LlmBackend::LmStudio ? "lmstudio" : "ollama";
     root["llm_endpoint"] = ui->editEndpoint->text().trimmed();
     root["llm_model"] = ui->comboModel->currentText().trimmed();
     root["llm_temperature"] = ui->spinTemperature->value();
@@ -459,7 +484,8 @@ QStringList LlmPromptWidget::readInstalledModelsSync(bool *ok, QString *errorTex
     if (ok) *ok = false;
     QStringList result;
 
-    QNetworkRequest request(QUrl(endpointBaseUrl() + "/api/tags"));
+    const bool lmStudio = currentBackend() == LlmBackend::LmStudio;
+    QNetworkRequest request(QUrl(endpointBaseUrl() + (lmStudio ? "/v1/models" : "/api/tags")));
     QNetworkReply *reply = m_netManager->get(request);
 
     QEventLoop loop;
@@ -481,10 +507,18 @@ QStringList LlmPromptWidget::readInstalledModelsSync(bool *ok, QString *errorTex
     }
 
     QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-    QJsonArray models = doc.object()["models"].toArray();
-    for (const QJsonValue &value : models) {
-        QString name = value.toObject()["name"].toString();
-        if (!name.isEmpty()) result.append(name);
+    if (lmStudio) {
+        QJsonArray models = doc.object()["data"].toArray();
+        for (const QJsonValue &value : models) {
+            QString name = value.toObject()["id"].toString();
+            if (!name.isEmpty()) result.append(name);
+        }
+    } else {
+        QJsonArray models = doc.object()["models"].toArray();
+        for (const QJsonValue &value : models) {
+            QString name = value.toObject()["name"].toString();
+            if (!name.isEmpty()) result.append(name);
+        }
     }
 
     reply->deleteLater();
@@ -1113,6 +1147,10 @@ QJsonObject LlmPromptWidget::buildGenerationOptions() const
 
 QJsonObject LlmPromptWidget::buildGenerationPayload(const QString &modelName) const
 {
+    if (currentBackend() == LlmBackend::LmStudio) {
+        return buildLmStudioGenerationPayload(modelName);
+    }
+
     QJsonObject payload;
     payload["model"] = modelName.trimmed();
     payload["prompt"] = m_lastRenderedPrompt.isEmpty() ? buildGenerationPrompt() : m_lastRenderedPrompt;
@@ -1128,6 +1166,53 @@ QJsonObject LlmPromptWidget::buildGenerationPayload(const QString &modelName) co
     }
 
     payload["options"] = buildGenerationOptions();
+    return payload;
+}
+
+QJsonObject LlmPromptWidget::buildLmStudioGenerationPayload(const QString &modelName) const
+{
+    QJsonObject payload;
+    payload["model"] = modelName.trimmed();
+    payload["stream"] = true;
+
+    QJsonArray messages;
+    const QString systemPrompt = ui->textSystemPrompt->toPlainText().trimmed();
+    if (!systemPrompt.isEmpty()) {
+        QJsonObject system;
+        system["role"] = "system";
+        system["content"] = systemPrompt;
+        messages.append(system);
+    }
+
+    QJsonObject user;
+    user["role"] = "user";
+    const QString prompt = m_lastRenderedPrompt.isEmpty() ? buildGenerationPrompt() : m_lastRenderedPrompt;
+    const QStringList imagePayloads = selectedImagePayloads();
+    if (imagePayloads.isEmpty()) {
+        user["content"] = prompt;
+    } else {
+        QJsonArray content;
+        QJsonObject textPart;
+        textPart["type"] = "text";
+        textPart["text"] = prompt;
+        content.append(textPart);
+        for (const QString &img : imagePayloads) {
+            QJsonObject imageUrl;
+            imageUrl["url"] = "data:image/png;base64," + img;
+            QJsonObject imagePart;
+            imagePart["type"] = "image_url";
+            imagePart["image_url"] = imageUrl;
+            content.append(imagePart);
+        }
+        user["content"] = content;
+    }
+    messages.append(user);
+    payload["messages"] = messages;
+
+    const QJsonObject options = buildGenerationOptions();
+    for (auto it = options.constBegin(); it != options.constEnd(); ++it) {
+        payload[it.key()] = it.value();
+    }
     return payload;
 }
 
@@ -1300,22 +1385,31 @@ void LlmPromptWidget::appendUniqueImageCandidate(const QString &label, const QSt
 
 void LlmPromptWidget::onFetchModelsClicked()
 {
-    updateStatus("正在读取 Ollama 本地模型...");
-    QNetworkRequest request(QUrl(endpointBaseUrl() + "/api/tags"));
+    const bool lmStudio = currentBackend() == LlmBackend::LmStudio;
+    updateStatus(QString("正在读取 %1 模型...").arg(currentBackendName()));
+    QNetworkRequest request(QUrl(endpointBaseUrl() + (lmStudio ? "/v1/models" : "/api/tags")));
     QNetworkReply *reply = m_netManager->get(request);
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, lmStudio]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            updateStatus("读取 Ollama 模型失败: " + reply->errorString(), true);
+            updateStatus(QString("读取 %1 模型失败: %2").arg(currentBackendName(), reply->errorString()), true);
             return;
         }
 
         QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-        QJsonArray models = doc.object()["models"].toArray();
         QStringList names;
-        for (const QJsonValue &value : models) {
-            QString name = value.toObject()["name"].toString();
-            if (!name.isEmpty()) names.append(name);
+        if (lmStudio) {
+            QJsonArray models = doc.object()["data"].toArray();
+            for (const QJsonValue &value : models) {
+                QString name = value.toObject()["id"].toString();
+                if (!name.isEmpty()) names.append(name);
+            }
+        } else {
+            QJsonArray models = doc.object()["models"].toArray();
+            for (const QJsonValue &value : models) {
+                QString name = value.toObject()["name"].toString();
+                if (!name.isEmpty()) names.append(name);
+            }
         }
         populateModels(names);
         updateStatus(names.isEmpty() ? "未发现可用模型" : QString("已加载 %1 个本地模型").arg(names.size()));
@@ -1510,8 +1604,8 @@ void LlmPromptWidget::onGenerateClicked()
         QString errorText;
         QStringList models = readInstalledModelsSync(&ok, &errorText);
         if (!ok || models.isEmpty()) {
-            updateStatus("未能自动获取 Ollama 模型: " + errorText, true);
-            QMessageBox::warning(this, "错误", "没有可用的 Ollama 本地模型，请先拉取模型或手动填写模型名。");
+            updateStatus(QString("未能自动获取 %1 模型: %2").arg(currentBackendName(), errorText), true);
+            QMessageBox::warning(this, "错误", QString("没有可用的 %1 模型，请先启动服务或手动填写模型名。").arg(currentBackendName()));
             return;
         }
         populateModels(models);
@@ -1526,7 +1620,7 @@ void LlmPromptWidget::onGenerateClicked()
     m_lastAssistantVisibleText.clear();
     m_activeModelName = modelName;
 
-    updateStatus("正在调用 Ollama 生成提示词...");
+    updateStatus(QString("正在调用 %1 生成提示词...").arg(currentBackendName()));
     ui->textResult->clear();
     ui->textThinking->clear();
     ui->btnToggleThinking->setChecked(false);
@@ -1538,7 +1632,8 @@ void LlmPromptWidget::onGenerateClicked()
     const QJsonObject payload = buildGenerationPayload(modelName);
     ui->textLastRequest->setPlainText(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Indented)));
 
-    QNetworkRequest request(QUrl(endpointBaseUrl() + "/api/generate"));
+    const bool lmStudio = currentBackend() == LlmBackend::LmStudio;
+    QNetworkRequest request(QUrl(endpointBaseUrl() + (lmStudio ? "/v1/chat/completions" : "/api/generate")));
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     QNetworkReply *reply = m_netManager->post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
     m_activeGenerateReply = reply;
@@ -1571,7 +1666,7 @@ void LlmPromptWidget::onGenerateClicked()
             ui->btnToggleThinking->setEnabled(!ui->textThinking->toPlainText().trimmed().isEmpty());
             ui->btnContinueConversation->setEnabled(!m_lastAssistantVisibleText.trimmed().isEmpty());
             m_activeModelName.clear();
-            updateStatus("Ollama 调用失败: " + errorText, true);
+            updateStatus(QString("%1 调用失败: %2").arg(currentBackendName(), errorText), true);
             return;
         }
 
@@ -1585,7 +1680,7 @@ void LlmPromptWidget::onStopGenerateClicked()
 
     updateStatus("正在停止生成...");
     ui->btnStopGenerate->setEnabled(false);
-    if (!m_activeModelName.isEmpty()) {
+    if (currentBackend() == LlmBackend::Ollama && !m_activeModelName.isEmpty()) {
         QProcess::startDetached("ollama", QStringList() << "stop" << m_activeModelName);
     }
     m_activeGenerateReply->abort();
@@ -1597,6 +1692,12 @@ void LlmPromptWidget::onUnloadModelClicked()
     if (modelName.isEmpty()) {
         updateStatus("请先选择或输入要停止的模型", true);
         QMessageBox::information(this, "提示", "请先选择或输入模型名。");
+        return;
+    }
+
+    if (currentBackend() == LlmBackend::LmStudio) {
+        updateStatus("LM Studio 暂不支持通过此按钮卸载模型，请在 LM Studio 中管理模型。", true);
+        QMessageBox::information(this, "提示", "LM Studio 的 OpenAI 兼容接口没有等价的 unload/stop 命令，请在 LM Studio 界面中卸载模型。");
         return;
     }
 
@@ -1639,7 +1740,10 @@ void LlmPromptWidget::onContinueConversationClicked()
     dlg.setConnectionContext(endpointBaseUrl(),
                              ui->comboModel->currentText().trimmed(),
                              ui->textSystemPrompt->toPlainText(),
-                             buildGenerationOptions());
+                             buildGenerationOptions(),
+                             currentBackend() == LlmBackend::LmStudio
+                                 ? ContinueConversationDialog::LlmBackend::LmStudio
+                                 : ContinueConversationDialog::LlmBackend::Ollama);
     dlg.setInitialConversation(ui->comboTaskType->currentText(),
                                contextLines.join("\n\n"),
                                assistantReply);
@@ -1766,15 +1870,35 @@ void LlmPromptWidget::processStreamLine(const QByteArray &line)
 {
     QByteArray trimmed = line.trimmed();
     if (trimmed.isEmpty()) return;
+    if (trimmed.startsWith("data:")) {
+        trimmed = trimmed.mid(5).trimmed();
+    }
+    if (trimmed.isEmpty() || trimmed == "[DONE]") return;
 
     QJsonDocument doc = QJsonDocument::fromJson(trimmed);
     if (!doc.isObject()) {
         appendStreamPiece(m_streamResponseText, QString::fromUtf8(trimmed));
     } else {
         QJsonObject root = doc.object();
+        if (root["error"].isString()) {
+            appendStreamPiece(m_streamResponseText, "\n" + root["error"].toString());
+        } else if (root["error"].isObject()) {
+            appendStreamPiece(m_streamResponseText, "\n" + root["error"].toObject()["message"].toString());
+        }
+
         QString responsePiece = root["response"].toString();
         if (responsePiece.isEmpty() && root["message"].isObject()) {
             responsePiece = root["message"].toObject()["content"].toString();
+        }
+        if (responsePiece.isEmpty() && root["choices"].isArray()) {
+            const QJsonArray choices = root["choices"].toArray();
+            if (!choices.isEmpty() && choices.first().isObject()) {
+                const QJsonObject choice = choices.first().toObject();
+                const QJsonObject delta = choice["delta"].toObject();
+                const QJsonObject message = choice["message"].toObject();
+                responsePiece = delta["content"].toString();
+                if (responsePiece.isEmpty()) responsePiece = message["content"].toString();
+            }
         }
         if (!responsePiece.isEmpty()) {
             appendStreamPiece(m_streamResponseText, responsePiece);
@@ -1786,6 +1910,20 @@ void LlmPromptWidget::processStreamLine(const QByteArray &line)
             QJsonObject message = root["message"].toObject();
             if (thinkingPiece.isEmpty()) thinkingPiece = message["thinking"].toString();
             if (thinkingPiece.isEmpty()) thinkingPiece = message["reasoning"].toString();
+        }
+        if (thinkingPiece.isEmpty() && root["choices"].isArray()) {
+            const QJsonArray choices = root["choices"].toArray();
+            if (!choices.isEmpty() && choices.first().isObject()) {
+                const QJsonObject choice = choices.first().toObject();
+                const QJsonObject delta = choice["delta"].toObject();
+                const QJsonObject message = choice["message"].toObject();
+                thinkingPiece = delta["reasoning"].toString();
+                if (thinkingPiece.isEmpty()) thinkingPiece = delta["thinking"].toString();
+                if (thinkingPiece.isEmpty()) thinkingPiece = delta["reasoning_content"].toString();
+                if (thinkingPiece.isEmpty()) thinkingPiece = message["reasoning"].toString();
+                if (thinkingPiece.isEmpty()) thinkingPiece = message["thinking"].toString();
+                if (thinkingPiece.isEmpty()) thinkingPiece = message["reasoning_content"].toString();
+            }
         }
         if (!thinkingPiece.isEmpty()) {
             appendStreamPiece(m_streamThinkingText, thinkingPiece);
@@ -1843,10 +1981,13 @@ void LlmPromptWidget::finishStreaming(const QString &modelName, bool canceled)
         return;
     }
 
-    if (ui->chkStopModelAfterGenerate->isChecked()) {
+    if (ui->chkStopModelAfterGenerate->isChecked() && currentBackend() == LlmBackend::Ollama) {
         bool started = QProcess::startDetached("ollama", QStringList() << "stop" << modelName);
         m_activeModelName.clear();
         updateStatus(started ? "提示词生成完成，已请求停止模型" : "提示词生成完成，但停止模型失败", !started);
+    } else if (ui->chkStopModelAfterGenerate->isChecked()) {
+        m_activeModelName.clear();
+        updateStatus("提示词生成完成；LM Studio 需在其界面中手动停止或卸载模型");
     } else {
         m_activeModelName.clear();
         updateStatus("提示词生成完成");

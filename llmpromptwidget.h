@@ -47,6 +47,11 @@ private slots:
     void onThinkingToggled(bool checked);
 
 private:
+    enum class LlmBackend {
+        Ollama,
+        LmStudio
+    };
+
     struct GalleryCacheItem {
         QString path;
         QString prompt;
@@ -84,6 +89,8 @@ private:
     void loadSettings();
     void saveSettings() const;
     QString settingsPath() const;
+    LlmBackend currentBackend() const;
+    QString currentBackendName() const;
     QString endpointBaseUrl() const;
     QString currentTaskKey() const;
     QString taskKeyForIndex(int index) const;
@@ -116,6 +123,7 @@ private:
     QString buildGenerationPrompt() const;
     QJsonObject buildGenerationOptions() const;
     QJsonObject buildGenerationPayload(const QString &modelName) const;
+    QJsonObject buildLmStudioGenerationPayload(const QString &modelName) const;
     QJsonValue parseOptionValue(QString value) const;
     QString selectedLoraContext() const;
     QString selectedImageContext() const;

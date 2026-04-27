@@ -21,13 +21,19 @@ class ContinueConversationDialog : public QDialog
     Q_OBJECT
 
 public:
+    enum class LlmBackend {
+        Ollama,
+        LmStudio
+    };
+
     explicit ContinueConversationDialog(QWidget *parent = nullptr);
     ~ContinueConversationDialog();
 
     void setConnectionContext(const QString &endpointBaseUrl,
                               const QString &modelName,
                               const QString &systemPrompt,
-                              const QJsonObject &options);
+                              const QJsonObject &options,
+                              LlmBackend backend);
     void setInitialConversation(const QString &taskLabel,
                                 const QString &contextMessage,
                                 const QString &assistantReply);
@@ -59,6 +65,7 @@ private:
     QString m_modelName;
     QString m_systemPrompt;
     QJsonObject m_options;
+    LlmBackend m_backend = LlmBackend::Ollama;
     QString m_streamBuffer;
     QString m_pendingAssistantReply;
     QString m_pendingAssistantThinking;
@@ -80,6 +87,7 @@ private:
     void updateThinkingView();
     void updateImageInfoLabel();
     QJsonArray buildMessagesPayload() const;
+    QJsonArray buildLmStudioMessagesPayload() const;
     static QString markdownToHtml(const QString &markdown);
     void processStreamChunk(const QByteArray &chunk);
     void processStreamLine(const QByteArray &line);

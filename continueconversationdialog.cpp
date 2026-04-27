@@ -146,12 +146,14 @@ ContinueConversationDialog::~ContinueConversationDialog()
 void ContinueConversationDialog::setConnectionContext(const QString &endpointBaseUrl,
                                                       const QString &modelName,
                                                       const QString &systemPrompt,
-                                                      const QJsonObject &options)
+                                                      const QJsonObject &options,
+                                                      LlmBackend backend)
 {
     m_endpointBaseUrl = endpointBaseUrl;
     m_modelName = modelName;
     m_systemPrompt = systemPrompt;
     m_options = options;
+    m_backend = backend;
     ui->lblModelInfo->setText(QString("模型：%1").arg(modelName.isEmpty() ? "未设置" : modelName));
 }
 
@@ -569,6 +571,45 @@ QJsonArray ContinueConversationDialog::buildMessagesPayload() const
     return messages;
 }
 
+QJsonArray ContinueConversationDialog::buildLmStudioMessagesPayload() const
+{
+    QJsonArray messages;
+    if (!m_systemPrompt.trimmed().isEmpty()) {
+        QJsonObject system;
+        system["role"] = "system";
+        system["content"] = m_systemPrompt;
+        messages.append(system);
+    }
+
+    for (const ChatMessage &message : m_messages) {
+        QJsonObject obj;
+        obj["role"] = message.role;
+        if (message.imagePaths.isEmpty()) {
+            obj["content"] = message.content;
+        } else {
+            QJsonArray content;
+            QJsonObject textPart;
+            textPart["type"] = "text";
+            textPart["text"] = message.content;
+            content.append(textPart);
+
+            for (const QString &path : message.imagePaths) {
+                QFile file(path);
+                if (!file.exists() || !file.open(QIODevice::ReadOnly)) continue;
+                QJsonObject imageUrl;
+                imageUrl["url"] = "data:image/png;base64," + QString::fromLatin1(file.readAll().toBase64());
+                QJsonObject imagePart;
+                imagePart["type"] = "image_url";
+                imagePart["image_url"] = imageUrl;
+                content.append(imagePart);
+            }
+            obj["content"] = content;
+        }
+        messages.append(obj);
+    }
+    return messages;
+}
+
 void ContinueConversationDialog::onSendClicked()
 {
     if (m_activeReply) return;
@@ -603,12 +644,19 @@ void ContinueConversationDialog::onSendClicked()
 
     QJsonObject payload;
     payload["model"] = m_modelName;
-    payload["messages"] = buildMessagesPayload();
     payload["stream"] = true;
-    payload["think"] = ui->chkEnableThinking->isChecked();
-    payload["options"] = m_options;
+    if (m_backend == LlmBackend::LmStudio) {
+        payload["messages"] = buildLmStudioMessagesPayload();
+        for (auto it = m_options.constBegin(); it != m_options.constEnd(); ++it) {
+            payload[it.key()] = it.value();
+        }
+    } else {
+        payload["messages"] = buildMessagesPayload();
+        payload["think"] = ui->chkEnableThinking->isChecked();
+        payload["options"] = m_options;
+    }
 
-    QNetworkRequest request(QUrl(m_endpointBaseUrl + "/api/chat"));
+    QNetworkRequest request(QUrl(m_endpointBaseUrl + (m_backend == LlmBackend::LmStudio ? "/v1/chat/completions" : "/api/chat")));
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     QNetworkReply *reply = m_netManager->post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
     m_activeReply = reply;
