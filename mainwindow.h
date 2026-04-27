@@ -337,6 +337,7 @@ private:
     void cancelPendingTasks();
     void syncTreeSelection(const QString &filePath);
     void initMenuBar();       // 菜单初始化
+    void ensureToolTabLoaded(int index);
 
     QString currentUserAgent;                           // 当前UA
 

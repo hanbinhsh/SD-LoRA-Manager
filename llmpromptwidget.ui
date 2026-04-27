@@ -34,6 +34,9 @@ QLineEdit, QComboBox, QPlainTextEdit, QTextBrowser, QListWidget, QDoubleSpinBox,
     border-radius: 3px;
     padding: 4px;
 }
+QWidget#pageChat {
+    background-color: #1e252f;
+}
 QPushButton {
     background-color: #2a3f5a;
     border-radius: 2px;
@@ -108,6 +111,16 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
           </widget>
          </item>
          <item>
+          <widget class="QCheckBox" name="chkAutoContext">
+           <property name="text">
+            <string>自动勾选</string>
+           </property>
+           <property name="checked">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
           <widget class="QLabel" name="labelCandidateLimit">
            <property name="text">
             <string>候选数</string>
@@ -130,14 +143,14 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
          <item>
           <widget class="QPushButton" name="btnRefreshCandidates">
            <property name="text">
-            <string>刷新候选上下文</string>
+            <string>刷新</string>
            </property>
           </widget>
          </item>
          <item>
           <widget class="QPushButton" name="btnClearCandidateSelections">
            <property name="text">
-            <string>取消选择候选</string>
+            <string>取消选择</string>
            </property>
           </widget>
          </item>
@@ -210,11 +223,37 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
                      <number>1</number>
                     </property>
                     <property name="maximum">
-                     <number>50</number>
+                     <number>100000</number>
                     </property>
                     <property name="value">
                      <number>15</number>
                     </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="0">
+                   <widget class="QLabel" name="labelPreferencePromptScope">
+                    <property name="text">
+                     <string>生成范围</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="1">
+                   <widget class="QComboBox" name="comboPreferencePromptScope">
+                    <item>
+                     <property name="text">
+                      <string>正面和负面提示词</string>
+                     </property>
+                    </item>
+                    <item>
+                     <property name="text">
+                      <string>仅正面提示词</string>
+                     </property>
+                    </item>
+                    <item>
+                     <property name="text">
+                      <string>仅负面提示词</string>
+                     </property>
+                    </item>
                    </widget>
                   </item>
                  </layout>
@@ -380,58 +419,35 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
          <item>
           <layout class="QVBoxLayout" name="verticalLayoutRight">
            <item>
-            <widget class="QGroupBox" name="groupContextOptions">
+            <widget class="QGroupBox" name="groupManualContext">
              <property name="title">
-              <string>上下文策略</string>
+              <string>手动补充上下文</string>
              </property>
-             <layout class="QHBoxLayout" name="horizontalLayoutContextOptions">
+             <layout class="QHBoxLayout" name="horizontalLayoutManualContext">
               <item>
-               <layout class="QGridLayout" name="gridLayout">
-                <item row="0" column="0">
-                 <widget class="QCheckBox" name="chkAutoContext">
-                  <property name="text">
-                   <string>自动勾选前几项候选资源</string>
-                  </property>
-                  <property name="checked">
-                   <bool>true</bool>
-                  </property>
-                 </widget>
-                </item>
-                <item row="0" column="1">
-                 <widget class="QCheckBox" name="chkSendSelectedImages">
-                  <property name="text">
-                   <string>发送所选图片给大模型</string>
+               <layout class="QGridLayout" name="gridLayout_3">
+                <item row="1" column="1">
+                 <widget class="QPlainTextEdit" name="textManualLoraPrompts">
+                  <property name="placeholderText">
+                   <string>手动输入 LoRA 预览图提示词，供大模型参考人物特征、服装和风格。</string>
                   </property>
                  </widget>
                 </item>
                 <item row="1" column="0">
-                 <widget class="QCheckBox" name="chkUseTriggerWords">
-                  <property name="text">
-                   <string>自动读取触发词</string>
-                  </property>
-                  <property name="checked">
-                   <bool>true</bool>
+                 <widget class="QPlainTextEdit" name="textManualTriggerWords">
+                  <property name="placeholderText">
+                   <string>手动输入触发词，多个用逗号或换行分隔。</string>
                   </property>
                  </widget>
                 </item>
-                <item row="1" column="1">
-                 <widget class="QCheckBox" name="chkUsePreviewPrompts">
-                  <property name="text">
-                   <string>自动读取预览图提示词</string>
-                  </property>
-                  <property name="checked">
-                   <bool>true</bool>
-                  </property>
-                 </widget>
-                </item>
-                <item row="2" column="0">
+                <item row="0" column="0">
                  <widget class="QCheckBox" name="chkManualTriggerWords">
                   <property name="text">
                    <string>手动输入触发词</string>
                   </property>
                  </widget>
                 </item>
-                <item row="2" column="1">
+                <item row="0" column="1">
                  <widget class="QCheckBox" name="chkManualLoraPrompts">
                   <property name="text">
                    <string>手动输入Lora提示词</string>
@@ -444,40 +460,54 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
             </widget>
            </item>
            <item>
-            <widget class="QGroupBox" name="groupManualContext">
-             <property name="title">
-              <string>手动补充上下文</string>
-             </property>
-             <layout class="QHBoxLayout" name="horizontalLayoutManualContext">
-              <item>
-               <widget class="QPlainTextEdit" name="textManualTriggerWords">
-                <property name="placeholderText">
-                 <string>手动输入触发词，多个用逗号或换行分隔。</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPlainTextEdit" name="textManualLoraPrompts">
-                <property name="placeholderText">
-                 <string>手动输入 LoRA 预览图提示词，供大模型参考人物特征、服装和风格。</string>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </widget>
-           </item>
-           <item>
             <widget class="QGroupBox" name="groupLoraCandidates">
              <property name="title">
               <string>LoRA 候选</string>
              </property>
              <layout class="QVBoxLayout" name="verticalLayoutLoraCandidates">
               <item>
-               <widget class="QLabel" name="lblLoraSelectionSummary">
-                <property name="text">
-                 <string>已勾选 0 / 0 个 LoRA</string>
-                </property>
-               </widget>
+               <layout class="QHBoxLayout" name="horizontalLayout_3">
+                <item>
+                 <widget class="QCheckBox" name="chkUseTriggerWords">
+                  <property name="text">
+                   <string>触发词</string>
+                  </property>
+                  <property name="checked">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QCheckBox" name="chkUsePreviewPrompts">
+                  <property name="text">
+                   <string>预览图提示词</string>
+                  </property>
+                  <property name="checked">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <spacer name="horizontalSpacer_2">
+                  <property name="orientation">
+                   <enum>Qt::Orientation::Horizontal</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>40</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+                <item>
+                 <widget class="QLabel" name="lblLoraSelectionSummary">
+                  <property name="text">
+                   <string>已勾选 0 / 0 个 LoRA</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
               </item>
               <item>
                <widget class="QListWidget" name="listLoraCandidates"/>
@@ -496,14 +526,21 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
                 <item>
                  <widget class="QPushButton" name="btnAddManualImages">
                   <property name="text">
-                   <string>手动添加图片</string>
+                   <string>添加</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QCheckBox" name="chkSendSelectedImages">
+                  <property name="text">
+                   <string>发送图片</string>
                   </property>
                  </widget>
                 </item>
                 <item>
                  <widget class="QCheckBox" name="chkIncludeImagePromptsInContext">
                   <property name="text">
-                   <string>在提示词中包含图片参数</string>
+                   <string>发送参数</string>
                   </property>
                   <property name="checked">
                    <bool>true</bool>
@@ -544,9 +581,239 @@ QLabel#lblGenerateStatus { color: #8c96a0; }</string>
        </item>
       </layout>
      </widget>
+     <widget class="QWidget" name="pageChat">
+      <attribute name="title">
+       <string>对话</string>
+      </attribute>
+      <layout class="QHBoxLayout" name="horizontalLayoutChatRoot">
+       <property name="spacing">
+        <number>10</number>
+       </property>
+       <item>
+        <layout class="QVBoxLayout" name="verticalLayoutChatHistory">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QLineEdit" name="editChatSearch">
+           <property name="placeholderText">
+            <string>搜索对话</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="horizontalLayoutChatHistoryButtons">
+           <item>
+            <widget class="QPushButton" name="btnNewChat">
+             <property name="text">
+              <string>新对话</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnRenameChat">
+             <property name="text">
+              <string>重命名</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="horizontalLayoutChatDeleteButtons">
+           <item>
+            <widget class="QPushButton" name="btnDeleteChat">
+             <property name="text">
+              <string>删除</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnClearChats">
+             <property name="text">
+              <string>清空历史</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <widget class="QListWidget" name="listChatHistory"/>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QVBoxLayout" name="verticalLayoutChatConversation">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <layout class="QHBoxLayout" name="horizontalLayoutChatHeader">
+           <item>
+            <widget class="QLabel" name="lblChatTitle">
+             <property name="text">
+              <string>未选择对话</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="horizontalSpacerChatHeader">
+             <property name="orientation">
+              <enum>Qt::Orientation::Horizontal</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>40</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item>
+            <widget class="QLabel" name="lblChatModelInfo">
+             <property name="text">
+              <string>模型：未设置</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <widget class="QListWidget" name="listChatMessages"/>
+         </item>
+         <item>
+          <widget class="QPlainTextEdit" name="textChatInput">
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>72</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>16777215</width>
+             <height>110</height>
+            </size>
+           </property>
+           <property name="placeholderText">
+            <string>继续输入修改要求，例如：保持整体不变，把裙子改成棋盘格，并补全袜子和袖口细节。</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="horizontalLayoutChatImages">
+           <item>
+            <widget class="QLabel" name="lblChatImageInfo">
+             <property name="text">
+              <string>图片：未选择</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="horizontalSpacerChatImages">
+             <property name="orientation">
+              <enum>Qt::Orientation::Horizontal</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>40</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnChatAddImages">
+             <property name="text">
+              <string>上传图片</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnChatClearImages">
+             <property name="text">
+              <string>清空图片</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="horizontalLayoutChatFooter">
+           <item>
+            <widget class="QLabel" name="lblChatStatus">
+             <property name="text">
+              <string>待命</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="horizontalSpacerChatFooter">
+             <property name="orientation">
+              <enum>Qt::Orientation::Horizontal</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>40</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item>
+            <widget class="QCheckBox" name="chkChatEnableThinking">
+             <property name="text">
+              <string>思考模式</string>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnChatStop">
+             <property name="enabled">
+              <bool>false</bool>
+             </property>
+             <property name="text">
+              <string>停止</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnChatSend">
+             <property name="text">
+              <string>发送</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
      <widget class="QWidget" name="pageSettings">
       <attribute name="title">
-       <string>大模型设置</string>
+       <string>设置</string>
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayoutSettings">
        <property name="spacing">

@@ -12,12 +12,28 @@
   </property>
   <property name="styleSheet">
    <string notr="true">QWidget#TagBrowserWidget { background-color: #1b2838; color: #dcdedf; }
+QTabWidget::pane {
+    border: 1px solid #3d4d5d;
+    background-color: #1e252f;
+    border-radius: 4px;
+}
 QLineEdit, QComboBox, QTableView {
     background-color: #16191e;
     border: 1px solid #31363d;
     color: #dcdedf;
     border-radius: 3px;
     padding: 4px;
+}
+QTabBar { background-color: #1a1f29; }
+QTabBar::tab {
+    background: #1a1f29;
+    color: #ccc;
+    padding: 10px;
+}
+QTabBar::tab:selected {
+    background: #3d4450;
+    color: #fff;
+    font-weight: bold;
 }
 QPushButton {
     background-color: #2a3f5a;
@@ -27,6 +43,7 @@ QPushButton {
     padding: 6px 12px;
 }
 QPushButton:hover { background-color: #3d5677; color: #ffffff; }
+QPushButton:disabled { background-color: #2a3038; color: #7f8791; }
 QHeaderView::section {
     background-color: #212831;
     color: #dcdedf;
@@ -38,7 +55,7 @@ QTableView {
     gridline-color: #2b3440;
     selection-background-color: #3d5677;
 }
-QLabel#lblStatus {
+QLabel#lblStatus, QLabel#lblUserTagStatus {
     color: #8c96a0;
 }</string>
   </property>
@@ -59,105 +76,211 @@ QLabel#lblStatus {
     <number>20</number>
    </property>
    <item>
-    <layout class="QHBoxLayout" name="horizontalLayoutTop">
-     <item>
-      <widget class="QLineEdit" name="editCsvPath">
-       <property name="readOnly">
-        <bool>true</bool>
+    <widget class="QTabWidget" name="tabWidgetTagBrowser">
+     <property name="currentIndex">
+      <number>0</number>
+     </property>
+     <widget class="QWidget" name="tabTranslation">
+      <attribute name="title">
+       <string>Tag 翻译表</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayoutTranslation">
+       <property name="spacing">
+        <number>10</number>
        </property>
-       <property name="placeholderText">
-        <string>当前使用的 Tag 翻译表 CSV 路径</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="btnReload">
-       <property name="text">
-        <string>重新加载</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="btnSave">
-       <property name="text">
-        <string>保存</string>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="horizontalLayoutFilter">
-     <item>
-      <widget class="QLineEdit" name="editSearch">
-       <property name="placeholderText">
-        <string>搜索 Tag 或翻译...</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-     <widget class="QComboBox" name="comboSort">
        <item>
-        <property name="text">
-         <string>CSV 默认顺序</string>
-        </property>
+        <layout class="QHBoxLayout" name="horizontalLayoutTop">
+         <item>
+          <widget class="QLineEdit" name="editCsvPath">
+           <property name="readOnly">
+            <bool>true</bool>
+           </property>
+           <property name="placeholderText">
+            <string>当前使用的 Tag 翻译表 CSV 路径</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnReload">
+           <property name="text">
+            <string>重新加载</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnSave">
+           <property name="text">
+            <string>保存</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </item>
        <item>
-        <property name="text">
-         <string>Tag A-Z</string>
-        </property>
+        <layout class="QHBoxLayout" name="horizontalLayoutFilter">
+         <item>
+          <widget class="QLineEdit" name="editSearch">
+           <property name="placeholderText">
+            <string>搜索 Tag 或翻译...</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="comboSort">
+           <item>
+            <property name="text">
+             <string>CSV 默认顺序</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Tag A-Z</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Tag Z-A</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnAdd">
+           <property name="text">
+            <string>新增</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnDelete">
+           <property name="text">
+            <string>删除选中</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnResetSort">
+           <property name="text">
+            <string>恢复排序</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </item>
        <item>
-        <property name="text">
-         <string>Tag Z-A</string>
-        </property>
+        <widget class="QTableView" name="tableTags"/>
        </item>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="btnAdd">
-       <property name="text">
-        <string>新增</string>
+       <item>
+        <widget class="QLabel" name="lblEmptyState">
+         <property name="text">
+          <string>未加载到 Tag 数据。请先在设置中配置 CSV，或点击“新增”手动创建。</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="lblStatus">
+         <property name="text">
+          <string>-</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tabUserTags">
+      <attribute name="title">
+       <string>用户使用 Tag</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayoutUserTags">
+       <property name="spacing">
+        <number>10</number>
        </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="btnDelete">
-       <property name="text">
-        <string>删除选中</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="btnResetSort">
-       <property name="text">
-        <string>恢复排序</string>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <widget class="QTableView" name="tableTags"/>
-   </item>
-   <item>
-    <widget class="QLabel" name="lblEmptyState">
-     <property name="text">
-      <string>未加载到 Tag 数据。请先在设置中配置 CSV，或点击“新增”手动创建。</string>
-     </property>
-     <property name="alignment">
-      <set>Qt::AlignCenter</set>
-     </property>
-     <property name="wordWrap">
-      <bool>true</bool>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QLabel" name="lblStatus">
-     <property name="text">
-      <string>-</string>
-     </property>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayoutUserTagFilter">
+         <item>
+          <widget class="QLineEdit" name="editUserTagSearch">
+           <property name="placeholderText">
+            <string>搜索用户使用过的 Tag 或翻译...</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="comboUserTagScope">
+           <item>
+            <property name="text">
+             <string>正面 Tag</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>负面 Tag</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>正面 + 负面</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="comboUserTagSort">
+           <item>
+            <property name="text">
+             <string>使用次数降序</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Tag A-Z</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Tag Z-A</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnRefreshUserTags">
+           <property name="text">
+            <string>刷新</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QTableView" name="tableUserTags"/>
+       </item>
+       <item>
+        <widget class="QLabel" name="lblUserTagEmptyState">
+         <property name="text">
+          <string>切换到此页面后会读取 user_gallery_cache.json 并统计用户使用过的 Tag。</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="lblUserTagStatus">
+         <property name="text">
+          <string>用户 Tag 未加载</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
     </widget>
    </item>
   </layout>

@@ -28,6 +28,8 @@
 #include <QProcess>
 #include <QtEndian>
 #include <QTabWidget>
+#include <QVBoxLayout>
+#include <QSignalBlocker>
 
 #include "imageloader.h"
 #include "llmpromptwidget.h"
@@ -142,7 +144,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->btnClearGalleryCache, &QPushButton::clicked, this, &MainWindow::onClearUserGalleryCacheClicked);
 
     // 样式设置
-    QGraphicsDropShadowEffect *shadow = new QGraphicsDropShadowEffect(this);
+    QGraphicsDropShadowEffect *shadow = new QGraphicsDropShadowEffect;
     shadow->setBlurRadius(20);
     shadow->setColor(Qt::black);
     shadow->setOffset(0, 0);
@@ -344,12 +346,158 @@ QString forceWrap(const QString &text) { // 强制加入零宽空格换行
     return result;
 }
 
+static QString calculateFileHashWorker(const QString &filePath)
+{
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) return QString();
+
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    constexpr int bufferSize = 65536;
+    char buffer[bufferSize];
+    while (!file.atEnd()) {
+        const qint64 size = file.read(buffer, bufferSize);
+        if (size <= 0) break;
+        hash.addData(buffer, size);
+    }
+    return hash.result().toHex().toUpper();
+}
+
+static QString extractPngParametersWorker(const QString &filePath)
+{
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) return QString();
+
+    const QByteArray signature = file.read(8);
+    const char pngSignature[] = {-119, 'P', 'N', 'G', 13, 10, 26, 10};
+    if (signature != QByteArray::fromRawData(pngSignature, 8)) {
+        return QString();
+    }
+
+    while (!file.atEnd()) {
+        QByteArray lenData = file.read(4);
+        if (lenData.size() < 4) break;
+        const quint32 length = qFromBigEndian<quint32>(lenData.constData());
+        const QByteArray type = file.read(4);
+        if (type.size() < 4) break;
+
+        if (type == "tEXt") {
+            const QByteArray data = file.read(length);
+            const int nullPos = data.indexOf('\0');
+            if (nullPos != -1) {
+                const QString keyword = QString::fromLatin1(data.left(nullPos));
+                if (keyword == "parameters") {
+                    return QString::fromUtf8(data.mid(nullPos + 1));
+                }
+            }
+        } else if (type == "iTXt") {
+            file.seek(file.pos() + length);
+        } else {
+            file.seek(file.pos() + length);
+        }
+
+        file.seek(file.pos() + 4);
+    }
+
+    return QString();
+}
+
+static QString cleanTagTextWorker(QString t)
+{
+    t = t.trimmed();
+    if (t.isEmpty()) return QString();
+
+    static const QSet<QString> emoticons = {":)", ":-)", ":(", ":-(", "^_^", "T_T", "o_o", "O_O"};
+    if (emoticons.contains(t)) return t;
+
+    static QRegularExpression weightRegex(":[0-9.]+$");
+    t.remove(weightRegex);
+
+    static QRegularExpression bracketRegex("[\\{\\}\\[\\]\\(\\)]");
+    t.remove(bracketRegex);
+
+    return t.trimmed();
+}
+
+static QStringList parsePromptsToTagsWorker(const QString &rawPrompt, bool splitOnNewline, const QStringList &filterTags)
+{
+    QStringList result;
+    if (rawPrompt.isEmpty()) return result;
+
+    QString processText = rawPrompt;
+    if (splitOnNewline) {
+        processText.replace("\r\n", ",");
+        processText.replace("\n", ",");
+        processText.replace("\r", ",");
+    }
+
+    const QStringList parts = processText.split(",", Qt::SkipEmptyParts);
+    for (const QString &part : parts) {
+        const QString clean = cleanTagTextWorker(part);
+        if (clean.isEmpty()) continue;
+
+        bool isBlocked = false;
+        for (const QString &filterWord : filterTags) {
+            if (clean.compare(filterWord, Qt::CaseInsensitive) == 0) {
+                isBlocked = true;
+                break;
+            }
+        }
+        if (!isBlocked) result.append(clean);
+    }
+    return result;
+}
+
+static void parsePngInfoWorker(const QString &path, UserImageInfo &info, bool splitOnNewline, const QStringList &filterTags)
+{
+    QString text = extractPngParametersWorker(path);
+
+    if (text.isEmpty()) {
+        QImageReader reader(path);
+        if (reader.canRead()) {
+            text = reader.text("parameters");
+            if (text.isEmpty()) {
+                const QString comfy = reader.text("prompt");
+                if (!comfy.isEmpty()) {
+                    info.prompt = comfy;
+                    info.negativePrompt = "ComfyUI Workflow Data (Hidden)";
+                    info.cleanTags = parsePromptsToTagsWorker(info.prompt, splitOnNewline, filterTags);
+                    return;
+                }
+            }
+        } else {
+            return;
+        }
+    }
+
+    if (text.isEmpty()) return;
+
+    const int stepsIndex = text.lastIndexOf("Steps: ");
+    if (stepsIndex == -1) {
+        info.prompt = text.trimmed();
+        info.cleanTags = parsePromptsToTagsWorker(info.prompt, splitOnNewline, filterTags);
+        return;
+    }
+
+    info.parameters = text.mid(stepsIndex).trimmed();
+    const QString beforeParams = text.left(stepsIndex).trimmed();
+    const int negIndex = beforeParams.indexOf("Negative prompt:");
+    if (negIndex != -1) {
+        info.prompt = beforeParams.left(negIndex).trimmed();
+        info.negativePrompt = beforeParams.mid(negIndex + 16).trimmed();
+    } else {
+        info.prompt = beforeParams.trimmed();
+        info.negativePrompt = "(empty)";
+    }
+    info.cleanTags = parsePromptsToTagsWorker(info.prompt, splitOnNewline, filterTags);
+}
+
 MainWindow::~MainWindow()
 {
     saveGlobalConfig();
     cancelPendingTasks();
-    threadPool->waitForDone(500);
-    backgroundThreadPool->waitForDone(500);
+    if (backgroundThreadPool) backgroundThreadPool->clear();
+    threadPool->waitForDone();
+    backgroundThreadPool->waitForDone();
     delete ui;
 }
 
@@ -1857,8 +2005,8 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
 
         // === 启动后台线程计算 Hash ===
         // 使用 QtConcurrent::run 把耗时函数丢到后台
-        QFuture<QString> future = QtConcurrent::run([this, filePath]() {
-            return calculateFileHash(filePath); // 这里是你原来的耗时函数
+        QFuture<QString> future = QtConcurrent::run(threadPool, [filePath]() {
+            return calculateFileHashWorker(filePath);
         });
         hashWatcher->setFuture(future);
     }
@@ -2667,45 +2815,51 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
 {
     if (localBaseName.isEmpty() || savePath.isEmpty()) return;
 
-    QIcon newIcon = getSquareIcon(QPixmap(savePath));
+    const QString downloadedFileName = QFileInfo(savePath).fileName();
+    const bool isCoverPreview = (downloadedFileName == localBaseName + ".preview.png");
+
     QIcon fitIcon = getFitIcon(savePath);
     bool modelListUpdated = false;
 
-    for (int i = 0; i < ui->modelList->count(); ++i) {
-        QListWidgetItem *item = ui->modelList->item(i);
-        if (item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
-            item->setData(ROLE_PREVIEW_PATH, savePath);
-            item->setIcon(newIcon);
-            modelListUpdated = true;
-        }
-    }
+    if (isCoverPreview) {
+        QIcon newIcon = getSquareIcon(QPixmap(savePath));
 
-    for (int i = 0; i < ui->homeGalleryList->count(); ++i) {
-        QListWidgetItem *item = ui->homeGalleryList->item(i);
-        QString itemPath = item->data(ROLE_FILE_PATH).toString();
-        QFileInfo fi(itemPath);
-        if (fi.completeBaseName() == localBaseName) {
-            item->setData(ROLE_PREVIEW_PATH, savePath);
-            item->setIcon(newIcon);
-        }
-    }
-
-    if (modelListUpdated) {
-        for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
-            QTreeWidgetItem *parent = ui->collectionTree->topLevelItem(i);
-            for (int j = 0; j < parent->childCount(); ++j) {
-                QTreeWidgetItem *child = parent->child(j);
-                if (child->data(0, ROLE_MODEL_NAME).toString() == localBaseName) {
-                    child->setData(0, ROLE_PREVIEW_PATH, savePath);
-                    child->setIcon(0, newIcon);
-                }
+        for (int i = 0; i < ui->modelList->count(); ++i) {
+            QListWidgetItem *item = ui->modelList->item(i);
+            if (item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
+                item->setData(ROLE_PREVIEW_PATH, savePath);
+                item->setIcon(newIcon);
+                modelListUpdated = true;
             }
         }
-        ui->modelList->viewport()->update();
-        ui->modelList->update();
-        ui->collectionTree->viewport()->update();
+
+        for (int i = 0; i < ui->homeGalleryList->count(); ++i) {
+            QListWidgetItem *item = ui->homeGalleryList->item(i);
+            QString itemPath = item->data(ROLE_FILE_PATH).toString();
+            QFileInfo fi(itemPath);
+            if (fi.completeBaseName() == localBaseName) {
+                item->setData(ROLE_PREVIEW_PATH, savePath);
+                item->setIcon(newIcon);
+            }
+        }
+
+        if (modelListUpdated) {
+            for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
+                QTreeWidgetItem *parent = ui->collectionTree->topLevelItem(i);
+                for (int j = 0; j < parent->childCount(); ++j) {
+                    QTreeWidgetItem *child = parent->child(j);
+                    if (child->data(0, ROLE_MODEL_NAME).toString() == localBaseName) {
+                        child->setData(0, ROLE_PREVIEW_PATH, savePath);
+                        child->setIcon(0, newIcon);
+                    }
+                }
+            }
+            ui->modelList->viewport()->update();
+            ui->modelList->update();
+            ui->collectionTree->viewport()->update();
+        }
+        ui->homeGalleryList->viewport()->update();
     }
-    ui->homeGalleryList->viewport()->update();
 
     if (ui->layoutGallery) {
         for (int k = 0; k < ui->layoutGallery->count(); ++k) {
@@ -2725,7 +2879,7 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
 
     QListWidgetItem *currentItem = ui->modelList->currentItem();
     if (currentItem && currentItem->data(ROLE_MODEL_NAME).toString() == localBaseName) {
-        if (savePath.endsWith(".preview.png")) {
+        if (isCoverPreview) {
             currentMeta.previewPath = savePath;
             currentHeroPath = "";
             transitionToImage(savePath);
@@ -2744,16 +2898,7 @@ void MainWindow::saveLocalMetadata(const QString &modelDir, const QString &baseN
 }
 
 QString MainWindow::calculateFileHash(const QString &filePath) {
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly)) return QString();
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    const int bufferSize = 65536;
-    char buffer[bufferSize];
-    while (!file.atEnd()) {
-        qint64 size = file.read(buffer, bufferSize);
-        hash.addData(buffer, size);
-    }
-    return hash.result().toHex().toUpper();
+    return calculateFileHashWorker(filePath);
 }
 
 void MainWindow::onOpenUrlClicked() {
@@ -3543,7 +3688,7 @@ void MainWindow::transitionToImage(const QString &path)
     if (path.isEmpty()) {
         transitionAnim->start(); // 淡出到黑
     } else {
-        QFuture<ImageLoadResult> future = QtConcurrent::run(&MainWindow::processImageTask, path);
+        QFuture<ImageLoadResult> future = QtConcurrent::run(threadPool, &MainWindow::processImageTask, path);
         imageLoadWatcher->setFuture(future);
     }
 }
@@ -4007,18 +4152,18 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     // =========================================================
     QMap<QString, UserImageInfo> currentCacheCopy = this->imageCache;
     bool recursive = optGalleryRecursive;
+    const bool splitOnNewline = optSplitOnNewline;
+    const QStringList filterTags = optFilterTags;
     // 开启异步任务
     QFuture<QPair<QList<UserImageInfo>, QMap<QString, UserImageInfo>>> future = QtConcurrent::run(
-        [this, searchKeys, isGlobalMode, recursive, scanPrefix, currentCacheCopy, validGalleryPaths]() {
+        backgroundThreadPool,
+        [searchKeys, isGlobalMode, recursive, splitOnNewline, filterTags, currentCacheCopy, validGalleryPaths]() {
 
             QList<UserImageInfo> results;
             QMap<QString, UserImageInfo> newCacheUpdates; // 用于收集需要更新到主缓存的数据
 
             QDirIterator::IteratorFlag iterFlag = recursive ? QDirIterator::Subdirectories : QDirIterator::NoIteratorFlags;
             QSet<QString> visited;
-
-            int scannedFiles = 0;
-            int cacheHits = 0;
 
             for (const QString &root : validGalleryPaths) {
                 QDirIterator it(root, QStringList() << "*.png" << "*.jpg" << "*.jpeg", QDir::Files, iterFlag);
@@ -4030,13 +4175,6 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
                     QFileInfo fi = it.fileInfo();
                     qint64 currentModified = fi.lastModified().toMSecsSinceEpoch();
 
-                    scannedFiles++;
-                    if (scannedFiles % 100 == 0) { // 稍微降低一点 UI 刷新频率
-                        QMetaObject::invokeMethod(this, [this, scannedFiles, cacheHits](){
-                            ui->statusbar->showMessage(QString("扫描中... (%1 张, 缓存命中 %2)").arg(scannedFiles).arg(cacheHits));
-                        });
-                    }
-
                     UserImageInfo info;
                     bool needParse = true;
 
@@ -4047,7 +4185,6 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
                             // 命中缓存！直接使用，不需要 open 文件
                             info = cachedInfo;
                             needParse = false;
-                            cacheHits++;
                         }
                     }
 
@@ -4055,7 +4192,7 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
                     if (needParse) {
                         info.path = path;
                         info.lastModified = currentModified;
-                        parsePngInfo(path, info); // 解析 I/O 操作
+                        parsePngInfoWorker(path, info, splitOnNewline, filterTags); // 解析 I/O 操作
 
                         // 记录到更新列表
                         newCacheUpdates.insert(path, info);
@@ -4137,121 +4274,11 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
 
 QString MainWindow::extractPngParameters(const QString &filePath)
 {
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly)) return "";
-
-    // 1. 检查 PNG 签名 (8字节)
-    QByteArray signature = file.read(8);
-    const char pngSignature[] = {-119, 'P', 'N', 'G', 13, 10, 26, 10};
-    if (signature != QByteArray::fromRawData(pngSignature, 8)) {
-        return ""; // 不是 PNG
-    }
-
-    // 2. 循环读取 Chunk (块)
-    while (!file.atEnd()) {
-        // 读取长度 (4字节, Big Endian)
-        QByteArray lenData = file.read(4);
-        if (lenData.size() < 4) break;
-        quint32 length = qFromBigEndian<quint32>(lenData.constData());
-
-        // 读取类型 (4字节)
-        QByteArray type = file.read(4);
-
-        // 如果是 tEXt 块 (A1111 WebUI 通常存这里)
-        if (type == "tEXt") {
-            QByteArray data = file.read(length);
-            // tEXt 格式: Keyword + \0 + Text
-            int nullPos = data.indexOf('\0');
-            if (nullPos != -1) {
-                QString keyword = QString::fromLatin1(data.left(nullPos));
-                if (keyword == "parameters") {
-                    // 找到啦！提取内容 (通常是 UTF-8)
-                    return QString::fromUtf8(data.mid(nullPos + 1));
-                }
-            }
-        }
-        // 如果是 iTXt 块 (国际化文本，偶尔会用)
-        else if (type == "iTXt") {
-            QByteArray data = file.read(length);
-            // iTXt 格式: Keyword + \0 + ... + Text
-            // 简单解析：寻找 parameters 关键字
-            if (data.startsWith("parameters")) {
-                // iTXt 结构比较复杂，前面有压缩标志等，通常 parameters 都在最后
-                // 这里做一个偷懒的查找：找到第一个 null 后的非 null 区域
-                // 但为了稳妥，A1111 99% 都是用 tEXt，这里略过 iTXt 的复杂解包，
-                // 如果您发现某些图还是读不出，我们再加 iTXt 的完整解析。
-            }
-        }
-        else {
-            // 跳过数据部分 (如果不是我们要的块)
-            // 注意：如果上面 if 读取了 data，这里就不用 skip 了
-            // 但因为我们只 read 了 tEXt 的 data，其他类型需要 skip
-            file.seek(file.pos() + length);
-        }
-
-        // 跳过 CRC (4字节)
-        file.seek(file.pos() + 4);
-    }
-
-    return ""; // 没找到
+    return extractPngParametersWorker(filePath);
 }
 
 void MainWindow::parsePngInfo(const QString &path, UserImageInfo &info) {
-    QString text = extractPngParameters(path);
-
-    if (text.isEmpty()) {
-        // qDebug() << "No PNG Text Found! Path:" << path;
-        QImageReader reader(path);
-        if (reader.canRead()) {
-            text = reader.text("parameters");
-            // 兼容 ComfyUI
-            if (text.isEmpty()) {
-                QString comfy = reader.text("prompt");
-                if (!comfy.isEmpty()) {
-                    info.prompt = comfy;
-                    info.negativePrompt = "ComfyUI Workflow Data (Hidden)";
-                    info.cleanTags = parsePromptsToTags(info.prompt);
-                    return;
-                }
-            }
-        } else return;
-    }
-
-    if (!text.isEmpty()) {
-        // === 核心改进：先找参数位置，再向前找 Negative ===
-
-        // 1. 寻找参数的起始位置 (Steps: 通常是参数的开始)
-        int stepsIndex = text.lastIndexOf("Steps: ");
-
-        if (stepsIndex == -1) {
-            // 没有参数？那就全是 Prompt（极少见的情况）
-            info.prompt = text.trimmed();
-            info.cleanTags = parsePromptsToTags(info.prompt);
-            return;
-        }
-
-        // 2. 提取参数部分 (Steps 及其之后)
-        info.parameters = text.mid(stepsIndex).trimmed();
-
-        // 3. 提取参数之前的内容 (Positive + 可能的 Negative)
-        QString beforeParams = text.left(stepsIndex).trimmed();
-
-        // 4. 在参数之前的内容中寻找 "Negative prompt:"
-        int negIndex = beforeParams.indexOf("Negative prompt:");
-
-        if (negIndex != -1) {
-            // 有 Negative：分割
-            info.prompt = beforeParams.left(negIndex).trimmed();
-            info.negativePrompt = beforeParams.mid(negIndex + 16).trimmed(); // 16 = "Negative prompt:".length()
-        } else {
-            // 没有 Negative：全是 Positive
-            info.prompt = beforeParams.trimmed();
-            info.negativePrompt = "(empty)";
-        }
-
-        // 5. 解析 Tags (只从 Positive Prompt 中提取)
-        info.cleanTags = parsePromptsToTags(info.prompt);
-    }
+    parsePngInfoWorker(path, info, optSplitOnNewline, optFilterTags);
 }
 
 void MainWindow::updateUserStats(const QList<UserImageInfo> &images) {
@@ -4378,67 +4405,12 @@ void MainWindow::onGalleryButtonClicked()
 
 // 辅助函数：清洗单个 Tag
 QString MainWindow::cleanTagText(QString t) {
-    t = t.trimmed();
-    if (t.isEmpty()) return "";
-
-    // === 特殊保护：颜文字 ===
-    // 如果是常见的颜文字，直接返回，不去除括号
-    static const QSet<QString> emoticons = {":)", ":-)", ":(", ":-(", "^_^", "T_T", "o_o", "O_O"};
-    if (emoticons.contains(t)) return t;
-
-    // === 处理权重和括号 ===
-    // 1. 去除尾部的权重数字 (例如 :1.2 或 :0.9)
-    // 正则含义：冒号后面跟着数字和小数点，且在字符串末尾
-    static QRegularExpression weightRegex(":[0-9.]+$");
-    t.remove(weightRegex);
-
-    // 2. 去除所有类型的括号 ( { [ ( ) ] } )
-    // 正则含义：匹配所有括号字符
-    static QRegularExpression bracketRegex("[\\{\\}\\[\\]\\(\\)]");
-    t.remove(bracketRegex);
-
-    return t.trimmed();
+    return cleanTagTextWorker(t);
 }
 
 // 辅助函数：将 Prompt 字符串解析为 Tag 列表
 QStringList MainWindow::parsePromptsToTags(const QString &rawPrompt) {
-    QStringList result;
-    if (rawPrompt.isEmpty()) return result;
-
-    QString processText = rawPrompt;
-
-    // === 1. 处理换行符分割 ===
-    if (optSplitOnNewline) {
-        // 将所有换行符替换为逗号，这样 split(',') 就能把它们分开
-        processText.replace("\r\n", ",");
-        processText.replace("\n", ",");
-        processText.replace("\r", ",");
-    }
-
-    // 2. 按逗号切分
-    QStringList parts = processText.split(",", Qt::SkipEmptyParts);
-
-    for (const QString &part : parts) {
-        // 3. 清洗 Tag (去除权重括号等)
-        QString clean = cleanTagText(part);
-
-        if (clean.isEmpty()) continue;
-
-        // === 4. 过滤黑名单关键词 ===
-        bool isBlocked = false;
-        for (const QString &filterWord : optFilterTags) {
-            // 使用 compare 忽略大小写 (例如 break == BREAK)
-            if (clean.compare(filterWord, Qt::CaseInsensitive) == 0) {
-                isBlocked = true;
-                break;
-            }
-        }
-
-        if (!isBlocked) {
-            result.append(clean);
-        }
-    }
-    return result;
+    return parsePromptsToTagsWorker(rawPrompt, optSplitOnNewline, optFilterTags);
 }
 
 void MainWindow::initMenuBar() {
@@ -4473,28 +4445,21 @@ void MainWindow::initMenuBar() {
     if (!toolsTabWidget) { // 确保只初始化一次
         toolsTabWidget = new QTabWidget(this);
 
-        // 创建子组件
-        SyncWidget *syncWidget = new SyncWidget(this);
-        parserWidget = new PromptParserWidget(this);
-        tagBrowserWidget = new TagBrowserWidget(this);
-        llmPromptWidget = new LlmPromptWidget(this);
+        auto makeToolPlaceholder = [this](const QString &text) {
+            QWidget *page = new QWidget(toolsTabWidget);
+            page->setObjectName("toolPlaceholder");
+            QVBoxLayout *layout = new QVBoxLayout(page);
+            QLabel *label = new QLabel(text, page);
+            label->setAlignment(Qt::AlignCenter);
+            label->setStyleSheet("color:#8c96a0;background:transparent;");
+            layout->addWidget(label);
+            return page;
+        };
 
-        // 将 MainWindow 的翻译字典传递给解析器
-        parserWidget->setTranslationMap(&translationMap);
-        tagBrowserWidget->setCsvPath(translationCsvPath);
-        llmPromptWidget->setLibraryPaths(loraPaths, galleryPaths);
-        connect(tagBrowserWidget, &TagBrowserWidget::csvSaved, this, [this](const QString &path){
-            translationCsvPath = path;
-            loadTranslationCSV(path);
-            if (parserWidget) parserWidget->setTranslationMap(&translationMap);
-            saveGlobalConfig();
-        });
-
-        // 添加 Tab
-        toolsTabWidget->addTab(syncWidget, "🔄 图片同步 / Sync");
-        toolsTabWidget->addTab(parserWidget, "📝 提示词解析 / Prompt");
-        toolsTabWidget->addTab(tagBrowserWidget, "🏷️ Tag 浏览 / Tag");
-        toolsTabWidget->addTab(llmPromptWidget, "🤖 大模型提示词 / LLM");
+        toolsTabWidget->addTab(makeToolPlaceholder("点击后加载图片同步工具..."), "🔄 图片同步 / Sync");
+        toolsTabWidget->addTab(makeToolPlaceholder("点击后加载提示词解析工具..."), "📝 提示词解析 / Prompt");
+        toolsTabWidget->addTab(makeToolPlaceholder("点击后加载 Tag 浏览工具..."), "🏷️ Tag 浏览 / Tag");
+        toolsTabWidget->addTab(makeToolPlaceholder("点击后加载大模型提示词工具..."), "🤖 大模型提示词 / LLM");
         toolsTabWidget->setTabPosition(QTabWidget::West);
 
         toolsTabWidget->setAutoFillBackground(true);
@@ -4512,12 +4477,17 @@ void MainWindow::initMenuBar() {
 
         // 核心动作：加入堆栈
         ui->rootStack->addWidget(toolsTabWidget);
+
+        connect(toolsTabWidget, &QTabWidget::currentChanged, this, &MainWindow::ensureToolTabLoaded);
     }
 
     QAction *actTools = new QAction("🛠️ 工具箱 / Tools", this);
     actTools->setShortcut(QKeySequence("Ctrl+3"));
     connect(actTools, &QAction::triggered, this, [this](){
         ui->rootStack->setCurrentWidget(toolsTabWidget);
+        if (toolsTabWidget) {
+            ensureToolTabLoaded(toolsTabWidget->currentIndex());
+        }
     });
     bar->addAction(actTools);
 
@@ -4529,6 +4499,51 @@ void MainWindow::initMenuBar() {
 
     // 7. 强制显示 (防止被 hidden 属性隐藏)
     bar->setVisible(true);
+}
+
+void MainWindow::ensureToolTabLoaded(int index)
+{
+    if (!toolsTabWidget || index < 0 || index >= toolsTabWidget->count()) return;
+    QWidget *currentPage = toolsTabWidget->widget(index);
+    if (!currentPage || currentPage->objectName() != "toolPlaceholder") return;
+
+    QWidget *newPage = nullptr;
+    switch (index) {
+    case 0:
+        newPage = new SyncWidget(toolsTabWidget);
+        break;
+    case 1:
+        parserWidget = new PromptParserWidget(toolsTabWidget);
+        parserWidget->setTranslationMap(&translationMap);
+        newPage = parserWidget;
+        break;
+    case 2:
+        tagBrowserWidget = new TagBrowserWidget(toolsTabWidget);
+        tagBrowserWidget->setCsvPath(translationCsvPath);
+        connect(tagBrowserWidget, &TagBrowserWidget::csvSaved, this, [this](const QString &path){
+            translationCsvPath = path;
+            loadTranslationCSV(path);
+            if (parserWidget) parserWidget->setTranslationMap(&translationMap);
+            saveGlobalConfig();
+        });
+        newPage = tagBrowserWidget;
+        break;
+    case 3:
+        llmPromptWidget = new LlmPromptWidget(toolsTabWidget);
+        llmPromptWidget->setLibraryPaths(loraPaths, galleryPaths);
+        newPage = llmPromptWidget;
+        break;
+    default:
+        break;
+    }
+
+    if (!newPage) return;
+    const QString label = toolsTabWidget->tabText(index);
+    QSignalBlocker blocker(toolsTabWidget);
+    toolsTabWidget->removeTab(index);
+    currentPage->deleteLater();
+    toolsTabWidget->insertTab(index, newPage, label);
+    toolsTabWidget->setCurrentIndex(index);
 }
 
 void MainWindow::onMenuSwitchToLibrary() {
@@ -5057,10 +5072,9 @@ QPixmap MainWindow::applyNSFWBlur(const QPixmap &pix) {
     blur->setBlurRadius(40); // 强度大一点，确保看不清内容
 
     QGraphicsScene scene;
-    QGraphicsPixmapItem item;
-    item.setPixmap(pix);
-    item.setGraphicsEffect(blur);
-    scene.addItem(&item);
+    QGraphicsPixmapItem *item = new QGraphicsPixmapItem(pix);
+    item->setGraphicsEffect(blur);
+    scene.addItem(item);
 
     QPixmap result(pix.size());
     result.fill(Qt::transparent);
@@ -5621,8 +5635,10 @@ void MainWindow::filterModelsByCollection(const QString &collectionName)
 void MainWindow::cancelPendingTasks()
 {
     // QThreadPool::clear() 会移除所有尚未开始的任务
-    // 正在运行的任务无法强制停止，但它们很快就会结束
-    threadPool->clear();
+    // 正在运行的任务无法强制停止，但它们很快就会结束。
+    // 注意：backgroundThreadPool 用于侧边栏/收藏夹等静默缩略图加载，
+    // 普通页面刷新不应清掉它，否则模型列表会留下占位叉号。
+    if (threadPool) threadPool->clear();
 
     // 可选：如果之前的逻辑有正在下载的队列，也可以在这里清空
     // downloadQueue.clear();

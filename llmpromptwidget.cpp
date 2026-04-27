@@ -1,33 +1,64 @@
-#include "continueconversationdialog.h"
 #include "llmpromptwidget.h"
 #include "ui_llmpromptwidget.h"
 
+#include <QAbstractItemView>
+#include <QAction>
 #include <QApplication>
+#include <QBrush>
 #include <QClipboard>
+#include <QDateTime>
+#include <QDesktopServices>
+#include <QDialog>
 #include <QDir>
 #include <QDirIterator>
+#include <QEvent>
 #include <QEventLoop>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFontMetrics>
+#include <QFrame>
+#include <QGridLayout>
+#include <QHBoxLayout>
+#include <QImage>
 #include <QImageReader>
+#include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QLabel>
+#include <QLineEdit>
+#include <QListWidget>
 #include <QListWidgetItem>
+#include <QMenu>
 #include <QMessageBox>
 #include <QNetworkReply>
 #include <QAbstractScrollArea>
 #include <QPlainTextEdit>
+#include <QPushButton>
+#include <QPixmap>
+#include <QIcon>
+#include <QPointer>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QSignalBlocker>
+#include <QSizePolicy>
 #include <QSet>
+#include <QTextBrowser>
+#include <QTextCursor>
+#include <QTextDocument>
+#include <QTextDocumentFragment>
 #include <QTextEdit>
 #include <QTimer>
+#include <QToolButton>
+#include <QUuid>
+#include <QUrl>
+#include <QVBoxLayout>
+#include <QWheelEvent>
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 namespace {
@@ -123,6 +154,11 @@ QString combineThinkingText(const QString &dedicatedThinking, const QString &emb
     return result.trimmed();
 }
 
+QString makeId()
+{
+    return QUuid::createUuid().toString(QUuid::WithoutBraces);
+}
+
 void scrollTextViewportToBottom(QWidget *widget)
 {
     if (!widget) return;
@@ -149,12 +185,28 @@ LlmPromptWidget::LlmPromptWidget(QWidget *parent)
     connect(ui->btnStopGenerate, &QPushButton::clicked, this, &LlmPromptWidget::onStopGenerateClicked);
     connect(ui->btnUnloadModel, &QPushButton::clicked, this, &LlmPromptWidget::onUnloadModelClicked);
     connect(ui->btnContinueConversation, &QPushButton::clicked, this, &LlmPromptWidget::onContinueConversationClicked);
+    connect(ui->btnNewChat, &QPushButton::clicked, this, &LlmPromptWidget::onNewChatClicked);
+    connect(ui->btnRenameChat, &QPushButton::clicked, this, &LlmPromptWidget::onRenameChatClicked);
+    connect(ui->btnDeleteChat, &QPushButton::clicked, this, &LlmPromptWidget::onDeleteChatClicked);
+    connect(ui->btnClearChats, &QPushButton::clicked, this, &LlmPromptWidget::onClearChatsClicked);
+    connect(ui->editChatSearch, &QLineEdit::textChanged, this, &LlmPromptWidget::onChatSearchChanged);
+    connect(ui->listChatHistory, &QListWidget::currentItemChanged, this, &LlmPromptWidget::onChatSelectionChanged);
+    connect(ui->btnChatSend, &QPushButton::clicked, this, &LlmPromptWidget::onChatSendClicked);
+    connect(ui->btnChatStop, &QPushButton::clicked, this, &LlmPromptWidget::onChatStopClicked);
+    connect(ui->btnChatAddImages, &QPushButton::clicked, this, &LlmPromptWidget::onChatAddImagesClicked);
+    connect(ui->btnChatClearImages, &QPushButton::clicked, this, &LlmPromptWidget::onChatClearImagesClicked);
     connect(ui->btnCopyPrompt, &QPushButton::clicked, this, &LlmPromptWidget::onCopyPromptClicked);
     connect(ui->btnCopyResult, &QPushButton::clicked, this, &LlmPromptWidget::onCopyResultClicked);
     connect(ui->btnAddManualImages, &QPushButton::clicked, this, &LlmPromptWidget::onAddManualImagesClicked);
     connect(ui->btnResetPromptTemplate, &QPushButton::clicked, this, &LlmPromptWidget::onResetPromptTemplateClicked);
     connect(ui->comboTaskType, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &LlmPromptWidget::onTaskTypeChanged);
     connect(ui->comboTemplateTaskType, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &LlmPromptWidget::onTemplateTaskTypeChanged);
+    connect(ui->tabMain, &QTabWidget::currentChanged, this, [this]() {
+        if (ui->tabMain->currentWidget() == ui->pageChat && m_chatViewDirty) {
+            m_chatViewDirty = false;
+            updateChatView(false);
+        }
+    });
     connect(ui->comboBackend, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         const QString endpoint = ui->editEndpoint->text().trimmed();
         if (index == 1 && (endpoint.isEmpty() || endpoint == "http://127.0.0.1:11434")) {
@@ -175,6 +227,7 @@ LlmPromptWidget::LlmPromptWidget(QWidget *parent)
     ui->listImageCandidates->setSelectionMode(QAbstractItemView::ExtendedSelection);
     ui->btnToggleThinking->setEnabled(false);
     ui->btnContinueConversation->setEnabled(false);
+    setupChatUi();
     ui->textPlaceholderHelp->setHtml(
         "<b>占位符说明</b><br>"
         "当前编辑的是所选任务类型的专属模板。切换任务后会自动切换到对应模板。<br>"
@@ -194,14 +247,87 @@ LlmPromptWidget::LlmPromptWidget(QWidget *parent)
     );
 
     loadSettings();
+    loadConversations();
     onRefreshCandidatesClicked();
     updateContextSelectionSummary();
+    updateChatButtons();
 }
 
 LlmPromptWidget::~LlmPromptWidget()
 {
+    m_destroying = true;
+    if (m_chatRefreshTimer) {
+        m_chatRefreshTimer->stop();
+    }
+    if (ui && ui->listChatMessages && ui->listChatMessages->viewport()) {
+        ui->listChatMessages->viewport()->removeEventFilter(this);
+    }
+    if (m_activeGenerateReply) {
+        m_activeGenerateReply->disconnect(this);
+        m_activeGenerateReply->abort();
+        m_activeGenerateReply->deleteLater();
+        m_activeGenerateReply = nullptr;
+    }
+    if (m_activeChatReply) {
+        m_activeChatReply->disconnect(this);
+        m_activeChatReply->abort();
+        m_activeChatReply->deleteLater();
+        m_activeChatReply = nullptr;
+    }
     saveSettings();
-    delete ui;
+    saveConversations();
+    Ui::LlmPromptWidget *uiToDelete = ui;
+    ui = nullptr;
+    delete uiToDelete;
+}
+
+bool LlmPromptWidget::eventFilter(QObject *watched, QEvent *event)
+{
+    if (m_destroying || !ui) return QWidget::eventFilter(watched, event);
+    if (event->type() == QEvent::Wheel) {
+        QAbstractScrollArea *scrollArea = nullptr;
+        if (ui->listChatMessages && watched == ui->listChatMessages->viewport()) {
+            scrollArea = ui->listChatMessages;
+        } else if (QWidget *widget = qobject_cast<QWidget*>(watched)) {
+            scrollArea = qobject_cast<QAbstractScrollArea*>(widget->parentWidget());
+        }
+
+        if (scrollArea) {
+            QWheelEvent *wheelEvent = static_cast<QWheelEvent*>(event);
+            QScrollBar *bar = scrollArea->verticalScrollBar();
+            if (bar) {
+                const int delta = wheelEvent->angleDelta().y();
+                const int direction = (delta > 0) ? -1 : (delta < 0 ? 1 : 0);
+                if (direction != 0) {
+                    const int oldValue = bar->value();
+                    const int step = qMax(12, bar->singleStep());
+                    bar->setValue(oldValue + direction * step * 3);
+                }
+
+                const bool atBottom = (bar->maximum() - bar->value()) <= 4;
+                if (ui->listChatMessages && watched == ui->listChatMessages->viewport()) {
+                    m_chatListAutoScrollEnabled = atBottom;
+                    m_chatListScrollValue = bar->value();
+                } else {
+                    const QString areaType = watched->property("chatScrollAreaType").toString();
+                    const bool pending = watched->property("chatScrollPending").toBool();
+                    const QString scrollKey = watched->property("chatScrollKey").toString();
+                    if (!scrollKey.isEmpty()) {
+                        m_chatInnerScrollValues.insert(scrollKey, bar->value());
+                    }
+                    if (pending && areaType == "body") {
+                        m_pendingChatBodyAutoScrollEnabled = atBottom;
+                    } else if (pending && areaType == "thinking") {
+                        m_pendingChatThinkingAutoScrollEnabled = atBottom;
+                    }
+                }
+            }
+            wheelEvent->accept();
+            return true;
+        }
+    }
+
+    return QWidget::eventFilter(watched, event);
 }
 
 void LlmPromptWidget::setLibraryPaths(const QStringList &loraPaths, const QStringList &galleryPaths)
@@ -218,6 +344,13 @@ QString LlmPromptWidget::settingsPath() const
     return configDir + "/settings.json";
 }
 
+QString LlmPromptWidget::conversationsPath() const
+{
+    QString configDir = qApp->applicationDirPath() + "/config";
+    QDir().mkpath(configDir);
+    return configDir + "/llm_conversations.json";
+}
+
 LlmPromptWidget::LlmBackend LlmPromptWidget::currentBackend() const
 {
     return ui->comboBackend->currentIndex() == 1 ? LlmBackend::LmStudio : LlmBackend::Ollama;
@@ -226,6 +359,17 @@ LlmPromptWidget::LlmBackend LlmPromptWidget::currentBackend() const
 QString LlmPromptWidget::currentBackendName() const
 {
     return currentBackend() == LlmBackend::LmStudio ? "LM Studio" : "Ollama";
+}
+
+QString LlmPromptWidget::backendKey(LlmBackend backend) const
+{
+    return backend == LlmBackend::LmStudio ? "lmstudio" : "ollama";
+}
+
+QString LlmPromptWidget::formatChatTimestamp(const QDateTime &time) const
+{
+    if (!time.isValid()) return "--:--";
+    return time.toString("MM-dd HH:mm");
 }
 
 QString LlmPromptWidget::endpointBaseUrl() const
@@ -314,6 +458,988 @@ void LlmPromptWidget::updateContextSelectionSummary()
     ui->lblImageSelectionSummary->setText(QString("已勾选 %1 / %2 张图片").arg(imageChecked).arg(ui->listImageCandidates->count()));
 }
 
+void LlmPromptWidget::setupChatUi()
+{
+    ui->horizontalLayoutChatRoot->setStretch(0, 0);
+    ui->horizontalLayoutChatRoot->setStretch(1, 1);
+    ui->verticalLayoutChatHistory->setSizeConstraint(QLayout::SetMinimumSize);
+    ui->pageChat->setStyleSheet("QWidget#pageChat{background:#1e252f;}");
+    ui->listChatHistory->setMinimumWidth(260);
+    ui->listChatHistory->setMaximumWidth(320);
+    ui->listChatHistory->setSelectionMode(QAbstractItemView::SingleSelection);
+    ui->listChatMessages->setSelectionMode(QAbstractItemView::NoSelection);
+    ui->listChatMessages->setFocusPolicy(Qt::NoFocus);
+    ui->listChatMessages->setAlternatingRowColors(false);
+    ui->listChatMessages->setUniformItemSizes(false);
+    ui->listChatMessages->setSpacing(4);
+    ui->listChatMessages->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    ui->listChatMessages->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    ui->listChatMessages->setContextMenuPolicy(Qt::CustomContextMenu);
+    ui->listChatMessages->viewport()->installEventFilter(this);
+    connect(ui->listChatMessages, &QListWidget::customContextMenuRequested, this, &LlmPromptWidget::showChatMessageMenu);
+    ui->listChatMessages->setStyleSheet(
+        "QListWidget{background:#16191e;border:1px solid #31363d;padding:2px;outline:none;}"
+        "QListWidget::item{background:transparent;border:none;margin:0px;padding:0px;}"
+        "QListWidget::item:hover{background:transparent;}"
+        "QListWidget::item:selected{background:transparent;color:inherit;}"
+        "QScrollBar:vertical{background:#12161c;width:4px;margin:2px 0 2px 0;border-radius:2px;}"
+        "QScrollBar::handle:vertical{background:#3a4654;min-height:24px;border-radius:2px;}"
+        "QScrollBar::handle:vertical:hover{background:#4b5a6b;}"
+        "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0px;}"
+        "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}");
+    if (ui->listChatMessages->verticalScrollBar()) {
+        ui->listChatMessages->verticalScrollBar()->setSingleStep(18);
+        connect(ui->listChatMessages->verticalScrollBar(), &QScrollBar::valueChanged, this, [this](int value) {
+            QScrollBar *bar = ui->listChatMessages->verticalScrollBar();
+            if (!bar) return;
+            m_chatListScrollValue = value;
+            m_chatListAutoScrollEnabled = (bar->maximum() - value) <= 4;
+        });
+    }
+    ui->textChatInput->setFixedHeight(88);
+    ui->btnChatStop->setEnabled(false);
+
+    m_chatRefreshTimer = new QTimer(this);
+    m_chatRefreshTimer->setSingleShot(true);
+    m_chatRefreshTimer->setInterval(140);
+    connect(m_chatRefreshTimer, &QTimer::timeout, this, [this]() {
+        const bool scrollToBottom = m_chatRefreshScrollToBottomPending;
+        m_chatRefreshScrollToBottomPending = false;
+        m_chatRefreshScheduled = false;
+        updateChatView(scrollToBottom);
+    });
+
+    updateChatStatus("待命");
+    updateChatImageInfoLabel();
+}
+
+void LlmPromptWidget::loadConversations()
+{
+    m_chatSessions.clear();
+    QFile file(conversationsPath());
+    if (!file.open(QIODevice::ReadOnly)) {
+        refreshConversationList();
+        updateChatView(false);
+        return;
+    }
+
+    QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+    m_activeChatSessionId = root["active_id"].toString();
+    const QJsonArray conversations = root["conversations"].toArray();
+    for (const QJsonValue &sessionValue : conversations) {
+        QJsonObject obj = sessionValue.toObject();
+        ChatSession session;
+        session.id = obj["id"].toString();
+        if (session.id.isEmpty()) session.id = makeId();
+        session.title = obj["title"].toString("未命名对话");
+        session.taskLabel = obj["taskLabel"].toString();
+        session.createdAt = QDateTime::fromString(obj["createdAt"].toString(), Qt::ISODateWithMs);
+        session.updatedAt = QDateTime::fromString(obj["updatedAt"].toString(), Qt::ISODateWithMs);
+        if (!session.createdAt.isValid()) session.createdAt = QDateTime::currentDateTime();
+        if (!session.updatedAt.isValid()) session.updatedAt = session.createdAt;
+        session.backend = obj["backend"].toString("ollama");
+        session.endpoint = obj["endpoint"].toString();
+        session.modelName = obj["modelName"].toString();
+        session.systemPrompt = obj["systemPrompt"].toString();
+        session.options = obj["options"].toObject();
+        const QJsonArray messages = obj["messages"].toArray();
+        for (const QJsonValue &messageValue : messages) {
+            QJsonObject msgObj = messageValue.toObject();
+            ChatMessage msg;
+            msg.id = msgObj["id"].toString();
+            if (msg.id.isEmpty()) msg.id = makeId();
+            msg.role = msgObj["role"].toString();
+            msg.content = msgObj["content"].toString();
+            msg.thinking = msgObj["thinking"].toString();
+            msg.createdAt = QDateTime::fromString(msgObj["createdAt"].toString(), Qt::ISODateWithMs);
+            if (!msg.createdAt.isValid()) msg.createdAt = session.createdAt;
+            const QJsonArray images = msgObj["imagePaths"].toArray();
+            for (const QJsonValue &imageValue : images) {
+                QString path = imageValue.toString();
+                if (!path.isEmpty()) msg.imagePaths.append(path);
+            }
+            if (!msg.role.isEmpty()) session.messages.append(msg);
+        }
+        m_chatSessions.append(session);
+    }
+
+    std::sort(m_chatSessions.begin(), m_chatSessions.end(), [](const ChatSession &a, const ChatSession &b) {
+        return a.updatedAt > b.updatedAt;
+    });
+    if (chatSessionIndex(m_activeChatSessionId) < 0 && !m_chatSessions.isEmpty()) {
+        m_activeChatSessionId = m_chatSessions.first().id;
+    }
+    refreshConversationList();
+    selectChatSession(m_activeChatSessionId, false);
+}
+
+void LlmPromptWidget::saveConversations() const
+{
+    QJsonObject root;
+    root["version"] = 1;
+    root["active_id"] = m_activeChatSessionId;
+    QJsonArray sessions;
+    for (const ChatSession &session : m_chatSessions) {
+        QJsonObject obj;
+        obj["id"] = session.id;
+        obj["title"] = session.title;
+        obj["taskLabel"] = session.taskLabel;
+        obj["createdAt"] = session.createdAt.toString(Qt::ISODateWithMs);
+        obj["updatedAt"] = session.updatedAt.toString(Qt::ISODateWithMs);
+        obj["backend"] = session.backend;
+        obj["endpoint"] = session.endpoint;
+        obj["modelName"] = session.modelName;
+        obj["systemPrompt"] = session.systemPrompt;
+        obj["options"] = session.options;
+        QJsonArray messages;
+        for (const ChatMessage &message : session.messages) {
+            QJsonObject msg;
+            msg["id"] = message.id;
+            msg["role"] = message.role;
+            msg["content"] = message.content;
+            msg["thinking"] = message.thinking;
+            msg["createdAt"] = message.createdAt.toString(Qt::ISODateWithMs);
+            QJsonArray images;
+            for (const QString &path : message.imagePaths) images.append(path);
+            msg["imagePaths"] = images;
+            messages.append(msg);
+        }
+        obj["messages"] = messages;
+        sessions.append(obj);
+    }
+    root["conversations"] = sessions;
+
+    QFile file(conversationsPath());
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
+    }
+}
+
+void LlmPromptWidget::refreshConversationList()
+{
+    const QSignalBlocker blocker(ui->listChatHistory);
+    m_syncingChatList = true;
+    ui->listChatHistory->clear();
+    const QString filter = ui->editChatSearch->text().trimmed();
+    for (const ChatSession &session : m_chatSessions) {
+        if (!filter.isEmpty()
+            && !session.title.contains(filter, Qt::CaseInsensitive)
+            && !session.taskLabel.contains(filter, Qt::CaseInsensitive)) {
+            continue;
+        }
+        QListWidgetItem *item = new QListWidgetItem(QString("%1\n%2")
+                                                        .arg(session.title, formatChatTimestamp(session.updatedAt)));
+        item->setData(Qt::UserRole, session.id);
+        item->setToolTip(QString("%1\n%2").arg(session.taskLabel, session.updatedAt.toString("yyyy-MM-dd HH:mm:ss")));
+        item->setSizeHint(QSize(0, 42));
+        ui->listChatHistory->addItem(item);
+        if (session.id == m_activeChatSessionId) {
+            ui->listChatHistory->setCurrentItem(item);
+        }
+    }
+    m_syncingChatList = false;
+    updateChatButtons();
+}
+
+int LlmPromptWidget::chatSessionIndex(const QString &sessionId) const
+{
+    for (int i = 0; i < m_chatSessions.size(); ++i) {
+        if (m_chatSessions[i].id == sessionId) return i;
+    }
+    return -1;
+}
+
+LlmPromptWidget::ChatSession *LlmPromptWidget::activeChatSession()
+{
+    int index = chatSessionIndex(m_activeChatSessionId);
+    return index >= 0 ? &m_chatSessions[index] : nullptr;
+}
+
+const LlmPromptWidget::ChatSession *LlmPromptWidget::activeChatSession() const
+{
+    int index = chatSessionIndex(m_activeChatSessionId);
+    return index >= 0 ? &m_chatSessions[index] : nullptr;
+}
+
+void LlmPromptWidget::selectChatSession(const QString &sessionId, bool switchToChatTab)
+{
+    if (chatSessionIndex(sessionId) < 0) {
+        m_activeChatSessionId.clear();
+    } else {
+        m_activeChatSessionId = sessionId;
+    }
+    if (switchToChatTab) {
+        ui->tabMain->setCurrentWidget(ui->pageChat);
+    }
+    refreshConversationList();
+    updateChatView(false);
+    updateChatButtons();
+    updateChatImageInfoLabel();
+    saveConversations();
+}
+
+QString LlmPromptWidget::makeChatTitle(const QString &taskLabel, const QString &instruction) const
+{
+    QString title = instruction.simplified();
+    if (title.isEmpty()) title = taskLabel;
+    if (title.size() > 36) title = title.left(36) + "...";
+    return QString("%1 - %2").arg(taskLabel.isEmpty() ? "对话" : taskLabel, title);
+}
+
+LlmPromptWidget::ChatSession LlmPromptWidget::createChatSession(const QString &title, const QString &taskLabel) const
+{
+    ChatSession session;
+    session.id = makeId();
+    session.title = title.isEmpty() ? "新对话" : title;
+    session.taskLabel = taskLabel;
+    session.createdAt = QDateTime::currentDateTime();
+    session.updatedAt = session.createdAt;
+    session.backend = backendKey(currentBackend());
+    session.endpoint = endpointBaseUrl();
+    session.modelName = ui->comboModel->currentText().trimmed();
+    session.systemPrompt = ui->textSystemPrompt->toPlainText();
+    session.options = buildGenerationOptions();
+    return session;
+}
+
+LlmPromptWidget::ChatMessage LlmPromptWidget::makeChatMessage(const QString &role, const QString &content, const QString &thinking, const QStringList &imagePaths) const
+{
+    ChatMessage message;
+    message.id = makeId();
+    message.role = role;
+    message.content = content;
+    message.thinking = thinking;
+    message.imagePaths = imagePaths;
+    message.createdAt = QDateTime::currentDateTime();
+    return message;
+}
+
+QString LlmPromptWidget::markdownToHtml(const QString &markdown) const
+{
+    QString normalized = markdown;
+    normalized.replace("\r\n", "\n");
+    normalized.replace('\r', '\n');
+    const QString html = QTextDocumentFragment::fromMarkdown(normalized).toHtml();
+    static const QRegularExpression bodyRe("<body[^>]*>(.*)</body>",
+                                           QRegularExpression::CaseInsensitiveOption
+                                           | QRegularExpression::DotMatchesEverythingOption);
+    const QRegularExpressionMatch match = bodyRe.match(html);
+    return match.hasMatch() ? match.captured(1) : html;
+}
+
+QString LlmPromptWidget::imageMimeType(const QString &path) const
+{
+    const QString suffix = QFileInfo(path).suffix().toLower();
+    if (suffix == "jpg" || suffix == "jpeg") return "image/jpeg";
+    if (suffix == "webp") return "image/webp";
+    if (suffix == "bmp") return "image/bmp";
+    return "image/png";
+}
+
+void LlmPromptWidget::openImagePath(const QString &path) const
+{
+    if (!QFileInfo::exists(path)) return;
+    QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+}
+
+void LlmPromptWidget::requestChatRefresh(bool scrollToBottom)
+{
+    m_chatRefreshScrollToBottomPending = m_chatRefreshScrollToBottomPending || scrollToBottom;
+    if (!m_pendingChatSessionId.isEmpty() && m_activeChatSessionId != m_pendingChatSessionId) {
+        m_chatViewDirty = true;
+        updateChatButtons();
+        return;
+    }
+    if (m_chatRefreshScheduled) return;
+    if (!m_chatRefreshTimer) {
+        updateChatView(m_chatRefreshScrollToBottomPending);
+        m_chatRefreshScrollToBottomPending = false;
+        return;
+    }
+    m_chatRefreshScheduled = true;
+    m_chatRefreshTimer->start();
+}
+
+void LlmPromptWidget::updateChatView(bool scrollToBottom)
+{
+    if (ui->tabMain->currentWidget() != ui->pageChat) {
+        m_chatViewDirty = true;
+        const ChatSession *session = activeChatSession();
+        ui->lblChatTitle->setText(session ? session->title : "未选择对话");
+        ui->lblChatModelInfo->setText(session ? QString("模型：%1").arg(session->modelName.isEmpty() ? "未设置" : session->modelName)
+                                             : "模型：未设置");
+        updateChatButtons();
+        return;
+    }
+
+    m_chatViewDirty = false;
+    QScrollBar *listBarBefore = ui->listChatMessages->verticalScrollBar();
+    if (listBarBefore) {
+        m_chatListScrollValue = listBarBefore->value();
+        m_chatListAutoScrollEnabled = (listBarBefore->maximum() - listBarBefore->value()) <= 4;
+    }
+    ui->listChatMessages->setUpdatesEnabled(false);
+    ui->listChatMessages->clear();
+
+    const ChatSession *session = activeChatSession();
+    if (!session) {
+        ui->lblChatTitle->setText("未选择对话");
+        ui->lblChatModelInfo->setText("模型：未设置");
+        ui->listChatMessages->setUpdatesEnabled(true);
+        updateChatButtons();
+        return;
+    }
+
+    ui->lblChatTitle->setText(session->title);
+    ui->lblChatModelInfo->setText(QString("模型：%1").arg(session->modelName.isEmpty() ? "未设置" : session->modelName));
+
+    const int viewportWidth = qMax(320, ui->listChatMessages->viewport()->width());
+    const int rowWidth = qMax(260, viewportWidth - 8);
+    const int maxBubbleWidth = qBound(280, int(viewportWidth * 0.66), qMax(280, viewportWidth - 56));
+    const int minBubbleWidth = 150;
+    const int bubbleBodyMaxHeight = 300;
+    const int autoScrollThreshold = 4;
+    auto scrollKeyFor = [](const QString &messageId, const QString &areaType, bool pending) {
+        return QString("%1|%2").arg(pending ? "__pending__" : messageId, areaType);
+    };
+    auto bindInnerScrollState = [&](QTextBrowser *view, const QString &key, const QString &areaType, bool pending, bool autoScroll) {
+        if (!view || !view->verticalScrollBar()) return;
+        view->viewport()->setProperty("chatScrollAreaType", areaType);
+        view->viewport()->setProperty("chatScrollPending", pending);
+        view->viewport()->setProperty("chatScrollKey", key);
+        connect(view->verticalScrollBar(), &QScrollBar::valueChanged, this, [this, key, areaType, pending](int value) {
+            m_chatInnerScrollValues.insert(key, value);
+            QScrollBar *bar = qobject_cast<QScrollBar*>(sender());
+            if (!bar) return;
+            const bool atBottom = (bar->maximum() - bar->value()) <= 4;
+            if (pending && areaType == "body") {
+                m_pendingChatBodyAutoScrollEnabled = atBottom;
+            } else if (pending && areaType == "thinking") {
+                m_pendingChatThinkingAutoScrollEnabled = atBottom;
+            }
+        });
+        QPointer<QTextBrowser> safeView(view);
+        QTimer::singleShot(0, view, [this, safeView, key, autoScroll]() {
+            if (!safeView || !safeView->verticalScrollBar()) return;
+            QScrollBar *bar = safeView->verticalScrollBar();
+            if (autoScroll) {
+                bar->setValue(bar->maximum());
+                m_chatInnerScrollValues.insert(key, bar->value());
+            } else if (m_chatInnerScrollValues.contains(key)) {
+                bar->setValue(qBound(bar->minimum(), m_chatInnerScrollValues.value(key), bar->maximum()));
+            }
+        });
+    };
+
+    auto appendBubbleRow = [&](const ChatMessage &message, bool pending) {
+        const bool isUser = (message.role == "user");
+        const QString bubbleBg = isUser ? "#27425f" : "#1f2834";
+        const QString bubbleBorder = isUser ? "#3f6b95" : "#3a4654";
+        const QString bubbleText = isUser ? "#eaf4ff" : "#dcdedf";
+        const QString content = message.content.trimmed();
+        const QString bodyHtml = markdownToHtml(escapeAnglePromptSyntax(content));
+        const QString thinkingText = message.thinking.trimmed();
+        const QString thinkingHtml = markdownToHtml(escapeAnglePromptSyntax(thinkingText));
+
+        QTextDocument bodyWidthDoc;
+        bodyWidthDoc.setHtml(bodyHtml);
+        QTextDocument thinkingWidthDoc;
+        thinkingWidthDoc.setHtml(thinkingHtml);
+        QFontMetrics titleFm(ui->listChatMessages->font());
+        const QString timestampText = formatChatTimestamp(message.createdAt);
+        const int naturalBodyWidth = int(std::ceil(bodyWidthDoc.idealWidth())) + 28;
+        const int naturalThinkingWidth = int(std::ceil(thinkingWidthDoc.idealWidth())) + 40;
+        const int naturalMetaWidth = titleFm.horizontalAdvance(timestampText) + 220;
+        const int imageGridWidth = message.imagePaths.isEmpty() ? 0 : 276;
+        const int bubbleWidth = qBound(minBubbleWidth,
+                                       qMax(qMax(qMax(naturalBodyWidth, naturalThinkingWidth), naturalMetaWidth), imageGridWidth),
+                                       maxBubbleWidth);
+
+        QListWidgetItem *item = new QListWidgetItem();
+        item->setFlags(item->flags() & ~Qt::ItemIsSelectable);
+        item->setData(Qt::UserRole, message.id);
+        item->setBackground(QBrush(Qt::transparent));
+
+        QWidget *rowWidget = new QWidget(ui->listChatMessages);
+        rowWidget->setAttribute(Qt::WA_StyledBackground, true);
+        rowWidget->setStyleSheet("background:transparent;");
+        QHBoxLayout *rowLayout = new QHBoxLayout(rowWidget);
+        rowLayout->setContentsMargins(6, 4, 6, 4);
+        rowLayout->setSpacing(0);
+
+        QFrame *bubble = new QFrame(rowWidget);
+        bubble->setStyleSheet(QString("QFrame{background:%1;border:1px solid %2;border-radius:10px;}").arg(bubbleBg, bubbleBorder));
+        bubble->setFixedWidth(bubbleWidth);
+        bubble->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+        QVBoxLayout *bubbleLayout = new QVBoxLayout(bubble);
+        bubbleLayout->setContentsMargins(10, 8, 10, 8);
+        bubbleLayout->setSpacing(6);
+
+        auto bindMessageMenu = [&](QWidget *widget) {
+            widget->setContextMenuPolicy(Qt::CustomContextMenu);
+            connect(widget, &QWidget::customContextMenuRequested, this, [this, message, widget](const QPoint &pos) {
+                showChatMessageMenuForId(message.id, widget->mapToGlobal(pos));
+            });
+        };
+        bindMessageMenu(rowWidget);
+        bindMessageMenu(bubble);
+
+        if (!content.isEmpty()) {
+            QTextBrowser *bodyView = new QTextBrowser(bubble);
+            bodyView->setReadOnly(true);
+            bodyView->setOpenExternalLinks(false);
+            bodyView->setFrameShape(QFrame::NoFrame);
+            bodyView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+            bodyView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+            bodyView->setFocusPolicy(Qt::WheelFocus);
+            bodyView->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+            bodyView->setStyleSheet(QString(
+                "QTextBrowser{border:none;background:transparent;color:%1;font-size:13px;padding:0px;}"
+                "QScrollBar:vertical{background:transparent;width:4px;margin:0px;}"
+                "QScrollBar::handle:vertical{background:#5f6f80;min-height:20px;border-radius:2px;}"
+                "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0px;}"
+                "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}").arg(bubbleText));
+            bodyView->document()->setDocumentMargin(0);
+            bodyView->viewport()->setAutoFillBackground(false);
+            bodyView->viewport()->installEventFilter(this);
+            bodyView->setHtml(bodyHtml);
+            bodyView->document()->setTextWidth(bubbleWidth - 20);
+            const int docHeight = qMax(16, int(bodyView->document()->size().height()) + 4);
+            const int finalBodyHeight = qMin(docHeight, bubbleBodyMaxHeight);
+            bodyView->setFixedHeight(finalBodyHeight);
+            if (docHeight > finalBodyHeight) {
+                bodyView->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+                if (bodyView->verticalScrollBar()) bodyView->verticalScrollBar()->setSingleStep(16);
+            }
+            bindInnerScrollState(bodyView, scrollKeyFor(message.id, "body", pending), "body", pending,
+                                 pending && m_pendingChatBodyAutoScrollEnabled);
+            bindMessageMenu(bodyView);
+            bubbleLayout->addWidget(bodyView);
+        }
+
+        if (!message.imagePaths.isEmpty()) {
+            QWidget *imageGrid = new QWidget(bubble);
+            QGridLayout *grid = new QGridLayout(imageGrid);
+            grid->setContentsMargins(0, 0, 0, 0);
+            grid->setSpacing(6);
+            for (int i = 0; i < message.imagePaths.size(); ++i) {
+                const QString path = message.imagePaths[i];
+                QPushButton *thumb = new QPushButton(imageGrid);
+                thumb->setFixedSize(82, 82);
+                thumb->setToolTip(path);
+                thumb->setText(QFileInfo::exists(path) ? QString() : "图片\n缺失");
+                thumb->setStyleSheet("QPushButton{background:#11161c;border:1px solid #3a4654;border-radius:6px;color:#8c96a0;padding:2px;}");
+                if (QFileInfo::exists(path)) {
+                    QImageReader reader(path);
+                    reader.setAutoTransform(true);
+                    const QSize originalSize = reader.size();
+                    if (originalSize.isValid()) {
+                        reader.setScaledSize(originalSize.scaled(76, 76, Qt::KeepAspectRatio));
+                    }
+                    const QImage image = reader.read();
+                    if (!image.isNull()) {
+                        thumb->setIcon(QIcon(QPixmap::fromImage(image)));
+                        thumb->setIconSize(QSize(76, 76));
+                    } else {
+                        thumb->setText("图片\n无法读取");
+                    }
+                    connect(thumb, &QPushButton::clicked, this, [this, path]() { openImagePath(path); });
+                } else {
+                    thumb->setEnabled(false);
+                }
+                grid->addWidget(thumb, i / 3, i % 3);
+            }
+            bubbleLayout->addWidget(imageGrid, 0, Qt::AlignLeft);
+        }
+
+        if (message.role == "assistant" && !thinkingText.isEmpty()) {
+            QPushButton *btnToggleThinking = new QPushButton(bubble);
+            btnToggleThinking->setCursor(Qt::PointingHandCursor);
+            btnToggleThinking->setFocusPolicy(Qt::NoFocus);
+            btnToggleThinking->setProperty("thinkingToggleButton", true);
+            btnToggleThinking->setStyleSheet(QString(
+                "QPushButton{background:#223041;border:1px solid #3a4b60;border-radius:4px;padding:2px 8px;color:%1;}"
+                "QPushButton:hover{background:#2d3f56;color:#ffffff;}").arg(bubbleText));
+            const bool expanded = pending ? m_pendingChatThinkingExpanded : m_expandedThinkingMessageIds.contains(message.id);
+            btnToggleThinking->setText(expanded ? "隐藏思考" : "显示思考");
+            bubbleLayout->addWidget(btnToggleThinking, 0, Qt::AlignLeft);
+
+            QTextBrowser *thinkingView = new QTextBrowser(bubble);
+            thinkingView->setReadOnly(true);
+            thinkingView->setOpenExternalLinks(false);
+            thinkingView->setFrameShape(QFrame::NoFrame);
+            thinkingView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+            thinkingView->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+            thinkingView->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+            thinkingView->setStyleSheet(
+                "QTextBrowser{border:1px solid #2e3742;border-radius:6px;background:#11161c;color:#dcdedf;padding:6px;}"
+                "QScrollBar:vertical{background:transparent;width:4px;margin:0px;}"
+                "QScrollBar::handle:vertical{background:#5f6f80;min-height:20px;border-radius:2px;}"
+                "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0px;}"
+                "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}");
+            thinkingView->viewport()->installEventFilter(this);
+            thinkingView->setHtml(thinkingHtml);
+            thinkingView->document()->setTextWidth(bubbleWidth - 28);
+            const int thinkingDocHeight = qMax(24, int(thinkingView->document()->size().height()) + 8);
+            thinkingView->setFixedHeight(qMin(thinkingDocHeight, 220));
+            thinkingView->setVisible(expanded);
+            bubbleLayout->addWidget(thinkingView);
+            bindInnerScrollState(thinkingView, scrollKeyFor(message.id, "thinking", pending), "thinking", pending,
+                                 expanded && pending && m_pendingChatThinkingAutoScrollEnabled);
+            bindMessageMenu(thinkingView);
+            connect(btnToggleThinking, &QPushButton::clicked, this, [this, message, pending, btnToggleThinking, thinkingView, rowWidget, rowLayout, bubble, item, rowWidth]() {
+                const bool checked = !thinkingView->isVisible();
+                if (pending) {
+                    m_pendingChatThinkingExpanded = checked;
+                } else if (checked) {
+                    m_expandedThinkingMessageIds.insert(message.id);
+                } else {
+                    m_expandedThinkingMessageIds.remove(message.id);
+                }
+                btnToggleThinking->setText(checked ? "隐藏思考" : "显示思考");
+                thinkingView->setVisible(checked);
+                if (checked && thinkingView->verticalScrollBar()) {
+                    QPointer<QTextBrowser> safeThinkingView(thinkingView);
+                    QTimer::singleShot(0, thinkingView, [safeThinkingView]() {
+                        if (safeThinkingView && safeThinkingView->verticalScrollBar()) {
+                            safeThinkingView->verticalScrollBar()->setValue(safeThinkingView->verticalScrollBar()->maximum());
+                        }
+                    });
+                }
+                bubble->adjustSize();
+                const int newRowHeight = bubble->sizeHint().height() + rowLayout->contentsMargins().top() + rowLayout->contentsMargins().bottom();
+                rowWidget->setFixedHeight(qMax(28, newRowHeight));
+                item->setSizeHint(QSize(rowWidth, rowWidget->height()));
+            });
+        }
+
+        QHBoxLayout *actionLayout = new QHBoxLayout();
+        actionLayout->setContentsMargins(0, 2, 0, 0);
+        actionLayout->setSpacing(6);
+
+        QLabel *timeLabel = new QLabel(timestampText, bubble);
+        timeLabel->setStyleSheet("font-size:11px; color:#8c96a0;");
+        actionLayout->addWidget(timeLabel);
+        actionLayout->addStretch(1);
+
+        auto makeActionButton = [&](const QString &text, const QString &tooltip) {
+            QPushButton *button = new QPushButton(text, bubble);
+            button->setCursor(Qt::PointingHandCursor);
+            button->setFocusPolicy(Qt::NoFocus);
+            button->setFixedHeight(24);
+            button->setToolTip(tooltip);
+            button->setStyleSheet(
+                "QPushButton{background:#18212b;border:1px solid #344254;border-radius:4px;color:#b9c4d0;padding:2px 7px;font-size:11px;}"
+                "QPushButton:hover{background:#263447;color:#ffffff;}"
+                "QPushButton:disabled{background:#171b20;border-color:#2a3038;color:#66707c;}");
+            return button;
+        };
+
+        const bool busy = !m_activeChatReply.isNull() || !m_activeGenerateReply.isNull();
+        if (!pending) {
+            QPushButton *btnCopy = makeActionButton("复制", "复制这条消息");
+            connect(btnCopy, &QPushButton::clicked, this, [this, message]() { copyChatMessage(message.id); });
+            actionLayout->addWidget(btnCopy);
+
+            if (message.role == "user") {
+                QPushButton *btnEdit = makeActionButton("编辑", "编辑这条用户消息并重新生成后续回复");
+                btnEdit->setEnabled(!busy);
+                connect(btnEdit, &QPushButton::clicked, this, [this, message]() { editChatMessage(message.id); });
+                actionLayout->addWidget(btnEdit);
+            } else if (message.role == "assistant") {
+                QPushButton *btnRegen = makeActionButton("重新生成", "基于上文重新生成这条回复");
+                btnRegen->setEnabled(!busy);
+                connect(btnRegen, &QPushButton::clicked, this, [this, message]() { regenerateChatFromMessage(message.id); });
+                actionLayout->addWidget(btnRegen);
+            }
+
+            QPushButton *btnDelete = makeActionButton("删除", "删除这条消息");
+            btnDelete->setEnabled(!busy);
+            connect(btnDelete, &QPushButton::clicked, this, [this, message]() { deleteChatMessage(message.id); });
+            actionLayout->addWidget(btnDelete);
+        }
+
+        bubbleLayout->addLayout(actionLayout);
+
+        if (isUser) {
+            rowLayout->addStretch(1);
+            rowLayout->addWidget(bubble, 0, Qt::AlignRight);
+        } else {
+            rowLayout->addWidget(bubble, 0, Qt::AlignLeft);
+            rowLayout->addStretch(1);
+        }
+
+        rowWidget->setMinimumWidth(rowWidth);
+        const int rowHeight = bubble->sizeHint().height() + rowLayout->contentsMargins().top() + rowLayout->contentsMargins().bottom();
+        rowWidget->setFixedHeight(qMax(28, rowHeight));
+        item->setSizeHint(QSize(rowWidth, rowWidget->height()));
+        ui->listChatMessages->addItem(item);
+        ui->listChatMessages->setItemWidget(item, rowWidget);
+    };
+
+    for (const ChatMessage &message : session->messages) {
+        appendBubbleRow(message, false);
+    }
+    if (session->id == m_pendingChatSessionId
+        && (!m_pendingChatAssistantReply.isEmpty() || !m_pendingChatAssistantThinking.trimmed().isEmpty())) {
+        appendBubbleRow(makeChatMessage("assistant", m_pendingChatAssistantReply, m_pendingChatAssistantThinking), true);
+    }
+
+    ui->listChatMessages->setUpdatesEnabled(true);
+    if (scrollToBottom && ui->listChatMessages->verticalScrollBar()) {
+        ui->listChatMessages->verticalScrollBar()->setValue(ui->listChatMessages->verticalScrollBar()->maximum());
+        m_chatListAutoScrollEnabled = true;
+        m_chatListScrollValue = ui->listChatMessages->verticalScrollBar()->value();
+    } else if (ui->listChatMessages->verticalScrollBar()) {
+        QScrollBar *bar = ui->listChatMessages->verticalScrollBar();
+        bar->setValue(qBound(bar->minimum(), m_chatListScrollValue, bar->maximum()));
+        m_chatListAutoScrollEnabled = (bar->maximum() - bar->value()) <= autoScrollThreshold;
+        m_chatListScrollValue = bar->value();
+    }
+    updateChatButtons();
+}
+
+void LlmPromptWidget::updateChatButtons()
+{
+    const bool hasSession = activeChatSession() != nullptr;
+    const bool busy = !m_activeChatReply.isNull() || !m_activeGenerateReply.isNull();
+    const bool generatingActiveSession = hasSession
+                                         && !m_activeGenerateReply.isNull()
+                                         && !m_currentGeneratedConversationId.isEmpty()
+                                         && m_activeChatSessionId == m_currentGeneratedConversationId;
+    const bool chattingActiveSession = hasSession
+                                       && !m_activeChatReply.isNull()
+                                       && !m_pendingChatSessionId.isEmpty()
+                                       && m_activeChatSessionId == m_pendingChatSessionId;
+    ui->btnRenameChat->setEnabled(hasSession && !busy);
+    ui->btnDeleteChat->setEnabled(hasSession && !busy);
+    ui->btnClearChats->setEnabled(!m_chatSessions.isEmpty() && !busy);
+    ui->btnChatSend->setEnabled(hasSession && !busy);
+    ui->btnChatStop->setEnabled(chattingActiveSession || generatingActiveSession);
+    ui->btnChatAddImages->setEnabled(hasSession && !busy);
+    ui->btnChatClearImages->setEnabled(hasSession && !m_pendingChatImagePaths.isEmpty() && !busy);
+    ui->btnContinueConversation->setEnabled(!m_currentGeneratedConversationId.isEmpty()
+                                            && chatSessionIndex(m_currentGeneratedConversationId) >= 0);
+}
+
+void LlmPromptWidget::updateChatImageInfoLabel()
+{
+    if (m_pendingChatImagePaths.isEmpty()) {
+        ui->lblChatImageInfo->setText("图片：未选择");
+        return;
+    }
+    QStringList names;
+    for (const QString &path : std::as_const(m_pendingChatImagePaths)) {
+        names.append(QFileInfo(path).fileName());
+        if (names.size() >= 3) break;
+    }
+    ui->lblChatImageInfo->setText(QString("图片：%1 张（%2%3）")
+                                      .arg(m_pendingChatImagePaths.size())
+                                      .arg(names.join(", "))
+                                      .arg(m_pendingChatImagePaths.size() > 3 ? " ..." : ""));
+}
+
+void LlmPromptWidget::updateChatStatus(const QString &text, bool isError)
+{
+    ui->lblChatStatus->setText(text);
+    ui->lblChatStatus->setStyleSheet(isError ? "color:#ff7b7b;" : "color:#8c96a0;");
+}
+
+QJsonArray LlmPromptWidget::buildOllamaMessagesPayload(const ChatSession &session) const
+{
+    QJsonArray messages;
+    if (!session.systemPrompt.trimmed().isEmpty()) {
+        QJsonObject system;
+        system["role"] = "system";
+        system["content"] = session.systemPrompt;
+        messages.append(system);
+    }
+    for (const ChatMessage &message : session.messages) {
+        QJsonObject obj;
+        obj["role"] = message.role;
+        obj["content"] = message.content;
+        if (!message.imagePaths.isEmpty()) {
+            QJsonArray images;
+            for (const QString &path : message.imagePaths) {
+                QFile file(path);
+                if (!file.exists() || !file.open(QIODevice::ReadOnly)) continue;
+                images.append(QString::fromLatin1(file.readAll().toBase64()));
+            }
+            if (!images.isEmpty()) obj["images"] = images;
+        }
+        messages.append(obj);
+    }
+    return messages;
+}
+
+QJsonArray LlmPromptWidget::buildLmStudioMessagesPayload(const ChatSession &session) const
+{
+    QJsonArray messages;
+    if (!session.systemPrompt.trimmed().isEmpty()) {
+        QJsonObject system;
+        system["role"] = "system";
+        system["content"] = session.systemPrompt;
+        messages.append(system);
+    }
+    for (const ChatMessage &message : session.messages) {
+        QJsonObject obj;
+        obj["role"] = message.role;
+        if (message.imagePaths.isEmpty()) {
+            obj["content"] = message.content;
+        } else {
+            QJsonArray content;
+            QJsonObject textPart;
+            textPart["type"] = "text";
+            textPart["text"] = message.content;
+            content.append(textPart);
+            for (const QString &path : message.imagePaths) {
+                QFile file(path);
+                if (!file.exists() || !file.open(QIODevice::ReadOnly)) continue;
+                QJsonObject imageUrl;
+                imageUrl["url"] = QString("data:%1;base64,%2").arg(imageMimeType(path), QString::fromLatin1(file.readAll().toBase64()));
+                QJsonObject imagePart;
+                imagePart["type"] = "image_url";
+                imagePart["image_url"] = imageUrl;
+                content.append(imagePart);
+            }
+            obj["content"] = content;
+        }
+        messages.append(obj);
+    }
+    return messages;
+}
+
+QJsonObject LlmPromptWidget::buildChatPayload(const ChatSession &session) const
+{
+    QJsonObject payload;
+    payload["model"] = session.modelName;
+    payload["stream"] = true;
+    if (session.backend == "lmstudio") {
+        payload["messages"] = buildLmStudioMessagesPayload(session);
+        for (auto it = session.options.constBegin(); it != session.options.constEnd(); ++it) {
+            payload[it.key()] = it.value();
+        }
+    } else {
+        payload["messages"] = buildOllamaMessagesPayload(session);
+        payload["think"] = ui->chkChatEnableThinking->isChecked();
+        payload["options"] = session.options;
+    }
+    return payload;
+}
+
+void LlmPromptWidget::startChatRequest(bool)
+{
+    ChatSession *session = activeChatSession();
+    if (!session || !m_activeChatReply.isNull()) return;
+    if (session->modelName.trimmed().isEmpty() || session->endpoint.trimmed().isEmpty()) {
+        updateChatStatus("当前对话缺少模型或 Endpoint", true);
+        return;
+    }
+
+    m_chatStreamBuffer.clear();
+    m_pendingChatSessionId = session->id;
+    m_pendingChatAssistantReply.clear();
+    m_pendingChatAssistantThinking.clear();
+    m_pendingChatThinkingExpanded = false;
+    m_pendingChatBodyAutoScrollEnabled = true;
+    m_pendingChatThinkingAutoScrollEnabled = true;
+    m_chatStreamReportedError.clear();
+    updateChatView(false);
+    updateChatStatus("正在继续对话...");
+    ui->btnChatSend->setEnabled(false);
+    ui->btnChatStop->setEnabled(true);
+
+    const QJsonObject payload = buildChatPayload(*session);
+    ui->textLastRequest->setPlainText(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Indented)));
+    QNetworkRequest request(QUrl(session->endpoint + (session->backend == "lmstudio" ? "/v1/chat/completions" : "/api/chat")));
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    QNetworkReply *reply = m_netManager->post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    m_activeChatReply = reply;
+
+    connect(reply, &QNetworkReply::readyRead, this, [this, reply]() {
+        if (m_activeChatReply != reply) return;
+        processChatStreamChunk(reply->readAll());
+    });
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        if (m_activeChatReply == reply) {
+            const QByteArray tail = reply->readAll();
+            if (!tail.isEmpty()) processChatStreamChunk(tail);
+        }
+
+        const bool canceled = (reply->error() == QNetworkReply::OperationCanceledError);
+        const bool hasNetworkError = (reply->error() != QNetworkReply::NoError);
+        QString errorText;
+        if (hasNetworkError && !canceled) errorText = reply->errorString();
+        if (!m_chatStreamReportedError.trimmed().isEmpty()) errorText = m_chatStreamReportedError.trimmed();
+
+        if (m_activeChatReply == reply) m_activeChatReply = nullptr;
+        reply->deleteLater();
+
+        if (!m_chatStreamBuffer.trimmed().isEmpty()) {
+            processChatStreamLine(m_chatStreamBuffer.toUtf8());
+            m_chatStreamBuffer.clear();
+        }
+
+        if (!errorText.isEmpty() || canceled) {
+            rollbackInflightChatInput();
+            updateChatStatus(!errorText.isEmpty() ? ("继续对话失败: " + errorText) : "已停止继续对话", !errorText.isEmpty());
+            updateChatButtons();
+            return;
+        }
+
+        appendPendingAssistantToActiveChat();
+        updateChatStatus("继续对话完成");
+        updateChatButtons();
+        saveConversations();
+    });
+}
+
+void LlmPromptWidget::appendPendingAssistantToActiveChat()
+{
+    const QString completedSessionId = m_pendingChatSessionId.isEmpty() ? m_activeChatSessionId : m_pendingChatSessionId;
+    const int sessionIndex = chatSessionIndex(completedSessionId);
+    if (sessionIndex < 0) {
+        m_pendingChatSessionId.clear();
+        return;
+    }
+    ChatSession *session = &m_chatSessions[sessionIndex];
+    if (!m_pendingChatAssistantReply.trimmed().isEmpty() || !m_pendingChatAssistantThinking.trimmed().isEmpty()) {
+        ChatMessage assistant = makeChatMessage("assistant", m_pendingChatAssistantReply, m_pendingChatAssistantThinking);
+        if (m_pendingChatThinkingExpanded && !assistant.thinking.trimmed().isEmpty()) {
+            m_expandedThinkingMessageIds.insert(assistant.id);
+        }
+        session->messages.append(assistant);
+        session->updatedAt = QDateTime::currentDateTime();
+    }
+    m_pendingChatAssistantReply.clear();
+    m_pendingChatAssistantThinking.clear();
+    m_pendingChatSessionId.clear();
+    m_pendingChatThinkingExpanded = false;
+    m_pendingChatBodyAutoScrollEnabled = true;
+    m_pendingChatThinkingAutoScrollEnabled = true;
+    m_inflightChatUserText.clear();
+    m_inflightChatUserImages.clear();
+    m_inflightChatUserAppended = false;
+    std::sort(m_chatSessions.begin(), m_chatSessions.end(), [](const ChatSession &a, const ChatSession &b) {
+        return a.updatedAt > b.updatedAt;
+    });
+    refreshConversationList();
+    if (m_activeChatSessionId == completedSessionId) {
+        updateChatView(m_chatListAutoScrollEnabled);
+    } else {
+        updateChatButtons();
+    }
+}
+
+void LlmPromptWidget::rollbackInflightChatInput()
+{
+    const QString rolledBackSessionId = m_pendingChatSessionId;
+    const bool rollbackIsVisible = m_activeChatSessionId == rolledBackSessionId;
+    if (rollbackIsVisible) {
+        if (!m_inflightChatUserText.trimmed().isEmpty()) {
+            ui->textChatInput->setPlainText(m_inflightChatUserText);
+            ui->textChatInput->moveCursor(QTextCursor::End);
+        }
+        for (const QString &path : std::as_const(m_inflightChatUserImages)) {
+            if (!m_pendingChatImagePaths.contains(path)) m_pendingChatImagePaths.append(path);
+        }
+    }
+    const int sessionIndex = chatSessionIndex(m_pendingChatSessionId);
+    ChatSession *session = sessionIndex >= 0 ? &m_chatSessions[sessionIndex] : nullptr;
+    if (session && m_inflightChatUserAppended && !session->messages.isEmpty()) {
+        const ChatMessage &last = session->messages.last();
+        if (last.role == "user" && last.content == m_inflightChatUserText) {
+            session->messages.removeLast();
+        }
+    }
+    m_pendingChatAssistantReply.clear();
+    m_pendingChatAssistantThinking.clear();
+    m_pendingChatSessionId.clear();
+    m_pendingChatThinkingExpanded = false;
+    m_pendingChatBodyAutoScrollEnabled = true;
+    m_pendingChatThinkingAutoScrollEnabled = true;
+    m_inflightChatUserText.clear();
+    m_inflightChatUserImages.clear();
+    m_inflightChatUserAppended = false;
+    updateChatImageInfoLabel();
+    if (m_activeChatSessionId == rolledBackSessionId) updateChatView(false);
+    else updateChatButtons();
+    saveConversations();
+}
+
+void LlmPromptWidget::processChatStreamChunk(const QByteArray &chunk)
+{
+    if (chunk.isEmpty()) return;
+    m_chatStreamBuffer += QString::fromUtf8(chunk);
+    int newlineIndex = m_chatStreamBuffer.indexOf('\n');
+    while (newlineIndex >= 0) {
+        const QString line = m_chatStreamBuffer.left(newlineIndex).trimmed();
+        m_chatStreamBuffer.remove(0, newlineIndex + 1);
+        if (!line.isEmpty()) processChatStreamLine(line.toUtf8());
+        newlineIndex = m_chatStreamBuffer.indexOf('\n');
+    }
+}
+
+void LlmPromptWidget::processChatStreamLine(const QByteArray &line)
+{
+    QByteArray payload = line.trimmed();
+    if (payload.isEmpty()) return;
+    if (payload.startsWith("data:")) payload = payload.mid(5).trimmed();
+    if (payload.isEmpty() || payload == "[DONE]") return;
+
+    const QJsonDocument doc = QJsonDocument::fromJson(payload);
+    if (!doc.isObject()) return;
+    const QJsonObject root = doc.object();
+    QString streamError;
+    if (root["error"].isString()) streamError = root["error"].toString().trimmed();
+    else if (root["error"].isObject()) streamError = root["error"].toObject()["message"].toString().trimmed();
+    if (!streamError.isEmpty()) {
+        m_chatStreamReportedError = streamError;
+        return;
+    }
+
+    QString piece;
+    QString thinkingPiece;
+    if (root["message"].isObject()) {
+        const QJsonObject message = root["message"].toObject();
+        piece = message["content"].toString();
+        thinkingPiece = message["thinking"].toString();
+        if (thinkingPiece.isEmpty()) thinkingPiece = message["reasoning"].toString();
+        if (thinkingPiece.isEmpty()) thinkingPiece = message["reasoning_content"].toString();
+    }
+    if (piece.isEmpty()) piece = root["response"].toString();
+    if (piece.isEmpty()) piece = root["content"].toString();
+    if (thinkingPiece.isEmpty()) thinkingPiece = root["thinking"].toString();
+    if (thinkingPiece.isEmpty()) thinkingPiece = root["reasoning"].toString();
+    if (thinkingPiece.isEmpty()) thinkingPiece = root["reasoning_content"].toString();
+
+    if ((piece.isEmpty() || thinkingPiece.isEmpty()) && root["choices"].isArray()) {
+        const QJsonArray choices = root["choices"].toArray();
+        if (!choices.isEmpty() && choices.first().isObject()) {
+            const QJsonObject choice = choices.first().toObject();
+            const QJsonObject delta = choice["delta"].toObject();
+            const QJsonObject messageObj = choice["message"].toObject();
+            if (piece.isEmpty()) piece = delta["content"].toString();
+            if (piece.isEmpty()) piece = messageObj["content"].toString();
+            if (thinkingPiece.isEmpty()) thinkingPiece = delta["reasoning"].toString();
+            if (thinkingPiece.isEmpty()) thinkingPiece = delta["thinking"].toString();
+            if (thinkingPiece.isEmpty()) thinkingPiece = delta["reasoning_content"].toString();
+            if (thinkingPiece.isEmpty()) thinkingPiece = messageObj["reasoning"].toString();
+            if (thinkingPiece.isEmpty()) thinkingPiece = messageObj["thinking"].toString();
+            if (thinkingPiece.isEmpty()) thinkingPiece = messageObj["reasoning_content"].toString();
+        }
+    }
+
+    if (!piece.isEmpty()) appendStreamPiece(m_pendingChatAssistantReply, piece);
+    if (!thinkingPiece.isEmpty()) appendStreamPiece(m_pendingChatAssistantThinking, thinkingPiece);
+    const bool canRefreshPending = m_activeChatSessionId == m_pendingChatSessionId
+                                   && m_chatListAutoScrollEnabled
+                                   && m_pendingChatBodyAutoScrollEnabled
+                                   && m_pendingChatThinkingAutoScrollEnabled;
+    if (canRefreshPending) requestChatRefresh(false);
+    else m_chatViewDirty = true;
+}
+
 void LlmPromptWidget::loadSettings()
 {
     QFile file(settingsPath());
@@ -328,6 +1454,7 @@ void LlmPromptWidget::loadSettings()
         ui->spinTemperature->setValue(root["llm_temperature"].toDouble(0.4));
         ui->spinCandidateLimit->setValue(root["llm_candidate_limit"].toInt(12));
         ui->spinPreferenceTopCount->setValue(root["llm_preference_top_count"].toInt(15));
+        ui->comboPreferencePromptScope->setCurrentIndex(qBound(0, root["llm_preference_prompt_scope"].toInt(0), 2));
         ui->editCustomOptions->setText(root["llm_custom_options"].toString());
         ui->chkEnableThink->setChecked(root["llm_enable_think"].toBool(false));
         QString savedTaskKey = root["llm_task_type"].toString();
@@ -382,6 +1509,7 @@ void LlmPromptWidget::loadSettings()
     ui->spinTemperature->setValue(0.4);
     ui->spinCandidateLimit->setValue(12);
     ui->spinPreferenceTopCount->setValue(15);
+    ui->comboPreferencePromptScope->setCurrentIndex(0);
     ui->editCustomOptions->clear();
     ui->chkEnableThink->setChecked(false);
     ui->comboTaskType->setCurrentIndex(0);
@@ -431,6 +1559,7 @@ void LlmPromptWidget::saveSettings() const
     root["llm_temperature"] = ui->spinTemperature->value();
     root["llm_candidate_limit"] = ui->spinCandidateLimit->value();
     root["llm_preference_top_count"] = ui->spinPreferenceTopCount->value();
+    root["llm_preference_prompt_scope"] = ui->comboPreferencePromptScope->currentIndex();
     root["llm_custom_options"] = ui->editCustomOptions->text().trimmed();
     root["llm_enable_think"] = ui->chkEnableThink->isChecked();
     root["llm_task_type"] = currentTaskKey();
@@ -455,6 +1584,332 @@ void LlmPromptWidget::saveSettings() const
 
     if (file.open(QIODevice::WriteOnly)) {
         file.write(QJsonDocument(root).toJson());
+    }
+}
+
+void LlmPromptWidget::onNewChatClicked()
+{
+    if (!m_activeChatReply.isNull() || !m_activeGenerateReply.isNull()) return;
+    ChatSession session = createChatSession("新对话", "自由对话");
+    m_chatSessions.prepend(session);
+    selectChatSession(session.id);
+    updateChatStatus("已创建新对话");
+}
+
+void LlmPromptWidget::onRenameChatClicked()
+{
+    if (!m_activeChatReply.isNull() || !m_activeGenerateReply.isNull()) return;
+    ChatSession *session = activeChatSession();
+    if (!session) return;
+    bool ok = false;
+    QString title = QInputDialog::getText(nullptr, "重命名对话", "对话标题:", QLineEdit::Normal, session->title, &ok).trimmed();
+    if (!ok || title.isEmpty()) return;
+    session->title = title;
+    session->updatedAt = QDateTime::currentDateTime();
+    refreshConversationList();
+    updateChatView(false);
+    saveConversations();
+}
+
+void LlmPromptWidget::onDeleteChatClicked()
+{
+    if (!m_activeChatReply.isNull() || !m_activeGenerateReply.isNull()) return;
+    int index = chatSessionIndex(m_activeChatSessionId);
+    if (index < 0) return;
+    if (QMessageBox::question(nullptr, "删除对话", "确定删除当前对话吗？") != QMessageBox::Yes) return;
+    const QString removedId = m_chatSessions[index].id;
+    m_chatSessions.removeAt(index);
+    if (m_currentGeneratedConversationId == removedId) m_currentGeneratedConversationId.clear();
+    if (m_pendingChatSessionId == removedId) {
+        m_pendingChatSessionId.clear();
+        m_pendingChatAssistantReply.clear();
+        m_pendingChatAssistantThinking.clear();
+    }
+    m_activeChatSessionId = m_chatSessions.isEmpty() ? QString() : m_chatSessions.first().id;
+    refreshConversationList();
+    updateChatView(false);
+    updateChatButtons();
+    saveConversations();
+}
+
+void LlmPromptWidget::onClearChatsClicked()
+{
+    if (!m_activeChatReply.isNull() || !m_activeGenerateReply.isNull() || m_chatSessions.isEmpty()) return;
+    if (QMessageBox::question(nullptr, "清空历史", "确定清空所有对话历史吗？") != QMessageBox::Yes) return;
+    m_chatSessions.clear();
+    m_activeChatSessionId.clear();
+    m_currentGeneratedConversationId.clear();
+    m_pendingChatSessionId.clear();
+    m_pendingChatAssistantReply.clear();
+    m_pendingChatAssistantThinking.clear();
+    refreshConversationList();
+    updateChatView(false);
+    updateChatButtons();
+    saveConversations();
+}
+
+void LlmPromptWidget::onChatSearchChanged(const QString &)
+{
+    refreshConversationList();
+}
+
+void LlmPromptWidget::onChatSelectionChanged()
+{
+    if (m_syncingChatList) return;
+    QListWidgetItem *item = ui->listChatHistory->currentItem();
+    if (!item) return;
+    selectChatSession(item->data(Qt::UserRole).toString(), false);
+}
+
+void LlmPromptWidget::onChatSendClicked()
+{
+    if (!m_activeChatReply.isNull()) return;
+    ChatSession *session = activeChatSession();
+    if (!session) {
+        onNewChatClicked();
+        session = activeChatSession();
+    }
+    if (!session) return;
+
+    const QString userText = ui->textChatInput->toPlainText().trimmed();
+    if (userText.isEmpty()) {
+        updateChatStatus("请先输入继续修改的要求", true);
+        return;
+    }
+
+    session->backend = backendKey(currentBackend());
+    session->endpoint = endpointBaseUrl();
+    session->modelName = ui->comboModel->currentText().trimmed();
+    session->systemPrompt = ui->textSystemPrompt->toPlainText();
+    session->options = buildGenerationOptions();
+    session->updatedAt = QDateTime::currentDateTime();
+
+    m_inflightChatUserText = userText;
+    m_inflightChatUserImages = m_pendingChatImagePaths;
+    m_inflightChatUserAppended = false;
+    session->messages.append(makeChatMessage("user", userText, QString(), m_inflightChatUserImages));
+    m_inflightChatUserAppended = true;
+    ui->textChatInput->clear();
+    m_pendingChatImagePaths.clear();
+    updateChatImageInfoLabel();
+    refreshConversationList();
+    updateChatView(true);
+    saveConversations();
+    startChatRequest();
+}
+
+void LlmPromptWidget::onChatStopClicked()
+{
+    if (!m_activeGenerateReply.isNull()
+        && !m_currentGeneratedConversationId.isEmpty()
+        && m_activeChatSessionId == m_currentGeneratedConversationId) {
+        ui->btnChatStop->setEnabled(false);
+        updateChatStatus("正在停止提示词生成...");
+        onStopGenerateClicked();
+        return;
+    }
+
+    if (m_activeChatReply.isNull() || m_activeChatSessionId != m_pendingChatSessionId) return;
+    ui->btnChatStop->setEnabled(false);
+    updateChatStatus("正在停止继续对话...");
+    m_activeChatReply->abort();
+}
+
+void LlmPromptWidget::onChatAddImagesClicked()
+{
+    QStringList files = QFileDialog::getOpenFileNames(nullptr, "选择参考图片", QString(), "Images (*.png *.jpg *.jpeg *.webp *.bmp)");
+    for (const QString &path : files) {
+        if (!m_pendingChatImagePaths.contains(path)) m_pendingChatImagePaths.append(path);
+    }
+    updateChatImageInfoLabel();
+    updateChatButtons();
+}
+
+void LlmPromptWidget::onChatClearImagesClicked()
+{
+    m_pendingChatImagePaths.clear();
+    updateChatImageInfoLabel();
+    updateChatButtons();
+}
+
+void LlmPromptWidget::showChatMessageMenu(const QPoint &pos)
+{
+    if (!m_activeChatReply.isNull() || !m_activeGenerateReply.isNull()) return;
+    QListWidgetItem *item = ui->listChatMessages->itemAt(pos);
+    if (!item) return;
+    const QString messageId = item->data(Qt::UserRole).toString();
+    if (messageId.isEmpty()) return;
+    showChatMessageMenuForId(messageId, ui->listChatMessages->viewport()->mapToGlobal(pos));
+}
+
+void LlmPromptWidget::showChatMessageMenuForId(const QString &messageId, const QPoint &globalPos)
+{
+    ChatSession *session = activeChatSession();
+    if (!session) return;
+    const auto it = std::find_if(session->messages.begin(), session->messages.end(), [&](const ChatMessage &message) {
+        return message.id == messageId;
+    });
+    if (it == session->messages.end()) return;
+
+    QMenu menu(this);
+    QAction *copyAction = menu.addAction("复制消息");
+    QAction *editAction = nullptr;
+    QAction *regenerateAction = nullptr;
+    const bool busy = !m_activeChatReply.isNull() || !m_activeGenerateReply.isNull();
+    if (it->role == "user") editAction = menu.addAction("编辑并重新生成");
+    if (it->role == "assistant") regenerateAction = menu.addAction("重新生成回答");
+    QAction *deleteAction = menu.addAction("删除消息");
+    if (editAction) editAction->setEnabled(!busy);
+    if (regenerateAction) regenerateAction->setEnabled(!busy);
+    deleteAction->setEnabled(!busy);
+    QAction *chosen = menu.exec(globalPos);
+    if (!chosen) return;
+    if (chosen == copyAction) copyChatMessage(messageId);
+    else if (chosen == editAction) editChatMessage(messageId);
+    else if (chosen == regenerateAction) regenerateChatFromMessage(messageId);
+    else if (chosen == deleteAction) deleteChatMessage(messageId);
+}
+
+void LlmPromptWidget::copyChatMessage(const QString &messageId) const
+{
+    const ChatSession *session = activeChatSession();
+    if (!session) return;
+    for (const ChatMessage &message : session->messages) {
+        if (message.id == messageId) {
+            QApplication::clipboard()->setText(message.content);
+            return;
+        }
+    }
+}
+
+void LlmPromptWidget::editChatMessage(const QString &messageId)
+{
+    ChatSession *session = activeChatSession();
+    if (!session || !m_activeChatReply.isNull() || !m_activeGenerateReply.isNull()) return;
+    for (int i = 0; i < session->messages.size(); ++i) {
+        if (session->messages[i].id != messageId || session->messages[i].role != "user") continue;
+        QDialog dialog;
+        dialog.setWindowTitle("编辑消息");
+        dialog.resize(620, 460);
+        QVBoxLayout *layout = new QVBoxLayout(&dialog);
+
+        QPlainTextEdit *textEdit = new QPlainTextEdit(&dialog);
+        textEdit->setPlainText(session->messages[i].content);
+        textEdit->setMinimumHeight(180);
+        layout->addWidget(textEdit);
+
+        QLabel *imageLabel = new QLabel("图片", &dialog);
+        layout->addWidget(imageLabel);
+
+        QListWidget *imageList = new QListWidget(&dialog);
+        imageList->setSelectionMode(QAbstractItemView::ExtendedSelection);
+        imageList->setMinimumHeight(110);
+        for (const QString &path : std::as_const(session->messages[i].imagePaths)) {
+            QListWidgetItem *imageItem = new QListWidgetItem(QFileInfo(path).fileName());
+            imageItem->setData(Qt::UserRole, path);
+            imageItem->setToolTip(path);
+            imageList->addItem(imageItem);
+        }
+        layout->addWidget(imageList);
+
+        QHBoxLayout *imageButtons = new QHBoxLayout();
+        QPushButton *btnAddImage = new QPushButton("添加图片", &dialog);
+        QPushButton *btnRemoveImage = new QPushButton("删除选中", &dialog);
+        QPushButton *btnClearImages = new QPushButton("清空图片", &dialog);
+        imageButtons->addWidget(btnAddImage);
+        imageButtons->addWidget(btnRemoveImage);
+        imageButtons->addWidget(btnClearImages);
+        imageButtons->addStretch(1);
+        layout->addLayout(imageButtons);
+
+        QHBoxLayout *buttons = new QHBoxLayout();
+        buttons->addStretch(1);
+        QPushButton *btnOk = new QPushButton("保存并重新生成", &dialog);
+        QPushButton *btnCancel = new QPushButton("取消", &dialog);
+        buttons->addWidget(btnOk);
+        buttons->addWidget(btnCancel);
+        layout->addLayout(buttons);
+
+        connect(btnAddImage, &QPushButton::clicked, &dialog, [&dialog, imageList]() {
+            const QStringList files = QFileDialog::getOpenFileNames(nullptr, "选择参考图片", QString(), "Images (*.png *.jpg *.jpeg *.webp *.bmp)");
+            for (const QString &path : files) {
+                bool exists = false;
+                for (int row = 0; row < imageList->count(); ++row) {
+                    if (imageList->item(row)->data(Qt::UserRole).toString() == path) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (exists) continue;
+                QListWidgetItem *imageItem = new QListWidgetItem(QFileInfo(path).fileName());
+                imageItem->setData(Qt::UserRole, path);
+                imageItem->setToolTip(path);
+                imageList->addItem(imageItem);
+            }
+        });
+        connect(btnRemoveImage, &QPushButton::clicked, &dialog, [imageList]() {
+            const QList<QListWidgetItem*> selected = imageList->selectedItems();
+            for (QListWidgetItem *item : selected) {
+                delete imageList->takeItem(imageList->row(item));
+            }
+        });
+        connect(btnClearImages, &QPushButton::clicked, imageList, &QListWidget::clear);
+        connect(btnOk, &QPushButton::clicked, &dialog, &QDialog::accept);
+        connect(btnCancel, &QPushButton::clicked, &dialog, &QDialog::reject);
+
+        if (dialog.exec() != QDialog::Accepted) return;
+        QString text = textEdit->toPlainText().trimmed();
+        if (text.isEmpty()) return;
+        QStringList imagePaths;
+        for (int row = 0; row < imageList->count(); ++row) {
+            const QString path = imageList->item(row)->data(Qt::UserRole).toString();
+            if (!path.isEmpty()) imagePaths.append(path);
+        }
+
+        session->messages[i].content = text;
+        session->messages[i].imagePaths = imagePaths;
+        session->messages[i].createdAt = QDateTime::currentDateTime();
+        while (session->messages.size() > i + 1) session->messages.removeLast();
+        session->updatedAt = QDateTime::currentDateTime();
+        m_inflightChatUserText.clear();
+        m_inflightChatUserImages.clear();
+        m_inflightChatUserAppended = false;
+        refreshConversationList();
+        updateChatView(false);
+        saveConversations();
+        startChatRequest();
+        return;
+    }
+}
+
+void LlmPromptWidget::regenerateChatFromMessage(const QString &messageId)
+{
+    ChatSession *session = activeChatSession();
+    if (!session || !m_activeChatReply.isNull() || !m_activeGenerateReply.isNull()) return;
+    for (int i = 0; i < session->messages.size(); ++i) {
+        if (session->messages[i].id != messageId || session->messages[i].role != "assistant") continue;
+        while (session->messages.size() > i) session->messages.removeLast();
+        session->updatedAt = QDateTime::currentDateTime();
+        refreshConversationList();
+        updateChatView(false);
+        saveConversations();
+        startChatRequest(true);
+        return;
+    }
+}
+
+void LlmPromptWidget::deleteChatMessage(const QString &messageId)
+{
+    ChatSession *session = activeChatSession();
+    if (!session || !m_activeChatReply.isNull() || !m_activeGenerateReply.isNull()) return;
+    for (int i = 0; i < session->messages.size(); ++i) {
+        if (session->messages[i].id != messageId) continue;
+        session->messages.removeAt(i);
+        session->updatedAt = QDateTime::currentDateTime();
+        refreshConversationList();
+        updateChatView(false);
+        saveConversations();
+        return;
     }
 }
 
@@ -966,12 +2421,24 @@ QString LlmPromptWidget::preferenceSummary() const
         return lines;
     };
 
+    const int scopeIndex = ui->comboPreferencePromptScope->currentIndex();
+    const bool includePositive = scopeIndex == 0 || scopeIndex == 1;
+    const bool includeNegative = scopeIndex == 0 || scopeIndex == 2;
+    const QString scopeText = scopeIndex == 1
+        ? "positive prompt only"
+        : (scopeIndex == 2 ? "negative prompt only" : "positive and negative prompts");
+
     QString summary;
     summary += QString("History images: %1\n").arg(items.size());
     summary += QString("Top count setting: %1\n").arg(topLimit);
-    summary += "Top positive tags: " + topList(tagCounts, topLimit).join(", ") + "\n";
-    summary += "Top LoRAs: " + topList(loraCounts, topLimit).join(", ") + "\n";
-    summary += "Top negative tags: " + topList(negativeCounts, topLimit).join(", ");
+    summary += "Requested prompt scope: " + scopeText + "\n";
+    if (includePositive) {
+        summary += "Top positive tags: " + topList(tagCounts, topLimit).join(", ") + "\n";
+        summary += "Top LoRAs: " + topList(loraCounts, topLimit).join(", ") + "\n";
+    }
+    if (includeNegative) {
+        summary += "Top negative tags: " + topList(negativeCounts, topLimit).join(", ");
+    }
     return summary.trimmed();
 }
 
@@ -1594,7 +3061,7 @@ void LlmPromptWidget::onGenerateClicked()
     saveSettings();
 
     if (ui->textInstruction->toPlainText().trimmed().isEmpty()) {
-        QMessageBox::information(this, "提示", "请先输入生成指令。");
+        QMessageBox::information(nullptr, "提示", "请先输入生成指令。");
         return;
     }
 
@@ -1605,7 +3072,7 @@ void LlmPromptWidget::onGenerateClicked()
         QStringList models = readInstalledModelsSync(&ok, &errorText);
         if (!ok || models.isEmpty()) {
             updateStatus(QString("未能自动获取 %1 模型: %2").arg(currentBackendName(), errorText), true);
-            QMessageBox::warning(this, "错误", QString("没有可用的 %1 模型，请先启动服务或手动填写模型名。").arg(currentBackendName()));
+            QMessageBox::warning(nullptr, "错误", QString("没有可用的 %1 模型，请先启动服务或手动填写模型名。").arg(currentBackendName()));
             return;
         }
         populateModels(models);
@@ -1620,7 +3087,41 @@ void LlmPromptWidget::onGenerateClicked()
     m_lastAssistantVisibleText.clear();
     m_activeModelName = modelName;
 
+    QStringList contextLines;
+    const QString instruction = ui->textInstruction->toPlainText().trimmed();
+    if (!instruction.isEmpty()) contextLines << instruction;
+    const QString sourcePrompt = ui->textSourcePrompt->toPlainText().trimmed();
+    if (!sourcePrompt.isEmpty()) contextLines << sourcePrompt;
+    if (!m_lastRenderedPrompt.trimmed().isEmpty()) contextLines << m_lastRenderedPrompt.trimmed();
+
+    ChatSession generatedSession = createChatSession(makeChatTitle(ui->comboTaskType->currentText(), instruction), ui->comboTaskType->currentText());
+    generatedSession.modelName = modelName;
+    QStringList generatedImagePaths;
+    if (ui->chkSendSelectedImages->isChecked()) {
+        for (int i = 0; i < ui->listImageCandidates->count(); ++i) {
+            QListWidgetItem *item = ui->listImageCandidates->item(i);
+            if (!item || item->checkState() != Qt::Checked) continue;
+            const QString path = item->data(Qt::UserRole).toString();
+            if (!path.isEmpty()) generatedImagePaths.append(path);
+            if (generatedImagePaths.size() >= 4) break;
+        }
+    }
+    generatedSession.messages.append(makeChatMessage("user", contextLines.join("\n\n"), QString(), generatedImagePaths));
+    m_chatSessions.prepend(generatedSession);
+    m_activeChatSessionId = generatedSession.id;
+    m_currentGeneratedConversationId = generatedSession.id;
+    m_pendingChatSessionId = generatedSession.id;
+    m_pendingChatAssistantReply.clear();
+    m_pendingChatAssistantThinking.clear();
+    m_pendingChatBodyAutoScrollEnabled = true;
+    m_pendingChatThinkingAutoScrollEnabled = true;
+    refreshConversationList();
+    ui->tabMain->setCurrentWidget(ui->pageChat);
+    updateChatView(true);
+    saveConversations();
+
     updateStatus(QString("正在调用 %1 生成提示词...").arg(currentBackendName()));
+    updateChatStatus(QString("正在调用 %1 生成提示词...").arg(currentBackendName()));
     ui->textResult->clear();
     ui->textThinking->clear();
     ui->btnToggleThinking->setChecked(false);
@@ -1637,6 +3138,7 @@ void LlmPromptWidget::onGenerateClicked()
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     QNetworkReply *reply = m_netManager->post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
     m_activeGenerateReply = reply;
+    updateChatButtons();
     connect(reply, &QNetworkReply::readyRead, this, [this, reply]() {
         if (m_activeGenerateReply != reply) return;
         processStreamChunk(reply->readAll());
@@ -1665,8 +3167,15 @@ void LlmPromptWidget::onGenerateClicked()
             ui->textThinking->setPlainText(combineThinkingText(m_streamThinkingText, parsed.thinkingText));
             ui->btnToggleThinking->setEnabled(!ui->textThinking->toPlainText().trimmed().isEmpty());
             ui->btnContinueConversation->setEnabled(!m_lastAssistantVisibleText.trimmed().isEmpty());
+            m_pendingChatSessionId = m_currentGeneratedConversationId;
+            m_pendingChatAssistantReply = m_lastAssistantVisibleText;
+            m_pendingChatAssistantThinking = ui->textThinking->toPlainText();
+            if (m_activeChatSessionId == m_pendingChatSessionId) requestChatRefresh(false);
+            else m_chatViewDirty = true;
             m_activeModelName.clear();
             updateStatus(QString("%1 调用失败: %2").arg(currentBackendName(), errorText), true);
+            updateChatStatus(QString("%1 调用失败: %2").arg(currentBackendName(), errorText), true);
+            updateChatButtons();
             return;
         }
 
@@ -1691,13 +3200,13 @@ void LlmPromptWidget::onUnloadModelClicked()
     QString modelName = ui->comboModel->currentText().trimmed();
     if (modelName.isEmpty()) {
         updateStatus("请先选择或输入要停止的模型", true);
-        QMessageBox::information(this, "提示", "请先选择或输入模型名。");
+        QMessageBox::information(nullptr, "提示", "请先选择或输入模型名。");
         return;
     }
 
     if (currentBackend() == LlmBackend::LmStudio) {
         updateStatus("LM Studio 暂不支持通过此按钮卸载模型，请在 LM Studio 中管理模型。", true);
-        QMessageBox::information(this, "提示", "LM Studio 的 OpenAI 兼容接口没有等价的 unload/stop 命令，请在 LM Studio 界面中卸载模型。");
+        QMessageBox::information(nullptr, "提示", "LM Studio 的 OpenAI 兼容接口没有等价的 unload/stop 命令，请在 LM Studio 界面中卸载模型。");
         return;
     }
 
@@ -1706,48 +3215,17 @@ void LlmPromptWidget::onUnloadModelClicked()
         updateStatus("已请求停止模型: " + modelName);
     } else {
         updateStatus("停止模型失败: " + modelName, true);
-        QMessageBox::warning(this, "错误", "无法执行 ollama stop，请检查 Ollama 是否可用。");
+        QMessageBox::warning(nullptr, "错误", "无法执行 ollama stop，请检查 Ollama 是否可用。");
     }
 }
 
 void LlmPromptWidget::onContinueConversationClicked()
 {
-    QString assistantReply = m_lastAssistantVisibleText.trimmed();
-    if (assistantReply.isEmpty()) {
-        assistantReply = splitThinkingBlocks(m_streamResponseText).visibleText.trimmed();
-    }
-    if (assistantReply.isEmpty()) {
-        QMessageBox::information(this, "提示", "当前还没有可继续修改的模型输出。");
+    if (m_currentGeneratedConversationId.isEmpty() || chatSessionIndex(m_currentGeneratedConversationId) < 0) {
+        QMessageBox::information(nullptr, "提示", "当前还没有可继续修改的模型输出。");
         return;
     }
-
-    QStringList contextLines;
-    QString instruction = ui->textInstruction->toPlainText().trimmed();
-    if (!instruction.isEmpty()) {
-        contextLines << instruction;
-    }
-
-    QString sourcePrompt = ui->textSourcePrompt->toPlainText().trimmed();
-    if (!sourcePrompt.isEmpty()) {
-        contextLines << sourcePrompt;
-    }
-
-    if (!m_lastRenderedPrompt.trimmed().isEmpty()) {
-        contextLines << m_lastRenderedPrompt.trimmed();
-    }
-
-    ContinueConversationDialog dlg(this);
-    dlg.setConnectionContext(endpointBaseUrl(),
-                             ui->comboModel->currentText().trimmed(),
-                             ui->textSystemPrompt->toPlainText(),
-                             buildGenerationOptions(),
-                             currentBackend() == LlmBackend::LmStudio
-                                 ? ContinueConversationDialog::LlmBackend::LmStudio
-                                 : ContinueConversationDialog::LlmBackend::Ollama);
-    dlg.setInitialConversation(ui->comboTaskType->currentText(),
-                               contextLines.join("\n\n"),
-                               assistantReply);
-    dlg.exec();
+    selectChatSession(m_currentGeneratedConversationId, true);
 }
 
 void LlmPromptWidget::onCopyPromptClicked()
@@ -1769,7 +3247,7 @@ void LlmPromptWidget::onCopyResultClicked()
 
 void LlmPromptWidget::onAddManualImagesClicked()
 {
-    QStringList files = QFileDialog::getOpenFileNames(this, "选择参考图片", QString(), "Images (*.png *.jpg *.jpeg *.webp)");
+    QStringList files = QFileDialog::getOpenFileNames(nullptr, "选择参考图片", QString(), "Images (*.png *.jpg *.jpeg *.webp)");
     for (const QString &path : files) {
         QImageReader reader(path);
         QString prompt = reader.text("parameters");
@@ -1935,6 +3413,17 @@ void LlmPromptWidget::processStreamLine(const QByteArray &line)
     m_lastAssistantVisibleText = parsed.visibleText;
     ui->textResult->setMarkdown(escapeAnglePromptSyntax(parsed.visibleText));
     ui->textThinking->setPlainText(combinedThinking);
+    if (!m_currentGeneratedConversationId.isEmpty()) {
+        m_pendingChatSessionId = m_currentGeneratedConversationId;
+        m_pendingChatAssistantReply = parsed.visibleText;
+        m_pendingChatAssistantThinking = combinedThinking;
+        const bool canRefreshPending = m_activeChatSessionId == m_pendingChatSessionId
+                                       && m_chatListAutoScrollEnabled
+                                       && m_pendingChatBodyAutoScrollEnabled
+                                       && m_pendingChatThinkingAutoScrollEnabled;
+        if (canRefreshPending) requestChatRefresh(false);
+        else m_chatViewDirty = true;
+    }
     scrollTextViewportToBottom(ui->textResult);
     scrollTextViewportToBottom(ui->textThinking);
     bool hasThinking = !combinedThinking.isEmpty();
@@ -1977,19 +3466,39 @@ void LlmPromptWidget::finishStreaming(const QString &modelName, bool canceled)
 
     if (canceled) {
         m_activeModelName.clear();
+        const QString canceledSessionId = m_pendingChatSessionId;
+        m_pendingChatAssistantReply.clear();
+        m_pendingChatAssistantThinking.clear();
+        m_pendingChatSessionId.clear();
+        if (m_activeChatSessionId == canceledSessionId) requestChatRefresh(false);
+        else updateChatButtons();
         updateStatus("已停止生成");
+        updateChatStatus("已停止生成");
+        updateChatButtons();
         return;
+    }
+
+    if (!m_currentGeneratedConversationId.isEmpty()) {
+        m_pendingChatSessionId = m_currentGeneratedConversationId;
+        m_pendingChatAssistantReply = finalResponse;
+        m_pendingChatAssistantThinking = finalThinking;
+        appendPendingAssistantToActiveChat();
+        saveConversations();
     }
 
     if (ui->chkStopModelAfterGenerate->isChecked() && currentBackend() == LlmBackend::Ollama) {
         bool started = QProcess::startDetached("ollama", QStringList() << "stop" << modelName);
         m_activeModelName.clear();
         updateStatus(started ? "提示词生成完成，已请求停止模型" : "提示词生成完成，但停止模型失败", !started);
+        updateChatStatus(started ? "提示词生成完成，已请求停止模型" : "提示词生成完成，但停止模型失败", !started);
     } else if (ui->chkStopModelAfterGenerate->isChecked()) {
         m_activeModelName.clear();
         updateStatus("提示词生成完成；LM Studio 需在其界面中手动停止或卸载模型");
+        updateChatStatus("提示词生成完成；LM Studio 需在其界面中手动停止或卸载模型");
     } else {
         m_activeModelName.clear();
         updateStatus("提示词生成完成");
+        updateChatStatus("提示词生成完成");
     }
+    updateChatButtons();
 }

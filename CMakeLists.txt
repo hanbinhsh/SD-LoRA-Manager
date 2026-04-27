@@ -26,9 +26,6 @@ qt_add_executable(SD_LoRA_Manager
     llmpromptwidget.h
     llmpromptwidget.cpp
     llmpromptwidget.ui
-    continueconversationdialog.h
-    continueconversationdialog.cpp
-    continueconversationdialog.ui
     imageloader.h
     resources.qrc
     app.rc

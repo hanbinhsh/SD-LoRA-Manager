@@ -133,42 +133,75 @@ void SyncWidget::on_btnAddFolder_clicked() {
 // ======================= AES-GCM 加解密 =======================
 QByteArray SyncWidget::encryptAESGCM(const QByteArray &plaintext, const QByteArray &key, QByteArray &iv, QByteArray &tag) {
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-    int len, ciphertext_len;
-    QByteArray ciphertext(plaintext.length(), 0);
+    if (!ctx) return QByteArray();
+    int len = 0;
+    int ciphertext_len = 0;
+    QByteArray ciphertext(plaintext.length() + 16, 0);
 
-    EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL);
+    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return QByteArray();
+    }
     QByteArray paddedKey = key.leftJustified(32, '\0', true);
-    
-    EVP_EncryptInit_ex(ctx, NULL, NULL, (unsigned char*)paddedKey.data(), (unsigned char*)iv.data());
-    EVP_EncryptUpdate(ctx, (unsigned char*)ciphertext.data(), &len, (unsigned char*)plaintext.data(), plaintext.length());
+
+    if (EVP_EncryptInit_ex(ctx, NULL, NULL,
+                           reinterpret_cast<const unsigned char*>(paddedKey.constData()),
+                           reinterpret_cast<const unsigned char*>(iv.constData())) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return QByteArray();
+    }
+    if (EVP_EncryptUpdate(ctx,
+                          reinterpret_cast<unsigned char*>(ciphertext.data()),
+                          &len,
+                          reinterpret_cast<const unsigned char*>(plaintext.constData()),
+                          plaintext.length()) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return QByteArray();
+    }
     ciphertext_len = len;
-    EVP_EncryptFinal_ex(ctx, (unsigned char*)ciphertext.data() + len, &len);
+    if (EVP_EncryptFinal_ex(ctx, reinterpret_cast<unsigned char*>(ciphertext.data()) + ciphertext_len, &len) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return QByteArray();
+    }
     ciphertext_len += len;
-    
+
     EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, tag.data());
     EVP_CIPHER_CTX_free(ctx);
-    
+
     return ciphertext.left(ciphertext_len);
 }
 
 QByteArray SyncWidget::decryptAESGCM(const QByteArray &ciphertext, const QByteArray &key, const QByteArray &iv, const QByteArray &tag, bool &success) {
+    success = false;
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-    int len, plaintext_len;
-    QByteArray plaintext(ciphertext.length(), 0);
+    if (!ctx) return QByteArray();
+    int len = 0;
+    int plaintext_len = 0;
+    QByteArray plaintext(ciphertext.length() + 16, 0);
 
     QByteArray paddedKey = key.leftJustified(32, '\0', true);
 
-    EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL);
-    EVP_DecryptInit_ex(ctx, NULL, NULL, (unsigned char*)paddedKey.data(), (unsigned char*)iv.data());
-    EVP_DecryptUpdate(ctx, (unsigned char*)plaintext.data(), &len, (unsigned char*)ciphertext.data(), ciphertext.length());
+    if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL) != 1
+        || EVP_DecryptInit_ex(ctx, NULL, NULL,
+                              reinterpret_cast<const unsigned char*>(paddedKey.constData()),
+                              reinterpret_cast<const unsigned char*>(iv.constData())) != 1
+        || EVP_DecryptUpdate(ctx,
+                             reinterpret_cast<unsigned char*>(plaintext.data()),
+                             &len,
+                             reinterpret_cast<const unsigned char*>(ciphertext.constData()),
+                             ciphertext.length()) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return QByteArray();
+    }
     plaintext_len = len;
 
-    EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, (void*)tag.data());
-    int ret = EVP_DecryptFinal_ex(ctx, (unsigned char*)plaintext.data() + len, &len);
-    
+    EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, const_cast<char*>(tag.constData()));
+    int ret = EVP_DecryptFinal_ex(ctx, reinterpret_cast<unsigned char*>(plaintext.data()) + plaintext_len, &len);
+
     success = (ret > 0);
     EVP_CIPHER_CTX_free(ctx);
-    
+
+    if (!success) return QByteArray();
     return plaintext.left(plaintext_len + len);
 }
 
@@ -235,6 +268,12 @@ void SyncWidget::onClientReadyRead() {
         }
 
         quint32 expectedSize = m_clientExpectedSizes[client];
+        if (expectedSize < 28 || expectedSize > 512u * 1024u * 1024u) {
+            logMsg("⚠️ 警告: 收到异常同步数据包长度，已断开客户端。");
+            m_clientExpectedSizes[client] = 0;
+            client->disconnectFromHost();
+            return;
+        }
         if (client->bytesAvailable() < expectedSize) return;
 
         QByteArray iv = client->read(12);
