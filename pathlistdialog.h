@@ -6,6 +6,12 @@
 
 namespace Ui { class PathListDialog; }
 
+struct ManagedPathEntry
+{
+    QString path;
+    bool enabled = true;
+};
+
 class PathListDialog : public QDialog
 {
     Q_OBJECT
@@ -13,6 +19,9 @@ class PathListDialog : public QDialog
 public:
     explicit PathListDialog(QWidget *parent = nullptr);
     ~PathListDialog();
+
+    void setPathEntries(const QList<ManagedPathEntry> &entries);
+    QList<ManagedPathEntry> pathEntries() const;
 
     void setPaths(const QStringList &paths);
     QStringList paths() const;

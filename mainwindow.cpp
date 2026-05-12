@@ -339,7 +339,8 @@ MainWindow::MainWindow(QWidget *parent)
     QTimer::singleShot(10, this, [this](){
         ui->statusbar->showMessage("正在扫描本地模型库...");
         loadCollections();
-        if (!loraPaths.isEmpty()) scanModels(loraPaths);
+        const QStringList activeLoraPaths = collectEnabledPaths(loraPaths, disabledLoraPaths);
+        if (!activeLoraPaths.isEmpty()) scanModels(activeLoraPaths);
         ui->comboSort->setCurrentIndex(0);
         executeSort();
         refreshCollectionTreeView();
@@ -2318,10 +2319,11 @@ void MainWindow::onScanLocalClicked() {
         QMessageBox::information(this, "提示",
                                  QString("检测到 %1 个本地/已编辑模型。\n刷新不会删除本地元数据，但后续同步可能覆盖本地修改。").arg(localCount));
     }
-    if (!loraPaths.isEmpty()) {
-        scanModels(loraPaths);
+    const QStringList activeLoraPaths = collectEnabledPaths(loraPaths, disabledLoraPaths);
+    if (!activeLoraPaths.isEmpty()) {
+        scanModels(activeLoraPaths);
     } else {
-        QMessageBox::information(this, "提示", "请先设置 LoRA 路径。");
+        QMessageBox::information(this, "提示", "请先设置并启用至少一个 LoRA 路径。");
     }
     executeSort();
 }
@@ -4592,10 +4594,11 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     resetUserImageThumbLoading();
 
     // 1. 检查目录
-    QStringList validGalleryPaths = collectValidPaths(galleryPaths);
+    const QStringList activeGalleryPaths = collectEnabledPaths(galleryPaths, disabledGalleryPaths);
+    QStringList validGalleryPaths = collectValidPaths(activeGalleryPaths);
     if (validGalleryPaths.isEmpty()) {
-        ui->textUserPrompt->setText("<span style='color:orange'>请先点击右上方按钮设置 Stable Diffusion 图片输出目录。</span>");
-        QMessageBox::warning(this, "目录无效", "设置的 SD 输出目录不存在或为空。");
+        ui->textUserPrompt->setText("<span style='color:orange'>请先点击右上方按钮设置并启用 Stable Diffusion 图片输出目录。</span>");
+        QMessageBox::warning(this, "目录无效", "设置的 SD 输出目录不存在、为空，或全部被禁用。");
         return;
     }
 
@@ -5132,7 +5135,10 @@ void MainWindow::ensureToolTabLoaded(int index)
             break;
         case 3:
             llmPromptWidget = new LlmPromptWidget(toolsTabWidget);
-            llmPromptWidget->setLibraryPaths(loraPaths, galleryPaths);
+            llmPromptWidget->setLibraryPaths(
+                collectEnabledPaths(loraPaths, disabledLoraPaths),
+                collectEnabledPaths(galleryPaths, disabledGalleryPaths)
+            );
             newPage = llmPromptWidget;
             break;
         default:
@@ -5210,9 +5216,35 @@ void MainWindow::loadGlobalConfig() {
             }
             return out;
         };
+        auto readPathSet = [](const QJsonObject &obj, const QString &arrayKey) {
+            QSet<QString> out;
+            if (!obj.contains(arrayKey) || !obj[arrayKey].isArray()) return out;
+            const QJsonArray arr = obj[arrayKey].toArray();
+            for (const auto &val : arr) {
+                const QString path = val.toString().trimmed();
+                if (!path.isEmpty()) out.insert(path);
+            }
+            return out;
+        };
 
         loraPaths = normalizePathList(readPathList(root, "lora_paths", {"lora_path"}));
         galleryPaths = normalizePathList(readPathList(root, "gallery_paths", {"gallery_path", "sd_folder"}));
+        disabledLoraPaths = normalizePathSet(readPathSet(root, "lora_paths_disabled"));
+        disabledGalleryPaths = normalizePathSet(readPathSet(root, "gallery_paths_disabled"));
+        {
+            QSet<QString> filtered;
+            for (const QString &path : loraPaths) {
+                if (disabledLoraPaths.contains(path)) filtered.insert(path);
+            }
+            disabledLoraPaths = filtered;
+        }
+        {
+            QSet<QString> filtered;
+            for (const QString &path : galleryPaths) {
+                if (disabledGalleryPaths.contains(path)) filtered.insert(path);
+            }
+            disabledGalleryPaths = filtered;
+        }
         translationCsvPath = root["translation_path"].toString().trimmed();
 
         // 解析过滤词
@@ -5431,8 +5463,14 @@ void MainWindow::saveGlobalConfig() {
     for (const QString &path : loraPaths) loraArr.append(path);
     QJsonArray galleryArr;
     for (const QString &path : galleryPaths) galleryArr.append(path);
+    QJsonArray loraDisabledArr;
+    for (const QString &path : disabledLoraPaths) loraDisabledArr.append(path);
+    QJsonArray galleryDisabledArr;
+    for (const QString &path : disabledGalleryPaths) galleryDisabledArr.append(path);
     root["lora_paths"]                 = loraArr;
     root["gallery_paths"]              = galleryArr;
+    root["lora_paths_disabled"]        = loraDisabledArr;
+    root["gallery_paths_disabled"]     = galleryDisabledArr;
     root["translation_path"]           = translationCsvPath;
     root["lora_recursive"]              = optLoraRecursive;
     root["gallery_recursive"]           = optGalleryRecursive;
@@ -5502,6 +5540,17 @@ QStringList MainWindow::normalizePathList(const QStringList &paths) const
     return result;
 }
 
+QSet<QString> MainWindow::normalizePathSet(const QSet<QString> &paths) const
+{
+    QSet<QString> result;
+    for (QString path : paths) {
+        path = path.trimmed();
+        if (path.isEmpty()) continue;
+        result.insert(QFileInfo(path).absoluteFilePath());
+    }
+    return result;
+}
+
 QString MainWindow::formatPathListForEdit(const QStringList &paths) const
 {
     return paths.join("; ");
@@ -5518,33 +5567,84 @@ QStringList MainWindow::collectValidPaths(const QStringList &paths) const
     return valid;
 }
 
+QStringList MainWindow::collectEnabledPaths(const QStringList &paths, const QSet<QString> &disabledPaths) const
+{
+    QStringList enabled;
+    enabled.reserve(paths.size());
+    for (const QString &path : paths) {
+        if (path.isEmpty()) continue;
+        const QString normalized = QFileInfo(path).absoluteFilePath();
+        if (disabledPaths.contains(normalized)) continue;
+        enabled.append(normalized);
+    }
+    return normalizePathList(enabled);
+}
+
+QList<ManagedPathEntry> MainWindow::buildPathEntries(const QStringList &paths, const QSet<QString> &disabledPaths) const
+{
+    QList<ManagedPathEntry> entries;
+    entries.reserve(paths.size());
+    for (const QString &path : paths) {
+        if (path.isEmpty()) continue;
+        const QString normalized = QFileInfo(path).absoluteFilePath();
+        entries.append({normalized, !disabledPaths.contains(normalized)});
+    }
+    return entries;
+}
+
+void MainWindow::applyPathEntries(const QList<ManagedPathEntry> &entries, QStringList &paths, QSet<QString> &disabledPaths)
+{
+    paths.clear();
+    disabledPaths.clear();
+    QSet<QString> seen;
+    for (const ManagedPathEntry &entry : entries) {
+        const QString normalized = QFileInfo(entry.path.trimmed()).absoluteFilePath();
+        if (normalized.isEmpty() || seen.contains(normalized)) continue;
+        seen.insert(normalized);
+        paths.append(normalized);
+        if (!entry.enabled) disabledPaths.insert(normalized);
+    }
+}
+
 void MainWindow::applyPathListsToUi()
 {
-    currentLoraPath = loraPaths.value(0);
-    sdOutputFolder = galleryPaths.value(0);
+    const QStringList activeLoraPaths = collectEnabledPaths(loraPaths, disabledLoraPaths);
+    const QStringList activeGalleryPaths = collectEnabledPaths(galleryPaths, disabledGalleryPaths);
+    currentLoraPath = activeLoraPaths.value(0);
+    sdOutputFolder = activeGalleryPaths.value(0);
 
-    if (ui->editLoraPath) ui->editLoraPath->setText(formatPathListForEdit(loraPaths));
-    if (ui->editGalleryPath) ui->editGalleryPath->setText(formatPathListForEdit(galleryPaths));
+    if (ui->editLoraPath) ui->editLoraPath->setText(formatPathListForEdit(activeLoraPaths));
+    if (ui->editGalleryPath) ui->editGalleryPath->setText(formatPathListForEdit(activeGalleryPaths));
     if (ui->editTransPath) ui->editTransPath->setText(translationCsvPath);
     if (tagBrowserWidget) tagBrowserWidget->setCsvPath(translationCsvPath);
-    if (llmPromptWidget) llmPromptWidget->setLibraryPaths(loraPaths, galleryPaths);
+    if (llmPromptWidget) llmPromptWidget->setLibraryPaths(activeLoraPaths, activeGalleryPaths);
 }
 
 bool MainWindow::editLoraPaths(bool rescanAfter)
 {
     PathListDialog dlg(this);
     dlg.setDialogTitle("LoRA 路径管理");
-    dlg.setHintText("可添加多个 LoRA 模型目录。支持多路径扫描。");
-    dlg.setPaths(loraPaths);
+    dlg.setHintText("可添加多个 LoRA 模型目录。通过右侧复选框控制是否启用扫描。");
+    dlg.setPathEntries(buildPathEntries(loraPaths, disabledLoraPaths));
 
     if (dlg.exec() != QDialog::Accepted) return false;
 
-    loraPaths = normalizePathList(dlg.paths());
+    applyPathEntries(dlg.pathEntries(), loraPaths, disabledLoraPaths);
+    loraPaths = normalizePathList(loraPaths);
+    disabledLoraPaths = normalizePathSet(disabledLoraPaths);
+    {
+        QSet<QString> filtered;
+        for (const QString &path : loraPaths) {
+            if (disabledLoraPaths.contains(path)) filtered.insert(path);
+        }
+        disabledLoraPaths = filtered;
+    }
     applyPathListsToUi();
     saveGlobalConfig();
 
-    if (rescanAfter && !loraPaths.isEmpty()) {
-        scanModels(loraPaths);
+    const QStringList activeLoraPaths = collectEnabledPaths(loraPaths, disabledLoraPaths);
+    if (rescanAfter && !activeLoraPaths.isEmpty()) {
+        scanModels(activeLoraPaths);
     }
     return true;
 }
@@ -5553,12 +5653,21 @@ bool MainWindow::editGalleryPaths(bool rescanAfter)
 {
     PathListDialog dlg(this);
     dlg.setDialogTitle("图库路径管理");
-    dlg.setHintText("可添加多个图库目录。支持多路径扫描。");
-    dlg.setPaths(galleryPaths);
+    dlg.setHintText("可添加多个图库目录。通过右侧复选框控制是否启用扫描。");
+    dlg.setPathEntries(buildPathEntries(galleryPaths, disabledGalleryPaths));
 
     if (dlg.exec() != QDialog::Accepted) return false;
 
-    galleryPaths = normalizePathList(dlg.paths());
+    applyPathEntries(dlg.pathEntries(), galleryPaths, disabledGalleryPaths);
+    galleryPaths = normalizePathList(galleryPaths);
+    disabledGalleryPaths = normalizePathSet(disabledGalleryPaths);
+    {
+        QSet<QString> filtered;
+        for (const QString &path : galleryPaths) {
+            if (disabledGalleryPaths.contains(path)) filtered.insert(path);
+        }
+        disabledGalleryPaths = filtered;
+    }
     applyPathListsToUi();
     saveGlobalConfig();
 

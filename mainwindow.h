@@ -59,7 +59,7 @@ const int ROLE_EDIT_IMAGE_PATH      = Qt::UserRole + 35;
 // 树状图占位符标记
 const int ROLE_IS_PLACEHOLDER       = Qt::UserRole + 40;
 
-const QString CURRENT_VERSION = "1.3.5";
+const QString CURRENT_VERSION = "1.3.6";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
@@ -67,6 +67,7 @@ const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
+struct ManagedPathEntry;
 
 class PromptParserWidget;
 class TagBrowserWidget;
@@ -359,6 +360,8 @@ private:
     // === 配置变量 ===
     QStringList loraPaths;                              // LoRA文件夹列表
     QStringList galleryPaths;                           // 图库路径列表
+    QSet<QString> disabledLoraPaths;                    // 关闭的 LoRA 路径
+    QSet<QString> disabledGalleryPaths;                 // 关闭的图库路径
     QString currentLoraPath;                            // LoRA主路径 (兼容)
     QString translationCsvPath;                         // 翻译文件路径
     QString sdOutputFolder;                             // 图库主路径 (兼容)
@@ -392,8 +395,12 @@ private:
     void updateModelListNames();              // 刷新列表显示名称的辅助函数
 
     QStringList normalizePathList(const QStringList &paths) const;
+    QSet<QString> normalizePathSet(const QSet<QString> &paths) const;
     QString formatPathListForEdit(const QStringList &paths) const;
     QStringList collectValidPaths(const QStringList &paths) const;
+    QStringList collectEnabledPaths(const QStringList &paths, const QSet<QString> &disabledPaths) const;
+    QList<ManagedPathEntry> buildPathEntries(const QStringList &paths, const QSet<QString> &disabledPaths) const;
+    void applyPathEntries(const QList<ManagedPathEntry> &entries, QStringList &paths, QSet<QString> &disabledPaths);
     void applyPathListsToUi();
     bool editLoraPaths(bool rescanAfter);
     bool editGalleryPaths(bool rescanAfter);

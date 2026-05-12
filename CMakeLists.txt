@@ -44,6 +44,11 @@ target_link_libraries(SD_LoRA_Manager
         Qt6::Concurrent
 )
 
+add_custom_command(TARGET SD_LoRA_Manager POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts"
+        "$<TARGET_FILE_DIR:SD_LoRA_Manager>/scripts")
+
 include(GNUInstallDirs)
 
 install(TARGETS SD_LoRA_Manager
@@ -51,6 +56,7 @@ install(TARGETS SD_LoRA_Manager
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
+install(DIRECTORY scripts DESTINATION .)
 
 qt_generate_deploy_app_script(
     TARGET SD_LoRA_Manager

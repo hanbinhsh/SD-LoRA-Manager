@@ -23,7 +23,21 @@
     </widget>
    </item>
    <item>
-    <widget class="QListWidget" name="listPaths"/>
+    <widget class="QTableWidget" name="tablePaths">
+     <property name="columnCount">
+      <number>2</number>
+     </property>
+     <column>
+      <property name="text">
+       <string>路径</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>启用</string>
+      </property>
+     </column>
+    </widget>
    </item>
    <item>
     <layout class="QHBoxLayout" name="horizontalLayout">
