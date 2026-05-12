@@ -3,12 +3,15 @@
 
 #include <QWidget>
 #include <QHash>
+#include <QProcess>
 #include <QString>
 #include "tagflowwidget.h"
 
 namespace Ui {
 class PromptParserWidget;
 }
+
+class QLabel;
 
 class PromptParserWidget : public QWidget
 {
@@ -32,11 +35,24 @@ private:
     // 两个流式布局控件
     TagFlowWidget *posTagWidget;
     TagFlowWidget *negTagWidget;
+    TagFlowWidget *wd14TagWidget;
+    QProcess *wd14Process = nullptr;
+    QString wd14ImagePath;
+    QString wd14LastTagsText;
 
     // 核心函数
     void processImage(const QString &filePath);
+    void processWd14Image(const QString &filePath);
     QString extractPngParameters(const QString &filePath);
     void updateImagePreview(const QString &filePath);
+    void updateWd14ImagePreview(const QString &filePath);
+    void updateImageLabelPreview(QLabel *label, const QString &filePath, const QString &fallbackText);
+    void runWd14Tagger();
+    void onWd14Finished(int exitCode, QProcess::ExitStatus exitStatus);
+    void loadWd14Settings();
+    void saveWd14Settings() const;
+    QString buildWd14Command() const;
+    void setWd14Running(bool running);
 
     // 解析辅助函数
     QString cleanTagText(QString t);

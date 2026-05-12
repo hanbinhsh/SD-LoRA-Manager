@@ -64,16 +64,16 @@ QLabel#lblStatus, QLabel#lblUserTagStatus {
     <number>10</number>
    </property>
    <property name="leftMargin">
-    <number>20</number>
+    <number>18</number>
    </property>
    <property name="topMargin">
-    <number>20</number>
+    <number>18</number>
    </property>
    <property name="rightMargin">
-    <number>20</number>
+    <number>18</number>
    </property>
    <property name="bottomMargin">
-    <number>20</number>
+    <number>18</number>
    </property>
    <item>
     <widget class="QTabWidget" name="tabWidgetTagBrowser">
@@ -119,10 +119,32 @@ QLabel#lblStatus, QLabel#lblUserTagStatus {
        <item>
         <layout class="QHBoxLayout" name="horizontalLayoutFilter">
          <item>
-          <widget class="QLineEdit" name="editSearch">
+         <widget class="QLineEdit" name="editSearch">
+           <property name="toolTip">
+            <string>选择匹配方式后搜索 Tag 或翻译</string>
+           </property>
            <property name="placeholderText">
             <string>搜索 Tag 或翻译...</string>
            </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="comboSearchMatchMode">
+           <item>
+            <property name="text">
+             <string>包含匹配</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>词匹配</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>完全匹配</string>
+            </property>
+           </item>
           </widget>
          </item>
          <item>
@@ -203,10 +225,32 @@ QLabel#lblStatus, QLabel#lblUserTagStatus {
        <item>
         <layout class="QHBoxLayout" name="horizontalLayoutUserTagFilter">
          <item>
-          <widget class="QLineEdit" name="editUserTagSearch">
+         <widget class="QLineEdit" name="editUserTagSearch">
+           <property name="toolTip">
+            <string>选择匹配方式后搜索用户 Tag 或翻译</string>
+           </property>
            <property name="placeholderText">
             <string>搜索用户使用过的 Tag 或翻译...</string>
            </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="comboUserTagSearchMatchMode">
+           <item>
+            <property name="text">
+             <string>包含匹配</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>词匹配</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>完全匹配</string>
+            </property>
+           </item>
           </widget>
          </item>
          <item>

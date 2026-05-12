@@ -14,9 +14,11 @@
 #include <QScrollBar>
 #include <QMenu>
 #include <QInputDialog>
+#include <QComboBox>
 #include <QJsonArray>
 #include <QPainterPath>
 #include <QImageReader>
+#include <QPair>
 #include <QTimer>
 #include <QGraphicsScene>
 #include <QGraphicsPixmapItem>
@@ -198,6 +200,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->collectionTree->setSelectionMode(QAbstractItemView::ExtendedSelection);
     // 工具栏按钮
     connect(ui->btnOpenUrl, &QPushButton::clicked, this, &MainWindow::onOpenUrlClicked);
+    connect(ui->btnCopyLoraTag, &QPushButton::clicked, this, &MainWindow::onCopyLoraTagClicked);
     connect(ui->btnScanLocal, &QPushButton::clicked, this, &MainWindow::onScanLocalClicked);
     connect(ui->btnForceUpdate, &QPushButton::clicked, this, &MainWindow::onForceUpdateClicked);
     connect(ui->btnLocalMetaSave, &QPushButton::clicked, this, &MainWindow::onLocalMetaSaveClicked);
@@ -274,6 +277,15 @@ MainWindow::MainWindow(QWidget *parent)
         }
         // 如果有数据（或者用户关闭翻译），通知控件切换模式
         tagFlowWidget->setShowTranslation(checked);
+    });
+    connect(ui->comboUserTagSortMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index){
+        tagFlowWidget->setSortMode(index == 1 ? TagFlowWidget::SortAlphabetically : TagFlowWidget::SortByCount);
+    });
+    connect(ui->editUserTagSearch, &QLineEdit::textChanged, this, [this](const QString &text){
+        tagFlowWidget->setSearchText(text);
+    });
+    connect(ui->chkUserTagLoraOnly, &QCheckBox::toggled, this, [this](bool checked){
+        tagFlowWidget->setLoraOnly(checked);
     });
     // 图片点击
     connect(ui->listUserImages, &QListWidget::itemClicked, this, &MainWindow::onUserImageClicked);
@@ -445,6 +457,378 @@ static QStringList parsePromptsToTagsWorker(const QString &rawPrompt, bool split
         if (!isBlocked) result.append(clean);
     }
     return result;
+}
+
+static QString getSafetensorsInternalNameWorker(const QString &path)
+{
+    if (!path.endsWith(".safetensors", Qt::CaseInsensitive)) {
+        return QString();
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) return QString();
+
+    qint64 headerLen = 0;
+    if (file.read(reinterpret_cast<char*>(&headerLen), 8) != 8) return QString();
+    if (headerLen <= 0 || headerLen > 100 * 1024 * 1024) return QString();
+
+    const QByteArray headerData = file.read(headerLen);
+    const QJsonDocument doc = QJsonDocument::fromJson(headerData);
+    if (!doc.isObject()) return QString();
+
+    const QJsonObject root = doc.object();
+    const QJsonObject meta = root.value("__metadata__").toObject();
+    return meta.value("ss_output_name").toString().trimmed();
+}
+
+static QString normalizeLoraNameForMatch(QString name)
+{
+    name = name.trimmed();
+    if (name.isEmpty()) return QString();
+    if (name.endsWith(".safetensors", Qt::CaseInsensitive) ||
+        name.endsWith(".ckpt", Qt::CaseInsensitive) ||
+        name.endsWith(".pt", Qt::CaseInsensitive)) {
+        name = QFileInfo(name).completeBaseName();
+    }
+
+    static QRegularExpression bracketSuffix("\\s*\\[[^\\]]+\\]\\s*$");
+    name.remove(bracketSuffix);
+    name.replace(QRegularExpression("\\s+"), "_");
+    name.replace(QRegularExpression("_+"), "_");
+    return name.trimmed().toCaseFolded();
+}
+
+static QStringList extractLoraNamesFromPromptWorker(const QString &prompt)
+{
+    QStringList names;
+    static QRegularExpression loraRegex("<\\s*(?:lora|lyco)\\s*:\\s*([^:>]+)",
+                                        QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatchIterator it = loraRegex.globalMatch(prompt);
+    while (it.hasNext()) {
+        const QString name = it.next().captured(1).trimmed();
+        if (!name.isEmpty()) names.append(name);
+    }
+    return names;
+}
+
+static QStringList extractLoraNamesFromMetadataWorker(const QString &metadata)
+{
+    QStringList names;
+    if (metadata.isEmpty()) return names;
+
+    static QRegularExpression addNetModelRegex("(?:^|[,\\n\\r])\\s*AddNet\\s+Model\\s+\\d+\\s*:\\s*([^,\\n\\r]+)",
+                                               QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatchIterator addNetIt = addNetModelRegex.globalMatch(metadata);
+    while (addNetIt.hasNext()) {
+        const QString name = addNetIt.next().captured(1).trimmed();
+        if (!name.isEmpty()) names.append(name);
+    }
+
+    static QRegularExpression loraHashesBlockRegex("(?:^|[,\\n\\r])\\s*Lora\\s+hashes\\s*:\\s*(\"[^\"]*\"|[^\\n\\r]*)",
+                                                   QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatchIterator blockIt = loraHashesBlockRegex.globalMatch(metadata);
+    while (blockIt.hasNext()) {
+        QString block = blockIt.next().captured(1).trimmed();
+        if (block.startsWith('"') && block.endsWith('"') && block.size() >= 2) {
+            block = block.mid(1, block.size() - 2);
+        }
+
+        static QRegularExpression loraHashNameRegex("([^:,]+?)\\s*:");
+        QRegularExpressionMatchIterator nameIt = loraHashNameRegex.globalMatch(block);
+        while (nameIt.hasNext()) {
+            const QString name = nameIt.next().captured(1).trimmed();
+            if (!name.isEmpty()) names.append(name);
+        }
+    }
+
+    return names;
+}
+
+static bool promptUsesLoraWorker(const QString &prompt, const QString &parameters, const QSet<QString> &normalizedLoraNames)
+{
+    if (normalizedLoraNames.isEmpty()) return false;
+
+    QStringList usedLoras = extractLoraNamesFromPromptWorker(prompt);
+    usedLoras.append(extractLoraNamesFromMetadataWorker(parameters));
+    for (const QString &usedLora : usedLoras) {
+        if (normalizedLoraNames.contains(normalizeLoraNameForMatch(usedLora))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static QString normalizeSummaryHashForMatch(QString hash)
+{
+    hash = hash.trimmed();
+    if (hash.isEmpty()) return QString();
+    hash.remove(QRegularExpression("[^A-Fa-f0-9]"));
+    return hash.toLower();
+}
+
+static void collectHashesFromStringWorker(const QString &text, QSet<QString> &out)
+{
+    if (text.isEmpty()) return;
+    static QRegularExpression hexRegex("([A-Fa-f0-9]{8,128})");
+    QRegularExpressionMatchIterator it = hexRegex.globalMatch(text);
+    while (it.hasNext()) {
+        const QString normalized = normalizeSummaryHashForMatch(it.next().captured(1));
+        if (!normalized.isEmpty()) out.insert(normalized);
+    }
+}
+
+static bool looksLikeHashFieldWorker(const QString &key)
+{
+    const QString folded = key.toCaseFolded();
+    return folded.contains("hash")
+           || folded == "autov2"
+           || folded == "autov3"
+           || folded == "sha256"
+           || folded == "sha1"
+           || folded == "md5";
+}
+
+static void collectHashesFromJsonValueWorker(const QJsonValue &value, const QString &keyHint, QSet<QString> &out, bool inHashContext = false)
+{
+    if (value.isString()) {
+        if (inHashContext || looksLikeHashFieldWorker(keyHint)) {
+            collectHashesFromStringWorker(value.toString(), out);
+        }
+        return;
+    }
+
+    if (value.isObject()) {
+        const QJsonObject obj = value.toObject();
+        const bool nextHashContext = inHashContext || looksLikeHashFieldWorker(keyHint);
+        for (auto it = obj.begin(); it != obj.end(); ++it) {
+            collectHashesFromJsonValueWorker(it.value(), it.key(), out, nextHashContext);
+        }
+        return;
+    }
+
+    if (value.isArray()) {
+        const QJsonArray arr = value.toArray();
+        for (const QJsonValue &entry : arr) {
+            collectHashesFromJsonValueWorker(entry, keyHint, out, inHashContext || looksLikeHashFieldWorker(keyHint));
+        }
+    }
+}
+
+static QSet<QString> collectLoraSummaryHashesFromJsonFileWorker(const QString &path)
+{
+    QSet<QString> out;
+    QFile file(path);
+    if (!file.exists() || !file.open(QIODevice::ReadOnly)) return out;
+
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    if (doc.isObject()) {
+        collectHashesFromJsonValueWorker(doc.object(), QString(), out);
+    }
+    return out;
+}
+
+static QSet<QString> extractLoraHashValuesFromParametersWorker(const QString &parameters)
+{
+    QSet<QString> hashes;
+    if (parameters.isEmpty()) return hashes;
+
+    static QRegularExpression loraHashesBlockRegex("(?:^|[,\\n\\r])\\s*Lora\\s+hashes\\s*:\\s*(\"[^\"]*\"|[^\\n\\r]*)",
+                                                   QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatchIterator blockIt = loraHashesBlockRegex.globalMatch(parameters);
+    while (blockIt.hasNext()) {
+        QString block = blockIt.next().captured(1).trimmed();
+        if (block.startsWith('"') && block.endsWith('"') && block.size() >= 2) {
+            block = block.mid(1, block.size() - 2);
+        }
+        static QRegularExpression hashInBlockRegex(":\\s*([A-Fa-f0-9]{6,128})");
+        QRegularExpressionMatchIterator hashIt = hashInBlockRegex.globalMatch(block);
+        while (hashIt.hasNext()) {
+            const QString normalized = normalizeSummaryHashForMatch(hashIt.next().captured(1));
+            if (!normalized.isEmpty()) hashes.insert(normalized);
+        }
+    }
+
+    static QRegularExpression addNetHashRegex("(?:^|[,\\n\\r])\\s*AddNet\\s+Model\\s+hash\\s+\\d+\\s*:\\s*([A-Fa-f0-9]{6,128})",
+                                              QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatchIterator addNetIt = addNetHashRegex.globalMatch(parameters);
+    while (addNetIt.hasNext()) {
+        const QString normalized = normalizeSummaryHashForMatch(addNetIt.next().captured(1));
+        if (!normalized.isEmpty()) hashes.insert(normalized);
+    }
+
+    return hashes;
+}
+
+static bool hashSetsMatchByPrefixWorker(const QSet<QString> &imageHashes, const QSet<QString> &targetHashes)
+{
+    if (imageHashes.isEmpty() || targetHashes.isEmpty()) return false;
+
+    for (const QString &imgHash : imageHashes) {
+        if (imgHash.size() < 6) continue;
+        for (const QString &targetHash : targetHashes) {
+            if (targetHash.size() < 6) continue;
+            if (imgHash == targetHash || imgHash.startsWith(targetHash) || targetHash.startsWith(imgHash)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+struct CachedImageUsageInfo {
+    QSet<QString> usedLoraNames;
+    QSet<QString> loraHashes;
+    qint64 lastModified = 0;
+};
+
+struct ModelUsageCandidate {
+    QString filePath;
+    QString baseName;
+    QSet<QString> normalizedLoraNames;
+    QSet<QString> summaryHashes;
+};
+
+struct ModelUsageStatResult {
+    QString filePath;
+    int usageCount = 0;
+    qint64 lastUsed = 0;
+};
+
+static void addLoraNameVariantsWorker(const QString &name, QSet<QString> &out)
+{
+    QString coreName = name.trimmed();
+    if (coreName.isEmpty()) return;
+    if (coreName.contains("[")) coreName = coreName.split("[").first().trimmed();
+    coreName = QFileInfo(coreName).completeBaseName();
+    if (coreName.isEmpty()) return;
+
+    QStringList variants;
+    variants << coreName;
+    QString spaceToUnder = coreName;
+    spaceToUnder.replace(" ", "_");
+    variants << spaceToUnder;
+    QString underToSpace = coreName;
+    underToSpace.replace("_", " ");
+    variants << underToSpace;
+    QString noSpace = coreName;
+    noSpace.remove(" ");
+    variants << noSpace;
+    QString noUnder = coreName;
+    noUnder.remove("_");
+    variants << noUnder;
+    QString pure = coreName;
+    pure.remove(" ").remove("_");
+    variants << pure;
+
+    for (const QString &variant : variants) {
+        if (variant.length() < 2) continue;
+        const QString normalized = normalizeLoraNameForMatch(variant);
+        if (!normalized.isEmpty()) out.insert(normalized);
+    }
+}
+
+static ModelUsageCandidate buildModelUsageCandidateWorker(const QString &filePath, const QString &baseName)
+{
+    ModelUsageCandidate candidate;
+    candidate.filePath = filePath;
+    candidate.baseName = baseName;
+
+    const QString internalName = getSafetensorsInternalNameWorker(filePath);
+    if (!internalName.isEmpty()) {
+        addLoraNameVariantsWorker(internalName, candidate.normalizedLoraNames);
+    }
+    if (candidate.normalizedLoraNames.isEmpty()) {
+        addLoraNameVariantsWorker(baseName, candidate.normalizedLoraNames);
+    }
+
+    const QFileInfo fi(filePath);
+    const QString modelDir = fi.absolutePath();
+    const QString modelBaseName = baseName.isEmpty() ? fi.completeBaseName() : baseName;
+    QStringList hashJsonPaths;
+    if (!modelDir.isEmpty() && !modelBaseName.isEmpty()) {
+        hashJsonPaths.append(QDir(modelDir).filePath(modelBaseName + ".json"));
+        hashJsonPaths.append(QDir(modelDir).filePath(modelBaseName + ".metadata.json"));
+    }
+    if (!filePath.isEmpty()) {
+        hashJsonPaths.append(filePath + ".metadata.json");
+    }
+
+    for (const QString &path : hashJsonPaths) {
+        const QSet<QString> hashes = collectLoraSummaryHashesFromJsonFileWorker(path);
+        for (const QString &hash : hashes) candidate.summaryHashes.insert(hash);
+    }
+
+    return candidate;
+}
+
+static QList<ModelUsageStatResult> calculateModelUsageStatsWorker(
+    const QList<QPair<QString, QString>> &models,
+    const QMap<QString, UserImageInfo> &imageCache,
+    int matchMode)
+{
+    QList<CachedImageUsageInfo> imageInfos;
+    imageInfos.reserve(imageCache.size());
+
+    for (auto it = imageCache.constBegin(); it != imageCache.constEnd(); ++it) {
+        const UserImageInfo &info = it.value();
+        CachedImageUsageInfo cached;
+        QStringList usedNames = extractLoraNamesFromPromptWorker(info.prompt);
+        usedNames.append(extractLoraNamesFromMetadataWorker(info.parameters));
+        for (const QString &usedName : usedNames) {
+            const QString normalized = normalizeLoraNameForMatch(usedName);
+            if (!normalized.isEmpty()) cached.usedLoraNames.insert(normalized);
+        }
+        cached.loraHashes = extractLoraHashValuesFromParametersWorker(info.parameters);
+        cached.lastModified = info.lastModified;
+
+        if (!cached.usedLoraNames.isEmpty() || !cached.loraHashes.isEmpty()) {
+            imageInfos.append(cached);
+        }
+    }
+
+    QList<ModelUsageStatResult> results;
+    results.reserve(models.size());
+
+    for (const auto &model : models) {
+        const ModelUsageCandidate candidate = buildModelUsageCandidateWorker(model.first, model.second);
+        const bool strictSummary = (matchMode == 2);
+        bool useSummary = (matchMode == 1 || matchMode == 2);
+        if (useSummary && candidate.summaryHashes.isEmpty()) {
+            if (strictSummary) {
+                ModelUsageStatResult empty;
+                empty.filePath = candidate.filePath;
+                results.append(empty);
+                continue;
+            }
+            useSummary = false;
+        }
+
+        ModelUsageStatResult stat;
+        stat.filePath = candidate.filePath;
+
+        for (const CachedImageUsageInfo &image : imageInfos) {
+            bool matched = false;
+            if (useSummary) {
+                matched = hashSetsMatchByPrefixWorker(image.loraHashes, candidate.summaryHashes);
+            } else {
+                for (const QString &name : candidate.normalizedLoraNames) {
+                    if (image.usedLoraNames.contains(name)) {
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+
+            if (matched) {
+                ++stat.usageCount;
+                stat.lastUsed = qMax(stat.lastUsed, image.lastModified);
+            }
+        }
+
+        results.append(stat);
+    }
+
+    return results;
 }
 
 static void parsePngInfoWorker(const QString &path, UserImageInfo &info, bool splitOnNewline, const QStringList &filterTags)
@@ -1192,6 +1576,8 @@ void MainWindow::scanModels(const QStringList &paths)
     ui->comboBaseModel->blockSignals(false);
     ui->modelList->setUpdatesEnabled(true);
 
+    refreshModelUsageStatsAsync();
+
     // 11. 刷新主页大图视图
     executeSort();
     refreshHomeGallery();
@@ -1495,14 +1881,6 @@ void MainWindow::onGalleryImageClicked(int index)
     ui->textImgPrompt->setPlainText(img.prompt.isEmpty() ? "No positive prompt." : img.prompt);
     ui->textImgNegPrompt->setPlainText(img.negativePrompt.isEmpty() ? "No negative prompt." : img.negativePrompt);
 
-    // 更新参数行
-    QString params = QString("Sampler: <span style='color:white'>%1</span> | Steps: <span style='color:white'>%2</span> | CFG: <span style='color:white'>%3</span> | Seed: <span style='color:white'>%4</span>")
-                         .arg(img.sampler)
-                         .arg(img.steps)
-                         .arg(img.cfgScale)
-                         .arg(img.seed);
-    ui->lblImgParams->setText(params);
-
     // === 动态获取模型所在的子目录 ===
     QString currentBaseName;
     QString modelDir; // 用于存储该模型实际所在的文件夹路径
@@ -1531,6 +1909,26 @@ void MainWindow::onGalleryImageClicked(int index)
 
     // 2. 寻找本地图片路径 (使用解析出的 modelDir 而不是全局 currentLoraPath)
     QString localPath = findLocalPreviewPath(modelDir, currentBaseName, currentMeta.fileNameServer, index);
+
+    int width = img.width;
+    int height = img.height;
+    if ((width <= 0 || height <= 0) && QFile::exists(localPath)) {
+        QImageReader reader(localPath);
+        const QSize size = reader.size();
+        width = size.width();
+        height = size.height();
+    }
+
+    const QString resolution = (width > 0 && height > 0)
+        ? QString("%1 x %2").arg(width).arg(height)
+        : "--";
+    QString params = QString("Resolution: <span style='color:white'>%1</span> | Sampler: <span style='color:white'>%2</span> | Steps: <span style='color:white'>%3</span> | CFG: <span style='color:white'>%4</span> | Seed: <span style='color:white'>%5</span>")
+                         .arg(resolution)
+                         .arg(img.sampler)
+                         .arg(img.steps)
+                         .arg(img.cfgScale)
+                         .arg(img.seed);
+    ui->lblImgParams->setText(params);
 
     // 3. 执行过渡
     if (QFile::exists(localPath)) {
@@ -1582,9 +1980,10 @@ void MainWindow::clearDetailView()
 
     ui->textImgPrompt->clear();
     ui->textImgNegPrompt->clear();
-    ui->lblImgParams->setText("Sampler: -- | Steps: -- | CFG: -- | Seed: --");
+    ui->lblImgParams->setText("Resolution: -- | Sampler: -- | Steps: -- | CFG: -- | Seed: --");
 
     ui->btnOpenUrl->setVisible(false);
+    ui->btnCopyLoraTag->setVisible(false);
 
     clearLayout(ui->badgesFrame->layout());
     clearLayout(ui->layoutTriggerStack);
@@ -1939,6 +2338,7 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
     ui->btnShowUserGallery->setVisible(true);
     ui->btnShowUserGallery->setEnabled(true);
     ui->btnEditMeta->setVisible(true);
+    ui->btnCopyLoraTag->setVisible(true);
 
     QString filePath = item->data(ROLE_FILE_PATH).toString();
     QString modelDir = QFileInfo(filePath).absolutePath();
@@ -2906,6 +3306,43 @@ void MainWindow::onOpenUrlClicked() {
     if (!url.isEmpty()) QDesktopServices::openUrl(QUrl(url));
 }
 
+QString MainWindow::currentModelLoraTagName() const
+{
+    QString filePath;
+    if (QListWidgetItem *item = ui->modelList->currentItem()) {
+        filePath = item->data(ROLE_FILE_PATH).toString();
+    }
+    if (filePath.isEmpty()) filePath = currentMeta.filePath;
+
+    QString tagName;
+    if (!filePath.isEmpty()) {
+        tagName = const_cast<MainWindow*>(this)->getSafetensorsInternalName(filePath);
+        if (tagName.isEmpty()) tagName = QFileInfo(filePath).completeBaseName();
+    }
+    if (tagName.isEmpty()) tagName = currentMeta.fileNameServer;
+    if (tagName.isEmpty()) tagName = currentMeta.name;
+
+    if (tagName.endsWith(".safetensors", Qt::CaseInsensitive) ||
+        tagName.endsWith(".ckpt", Qt::CaseInsensitive) ||
+        tagName.endsWith(".pt", Qt::CaseInsensitive)) {
+        tagName = QFileInfo(tagName).completeBaseName();
+    }
+    return tagName.trimmed();
+}
+
+void MainWindow::onCopyLoraTagClicked()
+{
+    const QString tagName = currentModelLoraTagName();
+    if (tagName.isEmpty()) {
+        ui->statusbar->showMessage("无法生成 LoRA 标签：未选中模型", 2500);
+        return;
+    }
+
+    const QString tag = QString("<lora:%1:1>").arg(tagName);
+    QApplication::clipboard()->setText(tag);
+    ui->statusbar->showMessage("已复制 LoRA 标签: " + tag, 2500);
+}
+
 void MainWindow::downloadThumbnail(const QString &url, const QString &savePath, QPushButton *button)
 {
     QNetworkRequest req((QUrl(url)));
@@ -3489,6 +3926,8 @@ void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonP
     item->setData(ROLE_SORT_DATE, 0);
     item->setData(ROLE_SORT_DOWNLOADS, 0);
     item->setData(ROLE_SORT_LIKES, 0);
+    item->setData(ROLE_SORT_USAGE_COUNT, 0);
+    item->setData(ROLE_SORT_LAST_USED, 0);
     item->setData(ROLE_FILTER_BASE, "Unknown");
     item->setData(ROLE_NSFW_LEVEL, 1);
     item->setData(ROLE_LOCAL_EDITED, false);
@@ -3575,13 +4014,86 @@ void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonP
     item->setData(ROLE_SORT_LIKES, stats["thumbsUpCount"].toInt());
 }
 
+void MainWindow::refreshModelUsageStatsAsync()
+{
+    if (!ui || !ui->modelList) return;
+
+    const int currentToken = ++modelUsageStatsToken;
+
+    QList<QPair<QString, QString>> models;
+    models.reserve(ui->modelList->count());
+
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (!item) continue;
+
+        item->setData(ROLE_SORT_USAGE_COUNT, 0);
+        item->setData(ROLE_SORT_LAST_USED, 0);
+
+        const QString filePath = item->data(ROLE_FILE_PATH).toString();
+        const QString baseName = item->data(ROLE_MODEL_NAME).toString();
+        if (!filePath.isEmpty()) {
+            models.append(qMakePair(filePath, baseName));
+        }
+    }
+
+    if (models.isEmpty()) return;
+
+    if (imageCache.isEmpty()) {
+        if (ui->comboSort->currentIndex() == 5 || ui->comboSort->currentIndex() == 6) {
+            executeSort();
+            refreshHomeGallery();
+            refreshCollectionTreeView();
+        }
+        return;
+    }
+
+    const QMap<QString, UserImageInfo> cacheCopy = imageCache;
+    const int matchMode = optUserGalleryMatchMode;
+
+    auto *watcher = new QFutureWatcher<QList<ModelUsageStatResult>>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, currentToken]() {
+        const QList<ModelUsageStatResult> stats = watcher->result();
+        watcher->deleteLater();
+        if (currentToken != modelUsageStatsToken) return;
+
+        QMap<QString, ModelUsageStatResult> statsByPath;
+        for (const ModelUsageStatResult &stat : stats) {
+            statsByPath.insert(QFileInfo(stat.filePath).absoluteFilePath(), stat);
+        }
+
+        for (int i = 0; i < ui->modelList->count(); ++i) {
+            QListWidgetItem *item = ui->modelList->item(i);
+            if (!item) continue;
+
+            const QString filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+            const ModelUsageStatResult stat = statsByPath.value(filePath);
+            item->setData(ROLE_SORT_USAGE_COUNT, stat.usageCount);
+            item->setData(ROLE_SORT_LAST_USED, stat.lastUsed);
+        }
+
+        const int sortType = ui->comboSort->currentIndex();
+        if (sortType == 5 || sortType == 6) {
+            executeSort();
+            refreshHomeGallery();
+            refreshCollectionTreeView();
+        }
+    });
+
+    watcher->setFuture(QtConcurrent::run(
+        backgroundThreadPool,
+        [models, cacheCopy, matchMode]() {
+            return calculateModelUsageStatsWorker(models, cacheCopy, matchMode);
+        }));
+}
+
 void MainWindow::onSortIndexChanged(int index) {
     executeSort();
 }
 
 void MainWindow::executeSort()
 {
-    // 0: Name, 1: Date(New), 2: Downloads, 3: Likes, 4: Date Added
+    // 0: Name, 1: Date(New), 2: Downloads, 3: Likes, 4: Date Added, 5: Usage, 6: Recently Used
     int sortType = ui->comboSort->currentIndex();
 
     // 1. 取出所有 Item
@@ -3599,13 +4111,13 @@ void MainWindow::executeSort()
     // 2. 使用 Lambda 表达式排序
     std::sort(items.begin(), items.end(),
         [sortType, &collator](QListWidgetItem *a, QListWidgetItem *b) { // 注意这里捕获了 &collator
+        auto compareByName = [&collator](QListWidgetItem *left, QListWidgetItem *right) {
+            return collator.compare(left->text(), right->text()) < 0;
+        };
+
         switch (sortType) {
             case 0: // Name (A-Z)
-            {
-                QString nameA = a->text();
-                QString nameB = b->text();
-                return collator.compare(nameA, nameB) < 0;
-            }
+                return compareByName(a, b);
 
             case 1: // Date (Newest First -> Descending)
                 return a->data(ROLE_SORT_DATE).toLongLong() > b->data(ROLE_SORT_DATE).toLongLong();
@@ -3619,8 +4131,24 @@ void MainWindow::executeSort()
             case 4: // Date Added (Local Created At -> Descending)
                 return a->data(ROLE_SORT_ADDED).toLongLong() > b->data(ROLE_SORT_ADDED).toLongLong();
 
+            case 5: // Usage Count (Local Gallery)
+            {
+                const int usageA = a->data(ROLE_SORT_USAGE_COUNT).toInt();
+                const int usageB = b->data(ROLE_SORT_USAGE_COUNT).toInt();
+                if (usageA != usageB) return usageA > usageB;
+                return compareByName(a, b);
+            }
+
+            case 6: // Recently Used (Local Gallery)
+            {
+                const qint64 usedA = a->data(ROLE_SORT_LAST_USED).toLongLong();
+                const qint64 usedB = b->data(ROLE_SORT_LAST_USED).toLongLong();
+                if (usedA != usedB) return usedA > usedB;
+                return compareByName(a, b);
+            }
+
             default:
-                return false;
+                return compareByName(a, b);
             }
         }
     );
@@ -3971,6 +4499,7 @@ void MainWindow::onClearUserGalleryCacheClicked()
     imageCache.clear();
     QString cachePath = qApp->applicationDirPath() + "/config/user_gallery_cache.json";
     QFile::remove(cachePath);
+    refreshModelUsageStatsAsync();
     ui->statusbar->showMessage("本地图库缓存已清除", 3000);
 }
 
@@ -4070,11 +4599,18 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
         return;
     }
 
-    bool isGlobalMode = loraBaseName.isEmpty();
+    const bool isGlobalMode = loraBaseName.isEmpty();
+    const bool wantSummaryHashMatch = (!isGlobalMode && (optUserGalleryMatchMode == 1 || optUserGalleryMatchMode == 2));
+    const bool strictSummaryHashMatch = (!isGlobalMode && optUserGalleryMatchMode == 2);
+    bool useSummaryHashMatch = wantSummaryHashMatch;
 
     QString scanPrefix;
     if (isGlobalMode) {
         scanPrefix = "正在扫描所有本地图片";
+    } else if (strictSummaryHashMatch) {
+        scanPrefix = QString("正在扫描使用 '%1' 的图片 (严格摘要值匹配)").arg(loraBaseName);
+    } else if (wantSummaryHashMatch) {
+        scanPrefix = QString("正在扫描使用 '%1' 的图片 (摘要值匹配)").arg(loraBaseName);
     } else {
         scanPrefix = QString("正在扫描使用 '%1' 的图片").arg(loraBaseName);
     }
@@ -4085,13 +4621,67 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     // 2. 构建模糊匹配关键字列表 (仅在非全局模式下)
     // =========================================================
     QStringList searchKeys;
+    QSet<QString> normalizedLoraNames;
+    QSet<QString> targetSummaryHashes;
 
     if(!isGlobalMode){
         QSet<QString> uniqueKeys; // 使用 Set 自动去重
 
+        QListWidgetItem *currentItem = ui->modelList->currentItem();
+        QString selectedFilePath;
+        QString selectedModelDir;
+        QString selectedBaseName;
+        if (currentItem) {
+            selectedFilePath = currentItem->data(ROLE_FILE_PATH).toString();
+            selectedModelDir = QFileInfo(selectedFilePath).absolutePath();
+            selectedBaseName = currentItem->data(ROLE_MODEL_NAME).toString().trimmed();
+        }
+        if (selectedFilePath.isEmpty()) selectedFilePath = currentMeta.filePath;
+        if (selectedModelDir.isEmpty() && !currentMeta.filePath.isEmpty()) {
+            selectedModelDir = QFileInfo(currentMeta.filePath).absolutePath();
+        }
+        if (selectedBaseName.isEmpty() && !selectedFilePath.isEmpty()) {
+            selectedBaseName = QFileInfo(selectedFilePath).completeBaseName();
+        }
+        if (selectedBaseName.isEmpty()) selectedBaseName = loraBaseName;
+
+        if (wantSummaryHashMatch) {
+            QSet<QString> candidateHashes;
+
+            if (!currentMeta.sha256.isEmpty()) {
+                const QString normalized = normalizeSummaryHashForMatch(currentMeta.sha256);
+                if (!normalized.isEmpty()) candidateHashes.insert(normalized);
+            }
+
+            QStringList hashJsonPaths;
+            if (!selectedModelDir.isEmpty() && !selectedBaseName.isEmpty()) {
+                hashJsonPaths.append(QDir(selectedModelDir).filePath(selectedBaseName + ".json"));
+                hashJsonPaths.append(QDir(selectedModelDir).filePath(selectedBaseName + ".metadata.json"));
+            }
+            if (!selectedFilePath.isEmpty()) {
+                hashJsonPaths.append(selectedFilePath + ".metadata.json");
+            }
+
+            for (const QString &path : hashJsonPaths) {
+                const QSet<QString> fromFile = collectLoraSummaryHashesFromJsonFileWorker(path);
+                for (const QString &hash : fromFile) candidateHashes.insert(hash);
+            }
+
+            targetSummaryHashes = candidateHashes;
+            if (targetSummaryHashes.isEmpty()) {
+                if (strictSummaryHashMatch) {
+                    ui->statusbar->showMessage("未读取到 LoRA 摘要值，严格模式下不会回退，结果可能为空。", 5000);
+                } else {
+                    useSummaryHashMatch = false;
+                    ui->statusbar->showMessage("未读取到 LoRA 摘要值，已回退到当前匹配逻辑。", 4000);
+                }
+            } else {
+                qDebug() << "LoRA summary hashes for match:" << targetSummaryHashes.values();
+            }
+        }
+
         // === 获取 Safetensors 内部名称 ===
         // 获取当前选中项的完整路径
-        QListWidgetItem *currentItem = ui->modelList->currentItem();
         if (currentItem) {
             QString fullPath = currentItem->data(ROLE_FILE_PATH).toString();
             QString internalName = getSafetensorsInternalName(fullPath);
@@ -4143,7 +4733,11 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
                 ++it;
             }
         }
-        qDebug() << "生成的模糊匹配词:" << searchKeys;
+        for (const QString &key : searchKeys) {
+            const QString normalized = normalizeLoraNameForMatch(key);
+            if (!normalized.isEmpty()) normalizedLoraNames.insert(normalized);
+        }
+        qDebug() << "生成的 LoRA 匹配名:" << normalizedLoraNames.values();
     }
 
 
@@ -4157,7 +4751,7 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     // 开启异步任务
     QFuture<QPair<QList<UserImageInfo>, QMap<QString, UserImageInfo>>> future = QtConcurrent::run(
         backgroundThreadPool,
-        [searchKeys, isGlobalMode, recursive, splitOnNewline, filterTags, currentCacheCopy, validGalleryPaths]() {
+        [normalizedLoraNames, targetSummaryHashes, useSummaryHashMatch, isGlobalMode, recursive, splitOnNewline, filterTags, currentCacheCopy, validGalleryPaths]() {
 
             QList<UserImageInfo> results;
             QMap<QString, UserImageInfo> newCacheUpdates; // 用于收集需要更新到主缓存的数据
@@ -4199,18 +4793,16 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
                     }
 
                     // === 筛选逻辑 ===
-                    if (info.prompt.isEmpty()) continue;
+                    if (info.prompt.isEmpty() && info.parameters.isEmpty()) continue;
 
                     bool matched = false;
                     if (isGlobalMode) {
                         matched = true;
+                    } else if (useSummaryHashMatch) {
+                        const QSet<QString> imageHashes = extractLoraHashValuesFromParametersWorker(info.parameters);
+                        matched = hashSetsMatchByPrefixWorker(imageHashes, targetSummaryHashes);
                     } else {
-                        for (const QString &key : searchKeys) {
-                            if (info.prompt.contains(key, Qt::CaseInsensitive)) {
-                                matched = true;
-                                break;
-                            }
-                        }
+                        matched = promptUsesLoraWorker(info.prompt, info.parameters, normalizedLoraNames);
                     }
 
                     if (matched) {
@@ -4244,6 +4836,7 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
             }
             // 保存到磁盘，下次启动就快了
             saveUserGalleryCache();
+            refreshModelUsageStatsAsync();
         }
 
         // 2. UI 更新逻辑 (与原代码一致)
@@ -4394,6 +4987,7 @@ void MainWindow::onGalleryButtonClicked()
     ui->btnFavorite->setVisible(false);
     ui->btnShowUserGallery->setVisible(false);
     ui->btnEditMeta->setVisible(false);
+    ui->btnCopyLoraTag->setVisible(false);
 
     // 5. 清除背景图 (或者你可以放一张默认的图库壁纸)
     currentHeroPath = "";
@@ -4506,44 +5100,54 @@ void MainWindow::ensureToolTabLoaded(int index)
     if (!toolsTabWidget || index < 0 || index >= toolsTabWidget->count()) return;
     QWidget *currentPage = toolsTabWidget->widget(index);
     if (!currentPage || currentPage->objectName() != "toolPlaceholder") return;
+    if (pendingToolTabLoads.contains(index)) return;
 
-    QWidget *newPage = nullptr;
-    switch (index) {
-    case 0:
-        newPage = new SyncWidget(toolsTabWidget);
-        break;
-    case 1:
-        parserWidget = new PromptParserWidget(toolsTabWidget);
-        parserWidget->setTranslationMap(&translationMap);
-        newPage = parserWidget;
-        break;
-    case 2:
-        tagBrowserWidget = new TagBrowserWidget(toolsTabWidget);
-        tagBrowserWidget->setCsvPath(translationCsvPath);
-        connect(tagBrowserWidget, &TagBrowserWidget::csvSaved, this, [this](const QString &path){
-            translationCsvPath = path;
-            loadTranslationCSV(path);
-            if (parserWidget) parserWidget->setTranslationMap(&translationMap);
-            saveGlobalConfig();
-        });
-        newPage = tagBrowserWidget;
-        break;
-    case 3:
-        llmPromptWidget = new LlmPromptWidget(toolsTabWidget);
-        llmPromptWidget->setLibraryPaths(loraPaths, galleryPaths);
-        newPage = llmPromptWidget;
-        break;
-    default:
-        break;
-    }
+    pendingToolTabLoads.insert(index);
+    QTimer::singleShot(0, this, [this, index]() {
+        pendingToolTabLoads.remove(index);
+        if (!toolsTabWidget || index < 0 || index >= toolsTabWidget->count()) return;
+        QWidget *currentPage = toolsTabWidget->widget(index);
+        if (!currentPage || currentPage->objectName() != "toolPlaceholder") return;
 
-    if (!newPage) return;
-    const QString label = toolsTabWidget->tabText(index);
-    QSignalBlocker blocker(toolsTabWidget);
-    toolsTabWidget->removeTab(index);
-    currentPage->deleteLater();
-    toolsTabWidget->insertTab(index, newPage, label);
-    toolsTabWidget->setCurrentIndex(index);
+        QWidget *newPage = nullptr;
+        switch (index) {
+        case 0:
+            newPage = new SyncWidget(toolsTabWidget);
+            break;
+        case 1:
+            parserWidget = new PromptParserWidget(toolsTabWidget);
+            parserWidget->setTranslationMap(&translationMap);
+            newPage = parserWidget;
+            break;
+        case 2:
+            tagBrowserWidget = new TagBrowserWidget(toolsTabWidget);
+            tagBrowserWidget->setCsvPath(translationCsvPath);
+            connect(tagBrowserWidget, &TagBrowserWidget::csvSaved, this, [this](const QString &path){
+                translationCsvPath = path;
+                loadTranslationCSV(path);
+                if (parserWidget) parserWidget->setTranslationMap(&translationMap);
+                saveGlobalConfig();
+            });
+            newPage = tagBrowserWidget;
+            break;
+        case 3:
+            llmPromptWidget = new LlmPromptWidget(toolsTabWidget);
+            llmPromptWidget->setLibraryPaths(loraPaths, galleryPaths);
+            newPage = llmPromptWidget;
+            break;
+        default:
+            break;
+        }
+
+        if (!newPage) return;
+        const QString label = toolsTabWidget->tabText(index);
+        QSignalBlocker blocker(toolsTabWidget);
+        toolsTabWidget->removeTab(index);
+        currentPage->setParent(nullptr);
+        currentPage->deleteLater();
+        toolsTabWidget->insertTab(index, newPage, label);
+        toolsTabWidget->setCurrentIndex(index);
+    });
 }
 
 void MainWindow::onMenuSwitchToLibrary() {
@@ -4580,6 +5184,10 @@ void MainWindow::loadGlobalConfig() {
         optSavedUAString                = root["custom_user_agent"].toString();
         optUseCivitaiName               = root["use_civitai_name"].toBool(false);
         optSuppressLocalWarnings        = root["suppress_local_model_warnings"].toBool(false);
+        optUserGalleryMatchMode         = root["user_gallery_match_mode"].toInt(0);
+        if (optUserGalleryMatchMode < 0 || optUserGalleryMatchMode > 2) {
+            optUserGalleryMatchMode = 0;
+        }
 
         qDebug() << "Loaded User-Agent:" << currentUserAgent;
 
@@ -4662,6 +5270,7 @@ void MainWindow::loadGlobalConfig() {
     if (!optSavedUAString.isEmpty()) {ui->editUserAgent->setText(optSavedUAString);}
     ui->chkUseCivitaiName->setChecked(optUseCivitaiName);
     ui->chkSuppressLocalWarnings->setChecked(optSuppressLocalWarnings);
+    ui->comboUserGalleryMatchMode->setCurrentIndex(optUserGalleryMatchMode);
 
     // ===============================
     // === 连接 Settings 页面的信号 ===
@@ -4798,6 +5407,12 @@ void MainWindow::loadGlobalConfig() {
         optSuppressLocalWarnings = checked;
         saveGlobalConfig();
     });
+    connect(ui->comboUserGalleryMatchMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index){
+        if (index < 0 || index > 2) index = 0;
+        optUserGalleryMatchMode = index;
+        saveGlobalConfig();
+        refreshModelUsageStatsAsync();
+    });
 }
 
 void MainWindow::saveGlobalConfig() {
@@ -4836,6 +5451,7 @@ void MainWindow::saveGlobalConfig() {
     root["custom_user_agent"]           = ui->editUserAgent->text();
     root["use_civitai_name"]            = optUseCivitaiName;
     root["suppress_local_model_warnings"] = optSuppressLocalWarnings;
+    root["user_gallery_match_mode"]     = optUserGalleryMatchMode;
     root.remove("model_switch_delay_ms");
 
     if (optRestoreTreeState) {
@@ -5028,41 +5644,7 @@ QIcon MainWindow::generatePlaceholderIcon()
 
 QString MainWindow::getSafetensorsInternalName(const QString &path)
 {
-    if (!path.endsWith(".safetensors", Qt::CaseInsensitive)) {
-        return "";
-    }
-
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) return "";
-
-    // 1. 读取前8个字节 (uint64, Little Endian)，表示 JSON 头部的长度
-    qint64 headerLen = 0;
-    if (file.read((char*)&headerLen, 8) != 8) return "";
-
-    // 安全检查：防止读取过大的垃圾数据（一般 header 不会超过 100MB）
-    if (headerLen <= 0 || headerLen > 100 * 1024 * 1024) return "";
-
-    // 2. 读取 JSON 头部数据
-    QByteArray headerData = file.read(headerLen);
-    file.close();
-
-    // 3. 解析 JSON
-    QJsonDocument doc = QJsonDocument::fromJson(headerData);
-    if (doc.isNull()) return "";
-
-    QJsonObject root = doc.object();
-
-    // 4. 提取 __metadata__ 中的 ss_output_name
-    if (root.contains("__metadata__")) {
-        QJsonObject meta = root["__metadata__"].toObject();
-        // ss_output_name 是最常用的内部名称字段
-        if (meta.contains("ss_output_name")) {
-            return meta["ss_output_name"].toString();
-        }
-        // 部分模型可能使用 ss_tag_frequency 等字段，但 name 最准确
-    }
-
-    return "";
+    return getSafetensorsInternalNameWorker(path);
 }
 
 QPixmap MainWindow::applyNSFWBlur(const QPixmap &pix) {

@@ -43,6 +43,8 @@ const int ROLE_SORT_LIKES           = Qt::UserRole + 12;  // 存储点赞量 (in
 const int ROLE_FILTER_BASE          = Qt::UserRole + 13;  // 存储底模名称 (QString)
 const int ROLE_SORT_ADDED           = Qt::UserRole + 14;  // 存储本地文件创建时间 (qint64)
 const int ROLE_LOCAL_EDITED         = Qt::UserRole + 15;  // 标记本地/已编辑模型 (bool)
+const int ROLE_SORT_USAGE_COUNT     = Qt::UserRole + 16;  // 本地返图使用次数
+const int ROLE_SORT_LAST_USED       = Qt::UserRole + 17;  // 本地返图最近使用时间
 // 收藏夹树状图
 const int ROLE_IS_COLLECTION_NODE   = Qt::UserRole + 20;  // 标记这是一个收藏夹节点
 const int ROLE_COLLECTION_NAME      = Qt::UserRole + 21;  // 存储收藏夹名称
@@ -154,6 +156,7 @@ private slots:
     void onForceUpdateClicked();
     void onScanLocalClicked();
     void onOpenUrlClicked();
+    void onCopyLoraTagClicked();
     void onApiMetadataReceived(QNetworkReply *reply);
     void onImageDownloaded(QNetworkReply *reply);
     void onGalleryImageClicked(int index);
@@ -206,6 +209,7 @@ private:
     PromptParserWidget *parserWidget = nullptr;
     TagBrowserWidget *tagBrowserWidget = nullptr;
     LlmPromptWidget *llmPromptWidget = nullptr;
+    QSet<int> pendingToolTabLoads;
     QNetworkAccessManager *netManager;
     QPixmap currentHeroPixmap;
     QString currentHeroPath;
@@ -258,6 +262,7 @@ private:
     void showCollectionMenu(const QList<QListWidgetItem*> &items, const QPoint &globalPos);
     // 快速读取单个 JSON 的元数据用于列表显示
     void preloadItemMetadata(QListWidgetItem *item, const QString &jsonPath);
+    void refreshModelUsageStatsAsync();
     QFutureWatcher<ImageLoadResult> *imageLoadWatcher;
     QPixmap applyBlurToImage(const QImage &srcImg, const QSize &bgSize, const QSize &heroSize);
     static ImageLoadResult processImageTask(const QString &path);
@@ -282,6 +287,7 @@ private:
 
     int currentEditImageIndex = -1;
     int editImageLoadToken = 0;
+    int modelUsageStatsToken = 0;
     bool editImagesNeedRefresh = false;
     bool m_forceResyncPreview = false;
     bool m_skipPreviewSync = false;
@@ -315,6 +321,7 @@ private:
     void dispatchVisibleUserImageThumbLoad();
 
     QString getSafetensorsInternalName(const QString &path);
+    QString currentModelLoraTagName() const;
 
     QStringList parsePromptsToTags(const QString &rawPrompt);
     QString cleanTagText(QString t);
@@ -372,6 +379,7 @@ private:
     QStringList optFilterTags       = DEFAULT_FILTER_TAGS.split(',', Qt::SkipEmptyParts);    // 过滤词列表 (存储清洗后的列表)
     bool    optUseCivitaiName = false;                  // 使用json中的模型名称
     bool    optSuppressLocalWarnings = false;           // 隐藏本地模型总量提醒
+    int     optUserGalleryMatchMode = 0;                // 0: 当前逻辑匹配, 1: 摘要值匹配(可回退), 2: 严格摘要值匹配(不回退)
     // 保存与加载
     void loadGlobalConfig();        // 加载配置
     void saveGlobalConfig();        // 保存配置

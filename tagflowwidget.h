@@ -41,25 +41,24 @@ struct TagState {
 class TagFlowWidget : public QWidget {
     Q_OBJECT
 public:
+    enum SortMode {
+        SortByCount = 0,
+        SortAlphabetically = 1
+    };
+
     explicit TagFlowWidget(QWidget *parent = nullptr) : QWidget(parent) {
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
         setMouseTracking(true);
     }
 
     void setData(const QMap<QString, int> &data) {
-        m_tags.clear();
+        const QSet<QString> selected = getSelectedTags();
+        m_allTags.clear();
         m_lastClickedIndex = -1;
-        QList<QPair<QString, int>> sorted;
         for(auto it = data.begin(); it != data.end(); ++it) {
-            sorted << qMakePair(it.key(), it.value());
+            m_allTags.append({it.key(), it.value(), selected.contains(it.key()), QRect()});
         }
-        std::sort(sorted.begin(), sorted.end(), [](const auto &a, const auto &b){
-            return a.second > b.second;
-        });
-        for(const auto &pair : sorted) {
-            m_tags.append({pair.first, pair.second, false, QRect()});
-        }
-        invalidateLayoutAndCache();
+        rebuildVisibleTags();
     }
 
     void setTranslationMap(const QHash<QString, QString> *map) {
@@ -70,12 +69,31 @@ public:
     void setShowTranslation(bool show) {
         if (m_showTranslation == show) return;
         m_showTranslation = show;
-        invalidateLayoutAndCache();
+        rebuildVisibleTags();
+    }
+
+    void setSortMode(SortMode mode) {
+        if (m_sortMode == mode) return;
+        m_sortMode = mode;
+        rebuildVisibleTags();
+    }
+
+    void setSearchText(const QString &text) {
+        const QString normalized = text.trimmed();
+        if (m_searchText == normalized) return;
+        m_searchText = normalized;
+        rebuildVisibleTags();
+    }
+
+    void setLoraOnly(bool enabled) {
+        if (m_loraOnly == enabled) return;
+        m_loraOnly = enabled;
+        rebuildVisibleTags();
     }
 
     QSet<QString> getSelectedTags() const {
         QSet<QString> set;
-        for(const auto &t : m_tags) {
+        for(const auto &t : m_allTags) {
             if(t.selected) set.insert(t.text);
         }
         return set;
@@ -92,11 +110,68 @@ protected:
     int m_calculatedHeight = 0;
     const QHash<QString, QString> *m_translationMap = nullptr;
     bool m_showTranslation = false;
+    SortMode m_sortMode = SortByCount;
+    QString m_searchText;
+    bool m_loraOnly = false;
     bool m_layoutDirty = true;
     bool m_cacheDirty = true;
     int m_layoutWidth = -1;
     QPixmap m_cachedPixmap;
     static constexpr qsizetype kMaxCachedPixels = 8 * 1024 * 1024;
+
+    QString normalizeForSearch(QString text) const {
+        text = text.trimmed().toCaseFolded();
+        text.remove('_');
+        text.remove(' ');
+        return text;
+    }
+
+    bool isLoraTag(const QString &tag) const {
+        return tag.contains("lora:", Qt::CaseInsensitive);
+    }
+
+    bool matchesSearch(const TagState &tag) const {
+        const QString needle = normalizeForSearch(m_searchText);
+        if (needle.isEmpty()) return true;
+
+        if (normalizeForSearch(tag.text).contains(needle)) return true;
+
+        const QString translation = tryGetTranslation(tag.text);
+        return !translation.isEmpty() && normalizeForSearch(translation).contains(needle);
+    }
+
+    void setSelectedByText(const QString &text, bool selected) {
+        for (TagState &tag : m_allTags) {
+            if (tag.text == text) tag.selected = selected;
+        }
+        for (TagState &tag : m_tags) {
+            if (tag.text == text) tag.selected = selected;
+        }
+    }
+
+    void rebuildVisibleTags() {
+        m_tags.clear();
+        for (const TagState &tag : m_allTags) {
+            if (m_loraOnly && !isLoraTag(tag.text)) continue;
+            if (!matchesSearch(tag)) continue;
+            m_tags.append(tag);
+        }
+
+        if (m_sortMode == SortAlphabetically) {
+            std::sort(m_tags.begin(), m_tags.end(), [](const TagState &a, const TagState &b) {
+                const int cmp = QString::compare(a.text, b.text, Qt::CaseInsensitive);
+                if (cmp != 0) return cmp < 0;
+                return a.count > b.count;
+            });
+        } else {
+            std::sort(m_tags.begin(), m_tags.end(), [](const TagState &a, const TagState &b) {
+                if (a.count != b.count) return a.count > b.count;
+                return QString::compare(a.text, b.text, Qt::CaseInsensitive) < 0;
+            });
+        }
+
+        invalidateLayoutAndCache();
+    }
 
     void invalidateLayoutAndCache() {
         m_layoutDirty = true;
@@ -163,6 +238,8 @@ protected:
     }
 
     bool shouldUsePixmapCache(const QSize &logicalSize) const {
+        if (m_tags.isEmpty()) return false;
+        if (logicalSize.width() <= 1 || logicalSize.height() <= 1) return false;
         return qsizetype(logicalSize.width()) * qsizetype(logicalSize.height()) <= kMaxCachedPixels;
     }
 
@@ -259,14 +336,16 @@ protected:
     }
 
     void paintEvent(QPaintEvent *event) override {
-        Q_UNUSED(event);
         const QSize expectedSize(qMax(1, width()), qMax(1, m_calculatedHeight));
         const qreal expectedDpr = qMax<qreal>(1.0, devicePixelRatioF());
         const bool useCache = shouldUsePixmapCache(expectedSize);
-        const QSize cachedLogicalSize(
-            qRound(m_cachedPixmap.width() / qMax<qreal>(1.0, m_cachedPixmap.devicePixelRatio())),
-            qRound(m_cachedPixmap.height() / qMax<qreal>(1.0, m_cachedPixmap.devicePixelRatio()))
-        );
+        QSize cachedLogicalSize;
+        if (!m_cachedPixmap.isNull()) {
+            cachedLogicalSize = QSize(
+                qRound(m_cachedPixmap.width() / qMax<qreal>(1.0, m_cachedPixmap.devicePixelRatio())),
+                qRound(m_cachedPixmap.height() / qMax<qreal>(1.0, m_cachedPixmap.devicePixelRatio()))
+            );
+        }
 
         if (m_cacheDirty ||
             m_layoutDirty ||
@@ -309,14 +388,16 @@ protected:
                 if (shiftPressed && m_lastClickedIndex >= 0) {
                     if (!ctrlPressed) {
                         for (auto &tag : m_tags) tag.selected = false;
+                        for (auto &tag : m_allTags) tag.selected = false;
                     }
                     const int begin = qMin(m_lastClickedIndex, clickedIndex);
                     const int end = qMax(m_lastClickedIndex, clickedIndex);
                     for (int i = begin; i <= end; ++i) {
                         m_tags[i].selected = true;
+                        setSelectedByText(m_tags[i].text, true);
                     }
                 } else {
-                    m_tags[clickedIndex].selected = !m_tags[clickedIndex].selected;
+                    setSelectedByText(m_tags[clickedIndex].text, !m_tags[clickedIndex].selected);
                 }
                 m_lastClickedIndex = clickedIndex;
                 changed = true;
@@ -376,6 +457,7 @@ protected:
     }
 
 private:
+    QList<TagState> m_allTags;
     QList<TagState> m_tags;
     int m_lastClickedIndex = -1;
 

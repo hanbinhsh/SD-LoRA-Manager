@@ -23,6 +23,35 @@ struct UserTagUsageRow
     int count = 0;
 };
 
+class TagSearchProxyModel : public QSortFilterProxyModel
+{
+    Q_OBJECT
+
+public:
+    enum MatchMode {
+        ContainsMatch = 0,
+        WordMatch = 1,
+        ExactMatch = 2
+    };
+
+    explicit TagSearchProxyModel(QObject *parent = nullptr);
+
+    void setSearchText(const QString &text);
+    void setMatchMode(int mode);
+
+protected:
+    bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const override;
+
+private:
+    QString m_searchText;
+    QString m_normalizedSearchText;
+    QString m_wordSearchText;
+    MatchMode m_matchMode = ContainsMatch;
+
+    static QString normalizedSearchText(const QString &text);
+    bool matchesText(const QString &value) const;
+};
+
 class TagBrowserWidget : public QWidget
 {
     Q_OBJECT
@@ -59,9 +88,9 @@ private slots:
 private:
     Ui::TagBrowserWidget *ui;
     QStandardItemModel *m_model;
-    QSortFilterProxyModel *m_proxy;
+    TagSearchProxyModel *m_proxy;
     QStandardItemModel *m_userTagModel;
-    QSortFilterProxyModel *m_userTagProxy;
+    TagSearchProxyModel *m_userTagProxy;
     QString m_csvPath;
     bool m_csvLoaded = false;
     bool m_dirty = false;

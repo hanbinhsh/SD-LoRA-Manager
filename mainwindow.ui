@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1300</width>
-    <height>909</height>
+    <height>964</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -17,6 +17,18 @@
    <string notr="true">/* === 全局样式 === */
 #sidebarWidget { background-color: #1a1f29; }
 QLineEdit { background-color: #131519; border: 1px solid #363c46; color: #dcdedf; padding: 4px; border-radius: 3px; }
+QLineEdit#editUserTagSearch {
+    background-color: transparent;
+    border: 1px solid #aaaaaa;
+    color: #ffffff;
+    padding: 4px 8px;
+    border-radius: 5px;
+    font-weight: bold;
+    height: 10px;
+}
+QLineEdit#editUserTagSearch:hover, QLineEdit#editUserTagSearch:focus {
+    border: 1px solid #eeeeee;
+}
 
 /* 列表 */
 #modelList { background-color: #1a1f29; border: none; outline: none; }
@@ -28,8 +40,8 @@ QLineEdit { background-color: #131519; border: 1px solid #363c46; color: #dcdedf
 #btnHome, #btnGallery { background-color: transparent; text-align: left; padding-left: 10px; font-size: 14px; font-weight: bold; color: #fff; }
 #btnHome:hover, #btnGallery:hover { background-color: #3d4450; }
 
-#btnScanLocal, #btnForceUpdate, #btnOpenUrl, #btnFavorite, #btnShowUserGallery, #btnEditMeta { background-color: #2a3f5a; border-radius: 2px; color: #66c0f4; border: none; }
-#btnScanLocal:hover, #btnForceUpdate:hover, #btnOpenUrl:hover, #btnFavorite:hover, #btnShowUserGallery:hover, #btnEditMeta:hover { background-color: #3d5677; color: #ffffff; }
+#btnScanLocal, #btnForceUpdate, #btnOpenUrl, #btnFavorite, #btnShowUserGallery, #btnEditMeta, #btnCopyLoraTag { background-color: #2a3f5a; border-radius: 2px; color: #66c0f4; border: none; }
+#btnScanLocal:hover, #btnForceUpdate:hover, #btnOpenUrl:hover, #btnFavorite:hover, #btnShowUserGallery:hover, #btnEditMeta:hover, #btnCopyLoraTag:hover { background-color: #3d5677; color: #ffffff; }
 
 /* 绿色复制按钮 */
 QPushButton[class=&quot;copyBtn&quot;] { background-color: #5c7e10; color: white; border: none; border-radius: 2px; font-weight: bold; }
@@ -500,6 +512,16 @@ QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; lef
                    <string>Date Added (Local)</string>
                   </property>
                  </item>
+                 <item>
+                  <property name="text">
+                   <string>Usage Count</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>Recently Used</string>
+                  </property>
+                 </item>
                 </widget>
                </item>
                <item row="1" column="0">
@@ -801,8 +823,8 @@ New</string>
                  <rect>
                   <x>0</x>
                   <y>0</y>
-                  <width>985</width>
-                  <height>1429</height>
+                  <width>774</width>
+                  <height>1467</height>
                  </rect>
                 </property>
                 <property name="minimumSize">
@@ -936,6 +958,22 @@ New</string>
                       </property>
                       <property name="text">
                        <string>✎</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QPushButton" name="btnCopyLoraTag">
+                      <property name="minimumSize">
+                       <size>
+                        <width>40</width>
+                        <height>40</height>
+                       </size>
+                      </property>
+                      <property name="toolTip">
+                       <string>复制 LoRA 标签，例如 &lt;lora:plana:1&gt;</string>
+                      </property>
+                      <property name="text">
+                       <string>&lt;/&gt;</string>
                       </property>
                      </widget>
                     </item>
@@ -1104,7 +1142,7 @@ New</string>
                               <rect>
                                <x>0</x>
                                <y>0</y>
-                               <width>660</width>
+                               <width>501</width>
                                <height>165</height>
                               </rect>
                              </property>
@@ -1523,6 +1561,73 @@ Hash: ...</string>
                             </property>
                            </widget>
                           </item>
+                          <item>
+                           <widget class="QComboBox" name="comboUserTagSortMode">
+                            <property name="minimumSize">
+                             <size>
+                              <width>96</width>
+                              <height>28</height>
+                             </size>
+                            </property>
+                            <property name="maximumSize">
+                             <size>
+                              <width>130</width>
+                              <height>28</height>
+                             </size>
+                            </property>
+                            <property name="toolTip">
+                             <string>Tag 排序方式</string>
+                            </property>
+                            <item>
+                             <property name="text">
+                              <string>使用次数</string>
+                             </property>
+                            </item>
+                            <item>
+                             <property name="text">
+                              <string>字母序</string>
+                             </property>
+                            </item>
+                           </widget>
+                          </item>
+                          <item>
+                           <widget class="QCheckBox" name="chkUserTagLoraOnly">
+                            <property name="minimumSize">
+                             <size>
+                              <width>58</width>
+                              <height>28</height>
+                             </size>
+                            </property>
+                            <property name="toolTip">
+                             <string>仅显示 LoRA Tag</string>
+                            </property>
+                            <property name="text">
+                             <string>LoRA</string>
+                            </property>
+                           </widget>
+                          </item>
+                          <item>
+                           <widget class="QLineEdit" name="editUserTagSearch">
+                            <property name="minimumSize">
+                             <size>
+                              <width>180</width>
+                              <height>28</height>
+                             </size>
+                            </property>
+                            <property name="maximumSize">
+                             <size>
+                              <width>260</width>
+                              <height>28</height>
+                             </size>
+                            </property>
+                            <property name="toolTip">
+                             <string>可搜索英文 Tag 或中文翻译，空格和下划线视为相同</string>
+                            </property>
+                            <property name="placeholderText">
+                             <string>搜索 Tag / 翻译...</string>
+                            </property>
+                           </widget>
+                          </item>
                          </layout>
                         </item>
                         <item>
@@ -1611,8 +1716,8 @@ Hash: ...</string>
                                  <rect>
                                   <x>0</x>
                                   <y>0</y>
-                                  <width>435</width>
-                                  <height>270</height>
+                                  <width>278</width>
+                                  <height>78</height>
                                  </rect>
                                 </property>
                                </widget>
@@ -2535,6 +2640,49 @@ Hash: ...</string>
                  </property>
                 </widget>
                </item>
+               <item>
+                <layout class="QHBoxLayout" name="horizontalLayout_UserGalleryMatchMode">
+                 <item>
+                  <widget class="QLabel" name="lblUserGalleryMatchMode">
+                   <property name="text">
+                    <string>本地返图 LoRA 匹配逻辑 / Match Mode:</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QComboBox" name="comboUserGalleryMatchMode">
+                   <item>
+                    <property name="text">
+                     <string>名称匹配</string>
+                    </property>
+                   </item>
+                   <item>
+                    <property name="text">
+                     <string>摘要/名称匹配</string>
+                    </property>
+                   </item>
+                   <item>
+                    <property name="text">
+                     <string>严格摘要匹配</string>
+                    </property>
+                   </item>
+                  </widget>
+                 </item>
+                 <item>
+                  <spacer name="horizontalSpacer_UserGalleryMatchMode">
+                   <property name="orientation">
+                    <enum>Qt::Orientation::Horizontal</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>40</width>
+                     <height>20</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                </layout>
+               </item>
               </layout>
              </widget>
             </item>
@@ -2916,7 +3064,7 @@ Hash: ...</string>
      <x>0</x>
      <y>0</y>
      <width>1300</width>
-     <height>20</height>
+     <height>25</height>
     </rect>
    </property>
   </widget>
