@@ -2463,6 +2463,16 @@ Hash: ...</string>
                </property>
               </widget>
              </item>
+             <item row="10" column="0" colspan="3">
+              <widget class="QCheckBox" name="chkCollectionFolderTopLevel">
+               <property name="toolTip">
+                <string>勾选后，Collections 侧边栏先按 LoRA 根目录分组，再在每个文件夹下显示收藏夹。</string>
+               </property>
+               <property name="text">
+                <string>将文件夹作为收藏夹顶层分类 / Folder as Top Collection Level</string>
+               </property>
+              </widget>
+             </item>
              <item row="4" column="0">
               <widget class="QCheckBox" name="chkShowEmptyCollections">
                <property name="toolTip">
@@ -2476,32 +2486,43 @@ Hash: ...</string>
                </property>
               </widget>
              </item>
-             <item row="0" column="1">
-              <widget class="QSlider" name="sliderBlur">
-               <property name="minimum">
-                <number>0</number>
+             <item row="5" column="0">
+              <widget class="QCheckBox" name="chkUseCivitaiName">
+               <property name="toolTip">
+                <string>勾选后，如果本地存在 JSON 元数据，将显示模型的真实名称（如 'ChilloutMix [Pruned]'）而非文件名。</string>
                </property>
-               <property name="maximum">
-                <number>100</number>
-               </property>
-               <property name="value">
-                <number>30</number>
-               </property>
-               <property name="orientation">
-                <enum>Qt::Orientation::Horizontal</enum>
+               <property name="text">
+                <string>使用 Civitai 模型名称 / Use Civitai Name</string>
                </property>
               </widget>
              </item>
-             <item row="0" column="2">
-              <widget class="QLabel" name="lblBlurValue">
-               <property name="minimumSize">
-                <size>
-                 <width>40</width>
-                 <height>0</height>
-                </size>
+             <item row="12" column="0" colspan="3">
+              <widget class="QCheckBox" name="chkModelListFolderGrouping">
+               <property name="toolTip">
+                <string>勾选后，Models 列表会按已启用的 LoRA 根目录分组显示。</string>
                </property>
                <property name="text">
-                <string>30px</string>
+                <string>Models 列表按文件夹分类 / Group Models by Folder</string>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="0">
+              <widget class="QCheckBox" name="chkRestoreTreeState">
+               <property name="toolTip">
+                <string>下次启动时，保持当前收藏夹的展开状态和滚动条位置。</string>
+               </property>
+               <property name="text">
+                <string>启动时恢复菜单 / Restore Menu on Startup</string>
+               </property>
+               <property name="checked">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item row="7" column="0">
+              <widget class="Line" name="line_4">
+               <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
                </property>
               </widget>
              </item>
@@ -2521,19 +2542,6 @@ Hash: ...</string>
                </property>
               </widget>
              </item>
-             <item row="3" column="0">
-              <widget class="QCheckBox" name="chkRestoreTreeState">
-               <property name="toolTip">
-                <string>下次启动时，保持当前收藏夹的展开状态和滚动条位置。</string>
-               </property>
-               <property name="text">
-                <string>启动时恢复菜单 / Restore Menu on Startup</string>
-               </property>
-               <property name="checked">
-                <bool>true</bool>
-               </property>
-              </widget>
-             </item>
              <item row="1" column="0">
               <widget class="QCheckBox" name="chkDownscaleBlur">
                <property name="toolTip">
@@ -2544,37 +2552,7 @@ Hash: ...</string>
                </property>
               </widget>
              </item>
-             <item row="5" column="0">
-              <widget class="QCheckBox" name="chkUseCivitaiName">
-               <property name="toolTip">
-                <string>勾选后，如果本地存在 JSON 元数据，将显示模型的真实名称（如 'ChilloutMix [Pruned]'）而非文件名。</string>
-               </property>
-               <property name="text">
-                <string>使用 Civitai 模型名称 / Use Civitai Name</string>
-               </property>
-              </widget>
-             </item>
-             <item row="6" column="0" colspan="3">
-              <widget class="QCheckBox" name="chkSuppressLocalWarnings">
-               <property name="toolTip">
-                <string>勾选后，不再弹出“检测到 X 个本地/已编辑模型”的总量提醒；单个模型的覆盖确认仍会保留。</string>
-               </property>
-               <property name="text">
-                <string>不显示本地模型总量警告 / Hide Local Model Count Warning</string>
-               </property>
-              </widget>
-             </item>
-             <item row="7" column="0" colspan="3">
-              <widget class="QCheckBox" name="chkCollectionFolderTopLevel">
-               <property name="toolTip">
-                <string>勾选后，Collections 侧边栏先按 LoRA 根目录分组，再在每个文件夹下显示收藏夹。</string>
-               </property>
-               <property name="text">
-                <string>将文件夹作为收藏夹顶层分类 / Folder as Top Collection Level</string>
-               </property>
-              </widget>
-             </item>
-             <item row="8" column="0" colspan="3">
+             <item row="11" column="0" colspan="3">
               <widget class="QCheckBox" name="chkCollectionFolderSecondLevel">
                <property name="toolTip">
                 <string>勾选后，Collections 侧边栏先显示收藏夹，再在收藏夹下按 LoRA 根目录分组。</string>
@@ -2584,13 +2562,42 @@ Hash: ...</string>
                </property>
               </widget>
              </item>
-             <item row="9" column="0" colspan="3">
-              <widget class="QCheckBox" name="chkModelListFolderGrouping">
-               <property name="toolTip">
-                <string>勾选后，Models 列表会按已启用的 LoRA 根目录分组显示。</string>
+             <item row="0" column="2">
+              <widget class="QLabel" name="lblBlurValue">
+               <property name="minimumSize">
+                <size>
+                 <width>40</width>
+                 <height>0</height>
+                </size>
                </property>
                <property name="text">
-                <string>Models 列表按文件夹分类 / Group Models by Folder</string>
+                <string>30px</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QSlider" name="sliderBlur">
+               <property name="minimum">
+                <number>0</number>
+               </property>
+               <property name="maximum">
+                <number>100</number>
+               </property>
+               <property name="value">
+                <number>30</number>
+               </property>
+               <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
+               </property>
+              </widget>
+             </item>
+             <item row="6" column="0">
+              <widget class="QCheckBox" name="chkSuppressLocalWarnings">
+               <property name="toolTip">
+                <string>勾选后，不再弹出“检测到 X 个本地/已编辑模型”的总量提醒；单个模型的覆盖确认仍会保留。</string>
+               </property>
+               <property name="text">
+                <string>不显示本地模型总量警告 / Hide Local Model Count Warning</string>
                </property>
               </widget>
              </item>

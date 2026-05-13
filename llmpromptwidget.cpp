@@ -35,6 +35,8 @@
 #include <QMessageBox>
 #include <QNetworkReply>
 #include <QAbstractScrollArea>
+#include <QPainter>
+#include <QPainterPath>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QPixmap>
@@ -225,6 +227,8 @@ LlmPromptWidget::LlmPromptWidget(QWidget *parent)
 
     ui->listLoraCandidates->setSelectionMode(QAbstractItemView::ExtendedSelection);
     ui->listImageCandidates->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    ui->listLoraCandidates->setIconSize(QSize(24, 24));
+    // ui->listLoraCandidates->setSpacing(3);
     ui->btnToggleThinking->setEnabled(false);
     ui->btnContinueConversation->setEnabled(false);
     setupChatUi();
@@ -334,7 +338,13 @@ void LlmPromptWidget::setLibraryPaths(const QStringList &loraPaths, const QStrin
 {
     m_loraPaths = loraPaths;
     m_galleryPaths = galleryPaths;
-    onRefreshCandidatesClicked();
+    if (m_candidateRefreshQueued) return;
+    m_candidateRefreshQueued = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_candidateRefreshQueued = false;
+        if (m_destroying) return;
+        onRefreshCandidatesClicked();
+    });
 }
 
 QString LlmPromptWidget::settingsPath() const
@@ -2023,6 +2033,7 @@ LlmPromptWidget::LoraMetadataInfo LlmPromptWidget::readLoraMetadata(const QStrin
     LoraMetadataInfo info;
     info.filePath = filePath;
     info.displayName = QFileInfo(filePath).completeBaseName();
+    info.previewPath = findLoraPreviewPath(filePath);
     info.insertionTag = QString("<lora:%1:1>").arg(info.displayName);
 
     QFileInfo fi(filePath);
@@ -2067,6 +2078,109 @@ LlmPromptWidget::LoraMetadataInfo LlmPromptWidget::readLoraMetadata(const QStrin
     }
 
     return info;
+}
+
+QString LlmPromptWidget::findLoraPreviewPath(const QString &filePath) const
+{
+    const QFileInfo fi(filePath);
+    if (!fi.exists()) return QString();
+
+    const QDir dir = fi.dir();
+    const QString baseName = fi.completeBaseName();
+    const QStringList suffixes = {
+        ".preview.png",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".webp"
+    };
+
+    for (const QString &suffix : suffixes) {
+        const QString candidate = dir.absoluteFilePath(baseName + suffix);
+        if (QFileInfo::exists(candidate)) {
+            return QFileInfo(candidate).absoluteFilePath();
+        }
+    }
+    return QString();
+}
+
+QIcon LlmPromptWidget::loraPreviewIcon(const QString &previewPath) const
+{
+    if (previewPath.isEmpty() || !QFileInfo::exists(previewPath)) return QIcon();
+
+    constexpr int iconSize = 24;
+    constexpr int radius = 4;
+
+    QImageReader reader(previewPath);
+    reader.setAutoTransform(true);
+    const QSize sourceSize = reader.size();
+    if (sourceSize.isValid() && qMax(sourceSize.width(), sourceSize.height()) > 256) {
+        reader.setScaledSize(sourceSize.scaled(QSize(256, 256), Qt::KeepAspectRatio));
+    }
+    QImage image = reader.read();
+    if (image.isNull()) return QIcon();
+
+    const int side = qMin(image.width(), image.height());
+    if (side <= 0) return QIcon();
+
+    const int x = (image.width() - side) / 2;
+    const int y = (image.height() - side) / 2;
+    QImage square = image.copy(x, y, side, side)
+                        .scaled(QSize(iconSize, iconSize), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+
+    QPixmap rounded(iconSize, iconSize);
+    rounded.fill(Qt::transparent);
+    QPainter painter(&rounded);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    QPainterPath path;
+    path.addRoundedRect(rounded.rect(), radius, radius);
+    painter.setClipPath(path);
+    painter.drawPixmap(0, 0, QPixmap::fromImage(square));
+    return QIcon(rounded);
+}
+
+QListWidgetItem *LlmPromptWidget::createLoraCandidateItem(const QString &path,
+                                                          const LoraMetadataInfo &meta,
+                                                          bool checked) const
+{
+    auto *item = new QListWidgetItem(meta.displayName.isEmpty() ? QFileInfo(path).completeBaseName() : meta.displayName);
+    item->setData(Qt::UserRole, path);
+    item->setData(Qt::UserRole + 2, meta.previewPath);
+    item->setSizeHint(QSize(0, 34));
+
+    QStringList tip;
+    tip << path << meta.insertionTag;
+    if (!meta.previewPath.isEmpty()) tip << ("Preview image: " + meta.previewPath);
+    if (!meta.triggerWords.isEmpty()) tip << ("Trigger: " + meta.triggerWords.join(", "));
+    if (!meta.previewPrompts.isEmpty()) tip << ("Preview: " + meta.previewPrompts.first().left(200));
+    item->setToolTip(tip.join("\n"));
+    item->setCheckState(checked ? Qt::Checked : Qt::Unchecked);
+    return item;
+}
+
+void LlmPromptWidget::queueLoraCandidateThumbnailLoads()
+{
+    const int generation = ++m_loraCandidateThumbnailGeneration;
+    int queued = 0;
+    for (int row = 0; row < ui->listLoraCandidates->count(); ++row) {
+        QListWidgetItem *item = ui->listLoraCandidates->item(row);
+        if (!item) continue;
+        const QString modelPath = item->data(Qt::UserRole).toString();
+        const QString previewPath = item->data(Qt::UserRole + 2).toString();
+        if (modelPath.isEmpty() || previewPath.isEmpty()) continue;
+
+        QTimer::singleShot(20 * queued, this, [this, modelPath, previewPath, generation]() {
+            if (m_destroying || generation != m_loraCandidateThumbnailGeneration || !ui || !ui->listLoraCandidates) return;
+            for (int i = 0; i < ui->listLoraCandidates->count(); ++i) {
+                QListWidgetItem *candidate = ui->listLoraCandidates->item(i);
+                if (!candidate || candidate->data(Qt::UserRole).toString() != modelPath) continue;
+                if (!candidate->icon().isNull()) return;
+                candidate->setIcon(loraPreviewIcon(previewPath));
+                return;
+            }
+        });
+        ++queued;
+    }
 }
 
 QString LlmPromptWidget::cleanTagText(QString text) const
@@ -2933,6 +3047,7 @@ void LlmPromptWidget::onRefreshCandidatesClicked()
                 if (normalizeLooseText(word).contains(newTargetNorm)) score += 10;
             }
         }
+
         for (const QString &keyword : keywords) {
             if (baseName.contains(keyword, Qt::CaseInsensitive)) score += 2;
             if (path.contains(keyword, Qt::CaseInsensitive)) score += 1;
@@ -2954,17 +3069,9 @@ void LlmPromptWidget::onRefreshCandidatesClicked()
     for (int i = 0; i < loraScores.size() && i < limit; ++i) {
         QString path = loraScores[i].second;
         LoraMetadataInfo meta = readLoraMetadata(path);
-        QListWidgetItem *item = new QListWidgetItem(meta.displayName.isEmpty() ? QFileInfo(path).completeBaseName() : meta.displayName);
-        item->setData(Qt::UserRole, path);
-        QStringList tip;
-        tip << path << meta.insertionTag;
-        if (!meta.triggerWords.isEmpty()) tip << ("Trigger: " + meta.triggerWords.join(", "));
-        if (!meta.previewPrompts.isEmpty()) tip << ("Preview: " + meta.previewPrompts.first().left(200));
-        item->setToolTip(tip.join("\n"));
         const bool autoCheck = ui->chkAutoContext->isChecked() && !hadPreviousLoraCandidates && i < 3;
         const bool checked = previouslyCheckedLoraPaths.contains(path) || autoCheck;
-        item->setCheckState(checked ? Qt::Checked : Qt::Unchecked);
-        ui->listLoraCandidates->addItem(item);
+        ui->listLoraCandidates->addItem(createLoraCandidateItem(path, meta, checked));
     }
 
     auto listContainsPath = [](QListWidget *list, const QString &path) {
@@ -2978,15 +3085,7 @@ void LlmPromptWidget::onRefreshCandidatesClicked()
     for (const QString &path : std::as_const(previouslyCheckedLoraPaths)) {
         if (path.isEmpty() || listContainsPath(ui->listLoraCandidates, path) || !QFileInfo::exists(path)) continue;
         LoraMetadataInfo meta = readLoraMetadata(path);
-        QListWidgetItem *item = new QListWidgetItem(meta.displayName.isEmpty() ? QFileInfo(path).completeBaseName() : meta.displayName);
-        item->setData(Qt::UserRole, path);
-        QStringList tip;
-        tip << path << meta.insertionTag;
-        if (!meta.triggerWords.isEmpty()) tip << ("Trigger: " + meta.triggerWords.join(", "));
-        if (!meta.previewPrompts.isEmpty()) tip << ("Preview: " + meta.previewPrompts.first().left(200));
-        item->setToolTip(tip.join("\n"));
-        item->setCheckState(Qt::Checked);
-        ui->listLoraCandidates->addItem(item);
+        ui->listLoraCandidates->addItem(createLoraCandidateItem(path, meta, true));
     }
 
     QList<QPair<int, GalleryCacheItem>> imageScores;
@@ -3022,6 +3121,7 @@ void LlmPromptWidget::onRefreshCandidatesClicked()
         }
     }
 
+    queueLoraCandidateThumbnailLoads();
     updateContextSelectionSummary();
     updateStatus(QString("已刷新候选上下文: %1 个 LoRA, %2 张图片").arg(ui->listLoraCandidates->count()).arg(ui->listImageCandidates->count()));
 }

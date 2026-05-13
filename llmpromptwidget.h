@@ -18,6 +18,7 @@ class QListWidgetItem;
 class QNetworkReply;
 class QTimer;
 class QEvent;
+class QIcon;
 
 class LlmPromptWidget : public QWidget
 {
@@ -79,6 +80,7 @@ private:
     struct LoraMetadataInfo {
         QString displayName;
         QString filePath;
+        QString previewPath;
         QString insertionTag;
         QStringList triggerWords;
         QStringList previewPrompts;
@@ -151,6 +153,8 @@ private:
     bool m_syncingPromptTemplateEditor = false;
     bool m_syncingTaskPromptFields = false;
     bool m_syncingTaskTypeSelectors = false;
+    bool m_candidateRefreshQueued = false;
+    int m_loraCandidateThumbnailGeneration = 0;
 
     void loadSettings();
     void saveSettings() const;
@@ -175,6 +179,10 @@ private:
     QList<GalleryCacheItem> loadGalleryCache() const;
     QStringList collectLocalLoraFiles() const;
     LoraMetadataInfo readLoraMetadata(const QString &filePath) const;
+    QString findLoraPreviewPath(const QString &filePath) const;
+    QIcon loraPreviewIcon(const QString &previewPath) const;
+    QListWidgetItem *createLoraCandidateItem(const QString &path, const LoraMetadataInfo &meta, bool checked) const;
+    void queueLoraCandidateThumbnailLoads();
     QString preferenceSummary() const;
     QString cleanTagText(QString text) const;
     QStringList parsePromptToTags(const QString &prompt) const;

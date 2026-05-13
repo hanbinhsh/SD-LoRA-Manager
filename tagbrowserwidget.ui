@@ -92,6 +92,12 @@ QLabel#lblStatus, QLabel#lblUserTagStatus {
         <layout class="QHBoxLayout" name="horizontalLayoutTop">
          <item>
           <widget class="QLineEdit" name="editCsvPath">
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>28</height>
+            </size>
+           </property>
            <property name="readOnly">
             <bool>true</bool>
            </property>
@@ -119,7 +125,13 @@ QLabel#lblStatus, QLabel#lblUserTagStatus {
        <item>
         <layout class="QHBoxLayout" name="horizontalLayoutFilter">
          <item>
-         <widget class="QLineEdit" name="editSearch">
+          <widget class="QLineEdit" name="editSearch">
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>28</height>
+            </size>
+           </property>
            <property name="toolTip">
             <string>选择匹配方式后搜索 Tag 或翻译</string>
            </property>
@@ -198,7 +210,7 @@ QLabel#lblStatus, QLabel#lblUserTagStatus {
           <string>未加载到 Tag 数据。请先在设置中配置 CSV，或点击“新增”手动创建。</string>
          </property>
          <property name="alignment">
-          <set>Qt::AlignCenter</set>
+          <set>Qt::AlignmentFlag::AlignCenter</set>
          </property>
          <property name="wordWrap">
           <bool>true</bool>
@@ -225,7 +237,13 @@ QLabel#lblStatus, QLabel#lblUserTagStatus {
        <item>
         <layout class="QHBoxLayout" name="horizontalLayoutUserTagFilter">
          <item>
-         <widget class="QLineEdit" name="editUserTagSearch">
+          <widget class="QLineEdit" name="editUserTagSearch">
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>28</height>
+            </size>
+           </property>
            <property name="toolTip">
             <string>选择匹配方式后搜索用户 Tag 或翻译</string>
            </property>
@@ -309,7 +327,7 @@ QLabel#lblStatus, QLabel#lblUserTagStatus {
           <string>切换到此页面后会读取 user_gallery_cache.json 并统计用户使用过的 Tag。</string>
          </property>
          <property name="alignment">
-          <set>Qt::AlignCenter</set>
+          <set>Qt::AlignmentFlag::AlignCenter</set>
          </property>
          <property name="wordWrap">
           <bool>true</bool>

@@ -241,7 +241,7 @@ Click or Drag Image Here</string>
             <widget class="QPushButton" name="btnTranslate">
              <property name="minimumSize">
               <size>
-               <width>28</width>
+               <width>50</width>
                <height>28</height>
               </size>
              </property>
@@ -446,7 +446,7 @@ Click or Drag Image Here</string>
                <item>
                 <widget class="QLabel" name="lblWd14Memory">
                  <property name="text">
-                 <string>Sys: --</string>
+                  <string>Sys: --</string>
                  </property>
                 </widget>
                </item>
