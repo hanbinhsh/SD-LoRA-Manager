@@ -79,6 +79,8 @@ private:
     void browseWd14ScriptPath();
     void saveWd14Preset();
     void loadWd14Preset(const QString &presetName);
+    void copySelectedWd14Tags();
+    void showWd14TagContextMenu(const QPoint &pos);
     QString wd14PresetDirectory() const;
     QString extractedWd14ScriptPath() const;
     QString defaultWd14ScriptPath() const;

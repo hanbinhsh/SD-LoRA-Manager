@@ -1,6 +1,8 @@
 #include "promptparserwidget.h"
 #include "ui_promptparserwidget.h"
 
+#include <QAbstractItemView>
+#include <QAction>
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
@@ -17,8 +19,10 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeySequence>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QMenu>
 #include <QPainter>
 #include <QPixmap>
 #include <QProcess>
@@ -178,6 +182,16 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
     ui->treeWd14Ratings->setAlternatingRowColors(true);
     ui->treeWd14Tags->setRootIsDecorated(false);
     ui->treeWd14Tags->setAlternatingRowColors(true);
+    ui->treeWd14Tags->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    ui->treeWd14Tags->setSelectionBehavior(QAbstractItemView::SelectRows);
+    ui->treeWd14Tags->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(ui->treeWd14Tags, &QWidget::customContextMenuRequested,
+            this, &PromptParserWidget::showWd14TagContextMenu);
+    auto *copyWd14SelectedTagsAction = new QAction("复制选中 Tag", ui->treeWd14Tags);
+    copyWd14SelectedTagsAction->setShortcut(QKeySequence::Copy);
+    copyWd14SelectedTagsAction->setShortcutContext(Qt::WidgetShortcut);
+    ui->treeWd14Tags->addAction(copyWd14SelectedTagsAction);
+    connect(copyWd14SelectedTagsAction, &QAction::triggered, this, &PromptParserWidget::copySelectedWd14Tags);
 
     connect(ui->scrollAreaPos->verticalScrollBar(), &QScrollBar::valueChanged,
             ui->scrollAreaWidgetContentsPos, [this]() { ui->scrollAreaWidgetContentsPos->update(); });
@@ -610,6 +624,44 @@ void PromptParserWidget::browseWd14ScriptPath()
     if (file.isEmpty()) return;
     ui->editWd14ScriptPath->setText(file);
     saveWd14Settings();
+}
+
+void PromptParserWidget::copySelectedWd14Tags()
+{
+    QSet<QTreeWidgetItem*> selectedSet;
+    for (QTreeWidgetItem *item : ui->treeWd14Tags->selectedItems()) {
+        if (item) selectedSet.insert(item);
+    }
+
+    QStringList tags;
+    for (int i = 0; i < ui->treeWd14Tags->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *item = ui->treeWd14Tags->topLevelItem(i);
+        if (!selectedSet.contains(item)) continue;
+        const QString tag = item->text(0).trimmed();
+        if (!tag.isEmpty()) tags.append(tag);
+    }
+
+    if (tags.isEmpty()) {
+        ui->lblWd14Status->setText("请先选择需要复制的 WD14 Tag。");
+        return;
+    }
+
+    QApplication::clipboard()->setText(tags.join(", "));
+    ui->lblWd14Status->setText(QString("已复制 %1 个 WD14 Tag。").arg(tags.size()));
+}
+
+void PromptParserWidget::showWd14TagContextMenu(const QPoint &pos)
+{
+    QTreeWidgetItem *clickedItem = ui->treeWd14Tags->itemAt(pos);
+    if (clickedItem && !clickedItem->isSelected()) {
+        ui->treeWd14Tags->setCurrentItem(clickedItem);
+    }
+
+    QMenu menu(this);
+    QAction *copyAction = menu.addAction("复制选中 Tag");
+    copyAction->setEnabled(!ui->treeWd14Tags->selectedItems().isEmpty());
+    connect(copyAction, &QAction::triggered, this, &PromptParserWidget::copySelectedWd14Tags);
+    menu.exec(ui->treeWd14Tags->viewport()->mapToGlobal(pos));
 }
 
 void PromptParserWidget::updateWd14ThresholdFromSlider(int value)
