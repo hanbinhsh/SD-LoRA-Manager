@@ -28,6 +28,7 @@
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QStandardPaths>
+#include <QSaveFile>
 #include <QTreeWidgetItem>
 #include <QUrl>
 #include <QtEndian>
@@ -465,8 +466,40 @@ QString PromptParserWidget::wd14PresetDirectory() const
     return qApp->applicationDirPath() + "/config/wd14_presets";
 }
 
+QString PromptParserWidget::extractedWd14ScriptPath() const
+{
+    const QString tempDir = QDir(QDir::tempPath()).filePath("SD_LoRA_Manager/scripts");
+    QDir().mkpath(tempDir);
+
+    const QString targetPath = QDir(tempDir).filePath("wd14_tagger.py");
+    QFile resource(":/scripts/wd14_tagger.py");
+    if (!resource.open(QIODevice::ReadOnly)) {
+        return QString();
+    }
+
+    const QByteArray resourceBytes = resource.readAll();
+    QFile existing(targetPath);
+    if (existing.open(QIODevice::ReadOnly) && existing.readAll() == resourceBytes) {
+        existing.close();
+        return QFileInfo(targetPath).absoluteFilePath();
+    }
+
+    QSaveFile out(targetPath);
+    if (!out.open(QIODevice::WriteOnly)) {
+        return QString();
+    }
+    out.write(resourceBytes);
+    if (!out.commit()) {
+        return QString();
+    }
+    return QFileInfo(targetPath).absoluteFilePath();
+}
+
 QString PromptParserWidget::defaultWd14ScriptPath() const
 {
+    const QString extractedScript = extractedWd14ScriptPath();
+    if (!extractedScript.isEmpty() && QFile::exists(extractedScript)) return extractedScript;
+
     const QString appScript = QDir(qApp->applicationDirPath()).filePath("scripts/wd14_tagger.py");
     if (QFile::exists(appScript)) return appScript;
     return QDir(QCoreApplication::applicationDirPath()).absoluteFilePath("../../scripts/wd14_tagger.py");
@@ -475,7 +508,8 @@ QString PromptParserWidget::defaultWd14ScriptPath() const
 QString PromptParserWidget::selectedWd14ScriptPath() const
 {
     const QString explicitPath = ui->editWd14ScriptPath->text().trimmed();
-    return explicitPath.isEmpty() ? defaultWd14ScriptPath() : explicitPath;
+    if (!explicitPath.isEmpty() && QFile::exists(explicitPath)) return explicitPath;
+    return defaultWd14ScriptPath();
 }
 
 QString PromptParserWidget::selectedPythonPath() const

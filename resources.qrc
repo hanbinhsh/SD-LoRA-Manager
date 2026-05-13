@@ -1,5 +1,6 @@
 <RCC>
     <qresource prefix="/">
         <file>logo.ico</file>
+        <file>scripts/wd14_tagger.py</file>
     </qresource>
 </RCC>

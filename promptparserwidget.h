@@ -80,6 +80,7 @@ private:
     void saveWd14Preset();
     void loadWd14Preset(const QString &presetName);
     QString wd14PresetDirectory() const;
+    QString extractedWd14ScriptPath() const;
     QString defaultWd14ScriptPath() const;
     QString selectedWd14ScriptPath() const;
     QString selectedPythonPath() const;
