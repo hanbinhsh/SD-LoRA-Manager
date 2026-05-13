@@ -2575,6 +2575,16 @@ Hash: ...</string>
               </widget>
              </item>
              <item row="8" column="0" colspan="3">
+              <widget class="QCheckBox" name="chkCollectionFolderSecondLevel">
+               <property name="toolTip">
+                <string>勾选后，Collections 侧边栏先显示收藏夹，再在收藏夹下按 LoRA 根目录分组。</string>
+               </property>
+               <property name="text">
+                <string>将文件夹作为收藏夹二级分类 / Folder as Second Collection Level</string>
+               </property>
+              </widget>
+             </item>
+             <item row="9" column="0" colspan="3">
               <widget class="QCheckBox" name="chkModelListFolderGrouping">
                <property name="toolTip">
                 <string>勾选后，Models 列表会按已启用的 LoRA 根目录分组显示。</string>

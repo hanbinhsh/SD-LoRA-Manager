@@ -386,6 +386,7 @@ private:
     int     optNSFWLevel            = 1;                // NSFW筛选等级
     bool    optShowEmptyCollections = false;            // 显示空收藏夹
     bool    optCollectionFolderTopLevel = false;        // 收藏夹树按 LoRA 根目录作为顶层分类
+    bool    optCollectionFolderSecondLevel = false;     // 收藏夹树按 收藏夹/LoRA 根目录/模型 分组
     bool    optModelListFolderGrouping = false;         // Models 列表按 LoRA 根目录分组
     bool    optUseArrangedUA        = false;            // 使用自定义UA
     QStringList optFilterTags       = DEFAULT_FILTER_TAGS.split(',', Qt::SkipEmptyParts);    // 过滤词列表 (存储清洗后的列表)

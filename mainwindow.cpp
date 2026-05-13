@@ -5322,6 +5322,10 @@ void MainWindow::loadGlobalConfig() {
         optSplitOnNewline               = root["split_on_newline"].toBool(true);
         optShowEmptyCollections         = root["show_empty_collections"].toBool(false);
         optCollectionFolderTopLevel     = root["collection_folder_top_level"].toBool(false);
+        optCollectionFolderSecondLevel  = root["collection_folder_second_level"].toBool(false);
+        if (optCollectionFolderTopLevel && optCollectionFolderSecondLevel) {
+            optCollectionFolderSecondLevel = false;
+        }
         optModelListFolderGrouping      = root["model_list_folder_grouping"].toBool(false);
         QString filterStr               = root["filter_tags_string"].toString(DEFAULT_FILTER_TAGS);
         optUseArrangedUA                = root["use_custom_ua"].toBool(false);
@@ -5448,6 +5452,7 @@ void MainWindow::loadGlobalConfig() {
     ui->editFilterTags->setText(optFilterTags.join(", "));
     ui->chkShowEmptyCollections->setChecked(optShowEmptyCollections);
     ui->chkCollectionFolderTopLevel->setChecked(optCollectionFolderTopLevel);
+    ui->chkCollectionFolderSecondLevel->setChecked(optCollectionFolderSecondLevel);
     ui->chkModelListFolderGrouping->setChecked(optModelListFolderGrouping);
     ui->chkUseCustomUserAgent->setChecked(optUseArrangedUA);
     ui->editUserAgent->setEnabled(optUseArrangedUA);
@@ -5547,6 +5552,21 @@ void MainWindow::loadGlobalConfig() {
     });
     connect(ui->chkCollectionFolderTopLevel, &QCheckBox::toggled, this, [this](bool checked){
         optCollectionFolderTopLevel = checked;
+        if (checked && ui->chkCollectionFolderSecondLevel->isChecked()) {
+            QSignalBlocker blocker(ui->chkCollectionFolderSecondLevel);
+            ui->chkCollectionFolderSecondLevel->setChecked(false);
+            optCollectionFolderSecondLevel = false;
+        }
+        saveGlobalConfig();
+        refreshCollectionTreeView();
+    });
+    connect(ui->chkCollectionFolderSecondLevel, &QCheckBox::toggled, this, [this](bool checked){
+        optCollectionFolderSecondLevel = checked;
+        if (checked && ui->chkCollectionFolderTopLevel->isChecked()) {
+            QSignalBlocker blocker(ui->chkCollectionFolderTopLevel);
+            ui->chkCollectionFolderTopLevel->setChecked(false);
+            optCollectionFolderTopLevel = false;
+        }
         saveGlobalConfig();
         refreshCollectionTreeView();
     });
@@ -5653,6 +5673,7 @@ void MainWindow::saveGlobalConfig() {
     root["filter_tags_string"]          = ui->editFilterTags->text();
     root["show_empty_collections"]      = optShowEmptyCollections;
     root["collection_folder_top_level"] = optCollectionFolderTopLevel;
+    root["collection_folder_second_level"] = optCollectionFolderSecondLevel;
     root["model_list_folder_grouping"]  = optModelListFolderGrouping;
     root["use_custom_ua"]               = ui->chkUseCustomUserAgent->isChecked();
     root["custom_user_agent"]           = ui->editUserAgent->text();
@@ -6200,7 +6221,28 @@ void MainWindow::onCollectionTreeContextMenu(const QPoint &pos)
 
     // 判断是收藏夹节点还是模型节点
     if (clickedItem->data(0, ROLE_IS_COLLECTION_NODE).toBool()) {
-        if (clickedItem->data(0, ROLE_IS_FOLDER_HEADER).toBool()) return;
+        if (clickedItem->data(0, ROLE_IS_FOLDER_HEADER).toBool()) {
+            QList<QListWidgetItem*> targetListItems;
+            std::function<void(QTreeWidgetItem*)> collectModelItems = [&](QTreeWidgetItem *treeItem) {
+                if (!treeItem) return;
+                const QString baseName = treeItem->data(0, ROLE_MODEL_NAME).toString();
+                if (!baseName.isEmpty()) {
+                    for (int i = 0; i < ui->modelList->count(); ++i) {
+                        QListWidgetItem *listItem = ui->modelList->item(i);
+                        if (listItem->data(ROLE_MODEL_NAME).toString() == baseName) {
+                            targetListItems.append(listItem);
+                            break;
+                        }
+                    }
+                }
+                for (int i = 0; i < treeItem->childCount(); ++i) collectModelItems(treeItem->child(i));
+            };
+            collectModelItems(clickedItem);
+            if (!targetListItems.isEmpty()) {
+                showCollectionMenu(targetListItems, ui->collectionTree->mapToGlobal(pos));
+            }
+            return;
+        }
         // --- 收藏夹节点右键菜单 ---
         QString collectionName = clickedItem->data(0, ROLE_COLLECTION_NAME).toString();
 
@@ -6413,6 +6455,44 @@ void MainWindow::refreshCollectionTreeView()
         if (!item) return false;
         return item->data(ROLE_MODEL_ROOT_PATH).toString() == folderPath;
     };
+    auto folderNameForPath = [&](const QString &folderPath) {
+        for (auto it = visibleItemMap.begin(); it != visibleItemMap.end(); ++it) {
+            QListWidgetItem *item = it.value();
+            if (item->data(ROLE_MODEL_ROOT_PATH).toString() == folderPath) {
+                QString folderName = item->data(ROLE_MODEL_ROOT_NAME).toString();
+                return folderName.isEmpty() ? folderPath : folderName;
+            }
+        }
+        return folderPath.isEmpty() ? QString("未指定文件夹") : folderPath;
+    };
+    auto addFolderChildrenForCollection = [&](QTreeWidgetItem *collectionNode, const QString &collectionKeyPrefix, QStringList models) {
+        QMap<QString, QStringList> modelsByFolder;
+        QMap<QString, QString> folderNames;
+        for (const QString &baseName : models) {
+            if (!visibleItemMap.contains(baseName)) continue;
+            QListWidgetItem *item = visibleItemMap.value(baseName);
+            QString folderPath = item->data(ROLE_MODEL_ROOT_PATH).toString();
+            if (folderPath.isEmpty()) folderPath = "__unknown__";
+            modelsByFolder[folderPath].append(baseName);
+            folderNames.insert(folderPath, folderNameForPath(folderPath));
+        }
+
+        QStringList folderPaths = modelsByFolder.keys();
+        std::sort(folderPaths.begin(), folderPaths.end(), [&](const QString &a, const QString &b) {
+            return collator.compare(folderNames.value(a), folderNames.value(b)) < 0;
+        });
+
+        for (const QString &folderPath : folderPaths) {
+            QStringList folderModels = modelsByFolder.value(folderPath);
+            const int visibleCount = folderModels.count();
+            if (visibleCount <= 0 && !optShowEmptyCollections) continue;
+            const QString key = QString("%1:folder:%2").arg(collectionKeyPrefix, folderPath);
+            QTreeWidgetItem *folderNode = makeTreeParent(collectionNode, key, key, folderNames.value(folderPath), visibleCount);
+            folderNode->setData(0, ROLE_IS_FOLDER_HEADER, true);
+            folderNode->setData(0, ROLE_MODEL_ROOT_NAME, folderNames.value(folderPath));
+            addModelChildren(folderNode, folderModels);
+        }
+    };
 
     auto addCollectionGroup = [&](QTreeWidgetItem *parent, const QString &folderPath) {
         QStringList uncatModels;
@@ -6427,7 +6507,11 @@ void MainWindow::refreshCollectionTreeView()
                                                             : FILTER_UNCATEGORIZED;
             QTreeWidgetItem *uncategorizedNode = makeTreeParent(parent, key, FILTER_UNCATEGORIZED, "未分类 / Uncategorized", uncatCount);
             std::sort(uncatModels.begin(), uncatModels.end(), rankSort);
-            addModelChildren(uncategorizedNode, uncatModels);
+            if (optCollectionFolderSecondLevel && !optCollectionFolderTopLevel) {
+                addFolderChildrenForCollection(uncategorizedNode, key, uncatModels);
+            } else {
+                addModelChildren(uncategorizedNode, uncatModels);
+            }
         }
 
         for (const QString &colName : collectionNames) {
@@ -6448,7 +6532,11 @@ void MainWindow::refreshCollectionTreeView()
                 const QString key = optCollectionFolderTopLevel ? QString("folder:%1:%2").arg(folderPath, colName)
                                                                 : colName;
                 QTreeWidgetItem *collectionNode = makeTreeParent(parent, key, colName, colName, visibleCount);
-                addModelChildren(collectionNode, models);
+                if (optCollectionFolderSecondLevel && !optCollectionFolderTopLevel) {
+                    addFolderChildrenForCollection(collectionNode, key, models);
+                } else {
+                    addModelChildren(collectionNode, models);
+                }
             }
         }
     };
