@@ -2564,6 +2564,26 @@ Hash: ...</string>
                </property>
               </widget>
              </item>
+             <item row="7" column="0" colspan="3">
+              <widget class="QCheckBox" name="chkCollectionFolderTopLevel">
+               <property name="toolTip">
+                <string>勾选后，Collections 侧边栏先按 LoRA 根目录分组，再在每个文件夹下显示收藏夹。</string>
+               </property>
+               <property name="text">
+                <string>将文件夹作为收藏夹顶层分类 / Folder as Top Collection Level</string>
+               </property>
+              </widget>
+             </item>
+             <item row="8" column="0" colspan="3">
+              <widget class="QCheckBox" name="chkModelListFolderGrouping">
+               <property name="toolTip">
+                <string>勾选后，Models 列表会按已启用的 LoRA 根目录分组显示。</string>
+               </property>
+               <property name="text">
+                <string>Models 列表按文件夹分类 / Group Models by Folder</string>
+               </property>
+              </widget>
+             </item>
             </layout>
            </widget>
           </item>

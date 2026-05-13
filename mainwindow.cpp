@@ -32,6 +32,7 @@
 #include <QTabWidget>
 #include <QVBoxLayout>
 #include <QSignalBlocker>
+#include <functional>
 
 #include "imageloader.h"
 #include "llmpromptwidget.h"
@@ -344,7 +345,11 @@ MainWindow::MainWindow(QWidget *parent)
         ui->comboSort->setCurrentIndex(0);
         executeSort();
         refreshCollectionTreeView();
-        ui->statusbar->showMessage(QString("加载完成，共 %1 个模型").arg(ui->modelList->count()), 3000);
+        int modelCount = 0;
+        for (int i = 0; i < ui->modelList->count(); ++i) {
+            if (isModelListItem(ui->modelList->item(i))) modelCount++;
+        }
+        ui->statusbar->showMessage(QString("加载完成，共 %1 个模型").arg(modelCount), 3000);
     });
 
     loadUserGalleryCache();
@@ -1108,7 +1113,7 @@ void MainWindow::refreshHomeGallery()
 
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *sideItem = ui->modelList->item(i);
-
+        if (!isModelListItem(sideItem)) continue;
 
         int nsfwLevel = sideItem->data(ROLE_NSFW_LEVEL).toInt();
         bool isNSFW = nsfwLevel > optNSFWLevel;
@@ -1492,11 +1497,14 @@ void MainWindow::scanModels(const QStringList &paths)
         iterFlags = QDirIterator::Subdirectories; // 开启递归
     }
 
-    int scannedCount = 0;
+    int addedCount = 0;
 
     // 5. 遍历多个路径
     for (const QString &path : paths) {
         if (path.isEmpty() || !QDir(path).exists()) continue;
+        const QString rootPath = QFileInfo(path).absoluteFilePath();
+        QString rootName = QFileInfo(rootPath).fileName();
+        if (rootName.isEmpty()) rootName = rootPath;
 
         // 构造函数签名: QDirIterator(path, nameFilters, filters, flags)
         QDirIterator it(path, nameFilters, dirFilters, iterFlags);
@@ -1504,7 +1512,6 @@ void MainWindow::scanModels(const QStringList &paths)
         while (it.hasNext()) {
             it.next();
             QFileInfo fileInfo = it.fileInfo();
-            scannedCount++;
 
             QString baseName = fileInfo.completeBaseName();
             QString fullPath = fileInfo.absoluteFilePath();
@@ -1530,6 +1537,9 @@ void MainWindow::scanModels(const QStringList &paths)
             item->setData(ROLE_MODEL_NAME, baseName);
             item->setData(ROLE_FILE_PATH, fullPath);
             item->setData(ROLE_PREVIEW_PATH, previewPath);
+            item->setData(ROLE_MODEL_ROOT_PATH, rootPath);
+            item->setData(ROLE_MODEL_ROOT_NAME, rootName);
+            item->setData(ROLE_MODEL_FILTER_VISIBLE, true);
 
             QString jsonPath = currentFileDir.filePath(baseName + ".json");
             preloadItemMetadata(item, jsonPath);
@@ -1560,6 +1570,7 @@ void MainWindow::scanModels(const QStringList &paths)
             }
 
             ui->modelList->addItem(item);
+            addedCount++;
             if (!previewPath.isEmpty()) {
                 // 【修改】添加 "SIDEBAR:" 前缀
                 QString taskId = "SIDEBAR:" + fullPath;
@@ -1573,7 +1584,7 @@ void MainWindow::scanModels(const QStringList &paths)
     }
 
     // 10. 恢复 UI 更新
-    ui->statusbar->showMessage(QString("扫描完成，共 %1 个模型").arg(ui->modelList->count()));
+    ui->statusbar->showMessage(QString("扫描完成，共 %1 个模型").arg(addedCount));
     ui->comboBaseModel->blockSignals(false);
     ui->modelList->setUpdatesEnabled(true);
 
@@ -2286,6 +2297,7 @@ int MainWindow::countLocalEditedModels() const
     int count = 0;
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *item = ui->modelList->item(i);
+        if (!isModelListItem(item)) continue;
         if (item->data(ROLE_LOCAL_EDITED).toBool()) count++;
     }
     return count;
@@ -2330,7 +2342,11 @@ void MainWindow::onScanLocalClicked() {
 
 // 点击列表项
 void MainWindow::onModelListClicked(QListWidgetItem *item) {
-    if (!item) return;
+    if (item && item->data(ROLE_IS_FOLDER_HEADER).toBool()) {
+        toggleModelFolderCollapsed(item->data(ROLE_MODEL_FOLDER_KEY).toString());
+        return;
+    }
+    if (!isModelListItem(item)) return;
 
     cancelPendingTasks();
 
@@ -3246,15 +3262,16 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
         }
 
         if (modelListUpdated) {
-            for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
-                QTreeWidgetItem *parent = ui->collectionTree->topLevelItem(i);
-                for (int j = 0; j < parent->childCount(); ++j) {
-                    QTreeWidgetItem *child = parent->child(j);
-                    if (child->data(0, ROLE_MODEL_NAME).toString() == localBaseName) {
-                        child->setData(0, ROLE_PREVIEW_PATH, savePath);
-                        child->setIcon(0, newIcon);
-                    }
+            std::function<void(QTreeWidgetItem*)> updateTreeNode = [&](QTreeWidgetItem *node) {
+                if (!node) return;
+                if (node->data(0, ROLE_MODEL_NAME).toString() == localBaseName) {
+                    node->setData(0, ROLE_PREVIEW_PATH, savePath);
+                    node->setIcon(0, newIcon);
                 }
+                for (int i = 0; i < node->childCount(); ++i) updateTreeNode(node->child(i));
+            };
+            for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
+                updateTreeNode(ui->collectionTree->topLevelItem(i));
             }
             ui->modelList->viewport()->update();
             ui->modelList->update();
@@ -3553,22 +3570,22 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
         }
 
         // --- B. 更新收藏夹树状图 ---
-        for(int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
-            QTreeWidgetItem *parent = ui->collectionTree->topLevelItem(i);
-            // 遍历子节点 (模型)
-            for(int j = 0; j < parent->childCount(); ++j) {
-                QTreeWidgetItem *child = parent->child(j);
-                if (child->data(0, ROLE_FILE_PATH).toString() == filePath) {
-                    bool isNSFW = child->data(0, ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
-                    if (optFilterNSFW && isNSFW && optNSFWMode == 1) {
-                        if (blurredPix.isNull()) blurredPix = applyNSFWBlur(originalPix);
-                        QPixmap roundedBlur = applyRoundedMask(blurredPix, 12);
-                        child->setIcon(0, getSquareIcon(roundedBlur));
-                    } else {
-                        child->setIcon(0, getSquareIcon(originalPix));
-                    }
+        std::function<void(QTreeWidgetItem*)> updateTreeIcon = [&](QTreeWidgetItem *node) {
+            if (!node) return;
+            if (node->data(0, ROLE_FILE_PATH).toString() == filePath) {
+                bool isNSFW = node->data(0, ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
+                if (optFilterNSFW && isNSFW && optNSFWMode == 1) {
+                    if (blurredPix.isNull()) blurredPix = applyNSFWBlur(originalPix);
+                    QPixmap roundedBlur = applyRoundedMask(blurredPix, 12);
+                    node->setIcon(0, getSquareIcon(roundedBlur));
+                } else {
+                    node->setIcon(0, getSquareIcon(originalPix));
                 }
             }
+            for (int j = 0; j < node->childCount(); ++j) updateTreeIcon(node->child(j));
+        };
+        for(int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
+            updateTreeIcon(ui->collectionTree->topLevelItem(i));
         }
     }
 
@@ -3703,6 +3720,11 @@ void MainWindow::onSearchTextChanged(const QString &text)
     // 2. 遍历筛选
     for(int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *item = ui->modelList->item(i);
+        if (!isModelListItem(item)) {
+            if (item) item->setHidden(true);
+            if (item) item->setData(ROLE_MODEL_FILTER_VISIBLE, false);
+            continue;
+        }
 
         // === 修改：获取名称的逻辑 ===
         // 优先用 UserRole (排序用的也是这个，保持一致)，如果为空则用显示的文本
@@ -3719,9 +3741,10 @@ void MainWindow::onSearchTextChanged(const QString &text)
             if (itemBase != targetBaseModel) baseMatch = false;
         }
 
-        // 综合判断
-        item->setHidden(!(nameMatch && baseMatch));
+        // 综合判断：只记录过滤结果，实际显示由文件夹折叠逻辑统一处理
+        item->setData(ROLE_MODEL_FILTER_VISIBLE, nameMatch && baseMatch);
     }
+    applyModelFolderVisibility();
 
     // 3. 刷新主页
     refreshHomeGallery();
@@ -3729,7 +3752,7 @@ void MainWindow::onSearchTextChanged(const QString &text)
     // 4. 切回主页优化 (保留逻辑)
     if (ui->mainStack->currentIndex() == 1) {
         QListWidgetItem *currentItem = ui->modelList->currentItem();
-        if (currentItem && currentItem->isHidden()) {
+        if (currentItem && !currentItem->data(ROLE_MODEL_FILTER_VISIBLE).toBool()) {
             ui->mainStack->setCurrentIndex(0);
         }
     }
@@ -3739,13 +3762,17 @@ void MainWindow::onSearchTextChanged(const QString &text)
 
 void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const QPoint &globalPos)
 {
-    if (items.isEmpty()) return;
+    QList<QListWidgetItem*> modelItems;
+    for (QListWidgetItem *item : items) {
+        if (isModelListItem(item)) modelItems.append(item);
+    }
+    if (modelItems.isEmpty()) return;
 
     QMenu menu(this);
 
     // 1. 标题逻辑
-    if (items.count() == 1) {
-        QListWidgetItem *first = items.first();
+    if (modelItems.count() == 1) {
+        QListWidgetItem *first = modelItems.first();
         QString name = first->text();
 
         if (name.isEmpty()) {
@@ -3761,7 +3788,7 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
         QAction *titleAct = menu.addAction(name);
         titleAct->setEnabled(false);
     } else {
-        QAction *titleAct = menu.addAction(QString("已选中 %1 个模型").arg(items.count()));
+        QAction *titleAct = menu.addAction(QString("已选中 %1 个模型").arg(modelItems.count()));
         titleAct->setEnabled(false);
     }
 
@@ -3769,7 +3796,7 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
 
     // 打开模型文件所在位置
     QStringList targetFilePaths;
-    for (QListWidgetItem *item : items) {
+    for (QListWidgetItem *item : modelItems) {
         if (!item) continue;
         QString path = item->data(ROLE_FILE_PATH).toString().trimmed();
         if (path.isEmpty()) continue;
@@ -3804,7 +3831,7 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
     // 辅助 Lambda：获取 items 对应的所有 BaseName (用于收藏夹数据存储)
     // 收藏夹系统始终使用 ROLE_MODEL_NAME (文件名) 作为 Key，不受显示名称影响
     QStringList targetBaseNames;
-    for(auto *item : items) {
+    for(auto *item : modelItems) {
         targetBaseNames.append(item->data(ROLE_MODEL_NAME).toString());
     }
 
@@ -4027,7 +4054,7 @@ void MainWindow::refreshModelUsageStatsAsync()
 
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *item = ui->modelList->item(i);
-        if (!item) continue;
+        if (!isModelListItem(item)) continue;
 
         item->setData(ROLE_SORT_USAGE_COUNT, 0);
         item->setData(ROLE_SORT_LAST_USED, 0);
@@ -4066,7 +4093,7 @@ void MainWindow::refreshModelUsageStatsAsync()
 
         for (int i = 0; i < ui->modelList->count(); ++i) {
             QListWidgetItem *item = ui->modelList->item(i);
-            if (!item) continue;
+            if (!isModelListItem(item)) continue;
 
             const QString filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
             const ModelUsageStatResult stat = statsByPath.value(filePath);
@@ -4093,6 +4120,79 @@ void MainWindow::onSortIndexChanged(int index) {
     executeSort();
 }
 
+bool MainWindow::isModelListItem(const QListWidgetItem *item) const
+{
+    return item
+           && !item->data(ROLE_IS_FOLDER_HEADER).toBool()
+           && !item->data(ROLE_FILE_PATH).toString().isEmpty();
+}
+
+QListWidgetItem *MainWindow::createModelFolderHeader(const QString &folderName, const QString &folderKey) const
+{
+    QListWidgetItem *header = new QListWidgetItem(folderName);
+    header->setData(ROLE_IS_FOLDER_HEADER, true);
+    header->setData(ROLE_MODEL_FOLDER_KEY, folderKey);
+    header->setData(ROLE_MODEL_FOLDER_COLLAPSED, collapsedModelFolders.contains(folderKey));
+    header->setData(ROLE_MODEL_ROOT_NAME, folderName);
+    header->setFlags(Qt::ItemIsEnabled);
+    QFont font = header->font();
+    font.setBold(true);
+    header->setFont(font);
+    header->setForeground(QColor("#66c0f4"));
+    header->setBackground(QColor("#212831"));
+    return header;
+}
+
+void MainWindow::applyModelFolderVisibility()
+{
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (!item) continue;
+        if (!item->data(ROLE_IS_FOLDER_HEADER).toBool()) {
+            if (!optModelListFolderGrouping && isModelListItem(item)) {
+                item->setHidden(!item->data(ROLE_MODEL_FILTER_VISIBLE).toBool());
+            }
+            continue;
+        }
+
+        const QString folderKey = item->data(ROLE_MODEL_FOLDER_KEY).toString();
+        const bool collapsed = collapsedModelFolders.contains(folderKey);
+        int visibleChildCount = 0;
+        for (int j = i + 1; j < ui->modelList->count(); ++j) {
+            QListWidgetItem *child = ui->modelList->item(j);
+            if (!child) continue;
+            if (child->data(ROLE_IS_FOLDER_HEADER).toBool()) break;
+            if (!isModelListItem(child)) continue;
+
+            const bool filterVisible = child->data(ROLE_MODEL_FILTER_VISIBLE).toBool();
+            if (filterVisible) {
+                visibleChildCount++;
+            }
+            child->setHidden(!filterVisible || collapsed);
+        }
+
+        const QString folderName = item->data(ROLE_MODEL_ROOT_NAME).toString().isEmpty()
+                                       ? item->text().mid(2).section(" (", 0, 0).trimmed()
+                                       : item->data(ROLE_MODEL_ROOT_NAME).toString();
+        item->setData(ROLE_MODEL_FOLDER_COLLAPSED, collapsed);
+        item->setText(QString("%1 %2 (%3)").arg(collapsed ? " + " : " - ", folderName).arg(visibleChildCount));
+        item->setHidden(!optModelListFolderGrouping || visibleChildCount <= 0);
+    }
+}
+
+void MainWindow::toggleModelFolderCollapsed(const QString &folderKey)
+{
+    if (folderKey.isEmpty()) return;
+
+    if (collapsedModelFolders.contains(folderKey)) {
+        collapsedModelFolders.remove(folderKey);
+    } else {
+        collapsedModelFolders.insert(folderKey);
+    }
+    applyModelFolderVisibility();
+    saveGlobalConfig();
+}
+
 void MainWindow::executeSort()
 {
     // 0: Name, 1: Date(New), 2: Downloads, 3: Likes, 4: Date Added, 5: Usage, 6: Recently Used
@@ -4101,7 +4201,12 @@ void MainWindow::executeSort()
     // 1. 取出所有 Item
     QList<QListWidgetItem*> items;
     while(ui->modelList->count() > 0) {
-        items.append(ui->modelList->takeItem(0));
+        QListWidgetItem *item = ui->modelList->takeItem(0);
+        if (item && item->data(ROLE_IS_FOLDER_HEADER).toBool()) {
+            delete item;
+        } else if (item) {
+            items.append(item);
+        }
     }
 
     // === 准备自然排序器 (用于 Case 0) ===
@@ -4156,8 +4261,39 @@ void MainWindow::executeSort()
     );
 
     // 3. 放回 ListWidget
-    for(auto *item : items) {
-        ui->modelList->addItem(item);
+    if (optModelListFolderGrouping) {
+        QMap<QString, QList<QListWidgetItem*>> grouped;
+        QMap<QString, QString> folderLabels;
+        QStringList folderOrder;
+        for (QListWidgetItem *item : items) {
+            const QString rootPath = item->data(ROLE_MODEL_ROOT_PATH).toString();
+            const QString rootKey = rootPath.isEmpty() ? "__unknown__" : QFileInfo(rootPath).absoluteFilePath();
+            QString rootName = item->data(ROLE_MODEL_ROOT_NAME).toString();
+            if (rootName.isEmpty()) rootName = "未指定文件夹";
+            if (!grouped.contains(rootKey)) {
+                folderOrder.append(rootKey);
+                folderLabels.insert(rootKey, rootName);
+            }
+            grouped[rootKey].append(item);
+        }
+
+        QCollator folderCollator;
+        folderCollator.setNumericMode(true);
+        folderCollator.setCaseSensitivity(Qt::CaseInsensitive);
+        std::sort(folderOrder.begin(), folderOrder.end(), [&](const QString &a, const QString &b) {
+            return folderCollator.compare(folderLabels.value(a), folderLabels.value(b)) < 0;
+        });
+
+        for (const QString &folderKey : folderOrder) {
+            ui->modelList->addItem(createModelFolderHeader(folderLabels.value(folderKey), folderKey));
+            for (QListWidgetItem *item : grouped.value(folderKey)) {
+                ui->modelList->addItem(item);
+            }
+        }
+    } else {
+        for(auto *item : items) {
+            ui->modelList->addItem(item);
+        }
     }
 
     // 4. 同步刷新主页
@@ -5185,6 +5321,8 @@ void MainWindow::loadGlobalConfig() {
         optRestoreTreeState             = root["restore_tree_state"].toBool(true);
         optSplitOnNewline               = root["split_on_newline"].toBool(true);
         optShowEmptyCollections         = root["show_empty_collections"].toBool(false);
+        optCollectionFolderTopLevel     = root["collection_folder_top_level"].toBool(false);
+        optModelListFolderGrouping      = root["model_list_folder_grouping"].toBool(false);
         QString filterStr               = root["filter_tags_string"].toString(DEFAULT_FILTER_TAGS);
         optUseArrangedUA                = root["use_custom_ua"].toBool(false);
         optSavedUAString                = root["custom_user_agent"].toString();
@@ -5231,12 +5369,24 @@ void MainWindow::loadGlobalConfig() {
         galleryPaths = normalizePathList(readPathList(root, "gallery_paths", {"gallery_path", "sd_folder"}));
         disabledLoraPaths = normalizePathSet(readPathSet(root, "lora_paths_disabled"));
         disabledGalleryPaths = normalizePathSet(readPathSet(root, "gallery_paths_disabled"));
+        collapsedModelFolders = normalizePathSet(readPathSet(root, "model_list_collapsed_folders"));
         {
             QSet<QString> filtered;
             for (const QString &path : loraPaths) {
                 if (disabledLoraPaths.contains(path)) filtered.insert(path);
             }
             disabledLoraPaths = filtered;
+        }
+        {
+            QSet<QString> enabledLoraPathSet;
+            for (const QString &path : loraPaths) {
+                if (!disabledLoraPaths.contains(path)) enabledLoraPathSet.insert(path);
+            }
+            QSet<QString> filtered;
+            for (const QString &path : collapsedModelFolders) {
+                if (enabledLoraPathSet.contains(path)) filtered.insert(path);
+            }
+            collapsedModelFolders = filtered;
         }
         {
             QSet<QString> filtered;
@@ -5297,6 +5447,8 @@ void MainWindow::loadGlobalConfig() {
     ui->chkSplitOnNewline->setChecked(optSplitOnNewline);
     ui->editFilterTags->setText(optFilterTags.join(", "));
     ui->chkShowEmptyCollections->setChecked(optShowEmptyCollections);
+    ui->chkCollectionFolderTopLevel->setChecked(optCollectionFolderTopLevel);
+    ui->chkModelListFolderGrouping->setChecked(optModelListFolderGrouping);
     ui->chkUseCustomUserAgent->setChecked(optUseArrangedUA);
     ui->editUserAgent->setEnabled(optUseArrangedUA);
     if (!optSavedUAString.isEmpty()) {ui->editUserAgent->setText(optSavedUAString);}
@@ -5393,6 +5545,18 @@ void MainWindow::loadGlobalConfig() {
         // 修改此设置后，必须立刻刷新树状图才能看到效果
         refreshCollectionTreeView();
     });
+    connect(ui->chkCollectionFolderTopLevel, &QCheckBox::toggled, this, [this](bool checked){
+        optCollectionFolderTopLevel = checked;
+        saveGlobalConfig();
+        refreshCollectionTreeView();
+    });
+    connect(ui->chkModelListFolderGrouping, &QCheckBox::toggled, this, [this](bool checked){
+        optModelListFolderGrouping = checked;
+        saveGlobalConfig();
+        executeSort();
+        refreshHomeGallery();
+        refreshCollectionTreeView();
+    });
     // 复选框切换：控制输入框可用性 + 立即切换 UA 策略 + 自动保存
     connect(ui->chkUseCustomUserAgent, &QCheckBox::toggled, this, [this](bool checked){
         ui->editUserAgent->setEnabled(checked);
@@ -5467,10 +5631,13 @@ void MainWindow::saveGlobalConfig() {
     for (const QString &path : disabledLoraPaths) loraDisabledArr.append(path);
     QJsonArray galleryDisabledArr;
     for (const QString &path : disabledGalleryPaths) galleryDisabledArr.append(path);
+    QJsonArray collapsedModelFoldersArr;
+    for (const QString &path : collapsedModelFolders) collapsedModelFoldersArr.append(path);
     root["lora_paths"]                 = loraArr;
     root["gallery_paths"]              = galleryArr;
     root["lora_paths_disabled"]        = loraDisabledArr;
     root["gallery_paths_disabled"]     = galleryDisabledArr;
+    root["model_list_collapsed_folders"] = collapsedModelFoldersArr;
     root["translation_path"]           = translationCsvPath;
     root["lora_recursive"]              = optLoraRecursive;
     root["gallery_recursive"]           = optGalleryRecursive;
@@ -5485,6 +5652,8 @@ void MainWindow::saveGlobalConfig() {
     root["split_on_newline"]            = optSplitOnNewline;
     root["filter_tags_string"]          = ui->editFilterTags->text();
     root["show_empty_collections"]      = optShowEmptyCollections;
+    root["collection_folder_top_level"] = optCollectionFolderTopLevel;
+    root["model_list_folder_grouping"]  = optModelListFolderGrouping;
     root["use_custom_ua"]               = ui->chkUseCustomUserAgent->isChecked();
     root["custom_user_agent"]           = ui->editUserAgent->text();
     root["use_civitai_name"]            = optUseCivitaiName;
@@ -5500,11 +5669,16 @@ void MainWindow::saveGlobalConfig() {
         // 如果 UI 还没初始化完(比如刚启动就关闭)，尽量保留读取到的旧状态，防止清空
         // 但这里我们主要处理运行时保存：
         if (ui->collectionTree->topLevelItemCount() > 0) {
-            for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
-                QTreeWidgetItem *item = ui->collectionTree->topLevelItem(i);
+            std::function<void(QTreeWidgetItem*)> collectExpanded = [&](QTreeWidgetItem *item) {
+                if (!item) return;
                 if (item->isExpanded()) {
-                    expandedArr.append(item->data(0, ROLE_COLLECTION_NAME).toString());
+                    const QString key = item->data(0, ROLE_COLLECTION_EXPAND_KEY).toString();
+                    expandedArr.append(key.isEmpty() ? item->data(0, ROLE_COLLECTION_NAME).toString() : key);
                 }
+                for (int i = 0; i < item->childCount(); ++i) collectExpanded(item->child(i));
+            };
+            for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
+                collectExpanded(ui->collectionTree->topLevelItem(i));
             }
             treeState["expanded_items"] = expandedArr;
             treeState["scroll_pos"] = ui->collectionTree->verticalScrollBar()->value();
@@ -5632,12 +5806,24 @@ bool MainWindow::editLoraPaths(bool rescanAfter)
     applyPathEntries(dlg.pathEntries(), loraPaths, disabledLoraPaths);
     loraPaths = normalizePathList(loraPaths);
     disabledLoraPaths = normalizePathSet(disabledLoraPaths);
+    collapsedModelFolders = normalizePathSet(collapsedModelFolders);
     {
         QSet<QString> filtered;
         for (const QString &path : loraPaths) {
             if (disabledLoraPaths.contains(path)) filtered.insert(path);
         }
         disabledLoraPaths = filtered;
+    }
+    {
+        QSet<QString> activeRoots;
+        for (const QString &path : loraPaths) {
+            if (!disabledLoraPaths.contains(path)) activeRoots.insert(path);
+        }
+        QSet<QString> filtered;
+        for (const QString &path : collapsedModelFolders) {
+            if (activeRoots.contains(path)) filtered.insert(path);
+        }
+        collapsedModelFolders = filtered;
     }
     applyPathListsToUi();
     saveGlobalConfig();
@@ -5966,7 +6152,13 @@ void MainWindow::onCollectionTreeItemClicked(QTreeWidgetItem *item, int column)
         item->setExpanded(!wasExpanded);
 
         // 3. 切换文本前缀
-        QString displayName = (collectionName == FILTER_UNCATEGORIZED) ? "未分类 / Uncategorized" : collectionName;
+        QString displayName;
+        if (item->data(0, ROLE_IS_FOLDER_HEADER).toBool()) {
+            displayName = item->data(0, ROLE_MODEL_ROOT_NAME).toString();
+            if (displayName.isEmpty()) displayName = collectionName;
+        } else {
+            displayName = (collectionName == FILTER_UNCATEGORIZED) ? "未分类 / Uncategorized" : collectionName;
+        }
         QString prefix = (!wasExpanded) ? " - " : " + "; // 此时已切换状态
         QString newText = QString("%1%2 (%3)").arg(prefix).arg(displayName).arg(count);
         item->setText(0, newText);
@@ -6008,6 +6200,7 @@ void MainWindow::onCollectionTreeContextMenu(const QPoint &pos)
 
     // 判断是收藏夹节点还是模型节点
     if (clickedItem->data(0, ROLE_IS_COLLECTION_NODE).toBool()) {
+        if (clickedItem->data(0, ROLE_IS_FOLDER_HEADER).toBool()) return;
         // --- 收藏夹节点右键菜单 ---
         QString collectionName = clickedItem->data(0, ROLE_COLLECTION_NAME).toString();
 
@@ -6103,11 +6296,16 @@ void MainWindow::refreshCollectionTreeView()
         isFirstTreeRefresh = false; // 标记已使用，下次刷新就走逻辑 B
     } else {
         // B. 运行时刷新：使用 UI 当前的状态
-        for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
-            QTreeWidgetItem *item = ui->collectionTree->topLevelItem(i);
+        std::function<void(QTreeWidgetItem*)> collectExpanded = [&](QTreeWidgetItem *item) {
+            if (!item) return;
             if (item->isExpanded()) {
-                expandedCollections.insert(item->data(0, ROLE_COLLECTION_NAME).toString());
+                const QString key = item->data(0, ROLE_COLLECTION_EXPAND_KEY).toString();
+                expandedCollections.insert(key.isEmpty() ? item->data(0, ROLE_COLLECTION_NAME).toString() : key);
             }
+            for (int i = 0; i < item->childCount(); ++i) collectExpanded(item->child(i));
+        };
+        for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
+            collectExpanded(ui->collectionTree->topLevelItem(i));
         }
         scrollPos = ui->collectionTree->verticalScrollBar()->value();
     }
@@ -6132,9 +6330,10 @@ void MainWindow::refreshCollectionTreeView()
 
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *item = ui->modelList->item(i);
+        if (!isModelListItem(item)) continue;
 
-        // 关键点：如果它被搜索/底模筛选隐藏了，就不放入 Map
-        if (item->isHidden()) continue;
+        // 收藏夹树只关心搜索/底模过滤结果，不受 Models 文件夹折叠影响。
+        if (!item->data(ROLE_MODEL_FILTER_VISIBLE).toBool()) continue;
 
         QString baseName = item->data(ROLE_MODEL_NAME).toString();
         visibleItemMap.insert(baseName, item);
@@ -6179,45 +6378,11 @@ void MainWindow::refreshCollectionTreeView()
     // 3. 生成节点 (使用上面的可见数据源)
     // =========================================================
 
-    // --- 未分类 ---
     QSet<QString> categorizedSet;
     for (auto it = collections.begin(); it != collections.end(); ++it) {
         for (const QString &m : it.value()) categorizedSet.insert(m);
     }
-    QStringList uncatModels;
-    // 只遍历可见的模型
-    for (auto it = visibleItemMap.begin(); it != visibleItemMap.end(); ++it) {
-        if (!categorizedSet.contains(it.key())) uncatModels.append(it.key());
-    }
 
-    int uncatCount = uncatModels.count();
-    if (uncatCount > 0 || optShowEmptyCollections){
-        // 只有当有内容时才显示“未分类” (可选，这里我设置为始终显示，保持结构稳定)
-        QTreeWidgetItem *uncategorizedNode = new QTreeWidgetItem(ui->collectionTree);
-        bool isUncatExpanded = expandedCollections.contains(FILTER_UNCATEGORIZED);
-        uncategorizedNode->setExpanded(isUncatExpanded);
-        uncategorizedNode->setText(0, (isUncatExpanded ? PRE_OPEN : PRE_CLOSED) + "未分类 / Uncategorized (" + QString::number(uncatCount) + ")");
-        uncategorizedNode->setData(0, ROLE_IS_COLLECTION_NODE, true);
-        uncategorizedNode->setData(0, ROLE_COLLECTION_NAME, FILTER_UNCATEGORIZED);
-        uncategorizedNode->setData(0, ROLE_ITEM_COUNT, uncatCount);
-        uncategorizedNode->setFont(0, categoryFont);
-
-        // 排序并添加
-        std::sort(uncatModels.begin(), uncatModels.end(), rankSort);
-        // 这里手动添加循环，因为 uncatModels 已经是过滤好的了
-        for (const QString &baseName : uncatModels) {
-            QListWidgetItem *sourceItem = visibleItemMap.value(baseName);
-            QTreeWidgetItem *child = new QTreeWidgetItem(uncategorizedNode);
-            child->setText(0, sourceItem->text());
-            child->setData(0, ROLE_FILE_PATH, sourceItem->data(ROLE_FILE_PATH));
-            child->setData(0, ROLE_PREVIEW_PATH, sourceItem->data(ROLE_PREVIEW_PATH));
-            child->setData(0, ROLE_NSFW_LEVEL, sourceItem->data(ROLE_NSFW_LEVEL));
-            child->setData(0, ROLE_MODEL_NAME, sourceItem->data(ROLE_MODEL_NAME));
-            child->setIcon(0, sourceItem->icon());
-        }
-    }
-    // --- 收藏夹 ---
-    // 对收藏夹名字排序 (使用自然排序 QCollator)
     QCollator collator;
     collator.setNumericMode(true);
     collator.setCaseSensitivity(Qt::CaseInsensitive);
@@ -6229,30 +6394,96 @@ void MainWindow::refreshCollectionTreeView()
         return collator.compare(s1, s2) < 0;
     });
 
-    for (const QString &colName : collectionNames) {
-        // 获取该收藏夹的所有模型
-        QStringList models = collections.value(colName);
+    auto makeTreeParent = [&](QTreeWidgetItem *parent, const QString &expandKey, const QString &collectionName, const QString &displayName, int count) {
+        QTreeWidgetItem *node = parent ? new QTreeWidgetItem(parent) : new QTreeWidgetItem(ui->collectionTree);
+        node->setData(0, ROLE_IS_COLLECTION_NODE, true);
+        node->setData(0, ROLE_COLLECTION_NAME, collectionName);
+        node->setData(0, ROLE_COLLECTION_EXPAND_KEY, expandKey);
+        node->setData(0, ROLE_ITEM_COUNT, count);
+        node->setFont(0, categoryFont);
 
-        int visibleCount = 0;
-        for(const QString &m : models) {
-            if(visibleItemMap.contains(m)) visibleCount++;
+        const bool expanded = expandedCollections.contains(expandKey);
+        node->setExpanded(expanded);
+        node->setText(0, (expanded ? PRE_OPEN : PRE_CLOSED) + displayName + " (" + QString::number(count) + ")");
+        return node;
+    };
+
+    auto modelBelongsToFolder = [&](const QString &baseName, const QString &folderPath) {
+        QListWidgetItem *item = visibleItemMap.value(baseName, nullptr);
+        if (!item) return false;
+        return item->data(ROLE_MODEL_ROOT_PATH).toString() == folderPath;
+    };
+
+    auto addCollectionGroup = [&](QTreeWidgetItem *parent, const QString &folderPath) {
+        QStringList uncatModels;
+        for (auto it = visibleItemMap.begin(); it != visibleItemMap.end(); ++it) {
+            if (optCollectionFolderTopLevel && !modelBelongsToFolder(it.key(), folderPath)) continue;
+            if (!categorizedSet.contains(it.key())) uncatModels.append(it.key());
         }
 
-        if (visibleCount > 0 || optShowEmptyCollections) {
-            QTreeWidgetItem *collectionNode = new QTreeWidgetItem(ui->collectionTree);
-            collectionNode->setData(0, ROLE_IS_COLLECTION_NODE, true);
-            collectionNode->setData(0, ROLE_COLLECTION_NAME, colName);
-            collectionNode->setData(0, ROLE_ITEM_COUNT, visibleCount);
-            collectionNode->setFont(0, categoryFont);
-
-            bool isColExpanded = expandedCollections.contains(colName);
-            collectionNode->setExpanded(isColExpanded);
-
-            collectionNode->setText(0, (isColExpanded ? PRE_OPEN : PRE_CLOSED) + colName + " (" + QString::number(visibleCount) + ")");
-
-            // 调用辅助函数，它会自动过滤掉不匹配搜索的模型，并按当前规则排序
-            addModelChildren(collectionNode, models);
+        const int uncatCount = uncatModels.count();
+        if (uncatCount > 0 || optShowEmptyCollections) {
+            const QString key = optCollectionFolderTopLevel ? QString("folder:%1:%2").arg(folderPath, FILTER_UNCATEGORIZED)
+                                                            : FILTER_UNCATEGORIZED;
+            QTreeWidgetItem *uncategorizedNode = makeTreeParent(parent, key, FILTER_UNCATEGORIZED, "未分类 / Uncategorized", uncatCount);
+            std::sort(uncatModels.begin(), uncatModels.end(), rankSort);
+            addModelChildren(uncategorizedNode, uncatModels);
         }
+
+        for (const QString &colName : collectionNames) {
+            QStringList models = collections.value(colName);
+            if (optCollectionFolderTopLevel) {
+                QMutableStringListIterator it(models);
+                while (it.hasNext()) {
+                    if (!modelBelongsToFolder(it.next(), folderPath)) it.remove();
+                }
+            }
+
+            int visibleCount = 0;
+            for(const QString &m : models) {
+                if(visibleItemMap.contains(m)) visibleCount++;
+            }
+
+            if (visibleCount > 0 || optShowEmptyCollections) {
+                const QString key = optCollectionFolderTopLevel ? QString("folder:%1:%2").arg(folderPath, colName)
+                                                                : colName;
+                QTreeWidgetItem *collectionNode = makeTreeParent(parent, key, colName, colName, visibleCount);
+                addModelChildren(collectionNode, models);
+            }
+        }
+    };
+
+    if (optCollectionFolderTopLevel) {
+        QMap<QString, QString> folderNames;
+        for (auto it = visibleItemMap.begin(); it != visibleItemMap.end(); ++it) {
+            QListWidgetItem *item = it.value();
+            const QString folderPath = item->data(ROLE_MODEL_ROOT_PATH).toString();
+            if (folderPath.isEmpty()) continue;
+            QString folderName = item->data(ROLE_MODEL_ROOT_NAME).toString();
+            if (folderName.isEmpty()) folderName = folderPath;
+            folderNames.insert(folderPath, folderName);
+        }
+
+        QStringList folderPaths = folderNames.keys();
+        std::sort(folderPaths.begin(), folderPaths.end(), [&](const QString &a, const QString &b) {
+            return collator.compare(folderNames.value(a), folderNames.value(b)) < 0;
+        });
+
+        for (const QString &folderPath : folderPaths) {
+            int folderVisibleCount = 0;
+            for (auto it = visibleItemMap.begin(); it != visibleItemMap.end(); ++it) {
+                if (modelBelongsToFolder(it.key(), folderPath)) folderVisibleCount++;
+            }
+            if (folderVisibleCount <= 0 && !optShowEmptyCollections) continue;
+
+            const QString folderKey = "folder:" + folderPath;
+            QTreeWidgetItem *folderNode = makeTreeParent(nullptr, folderKey, folderKey, folderNames.value(folderPath), folderVisibleCount);
+            folderNode->setData(0, ROLE_IS_FOLDER_HEADER, true);
+            folderNode->setData(0, ROLE_MODEL_ROOT_NAME, folderNames.value(folderPath));
+            addCollectionGroup(folderNode, folderPath);
+        }
+    } else {
+        addCollectionGroup(nullptr, QString());
     }
 
     // 恢复滚动条
@@ -6279,6 +6510,11 @@ void MainWindow::filterModelsByCollection(const QString &collectionName)
     // 刷新 modelList 的可见性
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *item = ui->modelList->item(i);
+        if (!isModelListItem(item)) {
+            if (item) item->setHidden(true);
+            if (item) item->setData(ROLE_MODEL_FILTER_VISIBLE, false);
+            continue;
+        }
         QString baseName = item->data(ROLE_MODEL_NAME).toString(); // 获取模型的基础名称
 
         bool shouldBeVisible = false;
@@ -6306,8 +6542,9 @@ void MainWindow::filterModelsByCollection(const QString &collectionName)
             shouldBeVisible = false; // 隐藏模式下，NSFW 不可见
         }
 
-        item->setHidden(!shouldBeVisible);
+        item->setData(ROLE_MODEL_FILTER_VISIBLE, shouldBeVisible);
     }
+    applyModelFolderVisibility();
 
     // 清除搜索框（因为现在是按收藏夹过滤）
     ui->searchEdit->clear();
@@ -6340,43 +6577,34 @@ void MainWindow::syncTreeSelection(const QString &filePath)
 {
     if (filePath.isEmpty()) return;
 
-    // 临时阻断信号，防止 setExpanded 触发不需要的逻辑（视你的信号连接情况而定）
-    // 这里通常不需要阻断，因为我们需要 setExpanded 触发 updateText (+/-) 的逻辑
-    // ui->collectionTree->blockSignals(true);
-
     bool found = false;
 
-    // 1. 遍历所有顶级节点 (收藏夹/未分类)
-    for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
-        QTreeWidgetItem *parent = ui->collectionTree->topLevelItem(i);
-
-        // 2. 遍历子节点 (模型)
-        for (int j = 0; j < parent->childCount(); ++j) {
-            QTreeWidgetItem *child = parent->child(j);
-
-            // 比较文件路径
-            if (child->data(0, ROLE_FILE_PATH).toString() == filePath) {
-
-                // === 核心动作 A: 展开父节点 ===
-                if (!parent->isExpanded()) {
-                    parent->setExpanded(true);
-                    // 提示：如果你使用了上一轮的信号槽 (onTreeItemExpanded)
-                    // 这里 setExpanded(true) 会自动触发信号把 "+" 变成 "-"，非常完美
-                }
-
-                // === 核心动作 B: 选中并滚动 ===
-                ui->collectionTree->setCurrentItem(child);
-                child->setSelected(true); // 显式选中
-                ui->collectionTree->scrollToItem(child, QAbstractItemView::PositionAtCenter);
-
-                found = true;
-                break;
+    std::function<bool(QTreeWidgetItem*)> visit = [&](QTreeWidgetItem *node) {
+        if (!node) return false;
+        if (node->data(0, ROLE_FILE_PATH).toString() == filePath) {
+            QTreeWidgetItem *parent = node->parent();
+            while (parent) {
+                parent->setExpanded(true);
+                parent = parent->parent();
             }
+            ui->collectionTree->setCurrentItem(node);
+            node->setSelected(true);
+            ui->collectionTree->scrollToItem(node, QAbstractItemView::PositionAtCenter);
+            return true;
         }
-        if (found) break; // 找到后跳出外层循环
-    }
+        for (int i = 0; i < node->childCount(); ++i) {
+            if (visit(node->child(i))) return true;
+        }
+        return false;
+    };
 
-    // ui->collectionTree->blockSignals(false);
+    for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
+        if (visit(ui->collectionTree->topLevelItem(i))) {
+            found = true;
+            break;
+        }
+    }
+    Q_UNUSED(found);
 }
 
 void MainWindow::onMenuSwitchToAbout()
@@ -6582,6 +6810,7 @@ void MainWindow::updateModelListNames()
 
     for(int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *item = ui->modelList->item(i);
+        if (!isModelListItem(item)) continue;
 
         // 获取文件名 (BaseName)
         QString baseName = item->data(ROLE_MODEL_NAME).toString();
