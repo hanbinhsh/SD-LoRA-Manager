@@ -32,6 +32,11 @@
 #include <QTabWidget>
 #include <QVBoxLayout>
 #include <QSignalBlocker>
+#include <QColorDialog>
+#include <QBrush>
+#include <QStyledItemDelegate>
+#include <QApplication>
+#include <QStyle>
 #include <functional>
 
 #include "imageloader.h"
@@ -40,6 +45,66 @@
 #include "tagbrowserwidget.h"
 #include "syncwidget.h"
 #include "promptparserwidget.h"
+
+class HighlightItemDelegate : public QStyledItemDelegate
+{
+public:
+    explicit HighlightItemDelegate(QObject *parent = nullptr)
+        : QStyledItemDelegate(parent)
+    {
+    }
+
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        QStyleOptionViewItem opt(option);
+        initStyleOption(&opt, index);
+        const QWidget *widget = opt.widget;
+        QStyle *style = widget ? widget->style() : QApplication::style();
+
+        // Draw the native item background first, then place the user highlight
+        // under the icon/text so translucent colors do not wash out content.
+        QStyleOptionViewItem backgroundOpt(opt);
+        backgroundOpt.text.clear();
+        backgroundOpt.icon = QIcon();
+        backgroundOpt.features &= ~QStyleOptionViewItem::HasDisplay;
+        backgroundOpt.features &= ~QStyleOptionViewItem::HasDecoration;
+        style->drawControl(QStyle::CE_ItemViewItem, &backgroundOpt, painter, widget);
+
+        const QColor highlight = index.data(ROLE_MODEL_HIGHLIGHT_COLOR).value<QColor>();
+        if (highlight.isValid() && highlight.alpha() > 0) {
+            painter->save();
+            painter->fillRect(opt.rect, highlight);
+            painter->restore();
+        }
+
+        if (!opt.icon.isNull()) {
+            const QRect iconRect = style->subElementRect(QStyle::SE_ItemViewItemDecoration, &opt, widget);
+            QIcon::Mode mode = QIcon::Normal;
+            if (!(opt.state & QStyle::State_Enabled)) {
+                mode = QIcon::Disabled;
+            } else if (opt.state & QStyle::State_Selected) {
+                mode = QIcon::Selected;
+            }
+            const QIcon::State state = (opt.state & QStyle::State_Open) ? QIcon::On : QIcon::Off;
+            opt.icon.paint(painter, iconRect, opt.decorationAlignment, mode, state);
+        }
+
+        if (!opt.text.isEmpty()) {
+            const QRect textRect = style->subElementRect(QStyle::SE_ItemViewItemText, &opt, widget);
+            const QString text = opt.fontMetrics.elidedText(opt.text, opt.textElideMode, textRect.width());
+            const QPalette::ColorRole role = (opt.state & QStyle::State_Selected)
+                                                 ? QPalette::HighlightedText
+                                                 : QPalette::Text;
+            style->drawItemText(painter,
+                                textRect,
+                                opt.displayAlignment,
+                                opt.palette,
+                                opt.state & QStyle::State_Enabled,
+                                text,
+                                role);
+        }
+    }
+};
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -195,8 +260,10 @@ MainWindow::MainWindow(QWidget *parent)
     // 侧边栏右键菜单
     ui->modelList->setContextMenuPolicy(Qt::CustomContextMenu);
     ui->modelList->setSelectionMode(QAbstractItemView::ExtendedSelection); // 开启 Shift/Ctrl 多选
+    ui->modelList->setItemDelegate(new HighlightItemDelegate(ui->modelList));
     connect(ui->modelList, &QListWidget::customContextMenuRequested, this, &MainWindow::onSidebarContextMenu);
     ui->collectionTree->setContextMenuPolicy(Qt::CustomContextMenu);
+    ui->collectionTree->setItemDelegate(new HighlightItemDelegate(ui->collectionTree));
     connect(ui->collectionTree, &QTreeWidget::customContextMenuRequested, this, &MainWindow::onCollectionTreeContextMenu);
     ui->collectionTree->setSelectionMode(QAbstractItemView::ExtendedSelection);
     // 工具栏按钮
@@ -340,6 +407,7 @@ MainWindow::MainWindow(QWidget *parent)
     QTimer::singleShot(10, this, [this](){
         ui->statusbar->showMessage("正在扫描本地模型库...");
         loadCollections();
+        loadModelHighlightColors();
         const QStringList activeLoraPaths = collectEnabledPaths(loraPaths, disabledLoraPaths);
         if (!activeLoraPaths.isEmpty()) scanModels(activeLoraPaths);
         ui->comboSort->setCurrentIndex(0);
@@ -948,6 +1016,45 @@ void MainWindow::saveCollections()
         file.write(QJsonDocument(root).toJson());
     }
     refreshHomeCollectionsUI();
+}
+
+void MainWindow::loadModelHighlightColors()
+{
+    modelHighlightColors.clear();
+
+    const QString configPath = qApp->applicationDirPath() + "/config/model_colors.json";
+    QFile file(configPath);
+    if (!file.open(QIODevice::ReadOnly)) return;
+
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    if (!doc.isObject()) return;
+
+    const QJsonObject root = doc.object();
+    for (auto it = root.begin(); it != root.end(); ++it) {
+        const QString filePath = QFileInfo(it.key()).absoluteFilePath();
+        const QColor color(it.value().toString());
+        if (!filePath.isEmpty() && color.isValid()) {
+            modelHighlightColors.insert(filePath, color);
+        }
+    }
+}
+
+void MainWindow::saveModelHighlightColors()
+{
+    const QString configDir = qApp->applicationDirPath() + "/config";
+    QDir().mkpath(configDir);
+
+    QJsonObject root;
+    for (auto it = modelHighlightColors.begin(); it != modelHighlightColors.end(); ++it) {
+        if (it.value().isValid()) {
+            root.insert(it.key(), it.value().name(QColor::HexArgb));
+        }
+    }
+
+    QFile file(configDir + "/model_colors.json");
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write(QJsonDocument(root).toJson());
+    }
 }
 
 void MainWindow::onCreateCollection()
@@ -1561,6 +1668,7 @@ void MainWindow::scanModels(const QStringList &paths)
             }
 
             item->setIcon(placeholderIcon);
+            applyModelHighlightColor(item);
 
             // 9. 处理底模过滤器
             QString baseModel = item->data(ROLE_FILTER_BASE).toString();
@@ -3247,6 +3355,7 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
             if (item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
                 item->setData(ROLE_PREVIEW_PATH, savePath);
                 item->setIcon(newIcon);
+                applyModelHighlightColor(item);
                 modelListUpdated = true;
             }
         }
@@ -3267,6 +3376,7 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
                 if (node->data(0, ROLE_MODEL_NAME).toString() == localBaseName) {
                     node->setData(0, ROLE_PREVIEW_PATH, savePath);
                     node->setIcon(0, newIcon);
+                    applyModelHighlightColor(node);
                 }
                 for (int i = 0; i < node->childCount(); ++i) updateTreeNode(node->child(i));
             };
@@ -3566,6 +3676,7 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
                 } else {
                     item->setIcon(getSquareIcon(originalPix));
                 }
+                applyModelHighlightColor(item);
             }
         }
 
@@ -3581,6 +3692,7 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
                 } else {
                     node->setIcon(0, getSquareIcon(originalPix));
                 }
+                applyModelHighlightColor(node);
             }
             for (int j = 0; j < node->childCount(); ++j) updateTreeIcon(node->child(j));
         };
@@ -3794,6 +3906,42 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
 
     menu.addSeparator();
 
+    QColor defaultColor(102, 192, 244, 96);
+    if (modelItems.count() == 1) {
+        const QString filePath = QFileInfo(modelItems.first()->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+        if (modelHighlightColors.contains(filePath)) {
+            defaultColor = modelHighlightColors.value(filePath);
+        }
+    }
+
+    QAction *actSetHighlightColor = menu.addAction("设置高亮颜色... / Set Highlight Color...");
+    connect(actSetHighlightColor, &QAction::triggered, this, [this, modelItems, defaultColor]() {
+        QColorDialog dialog(defaultColor, this);
+        dialog.setWindowTitle("设置模型高亮颜色");
+        dialog.setOption(QColorDialog::ShowAlphaChannel, true);
+        if (dialog.exec() != QDialog::Accepted) return;
+
+        const QColor color = dialog.selectedColor();
+        if (!color.isValid()) return;
+        setHighlightColorForItems(modelItems, color);
+    });
+
+    QAction *actClearHighlightColor = menu.addAction("清除高亮颜色 / Clear Highlight Color");
+    bool hasHighlightColor = false;
+    for (QListWidgetItem *item : modelItems) {
+        const QString filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+        if (modelHighlightColors.contains(filePath)) {
+            hasHighlightColor = true;
+            break;
+        }
+    }
+    actClearHighlightColor->setEnabled(hasHighlightColor);
+    connect(actClearHighlightColor, &QAction::triggered, this, [this, modelItems]() {
+        clearHighlightColorForItems(modelItems);
+    });
+
+    menu.addSeparator();
+
     // 打开模型文件所在位置
     QStringList targetFilePaths;
     for (QListWidgetItem *item : modelItems) {
@@ -3949,6 +4097,72 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
 
     menu.exec(globalPos);
 }
+
+void MainWindow::applyModelHighlightColor(QListWidgetItem *item)
+{
+    if (!isModelListItem(item)) return;
+
+    const QString filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+    if (modelHighlightColors.contains(filePath)) {
+        item->setData(ROLE_MODEL_HIGHLIGHT_COLOR, modelHighlightColors.value(filePath));
+    } else {
+        item->setData(ROLE_MODEL_HIGHLIGHT_COLOR, QVariant());
+    }
+}
+
+void MainWindow::applyModelHighlightColor(QTreeWidgetItem *item)
+{
+    if (!item || item->data(0, ROLE_FILE_PATH).toString().isEmpty()) return;
+
+    const QString filePath = QFileInfo(item->data(0, ROLE_FILE_PATH).toString()).absoluteFilePath();
+    if (modelHighlightColors.contains(filePath)) {
+        item->setData(0, ROLE_MODEL_HIGHLIGHT_COLOR, modelHighlightColors.value(filePath));
+    } else {
+        item->setData(0, ROLE_MODEL_HIGHLIGHT_COLOR, QVariant());
+    }
+}
+
+void MainWindow::setHighlightColorForItems(const QList<QListWidgetItem*> &items, const QColor &color)
+{
+    if (!color.isValid()) return;
+
+    int changed = 0;
+    for (QListWidgetItem *item : items) {
+        if (!isModelListItem(item)) continue;
+        const QString filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+        if (filePath.isEmpty()) continue;
+        modelHighlightColors.insert(filePath, color);
+        applyModelHighlightColor(item);
+        changed++;
+    }
+    if (changed <= 0) return;
+
+    saveModelHighlightColors();
+    refreshCollectionTreeView();
+    ui->modelList->viewport()->update();
+    ui->statusbar->showMessage(QString("已设置 %1 个模型的高亮颜色").arg(changed), 2000);
+}
+
+void MainWindow::clearHighlightColorForItems(const QList<QListWidgetItem*> &items)
+{
+    int changed = 0;
+    for (QListWidgetItem *item : items) {
+        if (!isModelListItem(item)) continue;
+        const QString filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+        if (filePath.isEmpty()) continue;
+        if (modelHighlightColors.remove(filePath) > 0) {
+            applyModelHighlightColor(item);
+            changed++;
+        }
+    }
+    if (changed <= 0) return;
+
+    saveModelHighlightColors();
+    refreshCollectionTreeView();
+    ui->modelList->viewport()->update();
+    ui->statusbar->showMessage(QString("已清除 %1 个模型的高亮颜色").arg(changed), 2000);
+}
+
 void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonPath)
 {
     // 初始化默认值 (方便排序)
@@ -6412,6 +6626,7 @@ void MainWindow::refreshCollectionTreeView()
                 child->setData(0, ROLE_NSFW_LEVEL, sourceItem->data(ROLE_NSFW_LEVEL));
                 child->setData(0, ROLE_MODEL_NAME, sourceItem->data(ROLE_MODEL_NAME));
                 child->setIcon(0, sourceItem->icon());
+                applyModelHighlightColor(child);
             }
         }
     };
