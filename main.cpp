@@ -20,6 +20,7 @@ int main(int argc, char *argv[])
     a.styleHints()->setColorScheme(Qt::ColorScheme::Dark);
     a.setWindowIcon(QIcon("://logo.ico"));
     MainWindow w;
+    w.resize(1300, 900);
     w.show();
     return a.exec();
 }

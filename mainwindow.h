@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QListWidgetItem>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -29,6 +30,7 @@
 #include <QStandardPaths>
 #include <QTreeWidget>
 #include <QColor>
+#include <QElapsedTimer>
 
 #include "tagflowwidget.h"
 
@@ -68,8 +70,11 @@ const int ROLE_EDIT_IMAGE_PATH      = Qt::UserRole + 35;
 const int ROLE_IS_FOLDER_HEADER     = Qt::UserRole + 36;
 // 树状图占位符标记
 const int ROLE_IS_PLACEHOLDER       = Qt::UserRole + 40;
+const int ROLE_CIVITAI_MODEL_ID     = Qt::UserRole + 41;
+const int ROLE_CIVITAI_VERSION_ID   = Qt::UserRole + 42;
+const int ROLE_CIVITAI_SHA256       = Qt::UserRole + 43;
 
-const QString CURRENT_VERSION = "1.3.6";
+const QString CURRENT_VERSION = "1.4.0";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
@@ -88,6 +93,32 @@ struct DownloadTask {
     QString savePath;
     QString localBaseName;
     QPointer<QPushButton> button; // 使用 QPointer 防止按钮被销毁后野指针崩溃
+};
+
+struct ModelUpdateInfo {
+    QString filePath;
+    QString modelDir;
+    QString baseName;
+    QString displayName;
+    QString currentVersion;
+    QString latestVersion;
+    QString downloadUrl;
+    QString downloadFileName;
+    QString sha256;
+    QJsonObject latestVersionJson;
+    int modelId = 0;
+    int currentVersionId = 0;
+    int latestVersionId = 0;
+    double sizeMB = 0.0;
+    bool hasUpdate = false;
+};
+
+struct ModelFileDownloadTask {
+    ModelUpdateInfo info;
+    QString targetPath;
+    QString tempPath;
+    int row = -1;
+    bool overwrite = false;
 };
 
 struct ImageLoadResult {
@@ -141,6 +172,7 @@ struct ModelMeta {
     QString sha256;
     QString fileNameServer;
     int modelId = 0;
+    int versionId = 0;
     bool isLocalEdited = false;
     bool isLocalOnly = false;
     QList<ImageInfo> images;
@@ -205,6 +237,7 @@ private slots:
     void onMenuSwitchToAbout();
     void onCheckUpdateClicked();
     void onUpdateApiReceived(QNetworkReply *reply);
+    void onTestCivitaiApiKeyClicked();
     void onLocalMetaSaveClicked();
     void onLocalMetaResetClicked();
     void onEditMetaTabClicked();
@@ -251,6 +284,12 @@ private:
     QString findLocalPreviewPath(const QString &dirPath, const QString &currentBaseName, const QString &serverFileName, int imgIndex) const;
     QString calculateFileHash(const QString &filePath);
     void fetchModelInfoFromCivitai(const QString &hash);
+    QNetworkRequest makeNetworkRequest(const QUrl &url, bool allowCivitaiAuth = true) const;
+    QString civitaiApiKey() const;
+    bool isCivitaiUrl(const QUrl &url) const;
+    bool shouldUseCivitaiBearerAuth(const QUrl &url) const;
+    QUrl civitaiUrlWithToken(const QUrl &url) const;
+    QString civitaiNetworkErrorMessage(QNetworkReply *reply) const;
     void saveLocalMetadata(const QString &modelDir, const QString &baseName, const QJsonObject &data);
     bool readLocalJson(const QString &dirPath, const QString &baseName, ModelMeta &meta);
     void clearLayout(QLayout *layout);
@@ -293,6 +332,23 @@ private:
     void updateBackgroundDuringTransition();
     void enqueueDownload(const QString &url, const QString &savePath, QPushButton *btn, const QString &localBaseName);
     void processNextDownload();
+    void initDownloadsPage();
+    void onMenuSwitchToDownloads();
+    void checkUpdatesForItems(const QList<QListWidgetItem*> &items);
+    void checkUpdateForItem(QListWidgetItem *item);
+    void handleModelUpdateReply(QNetworkReply *reply);
+    ModelUpdateInfo parseModelUpdateInfo(QListWidgetItem *item, const QJsonObject &modelRoot) const;
+    void addOrUpdateDownloadRow(const ModelUpdateInfo &info, const QString &status);
+    void updateDownloadRowStatus(int row, const QString &status);
+    void updateDownloadRowProgress(int row, int percent, const QString &speedText);
+    QList<int> selectedDownloadRows() const;
+    void startDownloadsForSelectedRows();
+    void enqueueModelFileDownload(const ModelUpdateInfo &info);
+    void processNextModelDownload();
+    QString chooseModelDownloadTarget(const ModelUpdateInfo &info, bool *overwrite);
+    QString uniqueFilePath(const QString &dirPath, const QString &fileName) const;
+    void finishModelDownload(const ModelFileDownloadTask &task, const QByteArray &data);
+    void filterDownloadsTable();
     void beginGalleryBuild(const ModelMeta &meta);
     void buildGalleryBatch();
     void addGalleryThumbButton(const ModelMeta &meta, int index, const QString &modelDir, const QString &baseName);
@@ -327,6 +383,15 @@ private:
 
     QQueue<DownloadTask> downloadQueue; // 任务队列
     bool isDownloading = false;         // 当前是否有任务在运行
+    QQueue<ModelFileDownloadTask> modelDownloadQueue;
+    QSet<QString> canceledModelDownloadPaths;
+    QPointer<QNetworkReply> activeModelDownloadReply;
+    ModelFileDownloadTask activeModelDownloadTask;
+    QFile *activeModelDownloadFile = nullptr;
+    qint64 activeModelDownloadedBytes = 0;
+    bool isModelDownloading = false;
+    QElapsedTimer modelDownloadTimer;
+    QHash<QString, ModelUpdateInfo> modelUpdateInfos;
 
 
     TagFlowWidget *tagFlowWidget;
@@ -383,6 +448,7 @@ private:
     QString translationCsvPath;                         // 翻译文件路径
     QString sdOutputFolder;                             // 图库主路径 (兼容)
     QString optSavedUAString        = "";               // 设置的UA
+    QString optCivitaiApiKey        = "";               // Civitai API Key
     bool    optLoraRecursive        = false;            // 递归搜索Lora文件夹
     bool    optGalleryRecursive     = false;            // 递归搜索图库文件夹
     int     optBlurRadius           = 30;               // 模糊半径
@@ -403,6 +469,7 @@ private:
     bool    optUseCivitaiName = false;                  // 使用json中的模型名称
     bool    optSuppressLocalWarnings = false;           // 隐藏本地模型总量提醒
     int     optUserGalleryMatchMode = 0;                // 0: 当前逻辑匹配, 1: 摘要值匹配(可回退), 2: 严格摘要值匹配(不回退)
+    int     optModelUpdateDownloadPolicy = 0;           // 0: 每次询问, 1: 保留旧版, 2: 覆盖当前文件
     // 保存与加载
     void loadGlobalConfig();        // 加载配置
     void saveGlobalConfig();        // 保存配置

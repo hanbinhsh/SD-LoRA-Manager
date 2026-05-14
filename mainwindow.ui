@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1300</width>
-    <height>964</height>
+    <height>1043</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -40,8 +40,8 @@ QLineEdit#editUserTagSearch:hover, QLineEdit#editUserTagSearch:focus {
 #btnHome, #btnGallery { background-color: transparent; text-align: left; padding-left: 10px; font-size: 14px; font-weight: bold; color: #fff; }
 #btnHome:hover, #btnGallery:hover { background-color: #3d4450; }
 
-#btnScanLocal, #btnForceUpdate, #btnOpenUrl, #btnFavorite, #btnShowUserGallery, #btnEditMeta, #btnCopyLoraTag { background-color: #2a3f5a; border-radius: 2px; color: #66c0f4; border: none; }
-#btnScanLocal:hover, #btnForceUpdate:hover, #btnOpenUrl:hover, #btnFavorite:hover, #btnShowUserGallery:hover, #btnEditMeta:hover, #btnCopyLoraTag:hover { background-color: #3d5677; color: #ffffff; }
+#btnScanLocal, #btnForceUpdate, #btnCheckModelUpdate, #btnOpenUrl, #btnFavorite, #btnShowUserGallery, #btnEditMeta, #btnCopyLoraTag { background-color: #2a3f5a; border-radius: 2px; color: #66c0f4; border: none; }
+#btnScanLocal:hover, #btnForceUpdate:hover, #btnCheckModelUpdate:hover, #btnOpenUrl:hover, #btnFavorite:hover, #btnShowUserGallery:hover, #btnEditMeta:hover, #btnCopyLoraTag:hover { background-color: #3d5677; color: #ffffff; }
 
 /* 绿色复制按钮 */
 QPushButton[class=&quot;copyBtn&quot;] { background-color: #5c7e10; color: white; border: none; border-radius: 2px; font-weight: bold; }
@@ -1022,6 +1022,22 @@ New</string>
                       </property>
                       <property name="text">
                        <string>↻</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QPushButton" name="btnCheckModelUpdate">
+                      <property name="minimumSize">
+                       <size>
+                        <width>40</width>
+                        <height>40</height>
+                       </size>
+                      </property>
+                      <property name="toolTip">
+                       <string>检查 Civitai 新版本</string>
+                      </property>
+                      <property name="text">
+                       <string>⬇</string>
                       </property>
                      </widget>
                     </item>
@@ -2278,6 +2294,234 @@ Hash: ...</string>
         </item>
        </layout>
       </widget>
+      <widget class="QWidget" name="pageDownloads">
+       <property name="styleSheet">
+        <string notr="true">QWidget#pageDownloads { background-color: #1b2838; color: #dcdedf; }
+QGroupBox { border: 1px solid #3d4d5d; border-radius: 4px; margin-top: 10px; padding-top: 12px; color: #dcdedf; }
+QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color: #66c0f4; font-weight: bold; }
+QPushButton { background-color: #2a3f5a; color: #fff; border: none; padding: 7px 12px; border-radius: 3px; }
+QPushButton:hover { background-color: #3d5677; }
+QPushButton:disabled { background-color: #2a3038; color: #7f8791; }
+QTableWidget { background-color: #16191e; alternate-background-color: #1e252f; gridline-color: #2b3440; selection-background-color: #3d5677; color: #dcdedf; border: 1px solid #31363d; }
+QHeaderView::section { background-color: #212831; color: #dcdedf; padding: 6px; border: none; border-right: 1px solid #31363d; }
+QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf; border-radius: 3px; padding: 5px; }</string>
+       </property>
+       <layout class="QHBoxLayout" name="horizontalLayout_DownloadsRoot">
+        <property name="spacing">
+         <number>14</number>
+        </property>
+        <property name="leftMargin">
+         <number>24</number>
+        </property>
+        <property name="topMargin">
+         <number>24</number>
+        </property>
+        <property name="rightMargin">
+         <number>24</number>
+        </property>
+        <property name="bottomMargin">
+         <number>24</number>
+        </property>
+        <item>
+         <widget class="QGroupBox" name="groupDownloadsActions">
+          <property name="minimumSize">
+           <size>
+            <width>260</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>320</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="title">
+           <string>下载管理 / Downloads</string>
+          </property>
+          <layout class="QVBoxLayout" name="verticalLayout_DownloadActions">
+           <property name="spacing">
+            <number>10</number>
+           </property>
+           <item>
+            <widget class="QPushButton" name="btnDownloadsCheckCurrent">
+             <property name="text">
+              <string>检查当前模型更新</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnDownloadsCheckSelected">
+             <property name="text">
+              <string>检查选中模型更新</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnDownloadsCheckAll">
+             <property name="text">
+              <string>检查全部模型更新</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnDownloadsDownloadSelected">
+             <property name="text">
+              <string>下载选中更新</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnDownloadsCancel">
+             <property name="text">
+              <string>取消选中任务</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnDownloadsRetry">
+             <property name="text">
+              <string>重试失败任务</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnDownloadsOpenFolder">
+             <property name="text">
+              <string>打开文件位置</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnDownloadsClearCompleted">
+             <property name="text">
+              <string>清空已完成</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="lblDownloadsFilter">
+             <property name="text">
+              <string>显示范围:</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QComboBox" name="comboDownloadsFilter">
+             <item>
+              <property name="text">
+               <string>全部任务</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>有更新</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>下载中</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>失败</string>
+              </property>
+             </item>
+            </widget>
+           </item>
+           <item>
+            <spacer name="verticalSpacer_DownloadActions">
+             <property name="orientation">
+              <enum>Qt::Orientation::Vertical</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>20</width>
+               <height>40</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item>
+            <widget class="QLabel" name="lblDownloadsStatus">
+             <property name="styleSheet">
+              <string>color:#8c96a0;</string>
+             </property>
+             <property name="text">
+              <string>等待检查更新。</string>
+             </property>
+             <property name="wordWrap">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QTableWidget" name="tableDownloads">
+          <property name="alternatingRowColors">
+           <bool>true</bool>
+          </property>
+          <property name="selectionMode">
+           <enum>QAbstractItemView::SelectionMode::ExtendedSelection</enum>
+          </property>
+          <property name="selectionBehavior">
+           <enum>QAbstractItemView::SelectionBehavior::SelectRows</enum>
+          </property>
+          <property name="columnCount">
+           <number>9</number>
+          </property>
+          <column>
+           <property name="text">
+            <string>模型</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>当前版本</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>最新版本</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>大小</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>进度</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>速度</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>状态</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>目标路径</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>来源</string>
+           </property>
+          </column>
+         </widget>
+        </item>
+       </layout>
+      </widget>
       <widget class="QWidget" name="pageSettings">
        <layout class="QVBoxLayout" name="verticalLayout_Settings">
         <property name="spacing">
@@ -2301,40 +2545,17 @@ Hash: ...</string>
            <string>路径设置 / Paths</string>
           </property>
           <layout class="QGridLayout" name="gridLayout_Paths">
-           <item row="3" column="2">
-            <widget class="QPushButton" name="btnClearGalleryCache">
-             <property name="cursor">
-              <cursorShape>PointingHandCursor</cursorShape>
-             </property>
-             <property name="text">
-              <string>清除</string>
-             </property>
-            </widget>
-           </item>
-           <item row="1" column="1">
+           <item row="0" column="4">
             <widget class="QLineEdit" name="editGalleryPath">
              <property name="readOnly">
               <bool>true</bool>
              </property>
             </widget>
            </item>
-           <item row="1" column="2">
-            <widget class="QPushButton" name="btnBrowseGallery">
-             <property name="cursor">
-              <cursorShape>PointingHandCursor</cursorShape>
-             </property>
+           <item row="2" column="3">
+            <widget class="QLabel" name="lblSetTrans_2">
              <property name="text">
-              <string>浏览...</string>
-             </property>
-            </widget>
-           </item>
-           <item row="0" column="2">
-            <widget class="QPushButton" name="btnBrowseLora">
-             <property name="cursor">
-              <cursorShape>PointingHandCursor</cursorShape>
-             </property>
-             <property name="text">
-              <string>浏览...</string>
+              <string>清除缓存:</string>
              </property>
             </widget>
            </item>
@@ -2345,10 +2566,20 @@ Hash: ...</string>
              </property>
             </widget>
            </item>
-           <item row="1" column="0">
-            <widget class="QLabel" name="lblSetGallery">
+           <item row="0" column="1">
+            <widget class="QLineEdit" name="editLoraPath">
+             <property name="readOnly">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="5">
+            <widget class="QPushButton" name="btnBrowseGallery">
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
              <property name="text">
-              <string>图库文件夹 / Gallery:</string>
+              <string>浏览...</string>
              </property>
             </widget>
            </item>
@@ -2369,13 +2600,6 @@ Hash: ...</string>
              </property>
             </widget>
            </item>
-           <item row="0" column="1">
-            <widget class="QLineEdit" name="editLoraPath">
-             <property name="readOnly">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
            <item row="2" column="1">
             <widget class="QLineEdit" name="editTransPath">
              <property name="readOnly">
@@ -2386,7 +2610,24 @@ Hash: ...</string>
              </property>
             </widget>
            </item>
-           <item row="3" column="1">
+           <item row="0" column="3">
+            <widget class="QLabel" name="lblSetGallery">
+             <property name="text">
+              <string>图库文件夹 / Gallery:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="2">
+            <widget class="QPushButton" name="btnBrowseLora">
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
+             <property name="text">
+              <string>浏览...</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="4">
             <widget class="QLabel" name="lblGalleryCacheHint">
              <property name="text">
               <string>清除 `user_gallery_cache.json`，下次扫描会重新解析本地图库提示词。</string>
@@ -2396,10 +2637,13 @@ Hash: ...</string>
              </property>
             </widget>
            </item>
-           <item row="3" column="0">
-            <widget class="QLabel" name="lblSetTrans_2">
+           <item row="2" column="5">
+            <widget class="QPushButton" name="btnClearGalleryCache">
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
              <property name="text">
-              <string>清除缓存:</string>
+              <string>清除</string>
              </property>
             </widget>
            </item>
@@ -2411,11 +2655,11 @@ Hash: ...</string>
           <property name="title">
            <string>网络请求设置 / Network &amp; User Agent</string>
           </property>
-          <layout class="QHBoxLayout" name="horizontalLayout_UA">
+          <layout class="QGridLayout" name="gridLayout_Network">
            <property name="spacing">
             <number>10</number>
            </property>
-           <item>
+           <item row="0" column="0">
             <widget class="QCheckBox" name="chkUseCustomUserAgent">
              <property name="toolTip">
               <string>勾选后使用右侧文本框的内容作为 UA；未勾选则每次启动随机生成。</string>
@@ -2425,7 +2669,7 @@ Hash: ...</string>
              </property>
             </widget>
            </item>
-           <item>
+           <item row="0" column="1">
             <widget class="QLineEdit" name="editUserAgent">
              <property name="enabled">
               <bool>false</bool>
@@ -2435,13 +2679,84 @@ Hash: ...</string>
              </property>
             </widget>
            </item>
-           <item>
+           <item row="0" column="2">
             <widget class="QPushButton" name="btnResetUA">
              <property name="toolTip">
               <string>生成一个随机的现代浏览器 UA 填入框中</string>
              </property>
              <property name="text">
               <string>随机 / Random</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="lblCivitaiApiKey">
+             <property name="text">
+              <string>Civitai API Key:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QLineEdit" name="editCivitaiApiKey">
+             <property name="echoMode">
+              <enum>QLineEdit::EchoMode::Password</enum>
+             </property>
+             <property name="placeholderText">
+              <string>可选：用于认证下载和访问收藏资源</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="2">
+            <layout class="QHBoxLayout" name="horizontalLayout_CivitaiApiButtons">
+             <item>
+              <widget class="QPushButton" name="btnToggleCivitaiApiKey">
+               <property name="text">
+                <string>显示</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="btnTestCivitaiApiKey">
+               <property name="text">
+                <string>测试</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="lblModelUpdateDownloadPolicy">
+             <property name="text">
+              <string>模型更新下载策略:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QComboBox" name="comboModelUpdateDownloadPolicy">
+             <item>
+              <property name="text">
+               <string>每次询问</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>保留旧版</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>覆盖当前文件</string>
+              </property>
+             </item>
+            </widget>
+           </item>
+           <item row="2" column="2">
+            <widget class="QLabel" name="lblCivitaiApiStatus">
+             <property name="styleSheet">
+              <string>color:#8c96a0;</string>
+             </property>
+             <property name="text">
+              <string>API Key 未测试</string>
              </property>
             </widget>
            </item>

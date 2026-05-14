@@ -37,6 +37,11 @@
 #include <QStyledItemDelegate>
 #include <QApplication>
 #include <QStyle>
+#include <QHeaderView>
+#include <QProgressBar>
+#include <QSaveFile>
+#include <QTableWidgetItem>
+#include <QUrlQuery>
 #include <functional>
 
 #include "imageloader.h"
@@ -271,6 +276,11 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->btnCopyLoraTag, &QPushButton::clicked, this, &MainWindow::onCopyLoraTagClicked);
     connect(ui->btnScanLocal, &QPushButton::clicked, this, &MainWindow::onScanLocalClicked);
     connect(ui->btnForceUpdate, &QPushButton::clicked, this, &MainWindow::onForceUpdateClicked);
+    connect(ui->btnCheckModelUpdate, &QPushButton::clicked, this, [this]() {
+        QList<QListWidgetItem*> items;
+        if (QListWidgetItem *item = ui->modelList->currentItem(); isModelListItem(item)) items << item;
+        checkUpdatesForItems(items);
+    });
     connect(ui->btnLocalMetaSave, &QPushButton::clicked, this, &MainWindow::onLocalMetaSaveClicked);
     connect(ui->btnLocalMetaReset, &QPushButton::clicked, this, &MainWindow::onLocalMetaResetClicked);
     connect(ui->btnEditMeta, &QPushButton::clicked, this, &MainWindow::onEditMetaTabClicked);
@@ -279,6 +289,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->btnEditReplaceImage, &QPushButton::clicked, this, &MainWindow::onEditReplaceImageClicked);
     connect(ui->btnEditRemoveImage, &QPushButton::clicked, this, &MainWindow::onEditRemoveImageClicked);
     connect(ui->btnEditSetCover, &QPushButton::clicked, this, &MainWindow::onEditSetCoverClicked);
+    initDownloadsPage();
     connect(ui->searchEdit, &QLineEdit::textChanged, this, &MainWindow::onSearchTextChanged);
     // 主页与画廊按钮
     connect(ui->btnHome, &QPushButton::clicked, this, &MainWindow::onHomeButtonClicked);
@@ -337,7 +348,7 @@ MainWindow::MainWindow(QWidget *parent)
                                               QMessageBox::Yes|QMessageBox::No);
 
                 if (reply == QMessageBox::Yes) {
-                    ui->rootStack->setCurrentIndex(1); // 跳转到设置页
+                    ui->rootStack->setCurrentWidget(ui->pageSettings); // 跳转到设置页
                     ui->editTransPath->setFocus();
                 }
                 return;
@@ -1711,6 +1722,7 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
     // 1. 基础信息
     ui->lblModelName->setText(meta.name);
     ui->heroFrame->setProperty("fullImagePath", meta.previewPath);
+    ui->btnCheckModelUpdate->setVisible(true);
 
     if (!meta.modelUrl.isEmpty()) {
         ui->btnOpenUrl->setVisible(true);
@@ -3001,6 +3013,68 @@ void MainWindow::onEditSetCoverClicked()
     ui->listEditImages->setCurrentRow(0);
 }
 
+QString MainWindow::civitaiApiKey() const
+{
+    return optCivitaiApiKey.trimmed();
+}
+
+bool MainWindow::isCivitaiUrl(const QUrl &url) const
+{
+    const QString host = url.host().toLower();
+    return host == "civitai.com" || host.endsWith(".civitai.com");
+}
+
+bool MainWindow::shouldUseCivitaiBearerAuth(const QUrl &url) const
+{
+    if (!isCivitaiUrl(url)) return false;
+    const QString host = url.host().toLower();
+
+    // 图片/CDN 链接通常使用 token query 参数认证，Bearer 在这些 host 上容易触发 401。
+    if (host == "image.civitai.com" || host == "imagecache.civitai.com") return false;
+    if (host.startsWith("image.") || host.contains("imagecache")) return false;
+
+    return true;
+}
+
+QUrl MainWindow::civitaiUrlWithToken(const QUrl &url) const
+{
+    const QString key = civitaiApiKey();
+    if (key.isEmpty() || !isCivitaiUrl(url)) return url;
+
+    QUrl out(url);
+    QUrlQuery query(out);
+    if (query.hasQueryItem("token")) return out;
+    query.addQueryItem("token", key);
+    out.setQuery(query);
+    return out;
+}
+
+QNetworkRequest MainWindow::makeNetworkRequest(const QUrl &url, bool allowCivitaiAuth) const
+{
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    if (allowCivitaiAuth && isCivitaiUrl(url) && shouldUseCivitaiBearerAuth(url)) {
+        const QString key = civitaiApiKey();
+        if (!key.isEmpty()) {
+            request.setRawHeader("Authorization", QString("Bearer %1").arg(key).toUtf8());
+        }
+    }
+    return request;
+}
+
+QString MainWindow::civitaiNetworkErrorMessage(QNetworkReply *reply) const
+{
+    if (!reply) return "未知网络错误";
+    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    QString text = reply->errorString();
+    if ((status == 401 || status == 403) && isCivitaiUrl(reply->url())) {
+        text += "。请检查 Civitai API Key，或确认该资源是否需要登录权限。";
+    }
+    if (status > 0) text += QString(" (HTTP %1)").arg(status);
+    return text;
+}
+
 void MainWindow::fetchModelInfoFromCivitai(const QString &hash) {
     // 获取当前正在处理的文件名 (从属性或当前选中项)
     // 建议直接传参进来，或者确保 ui->modelList->property("current_processing_file") 是本地文件名(BaseName)
@@ -3011,10 +3085,7 @@ void MainWindow::fetchModelInfoFromCivitai(const QString &hash) {
     if (modelDir.isEmpty() && !filePath.isEmpty()) {
         modelDir = QFileInfo(filePath).absolutePath();
     }
-    QNetworkRequest request((QUrl(urlStr)));
-
-    request.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
-    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    QNetworkRequest request = makeNetworkRequest(QUrl(urlStr));
     QNetworkReply *reply = netManager->get(request);
     // 将本地文件名绑定到 Reply 对象上，确保回调时知道是哪个模型
     reply->setProperty("localBaseName", localBaseName);
@@ -3052,6 +3123,7 @@ bool MainWindow::readLocalJson(const QString &dirPath, const QString &baseName, 
     // ID (用于打开网页)
     int modelId = root["modelId"].toInt();
     meta.modelId = modelId;
+    meta.versionId = root["id"].toInt();
     QString customUrl = root["modelUrl"].toString();
     if (!customUrl.isEmpty()) {
         meta.modelUrl = customUrl;
@@ -3204,6 +3276,8 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
         if (item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
             item->setData(ROLE_CIVITAI_NAME, fullName); // 更新缓存的名称
             item->setData(ROLE_LOCAL_EDITED, false);
+            item->setData(ROLE_CIVITAI_MODEL_ID, root["modelId"].toInt());
+            item->setData(ROLE_CIVITAI_VERSION_ID, root["id"].toInt());
 
             // 如果开启了选项，立即更新显示文本
             if (optUseCivitaiName) {
@@ -3224,6 +3298,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
 
     int modelId = root["modelId"].toInt();
     meta.modelId = modelId;
+    meta.versionId = root["id"].toInt();
     if (modelId > 0) meta.modelUrl = QString("https://civitai.com/models/%1").arg(modelId);
 
     meta.baseModel = root["baseModel"].toString();
@@ -3243,6 +3318,13 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
         meta.fileSizeMB = f["sizeKB"].toDouble() / 1024.0;
         meta.sha256 = f["hashes"].toObject()["SHA256"].toString();
         meta.fileNameServer = f["name"].toString();
+        for(int i = 0; i < ui->modelList->count(); ++i) {
+            QListWidgetItem *item = ui->modelList->item(i);
+            if (item && item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
+                item->setData(ROLE_CIVITAI_SHA256, meta.sha256);
+                break;
+            }
+        }
     }
 
     // 4. 图片信息 (非常重要)
@@ -3474,21 +3556,51 @@ void MainWindow::onCopyLoraTagClicked()
 
 void MainWindow::downloadThumbnail(const QString &url, const QString &savePath, QPushButton *button)
 {
-    QNetworkRequest req((QUrl(url)));
-
-    req.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
-    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    const QUrl requestUrl(url);
+    QNetworkRequest req = makeNetworkRequest(requestUrl);
 
     QNetworkReply *reply = netManager->get(req);
+    reply->setProperty("tokenRetry", false);
     QPointer<QPushButton> safeBtn = button;
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, savePath, safeBtn]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, savePath, safeBtn, requestUrl]() {
         reply->deleteLater();
 
         // 检查网络错误
         if (reply->error() != QNetworkReply::NoError) {
+            const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            if ((status == 401 || status == 403) && !reply->property("tokenRetry").toBool() && !civitaiApiKey().isEmpty()) {
+                QUrl retryUrl = civitaiUrlWithToken(requestUrl);
+                if (retryUrl != requestUrl) {
+                    QNetworkReply *retryReply = netManager->get(makeNetworkRequest(retryUrl, false));
+                    retryReply->setProperty("tokenRetry", true);
+                    connect(retryReply, &QNetworkReply::finished, this, [this, retryReply, savePath, safeBtn]() {
+                        retryReply->deleteLater();
+                        if (retryReply->error() != QNetworkReply::NoError) {
+                            if (safeBtn) safeBtn->setText("Error");
+                            qDebug() << "Download retry error:" << civitaiNetworkErrorMessage(retryReply);
+                            return;
+                        }
+                        QByteArray data = retryReply->readAll();
+                        if (data.isEmpty()) {
+                            if (safeBtn) safeBtn->setText("Empty");
+                            return;
+                        }
+                        QFile file(savePath);
+                        if (file.open(QIODevice::WriteOnly)) {
+                            file.write(data);
+                            file.close();
+                            IconLoaderTask *task = new IconLoaderTask(savePath, 100, 0, this, savePath, true);
+                            task->setAutoDelete(true);
+                            threadPool->start(task);
+                            if (safeBtn) safeBtn->setText("");
+                        }
+                    });
+                    return;
+                }
+            }
             if (safeBtn) safeBtn->setText("Error");
-            qDebug() << "Download error:" << reply->errorString();
+            qDebug() << "Download error:" << civitaiNetworkErrorMessage(reply);
             return;
         }
 
@@ -4174,6 +4286,9 @@ void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonP
     item->setData(ROLE_FILTER_BASE, "Unknown");
     item->setData(ROLE_NSFW_LEVEL, 1);
     item->setData(ROLE_LOCAL_EDITED, false);
+    item->setData(ROLE_CIVITAI_MODEL_ID, 0);
+    item->setData(ROLE_CIVITAI_VERSION_ID, 0);
+    item->setData(ROLE_CIVITAI_SHA256, QString());
 
     // === 读取本地文件时间 (下载/添加时间) ===
     QString filePath = item->data(ROLE_FILE_PATH).toString();
@@ -4207,6 +4322,8 @@ void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonP
     }
     bool localEdited = root["localEdited"].toBool(false) || root["localOnly"].toBool(false);
     item->setData(ROLE_LOCAL_EDITED, localEdited);
+    item->setData(ROLE_CIVITAI_MODEL_ID, root["modelId"].toInt());
+    item->setData(ROLE_CIVITAI_VERSION_ID, root["id"].toInt());
 
     // NSFW
     int coverLevel = 1; // 默认 Safe
@@ -4255,6 +4372,10 @@ void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonP
     QJsonObject stats = root["stats"].toObject();
     item->setData(ROLE_SORT_DOWNLOADS, stats["downloadCount"].toInt());
     item->setData(ROLE_SORT_LIKES, stats["thumbsUpCount"].toInt());
+    QJsonArray files = root["files"].toArray();
+    if (!files.isEmpty()) {
+        item->setData(ROLE_CIVITAI_SHA256, files[0].toObject()["hashes"].toObject()["SHA256"].toString());
+    }
 }
 
 void MainWindow::refreshModelUsageStatsAsync()
@@ -4733,9 +4854,9 @@ void MainWindow::processNextDownload()
 
     QString cleanedSavePath = QFileInfo(task.savePath).absoluteFilePath();
 
-    QNetworkRequest req((QUrl(task.url)));
-    req.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
-    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    const QUrl taskUrl(task.url);
+    const bool hasToken = QUrlQuery(taskUrl).hasQueryItem("token");
+    QNetworkRequest req = makeNetworkRequest(taskUrl, !hasToken);
 
     QNetworkReply *reply = netManager->get(req);
 
@@ -4746,7 +4867,17 @@ void MainWindow::processNextDownload()
     connect(reply, &QNetworkReply::finished, this, [this, reply, task, cleanedSavePath](){
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
+            const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            if ((status == 401 || status == 403) && !task.url.contains("token=", Qt::CaseInsensitive) && !civitaiApiKey().isEmpty()) {
+                DownloadTask retryTask = task;
+                retryTask.url = civitaiUrlWithToken(QUrl(task.url)).toString();
+                downloadQueue.enqueue(retryTask);
+                if (task.button) task.button->setText("Retrying...");
+                QTimer::singleShot(0, this, &MainWindow::processNextDownload);
+                return;
+            }
             if (task.button) task.button->setText("Error");
+            qDebug() << "Queued preview download failed:" << civitaiNetworkErrorMessage(reply);
             QTimer::singleShot(500, this, &MainWindow::processNextDownload);
             return;
         }
@@ -5335,6 +5466,7 @@ void MainWindow::onGalleryButtonClicked()
 
     // 隐藏/禁用一些不相关的按钮
     ui->btnForceUpdate->setVisible(false);
+    ui->btnCheckModelUpdate->setVisible(false);
     ui->btnOpenUrl->setVisible(false);
     ui->btnEditMeta->setVisible(false);
     ui->btnFavorite->setVisible(false);
@@ -5388,6 +5520,11 @@ void MainWindow::initMenuBar() {
     connect(actSet, &QAction::triggered, this, &MainWindow::onMenuSwitchToSettings);
     bar->addAction(actSet);
 
+    QAction *actDownloads = new QAction("⬇️ 下载 / Downloads", this);
+    actDownloads->setShortcut(QKeySequence("Ctrl+3"));
+    connect(actDownloads, &QAction::triggered, this, &MainWindow::onMenuSwitchToDownloads);
+    bar->addAction(actDownloads);
+
     // 5. 工具页
     if (!toolsTabWidget) { // 确保只初始化一次
         toolsTabWidget = new QTabWidget(this);
@@ -5429,7 +5566,7 @@ void MainWindow::initMenuBar() {
     }
 
     QAction *actTools = new QAction("🛠️ 工具箱 / Tools", this);
-    actTools->setShortcut(QKeySequence("Ctrl+3"));
+    actTools->setShortcut(QKeySequence("Ctrl+4"));
     connect(actTools, &QAction::triggered, this, [this](){
         ui->rootStack->setCurrentWidget(toolsTabWidget);
         if (toolsTabWidget) {
@@ -5440,7 +5577,7 @@ void MainWindow::initMenuBar() {
 
     // 6. 关于按钮
     QAction *btnAbout = new QAction("ℹ️ 关于 / About");
-    btnAbout->setShortcut(QKeySequence("Ctrl+4"));
+    btnAbout->setShortcut(QKeySequence("Ctrl+5"));
     connect(btnAbout, &QAction::triggered, this, &MainWindow::onMenuSwitchToAbout);
     bar->addAction(btnAbout);
 
@@ -5511,7 +5648,590 @@ void MainWindow::onMenuSwitchToLibrary() {
 }
 
 void MainWindow::onMenuSwitchToSettings() {
-    ui->rootStack->setCurrentIndex(1);
+    ui->rootStack->setCurrentWidget(ui->pageSettings);
+}
+
+void MainWindow::onMenuSwitchToDownloads()
+{
+    ui->rootStack->setCurrentWidget(ui->pageDownloads);
+}
+
+void MainWindow::onTestCivitaiApiKeyClicked()
+{
+    optCivitaiApiKey = ui->editCivitaiApiKey->text().trimmed();
+    saveGlobalConfig();
+    if (optCivitaiApiKey.isEmpty()) {
+        ui->lblCivitaiApiStatus->setText("请先输入 Civitai API Key");
+        return;
+    }
+    ui->lblCivitaiApiStatus->setText("正在测试 API Key...");
+    ui->btnTestCivitaiApiKey->setEnabled(false);
+
+    QNetworkRequest request = makeNetworkRequest(QUrl("https://civitai.com/api/v1/models?limit=1&favorites=true"));
+    QNetworkReply *reply = netManager->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        ui->btnTestCivitaiApiKey->setEnabled(true);
+        if (reply->error() != QNetworkReply::NoError) {
+            ui->lblCivitaiApiStatus->setText("API Key 测试失败: " + civitaiNetworkErrorMessage(reply));
+            return;
+        }
+        QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+        if (!doc.isObject()) {
+            ui->lblCivitaiApiStatus->setText("API Key 测试失败: 返回不是有效 JSON");
+            return;
+        }
+        ui->lblCivitaiApiStatus->setText("API Key 可用");
+    });
+}
+
+void MainWindow::initDownloadsPage()
+{
+    ui->tableDownloads->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    ui->tableDownloads->setSelectionBehavior(QAbstractItemView::SelectRows);
+    ui->tableDownloads->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    ui->tableDownloads->horizontalHeader()->setStretchLastSection(true);
+    ui->tableDownloads->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    ui->tableDownloads->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+    ui->tableDownloads->verticalHeader()->setVisible(false);
+
+    connect(ui->btnDownloadsCheckCurrent, &QPushButton::clicked, this, [this]() {
+        QList<QListWidgetItem*> items;
+        if (QListWidgetItem *item = ui->modelList->currentItem(); isModelListItem(item)) items << item;
+        checkUpdatesForItems(items);
+    });
+    connect(ui->btnDownloadsCheckSelected, &QPushButton::clicked, this, [this]() {
+        QList<QListWidgetItem*> items;
+        for (QListWidgetItem *item : ui->modelList->selectedItems()) {
+            if (isModelListItem(item)) items << item;
+        }
+        checkUpdatesForItems(items);
+    });
+    connect(ui->btnDownloadsCheckAll, &QPushButton::clicked, this, [this]() {
+        QList<QListWidgetItem*> items;
+        for (int i = 0; i < ui->modelList->count(); ++i) {
+            QListWidgetItem *item = ui->modelList->item(i);
+            if (isModelListItem(item)) items << item;
+        }
+        checkUpdatesForItems(items);
+    });
+    connect(ui->btnDownloadsDownloadSelected, &QPushButton::clicked, this, &MainWindow::startDownloadsForSelectedRows);
+    connect(ui->btnDownloadsCancel, &QPushButton::clicked, this, [this]() {
+        const QList<int> rows = selectedDownloadRows();
+        for (int row : rows) {
+            const QString filePath = ui->tableDownloads->item(row, 0)->data(Qt::UserRole).toString();
+            if (activeModelDownloadReply && activeModelDownloadTask.info.filePath == filePath) {
+                activeModelDownloadReply->abort();
+            }
+            canceledModelDownloadPaths.insert(filePath);
+            updateDownloadRowStatus(row, "已取消");
+        }
+    });
+    connect(ui->btnDownloadsRetry, &QPushButton::clicked, this, [this]() {
+        for (int row : selectedDownloadRows()) {
+            QTableWidgetItem *statusItem = ui->tableDownloads->item(row, 6);
+            if (!statusItem || !statusItem->text().contains("失败")) continue;
+            const QString filePath = ui->tableDownloads->item(row, 0)->data(Qt::UserRole).toString();
+            if (modelUpdateInfos.contains(filePath)) enqueueModelFileDownload(modelUpdateInfos.value(filePath));
+        }
+    });
+    connect(ui->btnDownloadsOpenFolder, &QPushButton::clicked, this, [this]() {
+        const QList<int> rows = selectedDownloadRows();
+        if (rows.isEmpty()) return;
+        const QString path = ui->tableDownloads->item(rows.first(), 7)->text();
+        if (!path.isEmpty()) QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
+    });
+    connect(ui->btnDownloadsClearCompleted, &QPushButton::clicked, this, [this]() {
+        for (int row = ui->tableDownloads->rowCount() - 1; row >= 0; --row) {
+            const QString status = ui->tableDownloads->item(row, 6) ? ui->tableDownloads->item(row, 6)->text() : QString();
+            if (status.contains("完成") || status.contains("已是最新")) ui->tableDownloads->removeRow(row);
+        }
+    });
+    connect(ui->comboDownloadsFilter, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::filterDownloadsTable);
+}
+
+QList<int> MainWindow::selectedDownloadRows() const
+{
+    QList<int> rows;
+    if (!ui->tableDownloads->selectionModel()) return rows;
+    for (const QModelIndex &idx : ui->tableDownloads->selectionModel()->selectedRows()) {
+        if (!rows.contains(idx.row())) rows << idx.row();
+    }
+    std::sort(rows.begin(), rows.end());
+    return rows;
+}
+
+void MainWindow::checkUpdatesForItems(const QList<QListWidgetItem*> &items)
+{
+    if (items.isEmpty()) {
+        ui->lblDownloadsStatus->setText("没有可检查的模型。请先选择模型，或使用检查全部。");
+        onMenuSwitchToDownloads();
+        return;
+    }
+
+    onMenuSwitchToDownloads();
+    ui->lblDownloadsStatus->setText(QString("正在检查 %1 个模型的更新...").arg(items.size()));
+    for (QListWidgetItem *item : items) checkUpdateForItem(item);
+}
+
+void MainWindow::checkUpdateForItem(QListWidgetItem *item)
+{
+    if (!isModelListItem(item)) return;
+    const QString filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+    const QString baseName = item->data(ROLE_MODEL_NAME).toString();
+    const QString modelDir = QFileInfo(filePath).absolutePath();
+    const int modelId = item->data(ROLE_CIVITAI_MODEL_ID).toInt();
+
+    ModelUpdateInfo pending;
+    pending.filePath = filePath;
+    pending.modelDir = modelDir;
+    pending.baseName = baseName;
+    pending.displayName = item->text();
+    pending.modelId = modelId;
+    pending.currentVersionId = item->data(ROLE_CIVITAI_VERSION_ID).toInt();
+    if (item->data(ROLE_LOCAL_EDITED).toBool()) {
+        addOrUpdateDownloadRow(pending, "本地/已编辑模型，已跳过");
+        return;
+    }
+    addOrUpdateDownloadRow(pending, "检查中...");
+
+    if (modelId > 0) {
+        QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/models/%1").arg(modelId))));
+        reply->setProperty("filePath", filePath);
+        reply->setProperty("baseName", baseName);
+        reply->setProperty("modelDir", modelDir);
+        reply->setProperty("currentVersionId", pending.currentVersionId);
+        reply->setProperty("currentSha256", item->data(ROLE_CIVITAI_SHA256).toString());
+        connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleModelUpdateReply(reply); });
+        return;
+    }
+
+    const QString hash = calculateFileHash(filePath);
+    if (hash.isEmpty()) {
+        addOrUpdateDownloadRow(pending, "无法计算 Hash，无法判断");
+        return;
+    }
+
+    QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/model-versions/by-hash/%1").arg(hash))));
+    reply->setProperty("filePath", filePath);
+    reply->setProperty("baseName", baseName);
+    reply->setProperty("modelDir", modelDir);
+    reply->setProperty("currentSha256", hash);
+    reply->setProperty("byHash", true);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleModelUpdateReply(reply); });
+}
+
+void MainWindow::handleModelUpdateReply(QNetworkReply *reply)
+{
+    const QString filePath = reply->property("filePath").toString();
+    const QString baseName = reply->property("baseName").toString();
+    const QString modelDir = reply->property("modelDir").toString();
+    const int currentVersionId = reply->property("currentVersionId").toInt();
+    const QString currentSha256 = reply->property("currentSha256").toString();
+    const bool byHash = reply->property("byHash").toBool();
+    reply->deleteLater();
+
+    ModelUpdateInfo fallback;
+    fallback.filePath = filePath;
+    fallback.baseName = baseName;
+    fallback.modelDir = modelDir;
+    fallback.displayName = QFileInfo(filePath).completeBaseName();
+
+    if (reply->error() != QNetworkReply::NoError) {
+        addOrUpdateDownloadRow(fallback, "检查失败: " + civitaiNetworkErrorMessage(reply));
+        return;
+    }
+
+    const QJsonObject root = QJsonDocument::fromJson(reply->readAll()).object();
+    if (byHash) {
+        const int modelId = root["modelId"].toInt();
+        if (modelId <= 0) {
+            addOrUpdateDownloadRow(fallback, "无法从 Hash 匹配 Civitai 模型");
+            return;
+        }
+        QNetworkReply *detailReply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/models/%1").arg(modelId))));
+        detailReply->setProperty("filePath", filePath);
+        detailReply->setProperty("baseName", baseName);
+        detailReply->setProperty("modelDir", modelDir);
+        detailReply->setProperty("currentVersionId", root["id"].toInt());
+        detailReply->setProperty("currentSha256", currentSha256);
+        connect(detailReply, &QNetworkReply::finished, this, [this, detailReply]() { handleModelUpdateReply(detailReply); });
+        return;
+    }
+
+    ModelUpdateInfo info;
+    QListWidgetItem *sourceItem = nullptr;
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (item && QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath() == filePath) {
+            sourceItem = item;
+            break;
+        }
+    }
+    if (sourceItem) {
+        sourceItem->setData(ROLE_CIVITAI_MODEL_ID, root["id"].toInt());
+        if (sourceItem->data(ROLE_CIVITAI_VERSION_ID).toInt() <= 0 && currentVersionId > 0) {
+            sourceItem->setData(ROLE_CIVITAI_VERSION_ID, currentVersionId);
+        }
+        info = parseModelUpdateInfo(sourceItem, root);
+        modelUpdateInfos.insert(info.filePath, info);
+    } else {
+        fallback.modelId = root["id"].toInt();
+        addOrUpdateDownloadRow(fallback, "模型列表项不存在，无法判断");
+        return;
+    }
+    addOrUpdateDownloadRow(info, info.hasUpdate ? "发现新版本" : "已是最新");
+}
+
+ModelUpdateInfo MainWindow::parseModelUpdateInfo(QListWidgetItem *item, const QJsonObject &modelRoot) const
+{
+    ModelUpdateInfo info;
+    info.filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+    info.modelDir = QFileInfo(info.filePath).absolutePath();
+    info.baseName = item->data(ROLE_MODEL_NAME).toString();
+    info.displayName = item->text();
+    info.modelId = modelRoot["id"].toInt(item->data(ROLE_CIVITAI_MODEL_ID).toInt());
+    info.currentVersionId = item->data(ROLE_CIVITAI_VERSION_ID).toInt();
+    const QString currentSha = item->data(ROLE_CIVITAI_SHA256).toString();
+
+    QJsonArray versions = modelRoot["modelVersions"].toArray();
+    QJsonObject currentVersionObj;
+    QJsonObject latestVersionObj;
+    QDateTime latestTime;
+    for (const QJsonValue &val : versions) {
+        const QJsonObject version = val.toObject();
+        const int versionId = version["id"].toInt();
+        if (versionId == info.currentVersionId) currentVersionObj = version;
+        if (info.currentVersionId <= 0 && !currentSha.isEmpty()) {
+            for (const QJsonValue &fileVal : version["files"].toArray()) {
+                const QString sha = fileVal.toObject()["hashes"].toObject()["SHA256"].toString();
+                if (!sha.isEmpty() && sha.compare(currentSha, Qt::CaseInsensitive) == 0) {
+                    currentVersionObj = version;
+                    info.currentVersionId = versionId;
+                }
+            }
+        }
+        QDateTime t = QDateTime::fromString(version["publishedAt"].toString(), Qt::ISODate);
+        if (!t.isValid()) t = QDateTime::fromString(version["createdAt"].toString(), Qt::ISODate);
+        if (!latestVersionObj.isEmpty() && (!t.isValid() || (latestTime.isValid() && t <= latestTime))) continue;
+        latestVersionObj = version;
+        latestTime = t;
+    }
+
+    if (latestVersionObj.isEmpty() && !versions.isEmpty()) latestVersionObj = versions.first().toObject();
+    QJsonObject modelObj;
+    modelObj["name"] = modelRoot["name"].toString();
+    modelObj["type"] = modelRoot["type"].toString();
+    modelObj["nsfw"] = modelRoot["nsfw"].toBool();
+    if (!latestVersionObj.contains("model")) latestVersionObj["model"] = modelObj;
+    if (!latestVersionObj.contains("modelId")) latestVersionObj["modelId"] = info.modelId;
+    info.latestVersionJson = latestVersionObj;
+    info.latestVersionId = latestVersionObj["id"].toInt();
+    info.latestVersion = latestVersionObj["name"].toString();
+    info.currentVersion = currentVersionObj["name"].toString();
+    if (info.currentVersion.isEmpty()) info.currentVersion = QString("版本ID %1").arg(info.currentVersionId);
+    if (info.latestVersion.isEmpty()) info.latestVersion = QString("版本ID %1").arg(info.latestVersionId);
+
+    QJsonObject selectedFile;
+    for (const QJsonValue &fileVal : latestVersionObj["files"].toArray()) {
+        const QJsonObject f = fileVal.toObject();
+        if (selectedFile.isEmpty() || f["primary"].toBool()) selectedFile = f;
+        if (f["primary"].toBool()) break;
+    }
+    info.downloadUrl = selectedFile["downloadUrl"].toString();
+    info.downloadFileName = selectedFile["name"].toString();
+    info.sha256 = selectedFile["hashes"].toObject()["SHA256"].toString();
+    info.sizeMB = selectedFile["sizeKB"].toDouble() / 1024.0;
+    info.hasUpdate = info.latestVersionId > 0 && info.latestVersionId != info.currentVersionId && !info.downloadUrl.isEmpty();
+    return info;
+}
+
+void MainWindow::addOrUpdateDownloadRow(const ModelUpdateInfo &info, const QString &status)
+{
+    int row = -1;
+    for (int i = 0; i < ui->tableDownloads->rowCount(); ++i) {
+        QTableWidgetItem *item = ui->tableDownloads->item(i, 0);
+        if (item && item->data(Qt::UserRole).toString() == info.filePath) {
+            row = i;
+            break;
+        }
+    }
+    if (row < 0) {
+        row = ui->tableDownloads->rowCount();
+        ui->tableDownloads->insertRow(row);
+        for (int col = 0; col < ui->tableDownloads->columnCount(); ++col) {
+            ui->tableDownloads->setItem(row, col, new QTableWidgetItem());
+        }
+        auto *bar = new QProgressBar(ui->tableDownloads);
+        bar->setRange(0, 100);
+        bar->setValue(0);
+        bar->setTextVisible(true);
+        ui->tableDownloads->setCellWidget(row, 4, bar);
+    }
+
+    ui->tableDownloads->item(row, 0)->setText(info.displayName.isEmpty() ? QFileInfo(info.filePath).completeBaseName() : info.displayName);
+    ui->tableDownloads->item(row, 0)->setData(Qt::UserRole, info.filePath);
+    ui->tableDownloads->item(row, 1)->setText(info.currentVersion);
+    ui->tableDownloads->item(row, 2)->setText(info.latestVersion);
+    ui->tableDownloads->item(row, 3)->setText(info.sizeMB > 0 ? QString::number(info.sizeMB, 'f', 1) + " MB" : "--");
+    ui->tableDownloads->item(row, 5)->setText("--");
+    ui->tableDownloads->item(row, 6)->setText(status);
+    ui->tableDownloads->item(row, 7)->setText(info.downloadFileName.isEmpty() ? info.filePath : QDir(info.modelDir).filePath(info.downloadFileName));
+    ui->tableDownloads->item(row, 8)->setText(info.modelId > 0 ? QString("Civitai #%1").arg(info.modelId) : "Civitai");
+    if (auto *bar = qobject_cast<QProgressBar*>(ui->tableDownloads->cellWidget(row, 4))) {
+        bar->setValue(status.contains("完成") ? 100 : 0);
+    }
+    filterDownloadsTable();
+}
+
+void MainWindow::updateDownloadRowStatus(int row, const QString &status)
+{
+    if (row < 0 || row >= ui->tableDownloads->rowCount()) return;
+    if (ui->tableDownloads->item(row, 6)) ui->tableDownloads->item(row, 6)->setText(status);
+    filterDownloadsTable();
+}
+
+void MainWindow::updateDownloadRowProgress(int row, int percent, const QString &speedText)
+{
+    if (row < 0 || row >= ui->tableDownloads->rowCount()) return;
+    if (auto *bar = qobject_cast<QProgressBar*>(ui->tableDownloads->cellWidget(row, 4))) {
+        bar->setValue(qBound(0, percent, 100));
+    }
+    if (ui->tableDownloads->item(row, 5)) ui->tableDownloads->item(row, 5)->setText(speedText);
+}
+
+void MainWindow::filterDownloadsTable()
+{
+    const int filter = ui->comboDownloadsFilter->currentIndex();
+    for (int row = 0; row < ui->tableDownloads->rowCount(); ++row) {
+        const QString status = ui->tableDownloads->item(row, 6) ? ui->tableDownloads->item(row, 6)->text() : QString();
+        bool visible = true;
+        if (filter == 1) visible = status.contains("新版本");
+        else if (filter == 2) visible = status.contains("下载中");
+        else if (filter == 3) visible = status.contains("失败");
+        ui->tableDownloads->setRowHidden(row, !visible);
+    }
+}
+
+void MainWindow::startDownloadsForSelectedRows()
+{
+    bool queued = false;
+    for (int row : selectedDownloadRows()) {
+        QTableWidgetItem *item = ui->tableDownloads->item(row, 0);
+        if (!item) continue;
+        const QString filePath = item->data(Qt::UserRole).toString();
+        if (!modelUpdateInfos.contains(filePath)) continue;
+        const ModelUpdateInfo info = modelUpdateInfos.value(filePath);
+        if (!info.hasUpdate) continue;
+        enqueueModelFileDownload(info);
+        queued = true;
+    }
+    if (!queued) ui->lblDownloadsStatus->setText("没有可下载的选中更新。");
+}
+
+void MainWindow::enqueueModelFileDownload(const ModelUpdateInfo &info)
+{
+    bool overwrite = false;
+    const QString targetPath = chooseModelDownloadTarget(info, &overwrite);
+    if (targetPath.isEmpty()) return;
+
+    ModelFileDownloadTask task;
+    task.info = info;
+    task.targetPath = targetPath;
+    task.tempPath = targetPath + ".part";
+    task.overwrite = overwrite;
+    for (int row = 0; row < ui->tableDownloads->rowCount(); ++row) {
+        if (ui->tableDownloads->item(row, 0)->data(Qt::UserRole).toString() == info.filePath) {
+            task.row = row;
+            ui->tableDownloads->item(row, 7)->setText(targetPath);
+            break;
+        }
+    }
+    modelDownloadQueue.enqueue(task);
+    canceledModelDownloadPaths.remove(info.filePath);
+    if (!isModelDownloading) processNextModelDownload();
+}
+
+QString MainWindow::chooseModelDownloadTarget(const ModelUpdateInfo &info, bool *overwrite)
+{
+    if (overwrite) *overwrite = false;
+    int policy = optModelUpdateDownloadPolicy;
+    if (policy == 0) {
+        QMessageBox msg(this);
+        msg.setWindowTitle("下载新版本");
+        msg.setText(QString("如何保存 %1 的新版本？").arg(info.displayName));
+        QPushButton *keepBtn = msg.addButton("保留旧版", QMessageBox::AcceptRole);
+        QPushButton *replaceBtn = msg.addButton("覆盖当前文件", QMessageBox::DestructiveRole);
+        msg.addButton("取消", QMessageBox::RejectRole);
+        msg.exec();
+        if (msg.clickedButton() == keepBtn) policy = 1;
+        else if (msg.clickedButton() == replaceBtn) policy = 2;
+        else return QString();
+    }
+    QString fileName = info.downloadFileName;
+    if (fileName.isEmpty()) fileName = QFileInfo(info.filePath).fileName();
+    if (policy == 2) {
+        if (overwrite) *overwrite = true;
+        return QFileInfo(info.filePath).absoluteFilePath();
+    }
+    return uniqueFilePath(info.modelDir, fileName);
+}
+
+QString MainWindow::uniqueFilePath(const QString &dirPath, const QString &fileName) const
+{
+    QDir dir(dirPath);
+    QString base = QFileInfo(fileName).completeBaseName();
+    QString suffix = QFileInfo(fileName).suffix();
+    QString candidate = dir.filePath(fileName);
+    int index = 1;
+    while (QFile::exists(candidate)) {
+        const QString nextName = suffix.isEmpty()
+            ? QString("%1_%2").arg(base).arg(index)
+            : QString("%1_%2.%3").arg(base).arg(index).arg(suffix);
+        candidate = dir.filePath(nextName);
+        ++index;
+    }
+    return QFileInfo(candidate).absoluteFilePath();
+}
+
+void MainWindow::processNextModelDownload()
+{
+    if (modelDownloadQueue.isEmpty()) {
+        isModelDownloading = false;
+        activeModelDownloadTask = ModelFileDownloadTask();
+        return;
+    }
+
+    isModelDownloading = true;
+    activeModelDownloadTask = modelDownloadQueue.dequeue();
+    if (canceledModelDownloadPaths.contains(activeModelDownloadTask.info.filePath)) {
+        canceledModelDownloadPaths.remove(activeModelDownloadTask.info.filePath);
+        QTimer::singleShot(0, this, &MainWindow::processNextModelDownload);
+        return;
+    }
+    QFile::remove(activeModelDownloadTask.tempPath);
+    QDir().mkpath(QFileInfo(activeModelDownloadTask.tempPath).absolutePath());
+
+    activeModelDownloadFile = new QFile(activeModelDownloadTask.tempPath, this);
+    if (!activeModelDownloadFile->open(QIODevice::WriteOnly)) {
+        updateDownloadRowStatus(activeModelDownloadTask.row, "失败: 无法写入目标路径");
+        activeModelDownloadFile->deleteLater();
+        activeModelDownloadFile = nullptr;
+        QTimer::singleShot(0, this, &MainWindow::processNextModelDownload);
+        return;
+    }
+
+    activeModelDownloadedBytes = 0;
+    modelDownloadTimer.restart();
+    updateDownloadRowStatus(activeModelDownloadTask.row, "下载中...");
+    updateDownloadRowProgress(activeModelDownloadTask.row, 0, "--");
+
+    const QUrl downloadUrl(activeModelDownloadTask.info.downloadUrl);
+    const bool downloadHasToken = QUrlQuery(downloadUrl).hasQueryItem("token");
+    QNetworkReply *reply = netManager->get(makeNetworkRequest(downloadUrl, !downloadHasToken));
+    activeModelDownloadReply = reply;
+
+    connect(reply, &QNetworkReply::readyRead, this, [this, reply]() {
+        if (!activeModelDownloadFile) return;
+        const QByteArray chunk = reply->readAll();
+        activeModelDownloadedBytes += chunk.size();
+        activeModelDownloadFile->write(chunk);
+    });
+    connect(reply, &QNetworkReply::downloadProgress, this, [this](qint64 received, qint64 total) {
+        int percent = total > 0 ? int((received * 100) / total) : 0;
+        const double seconds = qMax(0.1, double(modelDownloadTimer.elapsed()) / 1000.0);
+        const double mbps = (double(received) / 1024.0 / 1024.0) / seconds;
+        updateDownloadRowProgress(activeModelDownloadTask.row, percent, QString::number(mbps, 'f', 2) + " MB/s");
+    });
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        if (activeModelDownloadFile) {
+            activeModelDownloadFile->write(reply->readAll());
+            activeModelDownloadFile->close();
+            activeModelDownloadFile->deleteLater();
+            activeModelDownloadFile = nullptr;
+        }
+        reply->deleteLater();
+        activeModelDownloadReply = nullptr;
+
+        if (reply->error() != QNetworkReply::NoError) {
+            const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            if ((status == 401 || status == 403) &&
+                !activeModelDownloadTask.info.downloadUrl.contains("token=", Qt::CaseInsensitive) &&
+                !civitaiApiKey().isEmpty()) {
+                if (activeModelDownloadFile) {
+                    activeModelDownloadFile->close();
+                    activeModelDownloadFile->deleteLater();
+                    activeModelDownloadFile = nullptr;
+                }
+                QFile::remove(activeModelDownloadTask.tempPath);
+                activeModelDownloadTask.info.downloadUrl = civitaiUrlWithToken(QUrl(activeModelDownloadTask.info.downloadUrl)).toString();
+                modelDownloadQueue.enqueue(activeModelDownloadTask);
+                updateDownloadRowStatus(activeModelDownloadTask.row, "认证重试中...");
+                QTimer::singleShot(0, this, &MainWindow::processNextModelDownload);
+                return;
+            }
+            QFile::remove(activeModelDownloadTask.tempPath);
+            updateDownloadRowStatus(activeModelDownloadTask.row, "失败: " + civitaiNetworkErrorMessage(reply));
+            QTimer::singleShot(0, this, &MainWindow::processNextModelDownload);
+            return;
+        }
+
+        const QString expected = activeModelDownloadTask.info.sha256;
+        if (!expected.isEmpty()) {
+            const QString actual = calculateFileHash(activeModelDownloadTask.tempPath);
+            if (!actual.isEmpty() && actual.compare(expected, Qt::CaseInsensitive) != 0) {
+                QFile::remove(activeModelDownloadTask.tempPath);
+                updateDownloadRowStatus(activeModelDownloadTask.row, "失败: SHA256 校验失败");
+                QTimer::singleShot(0, this, &MainWindow::processNextModelDownload);
+                return;
+            }
+        }
+
+        finishModelDownload(activeModelDownloadTask, QByteArray());
+        QTimer::singleShot(0, this, &MainWindow::processNextModelDownload);
+    });
+}
+
+void MainWindow::finishModelDownload(const ModelFileDownloadTask &task, const QByteArray &data)
+{
+    Q_UNUSED(data);
+    if (task.overwrite && QFile::exists(task.targetPath)) {
+        QFile::remove(task.targetPath);
+    }
+    if (QFile::exists(task.targetPath) && task.targetPath != task.tempPath) {
+        QFile::remove(task.tempPath);
+        updateDownloadRowStatus(task.row, "失败: 目标文件已存在");
+        return;
+    }
+    if (!QFile::rename(task.tempPath, task.targetPath)) {
+        updateDownloadRowStatus(task.row, "失败: 无法移动下载文件");
+        return;
+    }
+
+    QString baseName = QFileInfo(task.targetPath).completeBaseName();
+    QJsonObject versionJson = task.info.latestVersionJson;
+    if (!versionJson.isEmpty()) {
+        saveLocalMetadata(QFileInfo(task.targetPath).absolutePath(), baseName, versionJson);
+        const QJsonArray images = versionJson["images"].toArray();
+        for (const QJsonValue &val : images) {
+            const QJsonObject img = val.toObject();
+            const QString type = img["type"].toString();
+            const QString url = img["url"].toString();
+            if (url.isEmpty() || type == "video" || url.endsWith(".mp4", Qt::CaseInsensitive) || url.endsWith(".webm", Qt::CaseInsensitive)) {
+                continue;
+            }
+            const QString previewPath = QDir(QFileInfo(task.targetPath).absolutePath()).filePath(baseName + ".preview.png");
+            if (!QFile::exists(previewPath)) downloadThumbnail(url, previewPath, nullptr);
+            break;
+        }
+    }
+    updateDownloadRowProgress(task.row, 100, "--");
+    updateDownloadRowStatus(task.row, "下载完成");
+    ui->lblDownloadsStatus->setText("模型下载完成: " + QFileInfo(task.targetPath).fileName());
+
+    const QStringList activeLoraPaths = collectEnabledPaths(loraPaths, disabledLoraPaths);
+    if (!activeLoraPaths.isEmpty()) scanModels(activeLoraPaths);
 }
 
 // === 全局配置加载与保存 (JSON) ===
@@ -5544,9 +6264,14 @@ void MainWindow::loadGlobalConfig() {
         QString filterStr               = root["filter_tags_string"].toString(DEFAULT_FILTER_TAGS);
         optUseArrangedUA                = root["use_custom_ua"].toBool(false);
         optSavedUAString                = root["custom_user_agent"].toString();
+        optCivitaiApiKey                = root["civitai_api_key"].toString();
         optUseCivitaiName               = root["use_civitai_name"].toBool(false);
         optSuppressLocalWarnings        = root["suppress_local_model_warnings"].toBool(false);
         optUserGalleryMatchMode         = root["user_gallery_match_mode"].toInt(0);
+        optModelUpdateDownloadPolicy    = root["model_update_download_policy"].toInt(0);
+        if (optModelUpdateDownloadPolicy < 0 || optModelUpdateDownloadPolicy > 2) {
+            optModelUpdateDownloadPolicy = 0;
+        }
         if (optUserGalleryMatchMode < 0 || optUserGalleryMatchMode > 2) {
             optUserGalleryMatchMode = 0;
         }
@@ -5671,6 +6396,9 @@ void MainWindow::loadGlobalConfig() {
     ui->chkUseCustomUserAgent->setChecked(optUseArrangedUA);
     ui->editUserAgent->setEnabled(optUseArrangedUA);
     if (!optSavedUAString.isEmpty()) {ui->editUserAgent->setText(optSavedUAString);}
+    ui->editCivitaiApiKey->setText(optCivitaiApiKey);
+    ui->comboModelUpdateDownloadPolicy->setCurrentIndex(optModelUpdateDownloadPolicy);
+    ui->lblCivitaiApiStatus->setText(optCivitaiApiKey.isEmpty() ? "API Key 未配置" : "API Key 未测试");
     ui->chkUseCivitaiName->setChecked(optUseCivitaiName);
     ui->chkSuppressLocalWarnings->setChecked(optSuppressLocalWarnings);
     ui->comboUserGalleryMatchMode->setCurrentIndex(optUserGalleryMatchMode);
@@ -5837,6 +6565,22 @@ void MainWindow::loadGlobalConfig() {
         optSuppressLocalWarnings = checked;
         saveGlobalConfig();
     });
+    connect(ui->editCivitaiApiKey, &QLineEdit::editingFinished, this, [this](){
+        optCivitaiApiKey = ui->editCivitaiApiKey->text().trimmed();
+        ui->lblCivitaiApiStatus->setText(optCivitaiApiKey.isEmpty() ? "API Key 未配置" : "API Key 未测试");
+        saveGlobalConfig();
+    });
+    connect(ui->btnToggleCivitaiApiKey, &QPushButton::clicked, this, [this](){
+        const bool showing = ui->editCivitaiApiKey->echoMode() == QLineEdit::Normal;
+        ui->editCivitaiApiKey->setEchoMode(showing ? QLineEdit::Password : QLineEdit::Normal);
+        ui->btnToggleCivitaiApiKey->setText(showing ? "显示" : "隐藏");
+    });
+    connect(ui->btnTestCivitaiApiKey, &QPushButton::clicked, this, &MainWindow::onTestCivitaiApiKeyClicked);
+    connect(ui->comboModelUpdateDownloadPolicy, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index){
+        if (index < 0 || index > 2) index = 0;
+        optModelUpdateDownloadPolicy = index;
+        saveGlobalConfig();
+    });
     connect(ui->comboUserGalleryMatchMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index){
         if (index < 0 || index > 2) index = 0;
         optUserGalleryMatchMode = index;
@@ -5891,9 +6635,11 @@ void MainWindow::saveGlobalConfig() {
     root["model_list_folder_grouping"]  = optModelListFolderGrouping;
     root["use_custom_ua"]               = ui->chkUseCustomUserAgent->isChecked();
     root["custom_user_agent"]           = ui->editUserAgent->text();
+    root["civitai_api_key"]             = ui->editCivitaiApiKey->text().trimmed();
     root["use_civitai_name"]            = optUseCivitaiName;
     root["suppress_local_model_warnings"] = optSuppressLocalWarnings;
     root["user_gallery_match_mode"]     = optUserGalleryMatchMode;
+    root["model_update_download_policy"] = optModelUpdateDownloadPolicy;
     root.remove("model_switch_delay_ms");
 
     if (optRestoreTreeState) {
