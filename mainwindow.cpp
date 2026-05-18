@@ -3,6 +3,7 @@
 
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QDateTime>
 #include <QDebug>
 #include <QClipboard>
 #include <QScreen>
@@ -12,6 +13,7 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QScrollBar>
+#include <QScrollArea>
 #include <QMenu>
 #include <QInputDialog>
 #include <QComboBox>
@@ -31,18 +33,22 @@
 #include <QtEndian>
 #include <QTabWidget>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QGridLayout>
 #include <QSignalBlocker>
 #include <QColorDialog>
 #include <QBrush>
 #include <QStyledItemDelegate>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QStyle>
-#include <QHeaderView>
+#include <QSizePolicy>
 #include <QProgressBar>
 #include <QSaveFile>
-#include <QTableWidgetItem>
 #include <QUrlQuery>
+#include <algorithm>
 #include <functional>
+#include <utility>
 
 #include "imageloader.h"
 #include "llmpromptwidget.h"
@@ -962,11 +968,50 @@ static void parsePngInfoWorker(const QString &path, UserImageInfo &info, bool sp
 
 MainWindow::~MainWindow()
 {
+    isShuttingDown = true;
+    if (downloadPreviewLoadTimer) downloadPreviewLoadTimer->stop();
+    if (userImageThumbLoadTimer) userImageThumbLoadTimer->stop();
+    if (bgResizeTimer) bgResizeTimer->stop();
+    if (detailGalleryBuildTimer) detailGalleryBuildTimer->stop();
+    if (transitionAnim) transitionAnim->stop();
+    if (netManager) {
+        const QList<QNetworkReply*> replies = netManager->findChildren<QNetworkReply*>();
+        for (QNetworkReply *reply : replies) {
+            if (!reply) continue;
+            reply->disconnect(this);
+            reply->abort();
+        }
+    }
+    if (activeModelDownloadReply) {
+        activeModelDownloadReply->disconnect(this);
+        activeModelDownloadReply->abort();
+        activeModelDownloadReply = nullptr;
+    }
+    if (activeModelDownloadFile) {
+        activeModelDownloadFile->close();
+        delete activeModelDownloadFile;
+        activeModelDownloadFile = nullptr;
+    }
+    downloadQueue.clear();
+    modelDownloadQueue.clear();
+    pendingDownloadPreviewLoads.clear();
+    queuedDownloadPreviewLoads.clear();
+    for (const QPointer<QFutureWatcher<DownloadPreviewLoadResult>> &watcher : std::as_const(activeDownloadPreviewWatchers)) {
+        if (!watcher) continue;
+        watcher->disconnect(this);
+        if (watcher->isRunning()) watcher->waitForFinished();
+    }
+    activeDownloadPreviewWatchers.clear();
+    activeDownloadPreviewLoads.clear();
+    if (hashWatcher && hashWatcher->isRunning()) hashWatcher->waitForFinished();
+    if (imageLoadWatcher && imageLoadWatcher->isRunning()) imageLoadWatcher->waitForFinished();
+    if (downloadCardsCacheLoaded) saveDownloadCardsCache();
     saveGlobalConfig();
     cancelPendingTasks();
     if (backgroundThreadPool) backgroundThreadPool->clear();
     threadPool->waitForDone();
     backgroundThreadPool->waitForDone();
+    QCoreApplication::removePostedEvents(this);
     delete ui;
 }
 
@@ -1560,6 +1605,20 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         }
     }
 
+    if (event->type() == QEvent::MouseButtonPress) {
+        QWidget *widget = qobject_cast<QWidget*>(watched);
+        const QString downloadFilePath = widget ? widget->property("downloadFilePath").toString() : QString();
+        if (!downloadFilePath.isEmpty() && downloadCards.contains(downloadFilePath)) {
+            QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
+            if (mouseEvent->button() == Qt::LeftButton) {
+                DownloadCardWidgets &card = downloadCards[downloadFilePath];
+                setDownloadCardSelected(downloadFilePath, !card.selected);
+                updateDownloadSelectionSummary();
+                return true;
+            }
+        }
+    }
+
     if (watched == ui->listUserImages->viewport() &&
         (event->type() == QEvent::Resize || event->type() == QEvent::Show)) {
         scheduleVisibleUserImageThumbLoad();
@@ -1793,6 +1852,17 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
 
     // 4. 图库 (Gallery)
     clearLayout(ui->layoutGallery);
+
+    // 中止正在进行的画廊预览图下载任务，防止后台积累僵尸队列
+    if (netManager) {
+        const QList<QNetworkReply*> replies = netManager->findChildren<QNetworkReply*>();
+        for (QNetworkReply *reply : replies) {
+            if (reply && reply->property("isGalleryDownload").toBool()) {
+                reply->abort();
+            }
+        }
+    }
+
     downloadQueue.clear();
     isDownloading = false;
     beginGalleryBuild(meta);
@@ -2118,8 +2188,21 @@ void MainWindow::clearDetailView()
     ui->btnCopyLoraTag->setVisible(false);
 
     clearLayout(ui->badgesFrame->layout());
+
     clearLayout(ui->layoutTriggerStack);
     clearLayout(ui->layoutGallery);
+
+    // 中止正在进行的画廊预览图下载任务
+    if (netManager) {
+        const QList<QNetworkReply*> replies = netManager->findChildren<QNetworkReply*>();
+        for (QNetworkReply *reply : replies) {
+            if (reply && reply->property("isGalleryDownload").toBool()) {
+                reply->abort();
+            }
+        }
+    }
+    downloadQueue.clear();
+    isDownloading = false;
 
     // ui->widgetLocalMeta->setEnabled(false);
     ui->groupEditImages->setEnabled(false);
@@ -3052,14 +3135,17 @@ QUrl MainWindow::civitaiUrlWithToken(const QUrl &url) const
 QNetworkRequest MainWindow::makeNetworkRequest(const QUrl &url, bool allowCivitaiAuth) const
 {
     QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
-    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-    if (allowCivitaiAuth && isCivitaiUrl(url) && shouldUseCivitaiBearerAuth(url)) {
-        const QString key = civitaiApiKey();
-        if (!key.isEmpty()) {
-            request.setRawHeader("Authorization", QString("Bearer %1").arg(key).toUtf8());
+        request.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
+        request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    #if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
+        request.setTransferTimeout(30000); // 30秒超时，防止异常挂起导致队列卡死
+    #endif
+        if (allowCivitaiAuth && isCivitaiUrl(url) && shouldUseCivitaiBearerAuth(url)) {
+                const QString key = civitaiApiKey();
+            if (!key.isEmpty()) {
+                request.setRawHeader("Authorization", QString("Bearer %1").arg(key).toUtf8());
+            }
         }
-    }
     return request;
 }
 
@@ -3687,6 +3773,7 @@ QIcon MainWindow::getFitIcon(const QString &path)
 
 void MainWindow::onIconLoaded(const QString &id, const QImage &image)
 {
+    if (isShuttingDown) return;
     if (id.startsWith("EDITIMG|")) {
         const QStringList parts = id.split('|');
         if (parts.size() >= 4) {
@@ -4836,75 +4923,80 @@ void MainWindow::enqueueDownload(const QString &url, const QString &savePath, QP
 // 2. 队列处理函数 (核心：一张张下)
 void MainWindow::processNextDownload()
 {
-    if (downloadQueue.isEmpty()) {
-        isDownloading = false;
-        return;
-    }
+    while (!downloadQueue.isEmpty()) {
+        DownloadTask task = downloadQueue.dequeue();
 
-    isDownloading = true;
-    DownloadTask task = downloadQueue.dequeue();
-
-    if (task.button.isNull()) {
-        processNextDownload();
-        return;
-    }
-
-    // 设置按钮状态
-    task.button->setText("Waiting...");
-
-    QString cleanedSavePath = QFileInfo(task.savePath).absoluteFilePath();
-
-    const QUrl taskUrl(task.url);
-    const bool hasToken = QUrlQuery(taskUrl).hasQueryItem("token");
-    QNetworkRequest req = makeNetworkRequest(taskUrl, !hasToken);
-
-    QNetworkReply *reply = netManager->get(req);
-
-    // 我们不需要 currentDetailReplies 来管理了，因为这是串行的，
-    // 如果你希望切页面时中断队列，可以清空 downloadQueue 并 abort 当前 reply
-    // 这里简单起见，让它在后台默默跑完当前这一张
-
-    connect(reply, &QNetworkReply::finished, this, [this, reply, task, cleanedSavePath](){
-        reply->deleteLater();
-        if (reply->error() != QNetworkReply::NoError) {
-            const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-            if ((status == 401 || status == 403) && !task.url.contains("token=", Qt::CaseInsensitive) && !civitaiApiKey().isEmpty()) {
-                DownloadTask retryTask = task;
-                retryTask.url = civitaiUrlWithToken(QUrl(task.url)).toString();
-                downloadQueue.enqueue(retryTask);
-                if (task.button) task.button->setText("Retrying...");
-                QTimer::singleShot(0, this, &MainWindow::processNextDownload);
-                return;
-            }
-            if (task.button) task.button->setText("Error");
-            qDebug() << "Queued preview download failed:" << civitaiNetworkErrorMessage(reply);
-            QTimer::singleShot(500, this, &MainWindow::processNextDownload);
-            return;
+        if (task.button.isNull()) {
+            continue; // 按钮已销毁，直接跳过此任务处理下一个
         }
 
-        QByteArray data = reply->readAll();
-        if (!data.isEmpty()) {
-            QFile file(cleanedSavePath);
-            if (file.open(QIODevice::WriteOnly)) {
-                file.write(data);
-                file.close();
+        isDownloading = true;
 
-                applyDownloadedPreviewToUi(task.localBaseName, cleanedSavePath);
+        // 设置按钮状态
+        task.button->setText("Waiting...");
 
-                if (task.button) {
-                    QString currentBtnPath = QFileInfo(task.button->property("fullImagePath").toString()).absoluteFilePath();
-                    QString savePathProp = QFileInfo(task.button->property("savePath").toString()).absoluteFilePath();
-                    if (currentBtnPath == cleanedSavePath || savePathProp == cleanedSavePath) {
-                        IconLoaderTask *iconTask = new IconLoaderTask(cleanedSavePath, 100, 0, this, cleanedSavePath, true);
-                        iconTask->setAutoDelete(true);
-                        threadPool->start(iconTask);
-                        task.button->setText("");
+        QString cleanedSavePath = QFileInfo(task.savePath).absoluteFilePath();
+
+        const QUrl taskUrl(task.url);
+        const bool hasToken = QUrlQuery(taskUrl).hasQueryItem("token");
+        QNetworkRequest req = makeNetworkRequest(taskUrl, !hasToken);
+
+        QNetworkReply *reply = netManager->get(req);
+        reply->setProperty("isGalleryDownload", true); // 加上标识以便切换页面时精准 abort()
+
+        connect(reply, &QNetworkReply::finished, this, [this, reply, task, cleanedSavePath](){
+            reply->deleteLater();
+
+            // 如果任务是被中止的（例如用户切换了模型清空了旧队列），直接退出回调，阻止僵尸循环继续排队
+            if (reply->error() == QNetworkReply::OperationCanceledError) {
+                return;
+            }
+
+            if (reply->error() != QNetworkReply::NoError) {
+                const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+                if ((status == 401 || status == 403) && !task.url.contains("token=", Qt::CaseInsensitive) && !civitaiApiKey().isEmpty()) {
+                    DownloadTask retryTask = task;
+                    retryTask.url = civitaiUrlWithToken(QUrl(task.url)).toString();
+                    downloadQueue.enqueue(retryTask);
+                    if (task.button) task.button->setText("Retrying...");
+                    QTimer::singleShot(0, this, &MainWindow::processNextDownload);
+                    return;
+                }
+                if (task.button) task.button->setText("Error");
+                qDebug() << "Queued preview download failed:" << civitaiNetworkErrorMessage(reply);
+                QTimer::singleShot(500, this, &MainWindow::processNextDownload);
+                return;
+            }
+
+            QByteArray data = reply->readAll();
+            if (!data.isEmpty()) {
+                QFile file(cleanedSavePath);
+                if (file.open(QIODevice::WriteOnly)) {
+                    file.write(data);
+                    file.close();
+
+                    applyDownloadedPreviewToUi(task.localBaseName, cleanedSavePath);
+
+                    if (task.button) {
+                        QString currentBtnPath = QFileInfo(task.button->property("fullImagePath").toString()).absoluteFilePath();
+                        QString savePathProp = QFileInfo(task.button->property("savePath").toString()).absoluteFilePath();
+                        if (currentBtnPath == cleanedSavePath || savePathProp == cleanedSavePath) {
+                            IconLoaderTask *iconTask = new IconLoaderTask(cleanedSavePath, 100, 0, this, cleanedSavePath, true);
+                            iconTask->setAutoDelete(true);
+                            threadPool->start(iconTask);
+                            task.button->setText("");
+                        }
                     }
                 }
             }
-        }
-        QTimer::singleShot(500, this, &MainWindow::processNextDownload);
-    });
+            QTimer::singleShot(500, this, &MainWindow::processNextDownload);
+        });
+
+        return; // 成功发送请求并等待回调，退出 while 循环
+    }
+
+    // 队列为空
+    isDownloading = false;
 }
 
 // ==========================================
@@ -5654,6 +5746,15 @@ void MainWindow::onMenuSwitchToSettings() {
 void MainWindow::onMenuSwitchToDownloads()
 {
     ui->rootStack->setCurrentWidget(ui->pageDownloads);
+    if (!downloadCardsCacheLoaded) {
+        ui->lblDownloadsStatus->setText("正在恢复上次下载列表...");
+        QTimer::singleShot(0, this, [this]() {
+            loadDownloadCardsCache();
+            updateDownloadSelectionSummary();
+        });
+        return;
+    }
+    QTimer::singleShot(0, this, &MainWindow::updateDownloadSelectionSummary);
 }
 
 void MainWindow::onTestCivitaiApiKeyClicked()
@@ -5687,13 +5788,27 @@ void MainWindow::onTestCivitaiApiKeyClicked()
 
 void MainWindow::initDownloadsPage()
 {
-    ui->tableDownloads->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    ui->tableDownloads->setSelectionBehavior(QAbstractItemView::SelectRows);
-    ui->tableDownloads->setSelectionMode(QAbstractItemView::ExtendedSelection);
-    ui->tableDownloads->horizontalHeader()->setStretchLastSection(true);
-    ui->tableDownloads->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-    ui->tableDownloads->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
-    ui->tableDownloads->verticalHeader()->setVisible(false);
+    ui->lblDownloadsFilter->hide();
+    ui->comboDownloadsFilter->hide();
+    downloadPreviewLoadTimer = new QTimer(this);
+    downloadPreviewLoadTimer->setSingleShot(true);
+    connect(downloadPreviewLoadTimer, &QTimer::timeout, this, &MainWindow::processDownloadPreviewLoadBatch);
+    const QColor downloadBg("#131922");
+    for (QScrollArea *area : {ui->scrollDownloadsCards,
+                              ui->scrollDownloadsCoexisting,
+                              ui->scrollDownloadsIgnored,
+                              ui->scrollDownloadsLatest,
+                              ui->scrollDownloadsErrors,
+                              ui->scrollDownloadsLocal}) {
+        if (!area) continue;
+        QWidget *vp = area->viewport();
+        if (vp) {
+            vp->setAutoFillBackground(true);
+            QPalette pal = vp->palette();
+            pal.setColor(QPalette::Window, downloadBg);
+            vp->setPalette(pal);
+        }
+    }
 
     connect(ui->btnDownloadsCheckCurrent, &QPushButton::clicked, this, [this]() {
         QList<QListWidgetItem*> items;
@@ -5715,55 +5830,142 @@ void MainWindow::initDownloadsPage()
         }
         checkUpdatesForItems(items);
     });
-    connect(ui->btnDownloadsDownloadSelected, &QPushButton::clicked, this, &MainWindow::startDownloadsForSelectedRows);
+    connect(ui->btnDownloadsDownloadSelected, &QPushButton::clicked, this, &MainWindow::startDownloadsForSelectedCards);
     connect(ui->btnDownloadsCancel, &QPushButton::clicked, this, [this]() {
-        const QList<int> rows = selectedDownloadRows();
-        for (int row : rows) {
-            const QString filePath = ui->tableDownloads->item(row, 0)->data(Qt::UserRole).toString();
+        const QStringList filePaths = selectedDownloadFilePaths();
+        for (const QString &filePath : filePaths) {
             if (activeModelDownloadReply && activeModelDownloadTask.info.filePath == filePath) {
                 activeModelDownloadReply->abort();
             }
             canceledModelDownloadPaths.insert(filePath);
-            updateDownloadRowStatus(row, "已取消");
+            updateDownloadStatus(filePath, "已取消");
         }
     });
     connect(ui->btnDownloadsRetry, &QPushButton::clicked, this, [this]() {
-        for (int row : selectedDownloadRows()) {
-            QTableWidgetItem *statusItem = ui->tableDownloads->item(row, 6);
-            if (!statusItem || !statusItem->text().contains("失败")) continue;
-            const QString filePath = ui->tableDownloads->item(row, 0)->data(Qt::UserRole).toString();
+        for (const QString &filePath : selectedDownloadFilePaths()) {
+            const DownloadCardWidgets card = downloadCards.value(filePath);
+            if (!card.statusText.contains("失败")) continue;
             if (modelUpdateInfos.contains(filePath)) enqueueModelFileDownload(modelUpdateInfos.value(filePath));
         }
     });
     connect(ui->btnDownloadsOpenFolder, &QPushButton::clicked, this, [this]() {
-        const QList<int> rows = selectedDownloadRows();
-        if (rows.isEmpty()) return;
-        const QString path = ui->tableDownloads->item(rows.first(), 7)->text();
+        const QStringList filePaths = selectedDownloadFilePaths();
+        if (filePaths.isEmpty()) return;
+        const QString path = downloadCards.value(filePaths.first()).targetPath;
         if (!path.isEmpty()) QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
     });
     connect(ui->btnDownloadsClearCompleted, &QPushButton::clicked, this, [this]() {
-        for (int row = ui->tableDownloads->rowCount() - 1; row >= 0; --row) {
-            const QString status = ui->tableDownloads->item(row, 6) ? ui->tableDownloads->item(row, 6)->text() : QString();
-            if (status.contains("完成") || status.contains("已是最新")) ui->tableDownloads->removeRow(row);
+        const QStringList keys = downloadCards.keys();
+        for (const QString &filePath : keys) {
+            const QString status = downloadCards.value(filePath).statusText;
+            if (status.contains("完成") || status.contains("已是最新")) removeDownloadCard(filePath);
         }
+        saveDownloadCardsCache();
     });
     connect(ui->comboDownloadsFilter, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &MainWindow::filterDownloadsTable);
+            this, &MainWindow::filterDownloadCards);
+    connect(ui->tabDownloadsStatus, &QTabWidget::currentChanged, this, [this]() {
+        updateDownloadSelectionSummary();
+    });
+    connect(ui->btnDownloadsToggleCurrentTab, &QPushButton::clicked, this, [this]() {
+        const QString category = currentDownloadCategory();
+        const QStringList paths = downloadFilePathsForCategory(category);
+        bool allChecked = !paths.isEmpty();
+        for (const QString &filePath : paths) {
+            const DownloadCardWidgets card = downloadCards.value(filePath);
+            if (!card.selected) {
+                allChecked = false;
+                break;
+            }
+        }
+        setCurrentDownloadTabSelection(!allChecked);
+    });
+    updateDownloadSelectionSummary();
 }
 
-QList<int> MainWindow::selectedDownloadRows() const
+QStringList MainWindow::selectedDownloadFilePaths() const
 {
-    QList<int> rows;
-    if (!ui->tableDownloads->selectionModel()) return rows;
-    for (const QModelIndex &idx : ui->tableDownloads->selectionModel()->selectedRows()) {
-        if (!rows.contains(idx.row())) rows << idx.row();
+    QStringList filePaths;
+    for (auto it = downloadCards.cbegin(); it != downloadCards.cend(); ++it) {
+        const QString filePath = it.key();
+        const DownloadCardWidgets card = it.value();
+        if (card.selected) filePaths << filePath;
     }
-    std::sort(rows.begin(), rows.end());
-    return rows;
+    return filePaths;
+}
+
+QString MainWindow::currentDownloadCategory() const
+{
+    switch (ui->tabDownloadsStatus->currentIndex()) {
+    case 1: return "coexisting";
+    case 2: return "ignored";
+    case 3: return "latest";
+    case 4: return "errors";
+    case 5: return "local";
+    default: return "updates";
+    }
+}
+
+QStringList MainWindow::downloadFilePathsForCategory(const QString &category) const
+{
+    QStringList filePaths;
+    for (auto it = downloadCards.cbegin(); it != downloadCards.cend(); ++it) {
+        const DownloadCardWidgets card = it.value();
+        if (card.category == category) {
+            filePaths << it.key();
+        }
+    }
+    return filePaths;
+}
+
+void MainWindow::updateDownloadSelectionSummary()
+{
+    const QString category = currentDownloadCategory();
+    const QStringList currentPaths = downloadFilePathsForCategory(category);
+    int selectedCurrent = 0;
+    for (const QString &filePath : currentPaths) {
+        const DownloadCardWidgets card = downloadCards.value(filePath);
+        if (card.selected) ++selectedCurrent;
+    }
+
+    const int selectedTotal = selectedDownloadFilePaths().size();
+    ui->lblDownloadsSelected->setText(QString("当前 Tab 已选择 %1/%2 个模型\n全部已选择 %3 个模型")
+                                          .arg(selectedCurrent)
+                                          .arg(currentPaths.size())
+                                          .arg(selectedTotal));
+    const bool allChecked = !currentPaths.isEmpty() && selectedCurrent == currentPaths.size();
+    ui->btnDownloadsToggleCurrentTab->setText(allChecked ? "取消全选当前 Tab" : "全选当前 Tab");
+    ui->btnDownloadsToggleCurrentTab->setEnabled(!currentPaths.isEmpty());
+}
+
+void MainWindow::setCurrentDownloadTabSelection(bool checked)
+{
+    const QStringList paths = downloadFilePathsForCategory(currentDownloadCategory());
+    for (const QString &filePath : paths) {
+        setDownloadCardSelected(filePath, checked);
+    }
+    updateDownloadSelectionSummary();
+}
+
+void MainWindow::setDownloadCardSelected(const QString &filePath, bool selected)
+{
+    if (!downloadCards.contains(filePath)) return;
+    DownloadCardWidgets card = downloadCards.value(filePath);
+    card.selected = selected;
+    if (card.card) {
+        card.card->setProperty("selected", selected);
+        card.card->style()->unpolish(card.card);
+        card.card->style()->polish(card.card);
+        card.card->update();
+    }
+    downloadCards[filePath] = card;
 }
 
 void MainWindow::checkUpdatesForItems(const QList<QListWidgetItem*> &items)
 {
+    if (!downloadCardsCacheLoaded) {
+        loadDownloadCardsCache();
+    }
     if (items.isEmpty()) {
         ui->lblDownloadsStatus->setText("没有可检查的模型。请先选择模型，或使用检查全部。");
         onMenuSwitchToDownloads();
@@ -5771,59 +5973,189 @@ void MainWindow::checkUpdatesForItems(const QList<QListWidgetItem*> &items)
     }
 
     onMenuSwitchToDownloads();
-    ui->lblDownloadsStatus->setText(QString("正在检查 %1 个模型的更新...").arg(items.size()));
-    for (QListWidgetItem *item : items) checkUpdateForItem(item);
+    ++updateCheckToken;
+    pendingUpdateChecksQueue.clear();
+    pendingUpdateHashChecks.clear();
+    activeUpdateNetworkChecks = 0;
+    activeUpdateHashChecks = 0;
+    completedUpdateChecks = 0;
+    ui->btnDownloadsCheckCurrent->setEnabled(false);
+    ui->btnDownloadsCheckSelected->setEnabled(false);
+    ui->btnDownloadsCheckAll->setEnabled(false);
+    for (QListWidgetItem *item : items) {
+        if (!isModelListItem(item)) continue;
+        UpdateCheckSnapshot snapshot;
+        snapshot.filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+        snapshot.baseName = item->data(ROLE_MODEL_NAME).toString();
+        snapshot.modelDir = QFileInfo(snapshot.filePath).absolutePath();
+        snapshot.modelId = item->data(ROLE_CIVITAI_MODEL_ID).toInt();
+        snapshot.displayName = item->text();
+        snapshot.currentVersionId = item->data(ROLE_CIVITAI_VERSION_ID).toInt();
+        snapshot.currentSha256 = item->data(ROLE_CIVITAI_SHA256).toString();
+        snapshot.localEdited = item->data(ROLE_LOCAL_EDITED).toBool();
+        pendingUpdateChecksQueue.enqueue(snapshot);
+    }
+    pendingUpdateChecks = pendingUpdateChecksQueue.size();
+    if (pendingUpdateChecks <= 0) {
+        ui->lblDownloadsStatus->setText("没有可检查的模型。");
+        ui->btnDownloadsCheckCurrent->setEnabled(true);
+        ui->btnDownloadsCheckSelected->setEnabled(true);
+        ui->btnDownloadsCheckAll->setEnabled(true);
+        return;
+    }
+    ui->lblDownloadsStatus->setText(QString("正在检查 %1 个模型的更新...").arg(pendingUpdateChecks));
+    QTimer::singleShot(0, this, &MainWindow::dispatchQueuedUpdateChecks);
 }
 
 void MainWindow::checkUpdateForItem(QListWidgetItem *item)
 {
     if (!isModelListItem(item)) return;
-    const QString filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
-    const QString baseName = item->data(ROLE_MODEL_NAME).toString();
-    const QString modelDir = QFileInfo(filePath).absolutePath();
-    const int modelId = item->data(ROLE_CIVITAI_MODEL_ID).toInt();
+    UpdateCheckSnapshot snapshot;
+    snapshot.filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+    snapshot.baseName = item->data(ROLE_MODEL_NAME).toString();
+    snapshot.modelDir = QFileInfo(snapshot.filePath).absolutePath();
+    snapshot.modelId = item->data(ROLE_CIVITAI_MODEL_ID).toInt();
+    snapshot.displayName = item->text();
+    snapshot.currentVersionId = item->data(ROLE_CIVITAI_VERSION_ID).toInt();
+    snapshot.currentSha256 = item->data(ROLE_CIVITAI_SHA256).toString();
+    snapshot.localEdited = item->data(ROLE_LOCAL_EDITED).toBool();
+    checkUpdateForSnapshot(snapshot);
+}
 
-    ModelUpdateInfo pending;
-    pending.filePath = filePath;
-    pending.modelDir = modelDir;
-    pending.baseName = baseName;
-    pending.displayName = item->text();
-    pending.modelId = modelId;
-    pending.currentVersionId = item->data(ROLE_CIVITAI_VERSION_ID).toInt();
-    if (item->data(ROLE_LOCAL_EDITED).toBool()) {
-        addOrUpdateDownloadRow(pending, "本地/已编辑模型，已跳过");
+void MainWindow::checkUpdateForSnapshot(const UpdateCheckSnapshot &snapshot)
+{
+    if (snapshot.filePath.isEmpty()) {
+        markUpdateCheckFinished();
         return;
     }
-    addOrUpdateDownloadRow(pending, "检查中...");
 
-    if (modelId > 0) {
-        QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/models/%1").arg(modelId))));
-        reply->setProperty("filePath", filePath);
-        reply->setProperty("baseName", baseName);
-        reply->setProperty("modelDir", modelDir);
+    ModelUpdateInfo pending;
+    pending.filePath = snapshot.filePath;
+    pending.modelDir = snapshot.modelDir;
+    pending.baseName = snapshot.baseName;
+    pending.displayName = snapshot.displayName;
+    pending.modelId = snapshot.modelId;
+    pending.currentVersionId = snapshot.currentVersionId;
+    if (snapshot.localEdited) {
+        addOrUpdateDownloadCard(pending, "本地/已编辑模型，已跳过");
+        markUpdateCheckFinished();
+        return;
+    }
+    addOrUpdateDownloadCard(pending, "检查中...");
+
+    if (snapshot.modelId > 0) {
+        QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/models/%1").arg(snapshot.modelId))));
+        reply->setProperty("filePath", snapshot.filePath);
+        reply->setProperty("baseName", snapshot.baseName);
+        reply->setProperty("modelDir", snapshot.modelDir);
         reply->setProperty("currentVersionId", pending.currentVersionId);
-        reply->setProperty("currentSha256", item->data(ROLE_CIVITAI_SHA256).toString());
+        reply->setProperty("currentSha256", snapshot.currentSha256);
+        reply->setProperty("token", updateCheckToken);
         connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleModelUpdateReply(reply); });
         return;
     }
 
-    const QString hash = calculateFileHash(filePath);
-    if (hash.isEmpty()) {
-        addOrUpdateDownloadRow(pending, "无法计算 Hash，无法判断");
+    enqueueUpdateHashCheck(snapshot);
+}
+
+void MainWindow::dispatchQueuedUpdateChecks()
+{
+    constexpr int kMaxConcurrentUpdateChecks = 6;
+    while (activeUpdateNetworkChecks < kMaxConcurrentUpdateChecks && !pendingUpdateChecksQueue.isEmpty()) {
+        const UpdateCheckSnapshot snapshot = pendingUpdateChecksQueue.dequeue();
+        ++activeUpdateNetworkChecks;
+        checkUpdateForSnapshot(snapshot);
+    }
+}
+
+void MainWindow::enqueueUpdateHashCheck(const UpdateCheckSnapshot &snapshot)
+{
+    pendingUpdateHashChecks.enqueue(snapshot);
+    ModelUpdateInfo pending;
+    pending.filePath = snapshot.filePath;
+    pending.modelDir = snapshot.modelDir;
+    pending.baseName = snapshot.baseName;
+    pending.displayName = snapshot.displayName;
+    addOrUpdateDownloadCard(pending, "计算 Hash 中...");
+    dispatchUpdateHashChecks();
+}
+
+void MainWindow::dispatchUpdateHashChecks()
+{
+    constexpr int kMaxConcurrentHashChecks = 2;
+    while (activeUpdateHashChecks < kMaxConcurrentHashChecks && !pendingUpdateHashChecks.isEmpty()) {
+        const UpdateCheckSnapshot snapshot = pendingUpdateHashChecks.dequeue();
+        ++activeUpdateHashChecks;
+        auto *watcher = new QFutureWatcher<QString>(this);
+        watcher->setProperty("token", updateCheckToken);
+        watcher->setProperty("filePath", snapshot.filePath);
+        watcher->setProperty("baseName", snapshot.baseName);
+        watcher->setProperty("modelDir", snapshot.modelDir);
+        watcher->setProperty("displayName", snapshot.displayName);
+        connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher]() {
+            const int token = watcher->property("token").toInt();
+            UpdateCheckSnapshot snapshot;
+            snapshot.filePath = watcher->property("filePath").toString();
+            snapshot.baseName = watcher->property("baseName").toString();
+            snapshot.modelDir = watcher->property("modelDir").toString();
+            snapshot.displayName = watcher->property("displayName").toString();
+            const QString hash = watcher->result();
+            watcher->deleteLater();
+            activeUpdateHashChecks = qMax(0, activeUpdateHashChecks - 1);
+
+            if (token != updateCheckToken) {
+                dispatchUpdateHashChecks();
+                return;
+            }
+
+            ModelUpdateInfo pending;
+            pending.filePath = snapshot.filePath;
+            pending.modelDir = snapshot.modelDir;
+            pending.baseName = snapshot.baseName;
+            pending.displayName = snapshot.displayName;
+            if (hash.isEmpty()) {
+                addOrUpdateDownloadCard(pending, "无法计算 Hash，无法判断");
+                markUpdateCheckFinished();
+                dispatchUpdateHashChecks();
+                return;
+            }
+
+            QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/model-versions/by-hash/%1").arg(hash))));
+            reply->setProperty("filePath", snapshot.filePath);
+            reply->setProperty("baseName", snapshot.baseName);
+            reply->setProperty("modelDir", snapshot.modelDir);
+            reply->setProperty("currentSha256", hash);
+            reply->setProperty("byHash", true);
+            reply->setProperty("token", updateCheckToken);
+            connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleModelUpdateReply(reply); });
+            dispatchUpdateHashChecks();
+        });
+        watcher->setFuture(QtConcurrent::run(backgroundThreadPool, [filePath = snapshot.filePath]() {
+            return calculateFileHashWorker(filePath);
+        }));
+    }
+}
+
+void MainWindow::markUpdateCheckFinished()
+{
+    if (pendingUpdateChecks <= 0) return;
+    activeUpdateNetworkChecks = qMax(0, activeUpdateNetworkChecks - 1);
+    ++completedUpdateChecks;
+    ui->lblDownloadsStatus->setText(QString("正在检查更新... %1/%2").arg(completedUpdateChecks).arg(pendingUpdateChecks));
+    if (completedUpdateChecks >= pendingUpdateChecks && activeUpdateHashChecks == 0 && pendingUpdateHashChecks.isEmpty()) {
+        ui->lblDownloadsStatus->setText(QString("更新检查完成，共 %1 个模型。").arg(pendingUpdateChecks));
+        ui->btnDownloadsCheckCurrent->setEnabled(true);
+        ui->btnDownloadsCheckSelected->setEnabled(true);
+        ui->btnDownloadsCheckAll->setEnabled(true);
+        saveDownloadCardsCache();
         return;
     }
-
-    QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/model-versions/by-hash/%1").arg(hash))));
-    reply->setProperty("filePath", filePath);
-    reply->setProperty("baseName", baseName);
-    reply->setProperty("modelDir", modelDir);
-    reply->setProperty("currentSha256", hash);
-    reply->setProperty("byHash", true);
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleModelUpdateReply(reply); });
+    QTimer::singleShot(0, this, &MainWindow::dispatchQueuedUpdateChecks);
 }
 
 void MainWindow::handleModelUpdateReply(QNetworkReply *reply)
 {
+    const int token = reply->property("token").toInt();
     const QString filePath = reply->property("filePath").toString();
     const QString baseName = reply->property("baseName").toString();
     const QString modelDir = reply->property("modelDir").toString();
@@ -5831,6 +6163,7 @@ void MainWindow::handleModelUpdateReply(QNetworkReply *reply)
     const QString currentSha256 = reply->property("currentSha256").toString();
     const bool byHash = reply->property("byHash").toBool();
     reply->deleteLater();
+    if (token > 0 && token != updateCheckToken) return;
 
     ModelUpdateInfo fallback;
     fallback.filePath = filePath;
@@ -5839,7 +6172,8 @@ void MainWindow::handleModelUpdateReply(QNetworkReply *reply)
     fallback.displayName = QFileInfo(filePath).completeBaseName();
 
     if (reply->error() != QNetworkReply::NoError) {
-        addOrUpdateDownloadRow(fallback, "检查失败: " + civitaiNetworkErrorMessage(reply));
+        addOrUpdateDownloadCard(fallback, "检查失败: " + civitaiNetworkErrorMessage(reply));
+        markUpdateCheckFinished();
         return;
     }
 
@@ -5847,7 +6181,8 @@ void MainWindow::handleModelUpdateReply(QNetworkReply *reply)
     if (byHash) {
         const int modelId = root["modelId"].toInt();
         if (modelId <= 0) {
-            addOrUpdateDownloadRow(fallback, "无法从 Hash 匹配 Civitai 模型");
+            addOrUpdateDownloadCard(fallback, "无法从 Hash 匹配 Civitai 模型");
+            markUpdateCheckFinished();
             return;
         }
         QNetworkReply *detailReply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/models/%1").arg(modelId))));
@@ -5856,6 +6191,7 @@ void MainWindow::handleModelUpdateReply(QNetworkReply *reply)
         detailReply->setProperty("modelDir", modelDir);
         detailReply->setProperty("currentVersionId", root["id"].toInt());
         detailReply->setProperty("currentSha256", currentSha256);
+        detailReply->setProperty("token", updateCheckToken);
         connect(detailReply, &QNetworkReply::finished, this, [this, detailReply]() { handleModelUpdateReply(detailReply); });
         return;
     }
@@ -5878,10 +6214,15 @@ void MainWindow::handleModelUpdateReply(QNetworkReply *reply)
         modelUpdateInfos.insert(info.filePath, info);
     } else {
         fallback.modelId = root["id"].toInt();
-        addOrUpdateDownloadRow(fallback, "模型列表项不存在，无法判断");
+        addOrUpdateDownloadCard(fallback, "模型列表项不存在，无法判断");
+        markUpdateCheckFinished();
         return;
     }
-    addOrUpdateDownloadRow(info, info.hasUpdate ? "发现新版本" : "已是最新");
+    const QString status = info.latestFileExistsLocally
+        ? "旧版共存：本地已存在新版本"
+        : (info.hasUpdate ? "发现新版本" : "已是最新");
+    addOrUpdateDownloadCard(info, status);
+    markUpdateCheckFinished();
 }
 
 ModelUpdateInfo MainWindow::parseModelUpdateInfo(QListWidgetItem *item, const QJsonObject &modelRoot) const
@@ -5944,83 +6285,470 @@ ModelUpdateInfo MainWindow::parseModelUpdateInfo(QListWidgetItem *item, const QJ
     info.sha256 = selectedFile["hashes"].toObject()["SHA256"].toString();
     info.sizeMB = selectedFile["sizeKB"].toDouble() / 1024.0;
     info.hasUpdate = info.latestVersionId > 0 && info.latestVersionId != info.currentVersionId && !info.downloadUrl.isEmpty();
+    if (info.hasUpdate && !info.downloadFileName.isEmpty()) {
+        const QString latestLocalPath = QFileInfo(QDir(info.modelDir).filePath(info.downloadFileName)).absoluteFilePath();
+        info.latestFileExistsLocally = QFile::exists(latestLocalPath)
+                                      && latestLocalPath.compare(info.filePath, Qt::CaseInsensitive) != 0;
+    }
     return info;
 }
 
-void MainWindow::addOrUpdateDownloadRow(const ModelUpdateInfo &info, const QString &status)
+void MainWindow::addOrUpdateDownloadCard(const ModelUpdateInfo &info, const QString &status)
 {
-    int row = -1;
-    for (int i = 0; i < ui->tableDownloads->rowCount(); ++i) {
-        QTableWidgetItem *item = ui->tableDownloads->item(i, 0);
-        if (item && item->data(Qt::UserRole).toString() == info.filePath) {
-            row = i;
-            break;
+    if (info.filePath.isEmpty()) return;
+    modelUpdateInfos.insert(info.filePath, info);
+    DownloadCardWidgets card = downloadCards.value(info.filePath);
+    QString effectiveStatus = status;
+    if (card.statusText.contains("已忽略") &&
+        !status.contains("下载") &&
+        !status.contains("完成") &&
+        !status.contains("失败")) {
+        effectiveStatus = "已忽略更新";
+    }
+
+    if (!card.card) {
+        auto *frame = new QFrame(ui->downloadCardsContainer);
+        frame->setProperty("class", "downloadCard");
+        frame->setProperty("selected", false);
+        frame->setProperty("downloadFilePath", info.filePath);
+        frame->setCursor(Qt::PointingHandCursor);
+        frame->installEventFilter(this);
+        frame->setFixedHeight(156);
+        frame->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+
+        auto *root = new QHBoxLayout(frame);
+        root->setContentsMargins(14, 14, 14, 14);
+        root->setSpacing(14);
+
+        auto *preview = new QLabel(frame);
+        preview->setProperty("downloadFilePath", info.filePath);
+        preview->setCursor(Qt::PointingHandCursor);
+        preview->installEventFilter(this);
+        preview->setFixedSize(96, 128);
+        preview->setAlignment(Qt::AlignCenter);
+        preview->setStyleSheet("background-color:#0f141a; border:1px solid #2b3440; border-radius:6px;");
+        root->addWidget(preview);
+
+        auto *content = new QVBoxLayout();
+        content->setSpacing(7);
+        root->addLayout(content, 1);
+
+        auto *title = new QLabel(frame);
+        title->setProperty("downloadFilePath", info.filePath);
+        title->setCursor(Qt::PointingHandCursor);
+        title->installEventFilter(this);
+        title->setProperty("class", "downloadTitle");
+        title->setWordWrap(true);
+        title->setMinimumWidth(0);
+        title->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        content->addWidget(title);
+
+        auto *metaGrid = new QGridLayout();
+        metaGrid->setHorizontalSpacing(16);
+        metaGrid->setVerticalSpacing(4);
+        content->addLayout(metaGrid);
+
+        auto *version = new QLabel(frame);
+        auto *size = new QLabel(frame);
+        auto *target = new QLabel(frame);
+        for (QLabel *label : {version, size, target}) {
+            label->setProperty("downloadFilePath", info.filePath);
+            label->setCursor(Qt::PointingHandCursor);
+            label->installEventFilter(this);
+        }
+        version->setProperty("class", "downloadMeta");
+        size->setProperty("class", "downloadMeta");
+        target->setProperty("class", "downloadMeta");
+        target->setWordWrap(false);
+        version->setMinimumWidth(0);
+        target->setMinimumWidth(0);
+        version->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        target->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        metaGrid->addWidget(version, 0, 0);
+        metaGrid->addWidget(size, 0, 1);
+        metaGrid->addWidget(target, 1, 0, 1, 2);
+
+        auto *progress = new QProgressBar(frame);
+        progress->setProperty("downloadFilePath", info.filePath);
+        progress->setCursor(Qt::PointingHandCursor);
+        progress->installEventFilter(this);
+        progress->setRange(0, 100);
+        progress->setValue(0);
+        progress->setTextVisible(true);
+        content->addWidget(progress);
+
+        auto *footer = new QHBoxLayout();
+        footer->setSpacing(12);
+        content->addLayout(footer);
+        auto *statusLabel = new QLabel(frame);
+        auto *speed = new QLabel(frame);
+        for (QLabel *label : {statusLabel, speed}) {
+            label->setProperty("downloadFilePath", info.filePath);
+            label->setCursor(Qt::PointingHandCursor);
+            label->installEventFilter(this);
+        }
+        statusLabel->setProperty("class", "downloadStatus");
+        statusLabel->setWordWrap(true);
+        statusLabel->setMinimumWidth(0);
+        statusLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        speed->setProperty("class", "downloadMeta");
+        footer->addWidget(statusLabel, 1);
+        footer->addWidget(speed);
+
+        auto *buttonLayout = new QVBoxLayout();
+        buttonLayout->setSpacing(5);
+        auto *sourceButton = new QPushButton(frame);
+        sourceButton->setCursor(Qt::PointingHandCursor);
+        sourceButton->setMinimumWidth(110);
+        auto *civitaiButton = new QPushButton(frame);
+        civitaiButton->setCursor(Qt::PointingHandCursor);
+        civitaiButton->setMinimumWidth(110);
+        auto *downloadButton = new QPushButton(frame);
+        downloadButton->setCursor(Qt::PointingHandCursor);
+        downloadButton->setMinimumWidth(110);
+        auto *ignoreButton = new QPushButton(frame);
+        ignoreButton->setCursor(Qt::PointingHandCursor);
+        ignoreButton->setMinimumWidth(110);
+        for (QPushButton *button : {sourceButton, civitaiButton, downloadButton, ignoreButton}) {
+            button->setFixedHeight(26);
+        }
+        buttonLayout->addWidget(sourceButton);
+        buttonLayout->addWidget(civitaiButton);
+        buttonLayout->addWidget(downloadButton);
+        buttonLayout->addWidget(ignoreButton);
+        root->addLayout(buttonLayout);
+
+        card.card = frame;
+        card.previewLabel = preview;
+        card.titleLabel = title;
+        card.versionLabel = version;
+        card.sizeLabel = size;
+        card.speedLabel = speed;
+        card.statusLabel = statusLabel;
+        card.targetLabel = target;
+        card.progressBar = progress;
+        card.sourceButton = sourceButton;
+        card.civitaiButton = civitaiButton;
+        card.downloadButton = downloadButton;
+        card.ignoreButton = ignoreButton;
+        downloadCards.insert(info.filePath, card);
+
+        const QString initialCategory = downloadCategoryForStatus(effectiveStatus);
+        QVBoxLayout *targetLayout = downloadLayoutForCategory(initialCategory);
+        const int insertIndex = targetLayout ? qMax(0, targetLayout->count() - 1) : 0;
+        if (targetLayout) targetLayout->insertWidget(insertIndex, frame);
+        card.category = initialCategory;
+        downloadCards[info.filePath] = card;
+
+        connect(sourceButton, &QPushButton::clicked, this, [this, filePath = info.filePath]() {
+            jumpToDownloadSource(filePath);
+        });
+        connect(civitaiButton, &QPushButton::clicked, this, [this, filePath = info.filePath]() {
+            openDownloadCivitaiPage(filePath);
+        });
+        connect(downloadButton, &QPushButton::clicked, this, [this, filePath = info.filePath]() {
+            if (!modelUpdateInfos.contains(filePath)) {
+                ui->lblDownloadsStatus->setText("该模型还没有可下载的更新信息。");
+                return;
+            }
+            const ModelUpdateInfo info = modelUpdateInfos.value(filePath);
+            if (!info.hasUpdate) {
+                ui->lblDownloadsStatus->setText("该模型当前没有可下载的新版本。");
+                return;
+            }
+            enqueueModelFileDownload(info);
+        });
+        connect(ignoreButton, &QPushButton::clicked, this, [this, filePath = info.filePath]() {
+            const DownloadCardWidgets card = downloadCards.value(filePath);
+            if (card.statusText.contains("已忽略")) {
+                const ModelUpdateInfo info = modelUpdateInfos.value(filePath);
+                const QString restoredStatus = info.latestFileExistsLocally
+                    ? "旧版共存：本地已存在新版本"
+                    : (info.hasUpdate ? "发现新版本" : "已是最新");
+                updateDownloadStatus(filePath, restoredStatus);
+                ui->lblDownloadsStatus->setText("已取消忽略更新。");
+            } else {
+                updateDownloadStatus(filePath, "已忽略更新");
+                ui->lblDownloadsStatus->setText("已忽略该模型更新。");
+            }
+            saveDownloadCardsCache();
+        });
+    }
+
+    card = downloadCards.value(info.filePath);
+    const QString titleText = info.displayName.isEmpty() ? QFileInfo(info.filePath).completeBaseName() : info.displayName;
+    const QString sizeText = info.sizeMB > 0 ? QString::number(info.sizeMB, 'f', 1) + " MB" : "--";
+    const QString targetPath = info.downloadFileName.isEmpty() ? info.filePath : QDir(info.modelDir).filePath(info.downloadFileName);
+
+    if (card.titleLabel) card.titleLabel->setText(titleText);
+    if (card.versionLabel) {
+        card.versionLabel->setText(QString("当前: %1    最新: %2")
+                                       .arg(info.currentVersion.isEmpty() ? "--" : info.currentVersion,
+                                            info.latestVersion.isEmpty() ? "--" : info.latestVersion));
+    }
+    if (card.sizeLabel) card.sizeLabel->setText("大小: " + sizeText);
+    if (card.targetLabel) {
+        card.targetLabel->setText("目标: " + targetPath);
+        card.targetLabel->setToolTip(targetPath);
+    }
+    if (card.sourceButton) {
+        card.sourceButton->setText("模型详情");
+        card.sourceButton->setEnabled(findModelItemByFilePath(info.filePath) != nullptr || QFile::exists(info.filePath));
+    }
+    if (card.civitaiButton) {
+        card.civitaiButton->setText(info.modelId > 0 ? QString("Civitai #%1").arg(info.modelId) : "Civitai");
+        card.civitaiButton->setEnabled(info.modelId > 0);
+    }
+    if (card.downloadButton) {
+        card.downloadButton->setText("下载更新");
+        card.downloadButton->setEnabled(info.hasUpdate);
+    }
+    if (card.ignoreButton) {
+        card.ignoreButton->setText(effectiveStatus.contains("已忽略") ? "取消忽略" : "忽略更新");
+        card.ignoreButton->setEnabled(info.hasUpdate || effectiveStatus.contains("已忽略"));
+    }
+    card.targetPath = targetPath;
+    downloadCards[info.filePath] = card;
+
+    if (effectiveStatus == "检查中..." || effectiveStatus == "计算 Hash 中...") {
+        setDownloadCardPreview(info.filePath, QString());
+    } else {
+        if (restoringDownloadCardsCache) {
+            setDownloadCardPreview(info.filePath, QString());
+        }
+        scheduleDownloadPreviewLoad(info.filePath);
+    }
+    updateDownloadStatus(info.filePath, effectiveStatus);
+    if (card.progressBar) card.progressBar->setValue(effectiveStatus.contains("完成") ? 100 : 0);
+}
+
+void MainWindow::updateDownloadStatus(const QString &filePath, const QString &status)
+{
+    if (!downloadCards.contains(filePath)) return;
+    DownloadCardWidgets card = downloadCards.value(filePath);
+    card.statusText = status;
+    if (card.statusLabel) {
+        QString displayStatus = status;
+        if (displayStatus.size() > 220) {
+            displayStatus = displayStatus.left(217) + "...";
+        }
+        card.statusLabel->setText(displayStatus);
+        card.statusLabel->setToolTip(status);
+    }
+    if (card.downloadButton) {
+        const bool busy = status.contains("下载中") || status.contains("认证重试") || status.contains("队列");
+        const bool hasUpdate = modelUpdateInfos.contains(filePath) && modelUpdateInfos.value(filePath).hasUpdate;
+        card.downloadButton->setEnabled(hasUpdate && !busy && !status.contains("完成") && !status.contains("已忽略"));
+    }
+    if (card.ignoreButton) {
+        const bool hasUpdate = modelUpdateInfos.contains(filePath) && modelUpdateInfos.value(filePath).hasUpdate;
+        card.ignoreButton->setText(status.contains("已忽略") ? "取消忽略" : "忽略更新");
+        card.ignoreButton->setEnabled(hasUpdate || status.contains("已忽略"));
+    }
+    downloadCards[filePath] = card;
+    placeDownloadCardInCategory(filePath, downloadCategoryForStatus(status));
+    updateDownloadSelectionSummary();
+}
+
+void MainWindow::loadDownloadCardsCache()
+{
+    if (downloadCardsCacheLoaded) return;
+    downloadCardsCacheLoaded = true;
+    const QString cachePath = qApp->applicationDirPath() + "/config/downloads.json";
+    QFile file(cachePath);
+    if (!file.open(QIODevice::ReadOnly)) return;
+
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    const QJsonArray items = doc.object().value("items").toArray();
+    restoringDownloadCardsCache = true;
+    for (const QJsonValue &val : items) {
+        const QJsonObject obj = val.toObject();
+        ModelUpdateInfo info;
+        info.filePath = obj.value("filePath").toString();
+        if (info.filePath.isEmpty()) continue;
+        info.modelDir = obj.value("modelDir").toString(QFileInfo(info.filePath).absolutePath());
+        info.baseName = obj.value("baseName").toString(QFileInfo(info.filePath).completeBaseName());
+        info.displayName = obj.value("displayName").toString(info.baseName);
+        info.currentVersion = obj.value("currentVersion").toString();
+        info.latestVersion = obj.value("latestVersion").toString();
+        info.downloadUrl = obj.value("downloadUrl").toString();
+        info.downloadFileName = obj.value("downloadFileName").toString();
+        info.sha256 = obj.value("sha256").toString();
+        info.latestVersionJson = obj.value("latestVersionJson").toObject();
+        info.modelId = obj.value("modelId").toInt();
+        info.currentVersionId = obj.value("currentVersionId").toInt();
+        info.latestVersionId = obj.value("latestVersionId").toInt();
+        info.sizeMB = obj.value("sizeMB").toDouble();
+        info.hasUpdate = obj.value("hasUpdate").toBool(false);
+        info.latestFileExistsLocally = obj.value("latestFileExistsLocally").toBool(false);
+
+        const QString status = obj.value("status").toString(info.hasUpdate ? "发现新版本" : "已是最新");
+        modelUpdateInfos.insert(info.filePath, info);
+        addOrUpdateDownloadCard(info, status);
+    }
+    restoringDownloadCardsCache = false;
+    sortAllDownloadCards();
+    ui->lblDownloadsStatus->setText(items.isEmpty() ? "暂无下载检查缓存。" : QString("已恢复上次下载列表，共 %1 个模型。").arg(items.size()));
+    if (downloadPreviewLoadTimer && !pendingDownloadPreviewLoads.isEmpty()) {
+        downloadPreviewLoadTimer->start(0);
+    }
+}
+
+void MainWindow::saveDownloadCardsCache() const
+{
+    if (!downloadCardsCacheLoaded) return;
+    QJsonArray items;
+    const QStringList categories = {"updates", "coexisting", "ignored", "latest", "errors", "local"};
+    for (const QString &category : categories) {
+        for (const QString &filePath : sortedDownloadFilePathsForCategory(category)) {
+            if (!modelUpdateInfos.contains(filePath)) continue;
+            const ModelUpdateInfo info = modelUpdateInfos.value(filePath);
+            const DownloadCardWidgets card = downloadCards.value(filePath);
+            QString status = card.statusText;
+            if (status.contains("检查中") || status.contains("计算 Hash")) continue;
+            if (status.contains("下载中") || status.contains("认证重试") || status.contains("队列")) {
+                status = info.hasUpdate ? "发现新版本" : "已是最新";
+            }
+
+            QJsonObject obj;
+            obj["filePath"] = info.filePath;
+            obj["modelDir"] = info.modelDir;
+            obj["baseName"] = info.baseName;
+            obj["displayName"] = info.displayName;
+            obj["currentVersion"] = info.currentVersion;
+            obj["latestVersion"] = info.latestVersion;
+            obj["downloadUrl"] = info.downloadUrl;
+            obj["downloadFileName"] = info.downloadFileName;
+            obj["sha256"] = info.sha256;
+            obj["latestVersionJson"] = info.latestVersionJson;
+            obj["modelId"] = info.modelId;
+            obj["currentVersionId"] = info.currentVersionId;
+            obj["latestVersionId"] = info.latestVersionId;
+            obj["sizeMB"] = info.sizeMB;
+            obj["hasUpdate"] = info.hasUpdate;
+            obj["latestFileExistsLocally"] = info.latestFileExistsLocally;
+            obj["status"] = status;
+            items.append(obj);
         }
     }
-    if (row < 0) {
-        row = ui->tableDownloads->rowCount();
-        ui->tableDownloads->insertRow(row);
-        for (int col = 0; col < ui->tableDownloads->columnCount(); ++col) {
-            ui->tableDownloads->setItem(row, col, new QTableWidgetItem());
-        }
-        auto *bar = new QProgressBar(ui->tableDownloads);
-        bar->setRange(0, 100);
-        bar->setValue(0);
-        bar->setTextVisible(true);
-        ui->tableDownloads->setCellWidget(row, 4, bar);
-    }
 
-    ui->tableDownloads->item(row, 0)->setText(info.displayName.isEmpty() ? QFileInfo(info.filePath).completeBaseName() : info.displayName);
-    ui->tableDownloads->item(row, 0)->setData(Qt::UserRole, info.filePath);
-    ui->tableDownloads->item(row, 1)->setText(info.currentVersion);
-    ui->tableDownloads->item(row, 2)->setText(info.latestVersion);
-    ui->tableDownloads->item(row, 3)->setText(info.sizeMB > 0 ? QString::number(info.sizeMB, 'f', 1) + " MB" : "--");
-    ui->tableDownloads->item(row, 5)->setText("--");
-    ui->tableDownloads->item(row, 6)->setText(status);
-    ui->tableDownloads->item(row, 7)->setText(info.downloadFileName.isEmpty() ? info.filePath : QDir(info.modelDir).filePath(info.downloadFileName));
-    ui->tableDownloads->item(row, 8)->setText(info.modelId > 0 ? QString("Civitai #%1").arg(info.modelId) : "Civitai");
-    if (auto *bar = qobject_cast<QProgressBar*>(ui->tableDownloads->cellWidget(row, 4))) {
-        bar->setValue(status.contains("完成") ? 100 : 0);
-    }
-    filterDownloadsTable();
+    const QString configDir = qApp->applicationDirPath() + "/config";
+    QDir().mkpath(configDir);
+    QSaveFile file(configDir + "/downloads.json");
+    if (!file.open(QIODevice::WriteOnly)) return;
+    QJsonObject root;
+    root["version"] = 1;
+    root["savedAt"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    root["items"] = items;
+    file.write(QJsonDocument(root).toJson());
+    file.commit();
 }
 
-void MainWindow::updateDownloadRowStatus(int row, const QString &status)
+void MainWindow::updateDownloadProgress(const QString &filePath, int percent, const QString &speedText)
 {
-    if (row < 0 || row >= ui->tableDownloads->rowCount()) return;
-    if (ui->tableDownloads->item(row, 6)) ui->tableDownloads->item(row, 6)->setText(status);
-    filterDownloadsTable();
+    const DownloadCardWidgets card = downloadCards.value(filePath);
+    if (card.progressBar) card.progressBar->setValue(qBound(0, percent, 100));
+    if (card.speedLabel) card.speedLabel->setText(speedText);
 }
 
-void MainWindow::updateDownloadRowProgress(int row, int percent, const QString &speedText)
+void MainWindow::filterDownloadCards()
 {
-    if (row < 0 || row >= ui->tableDownloads->rowCount()) return;
-    if (auto *bar = qobject_cast<QProgressBar*>(ui->tableDownloads->cellWidget(row, 4))) {
-        bar->setValue(qBound(0, percent, 100));
-    }
-    if (ui->tableDownloads->item(row, 5)) ui->tableDownloads->item(row, 5)->setText(speedText);
-}
-
-void MainWindow::filterDownloadsTable()
-{
-    const int filter = ui->comboDownloadsFilter->currentIndex();
-    for (int row = 0; row < ui->tableDownloads->rowCount(); ++row) {
-        const QString status = ui->tableDownloads->item(row, 6) ? ui->tableDownloads->item(row, 6)->text() : QString();
-        bool visible = true;
-        if (filter == 1) visible = status.contains("新版本");
-        else if (filter == 2) visible = status.contains("下载中");
-        else if (filter == 3) visible = status.contains("失败");
-        ui->tableDownloads->setRowHidden(row, !visible);
+    for (auto it = downloadCards.cbegin(); it != downloadCards.cend(); ++it) {
+        placeDownloadCardInCategory(it.key(), downloadCategoryForStatus(it.value().statusText));
     }
 }
 
-void MainWindow::startDownloadsForSelectedRows()
+QString MainWindow::downloadCategoryForStatus(const QString &status) const
+{
+    if (status.contains("已忽略")) return "ignored";
+    if (status.contains("旧版共存")) return "coexisting";
+    if (status.contains("本地") || status.contains("跳过")) return "local";
+    if (status.contains("失败") || status.contains("无法") || status.contains("错误") || status.contains("出错")) return "errors";
+    if (status.contains("已是最新")) return "latest";
+    return "updates";
+}
+
+QVBoxLayout *MainWindow::downloadLayoutForCategory(const QString &category) const
+{
+    if (category == "coexisting") return ui->downloadCardsLayoutCoexisting;
+    if (category == "ignored") return ui->downloadCardsLayoutIgnored;
+    if (category == "latest") return ui->downloadCardsLayoutLatest;
+    if (category == "errors") return ui->downloadCardsLayoutErrors;
+    if (category == "local") return ui->downloadCardsLayoutLocal;
+    return ui->downloadCardsLayout;
+}
+
+QStringList MainWindow::sortedDownloadFilePathsForCategory(const QString &category) const
+{
+    QStringList paths;
+    for (auto it = downloadCards.cbegin(); it != downloadCards.cend(); ++it) {
+        if (it.value().category == category) paths << it.key();
+    }
+
+    QCollator collator;
+    collator.setNumericMode(true);
+    collator.setCaseSensitivity(Qt::CaseInsensitive);
+    std::sort(paths.begin(), paths.end(), [this, &collator](const QString &a, const QString &b) {
+        const ModelUpdateInfo infoA = modelUpdateInfos.value(a);
+        const ModelUpdateInfo infoB = modelUpdateInfos.value(b);
+        QString nameA = infoA.displayName.isEmpty() ? QFileInfo(a).completeBaseName() : infoA.displayName;
+        QString nameB = infoB.displayName.isEmpty() ? QFileInfo(b).completeBaseName() : infoB.displayName;
+        const int cmp = collator.compare(nameA, nameB);
+        if (cmp != 0) return cmp < 0;
+        return collator.compare(a, b) < 0;
+    });
+    return paths;
+}
+
+void MainWindow::sortDownloadCardsInCategory(const QString &category)
+{
+    QVBoxLayout *layout = downloadLayoutForCategory(category);
+    if (!layout) return;
+    const QStringList paths = sortedDownloadFilePathsForCategory(category);
+    for (const QString &filePath : paths) {
+        const DownloadCardWidgets card = downloadCards.value(filePath);
+        if (!card.card) continue;
+        layout->removeWidget(card.card);
+        const int insertIndex = qMax(0, layout->count() - 1);
+        layout->insertWidget(insertIndex, card.card);
+    }
+}
+
+void MainWindow::sortAllDownloadCards()
+{
+    for (const QString &category : {"updates", "coexisting", "ignored", "latest", "errors", "local"}) {
+        sortDownloadCardsInCategory(category);
+    }
+}
+
+void MainWindow::placeDownloadCardInCategory(const QString &filePath, const QString &category)
+{
+    if (!downloadCards.contains(filePath)) return;
+    DownloadCardWidgets card = downloadCards.value(filePath);
+    if (!card.card) return;
+    if (card.category == category) {
+        if (!restoringDownloadCardsCache) sortDownloadCardsInCategory(category);
+        return;
+    }
+
+    if (QLayout *oldLayout = card.card->parentWidget() ? card.card->parentWidget()->layout() : nullptr) {
+        oldLayout->removeWidget(card.card);
+    }
+    QVBoxLayout *targetLayout = downloadLayoutForCategory(category);
+    if (targetLayout) {
+        const int insertIndex = qMax(0, targetLayout->count() - 1);
+        targetLayout->insertWidget(insertIndex, card.card);
+    }
+    card.category = category;
+    downloadCards[filePath] = card;
+    if (!restoringDownloadCardsCache) sortDownloadCardsInCategory(category);
+    updateDownloadSelectionSummary();
+}
+
+void MainWindow::startDownloadsForSelectedCards()
 {
     bool queued = false;
-    for (int row : selectedDownloadRows()) {
-        QTableWidgetItem *item = ui->tableDownloads->item(row, 0);
-        if (!item) continue;
-        const QString filePath = item->data(Qt::UserRole).toString();
+    for (const QString &filePath : selectedDownloadFilePaths()) {
         if (!modelUpdateInfos.contains(filePath)) continue;
         const ModelUpdateInfo info = modelUpdateInfos.value(filePath);
         if (!info.hasUpdate) continue;
@@ -6028,6 +6756,187 @@ void MainWindow::startDownloadsForSelectedRows()
         queued = true;
     }
     if (!queued) ui->lblDownloadsStatus->setText("没有可下载的选中更新。");
+}
+
+void MainWindow::removeDownloadCard(const QString &filePath)
+{
+    DownloadCardWidgets card = downloadCards.take(filePath);
+    modelUpdateInfos.remove(filePath);
+    if (card.card) {
+        card.card->removeEventFilter(this);
+        if (QLayout *layout = card.card->parentWidget() ? card.card->parentWidget()->layout() : nullptr) {
+            layout->removeWidget(card.card);
+        }
+        card.card->deleteLater();
+    }
+    updateDownloadSelectionSummary();
+    saveDownloadCardsCache();
+}
+
+QListWidgetItem *MainWindow::findModelItemByFilePath(const QString &filePath) const
+{
+    const QString normalized = QFileInfo(filePath).absoluteFilePath();
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (!isModelListItem(item)) continue;
+        if (QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath() == normalized) {
+            return item;
+        }
+    }
+    return nullptr;
+}
+
+void MainWindow::jumpToDownloadSource(const QString &filePath)
+{
+    QListWidgetItem *item = findModelItemByFilePath(filePath);
+    if (!item) {
+        ui->lblDownloadsStatus->setText("模型已不在当前列表中，无法跳转。");
+        return;
+    }
+    onMenuSwitchToLibrary();
+    ui->modelList->setCurrentItem(item);
+    item->setSelected(true);
+    ui->modelList->scrollToItem(item, QAbstractItemView::PositionAtCenter);
+    onModelListClicked(item);
+}
+
+void MainWindow::openDownloadCivitaiPage(const QString &filePath)
+{
+    int modelId = modelUpdateInfos.value(filePath).modelId;
+    if (modelId <= 0) {
+        if (QListWidgetItem *item = findModelItemByFilePath(filePath)) {
+            modelId = item->data(ROLE_CIVITAI_MODEL_ID).toInt();
+        }
+    }
+    if (modelId <= 0) {
+        ui->lblDownloadsStatus->setText("该任务没有可打开的 Civitai 模型 ID。");
+        return;
+    }
+    QDesktopServices::openUrl(QUrl(QString("https://civitai.com/models/%1").arg(modelId)));
+}
+
+QString MainWindow::resolveDownloadPreviewPath(const ModelUpdateInfo &info) const
+{
+    if (QListWidgetItem *item = findModelItemByFilePath(info.filePath)) {
+        const QString itemPreview = item->data(ROLE_PREVIEW_PATH).toString();
+        if (!itemPreview.isEmpty() && QFile::exists(itemPreview)) return itemPreview;
+    }
+    const QString fallback = findLocalPreviewPath(info.modelDir, info.baseName, QString(), 0);
+    if (!fallback.isEmpty() && QFile::exists(fallback)) return fallback;
+    return QString();
+}
+
+void MainWindow::setDownloadCardPreview(const QString &filePath, const QString &previewPath)
+{
+    const DownloadCardWidgets card = downloadCards.value(filePath);
+    if (!card.previewLabel) return;
+
+    QPixmap pix;
+    if (!previewPath.isEmpty() && QFile::exists(previewPath)) {
+        pix.load(previewPath);
+    }
+    if (pix.isNull()) {
+        pix = placeholderIcon.pixmap(96, 128);
+    }
+    pix = pix.scaled(card.previewLabel->size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+    const int x = qMax(0, (pix.width() - card.previewLabel->width()) / 2);
+    const int y = qMax(0, (pix.height() - card.previewLabel->height()) / 2);
+    pix = pix.copy(x, y, card.previewLabel->width(), card.previewLabel->height());
+    card.previewLabel->setPixmap(applyRoundedMask(pix, 6));
+}
+
+void MainWindow::scheduleDownloadPreviewLoad(const QString &filePath)
+{
+    if (filePath.isEmpty() || queuedDownloadPreviewLoads.contains(filePath)) return;
+    if (!downloadCards.contains(filePath) || !modelUpdateInfos.contains(filePath)) return;
+    queuedDownloadPreviewLoads.insert(filePath);
+    pendingDownloadPreviewLoads.enqueue(filePath);
+    if (downloadPreviewLoadTimer && !downloadPreviewLoadTimer->isActive()) {
+        downloadPreviewLoadTimer->start(0);
+    }
+}
+
+void MainWindow::processDownloadPreviewLoadBatch()
+{
+    if (isShuttingDown) return;
+    constexpr int kBatchSize = 8;
+    constexpr int kMaxActive = 4;
+    int processed = 0;
+    while (processed < kBatchSize &&
+           activeDownloadPreviewLoads.size() < kMaxActive &&
+           !pendingDownloadPreviewLoads.isEmpty()) {
+        const QString filePath = pendingDownloadPreviewLoads.dequeue();
+        queuedDownloadPreviewLoads.remove(filePath);
+        if (downloadCards.contains(filePath) && modelUpdateInfos.contains(filePath)) {
+            const QString previewPath = resolveDownloadPreviewPath(modelUpdateInfos.value(filePath));
+            if (!previewPath.isEmpty() && QFile::exists(previewPath)) {
+                activeDownloadPreviewLoads.insert(filePath);
+                auto *watcher = new QFutureWatcher<DownloadPreviewLoadResult>(this);
+                activeDownloadPreviewWatchers.append(watcher);
+                connect(watcher, &QFutureWatcher<DownloadPreviewLoadResult>::finished,
+                        this, &MainWindow::onDownloadPreviewLoaded);
+                watcher->setFuture(QtConcurrent::run(backgroundThreadPool,
+                                                     &MainWindow::processDownloadPreviewTask,
+                                                     filePath,
+                                                     previewPath));
+            }
+        }
+        ++processed;
+    }
+    if (downloadPreviewLoadTimer && !pendingDownloadPreviewLoads.isEmpty()) {
+        downloadPreviewLoadTimer->start(16);
+    }
+}
+
+DownloadPreviewLoadResult MainWindow::processDownloadPreviewTask(const QString &filePath, const QString &previewPath)
+{
+    DownloadPreviewLoadResult result;
+    result.filePath = filePath;
+    result.previewPath = previewPath;
+    QImage src(previewPath);
+    if (src.isNull()) return result;
+
+    const QSize targetSize(96, 128);
+    QImage scaled = src.scaled(targetSize, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+    const int x = qMax(0, (scaled.width() - targetSize.width()) / 2);
+    const int y = qMax(0, (scaled.height() - targetSize.height()) / 2);
+    scaled = scaled.copy(x, y, targetSize.width(), targetSize.height());
+
+    QImage rounded(targetSize, QImage::Format_ARGB32_Premultiplied);
+    rounded.fill(Qt::transparent);
+    QPainter painter(&rounded);
+    painter.setRenderHint(QPainter::Antialiasing);
+    QPainterPath path;
+    path.addRoundedRect(QRectF(QPointF(0, 0), QSizeF(targetSize)), 6, 6);
+    painter.setClipPath(path);
+    painter.drawImage(0, 0, scaled);
+    painter.end();
+
+    result.image = rounded;
+    result.valid = true;
+    return result;
+}
+
+void MainWindow::onDownloadPreviewLoaded()
+{
+    auto *watcher = static_cast<QFutureWatcher<DownloadPreviewLoadResult>*>(sender());
+    if (!watcher) return;
+    const DownloadPreviewLoadResult result = watcher->result();
+    activeDownloadPreviewWatchers.removeAll(watcher);
+    watcher->deleteLater();
+    activeDownloadPreviewLoads.remove(result.filePath);
+
+    if (!isShuttingDown && result.valid && downloadCards.contains(result.filePath)) {
+        const DownloadCardWidgets card = downloadCards.value(result.filePath);
+        if (card.previewLabel) {
+            card.previewLabel->setPixmap(QPixmap::fromImage(result.image));
+        }
+    }
+
+    if (downloadPreviewLoadTimer &&
+        (!pendingDownloadPreviewLoads.isEmpty() || !activeDownloadPreviewLoads.isEmpty())) {
+        downloadPreviewLoadTimer->start(16);
+    }
 }
 
 void MainWindow::enqueueModelFileDownload(const ModelUpdateInfo &info)
@@ -6040,16 +6949,20 @@ void MainWindow::enqueueModelFileDownload(const ModelUpdateInfo &info)
     task.info = info;
     task.targetPath = targetPath;
     task.tempPath = targetPath + ".part";
+    task.filePath = info.filePath;
     task.overwrite = overwrite;
-    for (int row = 0; row < ui->tableDownloads->rowCount(); ++row) {
-        if (ui->tableDownloads->item(row, 0)->data(Qt::UserRole).toString() == info.filePath) {
-            task.row = row;
-            ui->tableDownloads->item(row, 7)->setText(targetPath);
-            break;
+    if (downloadCards.contains(info.filePath)) {
+        DownloadCardWidgets card = downloadCards.value(info.filePath);
+        card.targetPath = targetPath;
+        if (card.targetLabel) {
+            card.targetLabel->setText("目标: " + targetPath);
+            card.targetLabel->setToolTip(targetPath);
         }
+        downloadCards[info.filePath] = card;
     }
     modelDownloadQueue.enqueue(task);
     canceledModelDownloadPaths.remove(info.filePath);
+    updateDownloadStatus(info.filePath, "已加入下载队列");
     if (!isModelDownloading) processNextModelDownload();
 }
 
@@ -6115,7 +7028,7 @@ void MainWindow::processNextModelDownload()
 
     activeModelDownloadFile = new QFile(activeModelDownloadTask.tempPath, this);
     if (!activeModelDownloadFile->open(QIODevice::WriteOnly)) {
-        updateDownloadRowStatus(activeModelDownloadTask.row, "失败: 无法写入目标路径");
+        updateDownloadStatus(activeModelDownloadTask.info.filePath, "失败: 无法写入目标路径");
         activeModelDownloadFile->deleteLater();
         activeModelDownloadFile = nullptr;
         QTimer::singleShot(0, this, &MainWindow::processNextModelDownload);
@@ -6124,8 +7037,8 @@ void MainWindow::processNextModelDownload()
 
     activeModelDownloadedBytes = 0;
     modelDownloadTimer.restart();
-    updateDownloadRowStatus(activeModelDownloadTask.row, "下载中...");
-    updateDownloadRowProgress(activeModelDownloadTask.row, 0, "--");
+    updateDownloadStatus(activeModelDownloadTask.info.filePath, "下载中...");
+    updateDownloadProgress(activeModelDownloadTask.info.filePath, 0, "--");
 
     const QUrl downloadUrl(activeModelDownloadTask.info.downloadUrl);
     const bool downloadHasToken = QUrlQuery(downloadUrl).hasQueryItem("token");
@@ -6142,7 +7055,7 @@ void MainWindow::processNextModelDownload()
         int percent = total > 0 ? int((received * 100) / total) : 0;
         const double seconds = qMax(0.1, double(modelDownloadTimer.elapsed()) / 1000.0);
         const double mbps = (double(received) / 1024.0 / 1024.0) / seconds;
-        updateDownloadRowProgress(activeModelDownloadTask.row, percent, QString::number(mbps, 'f', 2) + " MB/s");
+        updateDownloadProgress(activeModelDownloadTask.info.filePath, percent, QString::number(mbps, 'f', 2) + " MB/s");
     });
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         if (activeModelDownloadFile) {
@@ -6167,12 +7080,12 @@ void MainWindow::processNextModelDownload()
                 QFile::remove(activeModelDownloadTask.tempPath);
                 activeModelDownloadTask.info.downloadUrl = civitaiUrlWithToken(QUrl(activeModelDownloadTask.info.downloadUrl)).toString();
                 modelDownloadQueue.enqueue(activeModelDownloadTask);
-                updateDownloadRowStatus(activeModelDownloadTask.row, "认证重试中...");
+                updateDownloadStatus(activeModelDownloadTask.info.filePath, "认证重试中...");
                 QTimer::singleShot(0, this, &MainWindow::processNextModelDownload);
                 return;
             }
             QFile::remove(activeModelDownloadTask.tempPath);
-            updateDownloadRowStatus(activeModelDownloadTask.row, "失败: " + civitaiNetworkErrorMessage(reply));
+            updateDownloadStatus(activeModelDownloadTask.info.filePath, "失败: " + civitaiNetworkErrorMessage(reply));
             QTimer::singleShot(0, this, &MainWindow::processNextModelDownload);
             return;
         }
@@ -6182,7 +7095,7 @@ void MainWindow::processNextModelDownload()
             const QString actual = calculateFileHash(activeModelDownloadTask.tempPath);
             if (!actual.isEmpty() && actual.compare(expected, Qt::CaseInsensitive) != 0) {
                 QFile::remove(activeModelDownloadTask.tempPath);
-                updateDownloadRowStatus(activeModelDownloadTask.row, "失败: SHA256 校验失败");
+                updateDownloadStatus(activeModelDownloadTask.info.filePath, "失败: SHA256 校验失败");
                 QTimer::singleShot(0, this, &MainWindow::processNextModelDownload);
                 return;
             }
@@ -6201,11 +7114,11 @@ void MainWindow::finishModelDownload(const ModelFileDownloadTask &task, const QB
     }
     if (QFile::exists(task.targetPath) && task.targetPath != task.tempPath) {
         QFile::remove(task.tempPath);
-        updateDownloadRowStatus(task.row, "失败: 目标文件已存在");
+        updateDownloadStatus(task.info.filePath, "失败: 目标文件已存在");
         return;
     }
     if (!QFile::rename(task.tempPath, task.targetPath)) {
-        updateDownloadRowStatus(task.row, "失败: 无法移动下载文件");
+        updateDownloadStatus(task.info.filePath, "失败: 无法移动下载文件");
         return;
     }
 
@@ -6226,8 +7139,9 @@ void MainWindow::finishModelDownload(const ModelFileDownloadTask &task, const QB
             break;
         }
     }
-    updateDownloadRowProgress(task.row, 100, "--");
-    updateDownloadRowStatus(task.row, "下载完成");
+    updateDownloadProgress(task.info.filePath, 100, "--");
+    updateDownloadStatus(task.info.filePath, "下载完成");
+    saveDownloadCardsCache();
     ui->lblDownloadsStatus->setText("模型下载完成: " + QFileInfo(task.targetPath).fileName());
 
     const QStringList activeLoraPaths = collectEnabledPaths(loraPaths, disabledLoraPaths);

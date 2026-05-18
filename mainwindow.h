@@ -31,6 +31,10 @@
 #include <QTreeWidget>
 #include <QColor>
 #include <QElapsedTimer>
+#include <QCheckBox>
+#include <QFrame>
+#include <QProgressBar>
+#include <QVBoxLayout>
 
 #include "tagflowwidget.h"
 
@@ -74,7 +78,7 @@ const int ROLE_CIVITAI_MODEL_ID     = Qt::UserRole + 41;
 const int ROLE_CIVITAI_VERSION_ID   = Qt::UserRole + 42;
 const int ROLE_CIVITAI_SHA256       = Qt::UserRole + 43;
 
-const QString CURRENT_VERSION = "1.4.0";
+const QString CURRENT_VERSION = "1.4.1";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
@@ -111,19 +115,58 @@ struct ModelUpdateInfo {
     int latestVersionId = 0;
     double sizeMB = 0.0;
     bool hasUpdate = false;
+    bool latestFileExistsLocally = false;
+};
+
+struct UpdateCheckSnapshot {
+    QString filePath;
+    QString modelDir;
+    QString baseName;
+    QString displayName;
+    QString currentSha256;
+    int modelId = 0;
+    int currentVersionId = 0;
+    bool localEdited = false;
 };
 
 struct ModelFileDownloadTask {
     ModelUpdateInfo info;
     QString targetPath;
     QString tempPath;
-    int row = -1;
+    QString filePath;
     bool overwrite = false;
+};
+
+struct DownloadCardWidgets {
+    QPointer<QFrame> card;
+    QPointer<QLabel> previewLabel;
+    QPointer<QLabel> titleLabel;
+    QPointer<QLabel> versionLabel;
+    QPointer<QLabel> sizeLabel;
+    QPointer<QLabel> speedLabel;
+    QPointer<QLabel> statusLabel;
+    QPointer<QLabel> targetLabel;
+    QPointer<QProgressBar> progressBar;
+    QPointer<QPushButton> sourceButton;
+    QPointer<QPushButton> civitaiButton;
+    QPointer<QPushButton> downloadButton;
+    QPointer<QPushButton> ignoreButton;
+    QString statusText;
+    QString targetPath;
+    QString category;
+    bool selected = false;
 };
 
 struct ImageLoadResult {
     QString path;
     QImage originalImg; // 只存原图，模糊交给主线程做
+    bool valid = false;
+};
+
+struct DownloadPreviewLoadResult {
+    QString filePath;
+    QString previewPath;
+    QImage image;
     bool valid = false;
 };
 
@@ -203,6 +246,7 @@ private slots:
     void onApiMetadataReceived(QNetworkReply *reply);
     void onImageDownloaded(QNetworkReply *reply);
     void onGalleryImageClicked(int index);
+    void onDownloadPreviewLoaded();
     void onHomeButtonClicked(); // 切换到主页
     void onHomeGalleryClicked(QListWidgetItem *item); // 主页大图点击跳转
     void onSidebarContextMenu(const QPoint &pos); // 侧边栏右键
@@ -336,19 +380,46 @@ private:
     void onMenuSwitchToDownloads();
     void checkUpdatesForItems(const QList<QListWidgetItem*> &items);
     void checkUpdateForItem(QListWidgetItem *item);
+    void checkUpdateForSnapshot(const UpdateCheckSnapshot &snapshot);
+    void dispatchQueuedUpdateChecks();
+    void enqueueUpdateHashCheck(const UpdateCheckSnapshot &snapshot);
+    void dispatchUpdateHashChecks();
+    void markUpdateCheckFinished();
     void handleModelUpdateReply(QNetworkReply *reply);
     ModelUpdateInfo parseModelUpdateInfo(QListWidgetItem *item, const QJsonObject &modelRoot) const;
-    void addOrUpdateDownloadRow(const ModelUpdateInfo &info, const QString &status);
-    void updateDownloadRowStatus(int row, const QString &status);
-    void updateDownloadRowProgress(int row, int percent, const QString &speedText);
-    QList<int> selectedDownloadRows() const;
-    void startDownloadsForSelectedRows();
+    void addOrUpdateDownloadCard(const ModelUpdateInfo &info, const QString &status);
+    void loadDownloadCardsCache();
+    void saveDownloadCardsCache() const;
+    void updateDownloadStatus(const QString &filePath, const QString &status);
+    void updateDownloadProgress(const QString &filePath, int percent, const QString &speedText);
+    QStringList selectedDownloadFilePaths() const;
+    void startDownloadsForSelectedCards();
     void enqueueModelFileDownload(const ModelUpdateInfo &info);
     void processNextModelDownload();
     QString chooseModelDownloadTarget(const ModelUpdateInfo &info, bool *overwrite);
     QString uniqueFilePath(const QString &dirPath, const QString &fileName) const;
     void finishModelDownload(const ModelFileDownloadTask &task, const QByteArray &data);
-    void filterDownloadsTable();
+    void filterDownloadCards();
+    QString downloadCategoryForStatus(const QString &status) const;
+    QVBoxLayout *downloadLayoutForCategory(const QString &category) const;
+    QStringList sortedDownloadFilePathsForCategory(const QString &category) const;
+    void sortDownloadCardsInCategory(const QString &category);
+    void sortAllDownloadCards();
+    QString currentDownloadCategory() const;
+    QStringList downloadFilePathsForCategory(const QString &category) const;
+    void updateDownloadSelectionSummary();
+    void setCurrentDownloadTabSelection(bool checked);
+    void setDownloadCardSelected(const QString &filePath, bool selected);
+    void placeDownloadCardInCategory(const QString &filePath, const QString &category);
+    void removeDownloadCard(const QString &filePath);
+    void jumpToDownloadSource(const QString &filePath);
+    void openDownloadCivitaiPage(const QString &filePath);
+    QListWidgetItem *findModelItemByFilePath(const QString &filePath) const;
+    QString resolveDownloadPreviewPath(const ModelUpdateInfo &info) const;
+    void setDownloadCardPreview(const QString &filePath, const QString &previewPath);
+    void scheduleDownloadPreviewLoad(const QString &filePath);
+    void processDownloadPreviewLoadBatch();
+    static DownloadPreviewLoadResult processDownloadPreviewTask(const QString &filePath, const QString &previewPath);
     void beginGalleryBuild(const ModelMeta &meta);
     void buildGalleryBatch();
     void addGalleryThumbButton(const ModelMeta &meta, int index, const QString &modelDir, const QString &baseName);
@@ -392,6 +463,22 @@ private:
     bool isModelDownloading = false;
     QElapsedTimer modelDownloadTimer;
     QHash<QString, ModelUpdateInfo> modelUpdateInfos;
+    QHash<QString, DownloadCardWidgets> downloadCards;
+    bool downloadCardsCacheLoaded = false;
+    bool restoringDownloadCardsCache = false;
+    bool isShuttingDown = false;
+    QQueue<QString> pendingDownloadPreviewLoads;
+    QSet<QString> queuedDownloadPreviewLoads;
+    QSet<QString> activeDownloadPreviewLoads;
+    QList<QPointer<QFutureWatcher<DownloadPreviewLoadResult>>> activeDownloadPreviewWatchers;
+    QTimer *downloadPreviewLoadTimer = nullptr;
+    QQueue<UpdateCheckSnapshot> pendingUpdateChecksQueue;
+    QQueue<UpdateCheckSnapshot> pendingUpdateHashChecks;
+    int activeUpdateNetworkChecks = 0;
+    int activeUpdateHashChecks = 0;
+    int pendingUpdateChecks = 0;
+    int completedUpdateChecks = 0;
+    int updateCheckToken = 0;
 
 
     TagFlowWidget *tagFlowWidget;

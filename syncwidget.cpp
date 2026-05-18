@@ -40,6 +40,28 @@ SyncWidget::SyncWidget(QWidget *parent) :
 SyncWidget::~SyncWidget()
 {
     saveSettings();
+    if (watcher) {
+        watcher->disconnect(this);
+        const QStringList watchedFiles = watcher->files();
+        if (!watchedFiles.isEmpty()) watcher->removePaths(watchedFiles);
+        const QStringList watchedDirs = watcher->directories();
+        if (!watchedDirs.isEmpty()) watcher->removePaths(watchedDirs);
+    }
+    if (tcpServer) {
+        tcpServer->disconnect(this);
+        tcpServer->close();
+    }
+    const QList<QTcpSocket*> sockets = clients;
+    for (QTcpSocket *client : sockets) {
+        if (!client) continue;
+        client->disconnect(this);
+        client->abort();
+        client->setParent(nullptr);
+        delete client;
+    }
+    clients.clear();
+    m_clientExpectedSizes.clear();
+    m_authenticatedClients.clear();
     delete ui;
 }
 
