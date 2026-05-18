@@ -49,6 +49,8 @@
 #include <algorithm>
 #include <functional>
 #include <utility>
+#include <QElapsedTimer>
+#include <QSharedPointer>
 
 #include "imageloader.h"
 #include "llmpromptwidget.h"
@@ -4944,6 +4946,36 @@ void MainWindow::processNextDownload()
         QNetworkReply *reply = netManager->get(req);
         reply->setProperty("isGalleryDownload", true); // 加上标识以便切换页面时精准 abort()
 
+        // --- 新增：测速计时器 ---
+        QSharedPointer<QElapsedTimer> timer = QSharedPointer<QElapsedTimer>::create();
+        timer->start();
+
+        // --- 新增：进度和网速回调 ---
+        connect(reply, &QNetworkReply::downloadProgress, this, [task, timer](qint64 received, qint64 total) {
+            if (task.button.isNull()) return;
+
+            if (total > 0) {
+                int percent = static_cast<int>((received * 100) / total);
+                double seconds = timer->elapsed() / 1000.0;
+                QString speedStr;
+
+                // 超过0.1秒再计算速度避免除零或数据跳动
+                if (seconds > 0.1) {
+                    double speedKB = (received / 1024.0) / seconds;
+                    if (speedKB > 1024.0) {
+                        speedStr = QString::number(speedKB / 1024.0, 'f', 1) + " MB/s";
+                    } else {
+                        speedStr = QString::number(speedKB, 'f', 0) + " KB/s";
+                    }
+                }
+                // 按钮上显示如： "45%\n1.2 MB/s"
+                task.button->setText(QString("%1%\n%2").arg(percent).arg(speedStr));
+            } else if (received > 0) {
+                // 如果总大小未知
+                task.button->setText(QString("%1 KB").arg(received / 1024));
+            }
+        });
+
         connect(reply, &QNetworkReply::finished, this, [this, reply, task, cleanedSavePath](){
             reply->deleteLater();
 
@@ -4962,8 +4994,17 @@ void MainWindow::processNextDownload()
                     QTimer::singleShot(0, this, &MainWindow::processNextDownload);
                     return;
                 }
-                if (task.button) task.button->setText("Error");
-                qDebug() << "Queued preview download failed:" << civitaiNetworkErrorMessage(reply);
+
+                // --- 新增：暴露具体的 SSL / 网络错误到界面 ---
+                QString errStr = reply->errorString();
+                if (errStr.contains("TLS", Qt::CaseInsensitive) || errStr.contains("SSL", Qt::CaseInsensitive) || errStr.contains("handshake", Qt::CaseInsensitive)) {
+                    if (task.button) task.button->setText("SSL Error");
+                    ui->statusbar->showMessage("HTTPS 连接失败: 缺失 OpenSSL 运行库 (libcrypto / libssl)", 8000);
+                } else {
+                    if (task.button) task.button->setText(QString("Err: %1").arg(status > 0 ? QString::number(status) : "Net"));
+                }
+
+                qDebug() << "Queued preview download failed:" << civitaiNetworkErrorMessage(reply) << errStr;
                 QTimer::singleShot(500, this, &MainWindow::processNextDownload);
                 return;
             }
