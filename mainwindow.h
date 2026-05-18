@@ -78,7 +78,7 @@ const int ROLE_CIVITAI_MODEL_ID     = Qt::UserRole + 41;
 const int ROLE_CIVITAI_VERSION_ID   = Qt::UserRole + 42;
 const int ROLE_CIVITAI_SHA256       = Qt::UserRole + 43;
 
-const QString CURRENT_VERSION = "1.4.1";
+const QString CURRENT_VERSION = "1.4.2";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
@@ -557,6 +557,7 @@ private:
     bool    optSuppressLocalWarnings = false;           // 隐藏本地模型总量提醒
     int     optUserGalleryMatchMode = 0;                // 0: 当前逻辑匹配, 1: 摘要值匹配(可回退), 2: 严格摘要值匹配(不回退)
     int     optModelUpdateDownloadPolicy = 0;           // 0: 每次询问, 1: 保留旧版, 2: 覆盖当前文件
+    double  optUiScale = 1.0;                           // 缩放比率
     // 保存与加载
     void loadGlobalConfig();        // 加载配置
     void saveGlobalConfig();        // 保存配置

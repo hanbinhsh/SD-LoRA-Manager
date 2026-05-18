@@ -2617,8 +2617,8 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>63</width>
-                 <height>16</height>
+                 <width>956</width>
+                 <height>889</height>
                 </rect>
                </property>
                <layout class="QVBoxLayout" name="downloadCardsLayoutCoexisting">
@@ -2686,8 +2686,8 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>63</width>
-                 <height>16</height>
+                 <width>956</width>
+                 <height>889</height>
                 </rect>
                </property>
                <layout class="QVBoxLayout" name="downloadCardsLayoutIgnored">
@@ -2755,8 +2755,8 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>63</width>
-                 <height>16</height>
+                 <width>956</width>
+                 <height>889</height>
                 </rect>
                </property>
                <layout class="QVBoxLayout" name="downloadCardsLayoutLatest">
@@ -2824,8 +2824,8 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>63</width>
-                 <height>16</height>
+                 <width>956</width>
+                 <height>889</height>
                 </rect>
                </property>
                <layout class="QVBoxLayout" name="downloadCardsLayoutErrors">
@@ -2893,8 +2893,8 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>63</width>
-                 <height>16</height>
+                 <width>956</width>
+                 <height>889</height>
                 </rect>
                </property>
                <layout class="QVBoxLayout" name="downloadCardsLayoutLocal">
@@ -3185,14 +3185,7 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
              <string>外观 / Appearance</string>
             </property>
             <layout class="QGridLayout" name="gridLayout">
-             <item row="0" column="0">
-              <widget class="QLabel" name="lblBlur">
-               <property name="text">
-                <string>背景模糊半径 / Blur Radius:</string>
-               </property>
-              </widget>
-             </item>
-             <item row="10" column="0" colspan="3">
+             <item row="12" column="0" colspan="3">
               <widget class="QCheckBox" name="chkCollectionFolderTopLevel">
                <property name="toolTip">
                 <string>勾选后，Collections 侧边栏先按 LoRA 根目录分组，再在每个文件夹下显示收藏夹。</string>
@@ -3202,27 +3195,14 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
                </property>
               </widget>
              </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="lblBlur">
+               <property name="text">
+                <string>背景模糊半径 / Blur Radius:</string>
+               </property>
+              </widget>
+             </item>
              <item row="5" column="0">
-              <widget class="QCheckBox" name="chkUseCivitaiName">
-               <property name="toolTip">
-                <string>勾选后，如果本地存在 JSON 元数据，将显示模型的真实名称（如 'ChilloutMix [Pruned]'）而非文件名。</string>
-               </property>
-               <property name="text">
-                <string>使用 Civitai 模型名称 / Use Civitai Name</string>
-               </property>
-              </widget>
-             </item>
-             <item row="12" column="0" colspan="3">
-              <widget class="QCheckBox" name="chkModelListFolderGrouping">
-               <property name="toolTip">
-                <string>勾选后，Models 列表会按已启用的 LoRA 根目录分组显示。</string>
-               </property>
-               <property name="text">
-                <string>Models 列表按文件夹分类 / Group Models by Folder</string>
-               </property>
-              </widget>
-             </item>
-             <item row="3" column="0">
               <widget class="QCheckBox" name="chkRestoreTreeState">
                <property name="toolTip">
                 <string>下次启动时，保持当前收藏夹的展开状态和滚动条位置。</string>
@@ -3236,62 +3216,43 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
               </widget>
              </item>
              <item row="7" column="0">
+              <widget class="QCheckBox" name="chkUseCivitaiName">
+               <property name="toolTip">
+                <string>勾选后，如果本地存在 JSON 元数据，将显示模型的真实名称（如 'ChilloutMix [Pruned]'）而非文件名。</string>
+               </property>
+               <property name="text">
+                <string>使用 Civitai 模型名称 / Use Civitai Name</string>
+               </property>
+              </widget>
+             </item>
+             <item row="9" column="0">
               <widget class="Line" name="line_4">
                <property name="orientation">
                 <enum>Qt::Orientation::Horizontal</enum>
                </property>
               </widget>
              </item>
-             <item row="1" column="1" colspan="2">
-              <widget class="QSpinBox" name="spinBlurWidth">
-               <property name="suffix">
-                <string> px</string>
-               </property>
-               <property name="minimum">
-                <number>64</number>
-               </property>
-               <property name="maximum">
-                <number>2048</number>
-               </property>
-               <property name="value">
-                <number>500</number>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="0">
-              <widget class="QCheckBox" name="chkDownscaleBlur">
+             <item row="10" column="0">
+              <widget class="QCheckBox" name="chkShowEmptyCollections">
                <property name="toolTip">
-                <string>开启后会先将原图缩小再模糊，能极大提高大图背景的生成速度。</string>
+                <string>如果取消勾选，不包含任何模型（或被搜索过滤后为空）的收藏夹将不会显示在侧边栏中。</string>
                </property>
                <property name="text">
-                <string>模糊前缩放图片 / Scale before blur</string>
+                <string>显示空的收藏夹 / Show Empty Collections</string>
+               </property>
+               <property name="checked">
+                <bool>false</bool>
                </property>
               </widget>
              </item>
-             <item row="11" column="0" colspan="3">
-              <widget class="QCheckBox" name="chkCollectionFolderSecondLevel">
-               <property name="toolTip">
-                <string>勾选后，Collections 侧边栏先显示收藏夹，再在收藏夹下按 LoRA 根目录分组。</string>
-               </property>
-               <property name="text">
-                <string>将文件夹作为收藏夹二级分类 / Folder as Second Collection Level</string>
+             <item row="4" column="0">
+              <widget class="Line" name="line_8">
+               <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
                </property>
               </widget>
              </item>
-             <item row="0" column="2">
-              <widget class="QLabel" name="lblBlurValue">
-               <property name="minimumSize">
-                <size>
-                 <width>40</width>
-                 <height>0</height>
-                </size>
-               </property>
-               <property name="text">
-                <string>30px</string>
-               </property>
-              </widget>
-             </item>
-             <item row="0" column="1">
+             <item row="1" column="1">
               <widget class="QSlider" name="sliderBlur">
                <property name="minimum">
                 <number>0</number>
@@ -3307,7 +3268,27 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
                </property>
               </widget>
              </item>
-             <item row="6" column="0">
+             <item row="13" column="0" colspan="3">
+              <widget class="QCheckBox" name="chkCollectionFolderSecondLevel">
+               <property name="toolTip">
+                <string>勾选后，Collections 侧边栏先显示收藏夹，再在收藏夹下按 LoRA 根目录分组。</string>
+               </property>
+               <property name="text">
+                <string>将文件夹作为收藏夹二级分类 / Folder as Second Collection Level</string>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="0">
+              <widget class="QCheckBox" name="chkDownscaleBlur">
+               <property name="toolTip">
+                <string>开启后会先将原图缩小再模糊，能极大提高大图背景的生成速度。</string>
+               </property>
+               <property name="text">
+                <string>模糊前缩放图片 / Scale before blur</string>
+               </property>
+              </widget>
+             </item>
+             <item row="8" column="0">
               <widget class="QCheckBox" name="chkSuppressLocalWarnings">
                <property name="toolTip">
                 <string>勾选后，不再弹出“检测到 X 个本地/已编辑模型”的总量提醒；单个模型的覆盖确认仍会保留。</string>
@@ -3317,23 +3298,65 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
                </property>
               </widget>
              </item>
-             <item row="2" column="0">
-              <widget class="Line" name="line_8">
-               <property name="orientation">
-                <enum>Qt::Orientation::Horizontal</enum>
+             <item row="1" column="2">
+              <widget class="QLabel" name="lblBlurValue">
+               <property name="minimumSize">
+                <size>
+                 <width>40</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="text">
+                <string>30px</string>
                </property>
               </widget>
              </item>
-             <item row="8" column="0">
-              <widget class="QCheckBox" name="chkShowEmptyCollections">
+             <item row="14" column="0" colspan="3">
+              <widget class="QCheckBox" name="chkModelListFolderGrouping">
                <property name="toolTip">
-                <string>如果取消勾选，不包含任何模型（或被搜索过滤后为空）的收藏夹将不会显示在侧边栏中。</string>
+                <string>勾选后，Models 列表会按已启用的 LoRA 根目录分组显示。</string>
                </property>
                <property name="text">
-                <string>显示空的收藏夹 / Show Empty Collections</string>
+                <string>Models 列表按文件夹分类 / Group Models by Folder</string>
                </property>
-               <property name="checked">
-                <bool>false</bool>
+              </widget>
+             </item>
+             <item row="2" column="1" colspan="2">
+              <widget class="QSpinBox" name="spinBlurWidth">
+               <property name="suffix">
+                <string> px</string>
+               </property>
+               <property name="minimum">
+                <number>64</number>
+               </property>
+               <property name="maximum">
+                <number>2048</number>
+               </property>
+               <property name="value">
+                <number>500</number>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="0">
+              <widget class="QLabel" name="label">
+               <property name="text">
+                <string>软件缩放 (重启后生效) / UI Scale (Need Restart)</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1" colspan="2">
+              <widget class="QDoubleSpinBox" name="spinUiScale">
+               <property name="minimum">
+                <double>0.250000000000000</double>
+               </property>
+               <property name="maximum">
+                <double>3.000000000000000</double>
+               </property>
+               <property name="singleStep">
+                <double>0.100000000000000</double>
+               </property>
+               <property name="value">
+                <double>1.000000000000000</double>
                </property>
               </widget>
              </item>

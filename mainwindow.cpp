@@ -7198,6 +7198,7 @@ void MainWindow::loadGlobalConfig() {
         QJsonObject root = doc.object();
 
         // 1. 读取所有配置到成员变量
+        optUiScale                      = root["ui_scale"].toDouble(1.0);
         optFilterNSFW                   = root["nsfw_filter"].toBool(false);
         optNSFWMode                     = root["nsfw_mode"].toInt(1);
         optNSFWLevel                    = root["nsfw_level_threshold"].toInt(1);
@@ -7357,10 +7358,20 @@ void MainWindow::loadGlobalConfig() {
     ui->chkUseCivitaiName->setChecked(optUseCivitaiName);
     ui->chkSuppressLocalWarnings->setChecked(optSuppressLocalWarnings);
     ui->comboUserGalleryMatchMode->setCurrentIndex(optUserGalleryMatchMode);
+    ui->spinUiScale->setValue(optUiScale);
 
     // ===============================
     // === 连接 Settings 页面的信号 ===
     // ===============================
+    // UI缩放
+    connect(ui->spinUiScale, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double newScale){
+        if (newScale != optUiScale) {
+            optUiScale = newScale;
+            saveGlobalConfig();
+            // 提示重启
+            ui->statusbar->showMessage(QString("缩放比例已设置为 %1x，重启后生效").arg(newScale), 3000);
+        }
+    });
     // 递归查找
     connect(ui->chkRecursiveLora, &QCheckBox::toggled, this, &MainWindow::onSettingsChanged);
     connect(ui->chkRecursiveGallery, &QCheckBox::toggled, this, &MainWindow::onSettingsChanged);
@@ -7596,6 +7607,20 @@ void MainWindow::saveGlobalConfig() {
     root["user_gallery_match_mode"]     = optUserGalleryMatchMode;
     root["model_update_download_policy"] = optModelUpdateDownloadPolicy;
     root.remove("model_switch_delay_ms");
+
+    // 记录当前 UI 的缩放比例
+    root["ui_scale"] = optUiScale;
+
+    // 记录当前窗口的实际大小（这样用户拉伸窗口后，下次启动会记住大小）
+    // 只有当窗口没有最大化/全屏时才记录
+    if (!this->isMaximized() && !this->isFullScreen()) {
+        root["window_width"] = this->width();
+        root["window_height"] = this->height();
+    } else {
+        // 如果处于最大化状态，可以保存正常的几何尺寸
+        root["window_width"] = this->normalGeometry().width();
+        root["window_height"] = this->normalGeometry().height();
+    }
 
     if (optRestoreTreeState) {
         QJsonObject treeState;
