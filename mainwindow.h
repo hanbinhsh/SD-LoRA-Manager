@@ -39,46 +39,48 @@
 #include "tagflowwidget.h"
 
 // 模型列表相关
-const int ROLE_MODEL_NAME           = Qt::UserRole;
-const int ROLE_FILE_PATH            = Qt::UserRole + 1;
-const int ROLE_PREVIEW_PATH         = Qt::UserRole + 2;
-const int ROLE_NSFW_LEVEL           = Qt::UserRole + 5;
-const int ROLE_CIVITAI_NAME         = Qt::UserRole + 6;   // 存储从 JSON 读取的真实名称
+const int ROLE_MODEL_NAME             = Qt::UserRole;
+const int ROLE_FILE_PATH              = Qt::UserRole + 1;
+const int ROLE_PREVIEW_PATH           = Qt::UserRole + 2;
+const int ROLE_NSFW_LEVEL             = Qt::UserRole + 3;
+const int ROLE_CIVITAI_NAME           = Qt::UserRole + 4;   // 存储从 JSON 读取的真实名称
 // 排序与筛选
-const int ROLE_SORT_DATE            = Qt::UserRole + 10;  // 存储时间戳 (qint64)
-const int ROLE_SORT_DOWNLOADS       = Qt::UserRole + 11;  // 存储下载量 (int)
-const int ROLE_SORT_LIKES           = Qt::UserRole + 12;  // 存储点赞量 (int)
-const int ROLE_FILTER_BASE          = Qt::UserRole + 13;  // 存储底模名称 (QString)
-const int ROLE_SORT_ADDED           = Qt::UserRole + 14;  // 存储本地文件创建时间 (qint64)
-const int ROLE_LOCAL_EDITED         = Qt::UserRole + 15;  // 标记本地/已编辑模型 (bool)
-const int ROLE_SORT_USAGE_COUNT     = Qt::UserRole + 16;  // 本地返图使用次数
-const int ROLE_SORT_LAST_USED       = Qt::UserRole + 17;  // 本地返图最近使用时间
-const int ROLE_MODEL_ROOT_PATH      = Qt::UserRole + 18;  // 模型所属的用户配置根目录
-const int ROLE_MODEL_ROOT_NAME      = Qt::UserRole + 19;  // 模型所属根目录显示名
-const int ROLE_MODEL_FOLDER_KEY     = Qt::UserRole + 24;  // Models 列表文件夹折叠键
-const int ROLE_MODEL_FOLDER_COLLAPSED = Qt::UserRole + 25; // Models 列表文件夹是否折叠
-const int ROLE_MODEL_FILTER_VISIBLE = Qt::UserRole + 26;  // 搜索/底模/收藏夹过滤后的可见状态
-const int ROLE_MODEL_HIGHLIGHT_COLOR = Qt::UserRole + 27; // 模型侧边栏高亮色
-// 收藏夹树状图
-const int ROLE_IS_COLLECTION_NODE   = Qt::UserRole + 20;  // 标记这是一个收藏夹节点
-const int ROLE_COLLECTION_NAME      = Qt::UserRole + 21;  // 存储收藏夹名称
-const int ROLE_ITEM_COUNT           = Qt::UserRole + 22;  // 存储该分类下的模型数量
-const int ROLE_COLLECTION_EXPAND_KEY = Qt::UserRole + 23; // 存储收藏夹树展开状态键
+const int ROLE_SORT_DATE              = Qt::UserRole + 10;  // 存储时间戳 (qint64)
+const int ROLE_SORT_DOWNLOADS         = Qt::UserRole + 11;  // 存储下载量 (int)
+const int ROLE_SORT_LIKES             = Qt::UserRole + 12;  // 存储点赞量 (int)
+const int ROLE_FILTER_BASE            = Qt::UserRole + 13;  // 存储底模名称 (QString)
+const int ROLE_SORT_ADDED             = Qt::UserRole + 14;  // 存储本地文件创建时间 (qint64)
+const int ROLE_LOCAL_EDITED           = Qt::UserRole + 15;  // 标记本地/已编辑模型 (bool)
+const int ROLE_SORT_USAGE_COUNT       = Qt::UserRole + 16;  // 本地返图使用次数
+const int ROLE_SORT_LAST_USED         = Qt::UserRole + 17;  // 本地返图最近使用时间
+const int ROLE_MODEL_ROOT_PATH        = Qt::UserRole + 18;  // 模型所属的用户配置根目录
+const int ROLE_MODEL_ROOT_NAME        = Qt::UserRole + 19;  // 模型所属根目录显示名
+const int ROLE_MODEL_FOLDER_KEY       = Qt::UserRole + 20;  // Models 列表文件夹折叠键
+const int ROLE_MODEL_FOLDER_COLLAPSED = Qt::UserRole + 21;  // Models 列表文件夹是否折叠
+const int ROLE_MODEL_FILTER_VISIBLE   = Qt::UserRole + 22;  // 搜索/底模/收藏夹过滤后的可见状态
+const int ROLE_MODEL_HIGHLIGHT_COLOR  = Qt::UserRole + 23;  // 模型侧边栏高亮色
 // 用户图库专用
-const int ROLE_USER_IMAGE_PATH      = Qt::UserRole + 30;
-const int ROLE_USER_IMAGE_PROMPT    = Qt::UserRole + 31;
-const int ROLE_USER_IMAGE_NEG       = Qt::UserRole + 32;
-const int ROLE_USER_IMAGE_PARAMS    = Qt::UserRole + 33;
-const int ROLE_USER_IMAGE_TAGS      = Qt::UserRole + 34;
-const int ROLE_EDIT_IMAGE_PATH      = Qt::UserRole + 35;
-const int ROLE_IS_FOLDER_HEADER     = Qt::UserRole + 36;
+const int ROLE_USER_IMAGE_PATH        = Qt::UserRole + 30;
+const int ROLE_USER_IMAGE_PROMPT      = Qt::UserRole + 31;
+const int ROLE_USER_IMAGE_NEG         = Qt::UserRole + 32;
+const int ROLE_USER_IMAGE_PARAMS      = Qt::UserRole + 33;
+const int ROLE_USER_IMAGE_TAGS        = Qt::UserRole + 34;
+const int ROLE_EDIT_IMAGE_PATH        = Qt::UserRole + 35;
+const int ROLE_IS_FOLDER_HEADER       = Qt::UserRole + 36;
 // 树状图占位符标记
-const int ROLE_IS_PLACEHOLDER       = Qt::UserRole + 40;
-const int ROLE_CIVITAI_MODEL_ID     = Qt::UserRole + 41;
-const int ROLE_CIVITAI_VERSION_ID   = Qt::UserRole + 42;
-const int ROLE_CIVITAI_SHA256       = Qt::UserRole + 43;
+const int ROLE_IS_PLACEHOLDER         = Qt::UserRole + 40;
+const int ROLE_CIVITAI_MODEL_ID       = Qt::UserRole + 41;
+const int ROLE_CIVITAI_VERSION_ID     = Qt::UserRole + 42;
+const int ROLE_CIVITAI_SHA256         = Qt::UserRole + 43;
+const int ROLE_SYNC_FAILED            = Qt::UserRole + 44;
+const int ROLE_SYNC_ERROR             = Qt::UserRole + 45;
+// 收藏夹树状图
+const int ROLE_IS_COLLECTION_NODE     = Qt::UserRole + 50;  // 标记这是一个收藏夹节点
+const int ROLE_COLLECTION_NAME        = Qt::UserRole + 51;  // 存储收藏夹名称
+const int ROLE_ITEM_COUNT             = Qt::UserRole + 52;  // 存储该分类下的模型数量
+const int ROLE_COLLECTION_EXPAND_KEY  = Qt::UserRole + 53;  // 存储收藏夹树展开状态键
 
-const QString CURRENT_VERSION = "1.4.2";
+const QString CURRENT_VERSION = "1.4.3";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
@@ -328,6 +330,16 @@ private:
     QString findLocalPreviewPath(const QString &dirPath, const QString &currentBaseName, const QString &serverFileName, int imgIndex) const;
     QString calculateFileHash(const QString &filePath);
     void fetchModelInfoFromCivitai(const QString &hash);
+    void startModelHashSync(const QString &filePath, const QString &baseName, bool forceRefresh);
+    void showPendingLocalModelDetail(const ModelMeta &meta, const QString &message);
+    void setModelTitleNormal();
+    void setModelTitleError(const QString &message);
+    QString modelSyncFailurePath() const;
+    void loadModelSyncFailures();
+    void saveModelSyncFailures() const;
+    void recordModelSyncFailure(const QString &filePath, const QString &baseName, const QString &error);
+    void clearModelSyncFailure(const QString &filePath);
+    QString modelSyncFailureMessage(const QString &filePath) const;
     QNetworkRequest makeNetworkRequest(const QUrl &url, bool allowCivitaiAuth = true) const;
     QString civitaiApiKey() const;
     bool isCivitaiUrl(const QUrl &url) const;
@@ -451,6 +463,8 @@ private:
     QString pendingGalleryBaseName;
     QList<int> pendingGalleryIndices;
     int galleryBuildToken = 0;
+    QHash<QString, QJsonObject> modelSyncFailures;
+    bool currentHashSyncForceRefresh = false;
 
     QQueue<DownloadTask> downloadQueue; // 任务队列
     bool isDownloading = false;         // 当前是否有任务在运行
@@ -527,37 +541,37 @@ private:
     void saveUserGalleryCache();
 
     // === 配置变量 ===
-    QStringList loraPaths;                              // LoRA文件夹列表
-    QStringList galleryPaths;                           // 图库路径列表
-    QSet<QString> disabledLoraPaths;                    // 关闭的 LoRA 路径
-    QSet<QString> disabledGalleryPaths;                 // 关闭的图库路径
-    QString currentLoraPath;                            // LoRA主路径 (兼容)
-    QString translationCsvPath;                         // 翻译文件路径
-    QString sdOutputFolder;                             // 图库主路径 (兼容)
-    QString optSavedUAString        = "";               // 设置的UA
-    QString optCivitaiApiKey        = "";               // Civitai API Key
-    bool    optLoraRecursive        = false;            // 递归搜索Lora文件夹
-    bool    optGalleryRecursive     = false;            // 递归搜索图库文件夹
-    int     optBlurRadius           = 30;               // 模糊半径
-    bool    optDownscaleBlur        = true;             // 模糊前缩放
-    int     optBlurProcessWidth     = 500;              // 默认缩小到 500px
-    int     optRenderThreadCount    = 4;                // 图片处理线程数
-    bool    optRestoreTreeState     = true;             // 保存菜单状态
-    bool    optSplitOnNewline       = true;             // 换行符分割
-    bool    optFilterNSFW           = false;            // NSFW过滤
-    int     optNSFWMode             = 1;                // 0: 完全隐藏, 1: 高斯模糊
-    int     optNSFWLevel            = 1;                // NSFW筛选等级
-    bool    optShowEmptyCollections = false;            // 显示空收藏夹
-    bool    optCollectionFolderTopLevel = false;        // 收藏夹树按 LoRA 根目录作为顶层分类
-    bool    optCollectionFolderSecondLevel = false;     // 收藏夹树按 收藏夹/LoRA 根目录/模型 分组
-    bool    optModelListFolderGrouping = false;         // Models 列表按 LoRA 根目录分组
-    bool    optUseArrangedUA        = false;            // 使用自定义UA
-    QStringList optFilterTags       = DEFAULT_FILTER_TAGS.split(',', Qt::SkipEmptyParts);    // 过滤词列表 (存储清洗后的列表)
-    bool    optUseCivitaiName = false;                  // 使用json中的模型名称
-    bool    optSuppressLocalWarnings = false;           // 隐藏本地模型总量提醒
-    int     optUserGalleryMatchMode = 0;                // 0: 当前逻辑匹配, 1: 摘要值匹配(可回退), 2: 严格摘要值匹配(不回退)
-    int     optModelUpdateDownloadPolicy = 0;           // 0: 每次询问, 1: 保留旧版, 2: 覆盖当前文件
-    double  optUiScale = 1.0;                           // 缩放比率
+    QStringList   loraPaths;                                                      // LoRA文件夹列表
+    QStringList   galleryPaths;                                                   // 图库路径列表
+    QSet<QString> disabledLoraPaths;                                              // 关闭的 LoRA 路径
+    QSet<QString> disabledGalleryPaths;                                           // 关闭的图库路径
+    QString       currentLoraPath;                                                // LoRA主路径 (兼容)
+    QString       translationCsvPath;                                             // 翻译文件路径
+    QString       sdOutputFolder;                                                 // 图库主路径 (兼容)
+    QString       optSavedUAString                            = "";               // 设置的UA
+    QString       optCivitaiApiKey                            = "";               // Civitai API Key
+    bool          optLoraRecursive                            = false;            // 递归搜索Lora文件夹
+    bool          optGalleryRecursive                         = false;            // 递归搜索图库文件夹
+    int           optBlurRadius                               = 30;               // 模糊半径
+    bool          optDownscaleBlur                            = true;             // 模糊前缩放
+    int           optBlurProcessWidth                         = 500;              // 默认缩小到 500px
+    int           optRenderThreadCount                        = 4;                // 图片处理线程数
+    bool          optRestoreTreeState                         = true;             // 保存菜单状态
+    bool          optSplitOnNewline                           = true;             // 换行符分割
+    bool          optFilterNSFW                               = false;            // NSFW过滤
+    int           optNSFWMode                                 = 1;                // 0: 完全隐藏, 1: 高斯模糊
+    int           optNSFWLevel                                = 1;                // NSFW筛选等级
+    bool          optShowEmptyCollections                     = false;            // 显示空收藏夹
+    bool          optCollectionFolderTopLevel                 = false;            // 收藏夹树按 LoRA 根目录作为顶层分类
+    bool          optCollectionFolderSecondLevel              = false;            // 收藏夹树按 收藏夹/LoRA 根目录/模型 分组
+    bool          optModelListFolderGrouping                  = false;            // Models 列表按 LoRA 根目录分组
+    bool          optUseArrangedUA                            = false;            // 使用自定义UA
+    QStringList   optFilterTags                               = DEFAULT_FILTER_TAGS.split(',', Qt::SkipEmptyParts);    // 过滤词列表 (存储清洗后的列表)
+    bool          optUseCivitaiName                           = false;            // 使用json中的模型名称
+    bool          optSuppressLocalWarnings                    = false;            // 隐藏本地模型总量提醒
+    int           optUserGalleryMatchMode                     = 0;                // 0: 当前逻辑匹配, 1: 摘要值匹配(可回退), 2: 严格摘要值匹配(不回退)
+    int           optModelUpdateDownloadPolicy                = 0;                // 0: 每次询问, 1: 保留旧版, 2: 覆盖当前文件
+    double        optUiScale                                  = 1.0;              // 缩放比率
     // 保存与加载
     void loadGlobalConfig();        // 加载配置
     void saveGlobalConfig();        // 保存配置

@@ -215,6 +215,7 @@ MainWindow::MainWindow(QWidget *parent)
     initMenuBar();
     // === 2. 加载配置 ===
     loadGlobalConfig();   // 从 JSON 读选项
+    loadModelSyncFailures();
     // === 应用线程数 ===
     threadPool->setMaxThreadCount(optRenderThreadCount);
     backgroundThreadPool->setMaxThreadCount(optRenderThreadCount);
@@ -2170,6 +2171,7 @@ void MainWindow::clearDetailView()
     cancelGalleryBuild();
     editImagesNeedRefresh = false;
     ui->lblModelName->setText("请选择一个模型 / Select a Model");
+    setModelTitleNormal();
     ui->lblModelName->setStyleSheet(
         "color: #fff;"
         "background-color: rgba(0,0,0,120);"
@@ -2232,6 +2234,53 @@ void MainWindow::clearDetailView()
     ui->editImgSeed->clear();
     ui->spinImgNsfw->setValue(1);
     currentEditImageIndex = -1;
+}
+
+void MainWindow::setModelTitleNormal()
+{
+    ui->lblModelName->setStyleSheet(
+        "color: #fff;"
+        "background-color: rgba(0,0,0,120);"
+        "padding: 15px;"
+        "border-left: 5px solid #66c0f4;"
+        "font-size: 24px;"
+        "font-weight: bold;"
+    );
+}
+
+void MainWindow::setModelTitleError(const QString &message)
+{
+    ui->lblModelName->setText(QString("连接失败 / Error: %1").arg(message));
+    ui->lblModelName->setStyleSheet(
+        "color: #ff4c4c;"
+        "background-color: rgba(45, 20, 20, 0.8);"
+        "border-left: 5px solid #ff0000;"
+        "padding: 15px;"
+        "font-size: 15px;"
+    );
+}
+
+void MainWindow::showPendingLocalModelDetail(const ModelMeta &meta, const QString &message)
+{
+    clearDetailView();
+    currentMeta = meta;
+    // 同步失败/待同步模型：保留复制 LoRA 标签，隐藏联网相关按钮
+    ui->btnCopyLoraTag->setVisible(true);
+    ui->btnOpenUrl->setVisible(false);
+    ui->btnCheckModelUpdate->setVisible(false);
+    setModelTitleNormal();
+    ui->lblModelName->setText(meta.name.isEmpty() ? meta.fileName : meta.name);
+    ui->textDescription->setPlainText(message);
+    QFileInfo fi(meta.filePath);
+    ui->lblFileInfo->setText(QString("Filename: %1\nSize: %2 MB\nHash: --")
+                                 .arg(fi.fileName())
+                                 .arg(fi.exists() ? QString::number(fi.size() / 1024.0 / 1024.0, 'f', 2) : "--"));
+    if (!meta.previewPath.isEmpty() && QFile::exists(meta.previewPath)) {
+        transitionToImage(meta.previewPath);
+    } else {
+        transitionToImage("");
+    }
+    updateLocalEditorFromMeta(meta);
 }
 
 void MainWindow::updateLocalEditorFromMeta(const ModelMeta &meta)
@@ -2530,6 +2579,80 @@ void MainWindow::onActionOpenFolderTriggered() {
     editLoraPaths(true);
 }
 
+QString MainWindow::modelSyncFailurePath() const
+{
+    return qApp->applicationDirPath() + "/config/model_sync_failures.json";
+}
+
+void MainWindow::loadModelSyncFailures()
+{
+    modelSyncFailures.clear();
+    QFile file(modelSyncFailurePath());
+    if (!file.open(QIODevice::ReadOnly)) return;
+    const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+    for (auto it = root.begin(); it != root.end(); ++it) {
+        const QString path = QFileInfo(it.key()).absoluteFilePath();
+        if (!path.isEmpty()) modelSyncFailures.insert(path, it.value().toObject());
+    }
+}
+
+void MainWindow::saveModelSyncFailures() const
+{
+    const QString configDir = qApp->applicationDirPath() + "/config";
+    QDir().mkpath(configDir);
+    QSaveFile file(modelSyncFailurePath());
+    if (!file.open(QIODevice::WriteOnly)) return;
+    QJsonObject root;
+    for (auto it = modelSyncFailures.cbegin(); it != modelSyncFailures.cend(); ++it) {
+        root.insert(QFileInfo(it.key()).absoluteFilePath(), it.value());
+    }
+    file.write(QJsonDocument(root).toJson());
+    file.commit();
+}
+
+void MainWindow::recordModelSyncFailure(const QString &filePath, const QString &baseName, const QString &error)
+{
+    const QString key = QFileInfo(filePath).absoluteFilePath();
+    if (key.isEmpty()) return;
+    QJsonObject obj;
+    obj["filePath"] = key;
+    obj["baseName"] = baseName;
+    obj["error"] = error;
+    obj["failedAt"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    modelSyncFailures.insert(key, obj);
+    saveModelSyncFailures();
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (item && QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath() == key) {
+            item->setData(ROLE_SYNC_FAILED, true);
+            item->setData(ROLE_SYNC_ERROR, error);
+            break;
+        }
+    }
+}
+
+void MainWindow::clearModelSyncFailure(const QString &filePath)
+{
+    const QString key = QFileInfo(filePath).absoluteFilePath();
+    if (key.isEmpty()) return;
+    if (modelSyncFailures.remove(key) > 0) saveModelSyncFailures();
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (item && QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath() == key) {
+            item->setData(ROLE_SYNC_FAILED, false);
+            item->setData(ROLE_SYNC_ERROR, QString());
+            break;
+        }
+    }
+}
+
+QString MainWindow::modelSyncFailureMessage(const QString &filePath) const
+{
+    const QString key = QFileInfo(filePath).absoluteFilePath();
+    const QJsonObject obj = modelSyncFailures.value(key);
+    return obj.value("error").toString();
+}
+
 void MainWindow::onScanLocalClicked() {
     int localCount = countLocalEditedModels();
     if (!optSuppressLocalWarnings && localCount > 0) {
@@ -2602,7 +2725,9 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
 
     if (hasLocalData) {
         // === 情况 A: 有本地数据，直接显示 (秒开) ===
+        clearModelSyncFailure(filePath);
         currentMeta = meta;
+        setModelTitleNormal();
         ui->scrollAreaWidgetContents->setUpdatesEnabled(false);
         updateDetailView(meta);
         QTimer::singleShot(0, this, [this]() {
@@ -2612,26 +2737,31 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
     } else {
         meta.isLocalOnly = true;
         meta.isLocalEdited = false;
-        currentMeta = meta;
-        updateLocalEditorFromMeta(meta);
+        const QString failedMessage = modelSyncFailureMessage(filePath);
+        if (!failedMessage.isEmpty()) {
+            showPendingLocalModelDetail(
+                meta,
+                QString("上次同步失败，请点击刷新模型详情重新同步。\n%1").arg(failedMessage)
+            );
+            ui->btnForceUpdate->setEnabled(true);
+            if (ui->detailContentStack->currentIndex() == 1) {
+                scanForUserImages(baseName);
+            } else {
+                ui->listUserImages->clear();
+                ui->textUserPrompt->clear();
+                tagFlowWidget->setData({});
+            }
+            return;
+        }
+
+        showPendingLocalModelDetail(meta, "正在分析模型文件 (计算 Hash)...");
 
         // === 情况 B: 无本地数据，需要计算 Hash 然后联网 ===
 
         // UI 状态反馈：显示“正在分析模型...”
         ui->lblModelName->setText("正在分析模型文件 (计算 Hash)...");
         ui->btnForceUpdate->setEnabled(false);
-
-        // 记录当前正在处理的文件，防止回调时错位
-        currentProcessingPath = filePath;
-        ui->modelList->setProperty("current_processing_file", baseName);
-        ui->modelList->setProperty("current_processing_path", filePath);
-
-        // === 启动后台线程计算 Hash ===
-        // 使用 QtConcurrent::run 把耗时函数丢到后台
-        QFuture<QString> future = QtConcurrent::run(threadPool, [filePath]() {
-            return calculateFileHashWorker(filePath);
-        });
-        hashWatcher->setFuture(future);
+        startModelHashSync(filePath, baseName, false);
     }
 
     // 如果当前正处于 "本地返图" 页面 (Index 1)，立即刷新数据
@@ -2719,17 +2849,16 @@ void MainWindow::onForceUpdateClicked() {
         m_skipPreviewSync = false;
     }
 
-    QString hash = calculateFileHash(filePath);
-    if (hash.isEmpty()) {
-        ui->statusbar->showMessage("错误: 无法计算文件哈希");
-        ui->btnForceUpdate->setEnabled(true);
-        m_forceResyncPreview = false;
-        m_skipPreviewSync = false;
-        return;
-    }
-    ui->statusbar->showMessage("正在连接 Civitai 获取元数据...");
-    ui->modelList->setProperty("current_processing_file", baseName);
-    fetchModelInfoFromCivitai(hash);
+    clearModelSyncFailure(filePath);
+    ModelMeta meta;
+    meta.modelName = baseName;
+    meta.name = baseName;
+    meta.filePath = filePath;
+    meta.fileName = QFileInfo(filePath).fileName();
+    meta.previewPath = item->data(ROLE_PREVIEW_PATH).toString();
+    meta.isLocalOnly = true;
+    showPendingLocalModelDetail(meta, "正在重新同步模型详情 (计算 Hash)...");
+    startModelHashSync(filePath, baseName, true);
 }
 
 void MainWindow::onLocalMetaSaveClicked()
@@ -3312,37 +3441,51 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     QString filePath = reply->property("filePath").toString();
     reply->deleteLater();
     ui->btnForceUpdate->setEnabled(true);
+    currentHashSyncForceRefresh = false;
 
     if (modelDir.isEmpty() && !filePath.isEmpty()) {
         modelDir = QFileInfo(filePath).absolutePath();
     }
 
+    QString currentSelectedPath;
+    if (QListWidgetItem *currentItem = ui->modelList->currentItem()) {
+        currentSelectedPath = currentItem->data(ROLE_FILE_PATH).toString();
+    }
+    if (!filePath.isEmpty() && !currentSelectedPath.isEmpty() && currentSelectedPath != filePath) {
+        m_forceResyncPreview = false;
+        m_skipPreviewSync = false;
+        return;
+    }
+
     if (reply->error() != QNetworkReply::NoError) {
         clearLayout(ui->layoutTriggerStack); // 清空触发词区域
-
-        // === 在标题栏醒目显示错误 ===
-        ui->lblModelName->setText(QString("⚠️ 连接失败 / Error: %1").arg(reply->errorString()));
-
-        // 设置醒目的红色样式
-        // 注意：这里我们给它设了一个 UserProperty 标记它是错误状态，
-        // 虽然不一定用到，但是个好习惯
-        ui->lblModelName->setStyleSheet(
-            "color: #ff4c4c;"               // 红字
-            "background-color: rgba(45, 20, 20, 0.8);" // 深红半透背景
-            "border-left: 5px solid #ff0000;" // 左侧红条
-            "padding: 15px;"
-            "font-size: 15px;"
-        );
-
+        const QString err = civitaiNetworkErrorMessage(reply);
+        recordModelSyncFailure(filePath, localBaseName, err);
+        setModelTitleError(err);
+        ui->textDescription->setPlainText(QString("上次同步失败，请点击刷新模型详情重新同步。\n%1").arg(err));
         transitionToImage("");
         m_forceResyncPreview = false;
         m_skipPreviewSync = false;
-        ui->statusbar->showMessage("元数据获取失败", 3000);
+        ui->statusbar->showMessage("元数据获取失败: " + err, 4000);
         return;
     }
 
     QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
     QJsonObject root = doc.object();
+    if (doc.isNull() || root.isEmpty()) {
+        const QString err = "返回数据为空或不是有效 JSON";
+        recordModelSyncFailure(filePath, localBaseName, err);
+        setModelTitleError(err);
+        ui->textDescription->setPlainText(QString("上次同步失败，请点击刷新模型详情重新同步。\n%1").arg(err));
+        transitionToImage("");
+        m_forceResyncPreview = false;
+        m_skipPreviewSync = false;
+        ui->statusbar->showMessage("元数据解析失败", 3000);
+        return;
+    }
+
+    clearModelSyncFailure(filePath);
+    setModelTitleNormal();
     ModelMeta meta;
 
     // 1. 基础信息
@@ -3598,6 +3741,26 @@ void MainWindow::saveLocalMetadata(const QString &modelDir, const QString &baseN
 
 QString MainWindow::calculateFileHash(const QString &filePath) {
     return calculateFileHashWorker(filePath);
+}
+
+void MainWindow::startModelHashSync(const QString &filePath, const QString &baseName, bool forceRefresh)
+{
+    if (filePath.isEmpty() || baseName.isEmpty()) {
+        ui->btnForceUpdate->setEnabled(true);
+        return;
+    }
+    currentProcessingPath = filePath;
+    currentHashSyncForceRefresh = forceRefresh;
+    ui->modelList->setProperty("current_processing_file", baseName);
+    ui->modelList->setProperty("current_processing_path", filePath);
+    ui->modelList->setProperty("current_model_dir", QFileInfo(filePath).absolutePath());
+    ui->btnForceUpdate->setEnabled(false);
+    ui->statusbar->showMessage("正在计算 Hash...", 0);
+    ui->lblModelName->setText("正在分析模型文件 (计算 Hash)...");
+
+    hashWatcher->setFuture(QtConcurrent::run(backgroundThreadPool, [filePath]() {
+        return calculateFileHashWorker(filePath);
+    }));
 }
 
 void MainWindow::onOpenUrlClicked() {
@@ -3971,16 +4134,34 @@ void MainWindow::onHashCalculated()
 {
     // 获取后台线程的返回值
     QString hash = hashWatcher->result();
+    const QString filePath = currentProcessingPath;
+    const QString baseName = ui->modelList->property("current_processing_file").toString();
+
+    QString currentSelectedPath;
+    if (QListWidgetItem *currentItem = ui->modelList->currentItem()) {
+        currentSelectedPath = currentItem->data(ROLE_FILE_PATH).toString();
+    }
+    if (!filePath.isEmpty() && !currentSelectedPath.isEmpty() && filePath != currentSelectedPath) {
+        ui->btnForceUpdate->setEnabled(true);
+        currentHashSyncForceRefresh = false;
+        return;
+    }
 
     // 检查：如果计算出来的 Hash 为空，说明文件可能被锁或读失败
     if (hash.isEmpty()) {
-        ui->lblModelName->setText("错误：无法读取文件或计算 Hash 失败");
+        const QString err = "无法读取文件或计算 Hash 失败";
+        recordModelSyncFailure(filePath, baseName, err);
+        setModelTitleError(err);
+        ui->textDescription->setPlainText(QString("上次同步失败，请点击刷新模型详情重新同步。\n%1").arg(err));
         ui->btnForceUpdate->setEnabled(true);
+        currentHashSyncForceRefresh = false;
         return;
     }
 
     // Hash 算完了，现在开始联网
+    setModelTitleNormal();
     ui->lblModelName->setText("Hash 计算完成，正在获取元数据...");
+    ui->statusbar->showMessage("Hash 计算完成，正在获取元数据...", 2000);
     fetchModelInfoFromCivitai(hash); // 调用你原来的联网函数
 }
 
