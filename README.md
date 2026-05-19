@@ -80,6 +80,7 @@
 
 ### 工具箱 (Tools)
 *(包含图片同步、Tag 浏览、WD14 反推、大模型提示词生成与对话管理等功能)*
+*注：图片同步功能需要安装手机端：https://github.com/hanbinhsh/SD_Image_Synchronizer_PE*
 <img alt="sync" src="./readme/sync.jpg" />
 <img alt="meta" src="./readme/meta.jpg" />
 <img alt="wd14" src="./readme/wd14.jpg" />
