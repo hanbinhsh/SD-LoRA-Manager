@@ -20,6 +20,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeySequence>
+#include <QHeaderView>
 #include <QMessageBox>
 #include <QMimeData>
 #include <QMenu>
@@ -34,6 +35,7 @@
 #include <QStandardPaths>
 #include <QSaveFile>
 #include <QTreeWidgetItem>
+#include <QTreeWidget>
 #include <QUrl>
 #include <QtEndian>
 
@@ -83,6 +85,21 @@ Wd14TagScore parseScoreObject(const QJsonObject &obj)
     score.confidence = float(obj.value("confidence").toDouble());
     return score;
 }
+
+class Wd14ScoreItem : public QTreeWidgetItem
+{
+public:
+    using QTreeWidgetItem::QTreeWidgetItem;
+
+    bool operator<(const QTreeWidgetItem &other) const override
+    {
+        const int column = treeWidget() ? treeWidget()->sortColumn() : 0;
+        if (column == 1) {
+            return data(column, Qt::UserRole).toFloat() < other.data(column, Qt::UserRole).toFloat();
+        }
+        return QString::localeAwareCompare(text(column), other.text(column)) < 0;
+    }
+};
 
 } // namespace
 
@@ -180,11 +197,15 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
     ui->btnWd14Copy->setEnabled(false);
     ui->treeWd14Ratings->setRootIsDecorated(false);
     ui->treeWd14Ratings->setAlternatingRowColors(true);
+    ui->treeWd14Ratings->setSortingEnabled(true);
+    ui->treeWd14Ratings->header()->setSectionsClickable(true);
     ui->treeWd14Tags->setRootIsDecorated(false);
     ui->treeWd14Tags->setAlternatingRowColors(true);
     ui->treeWd14Tags->setSelectionMode(QAbstractItemView::ExtendedSelection);
     ui->treeWd14Tags->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->treeWd14Tags->setContextMenuPolicy(Qt::CustomContextMenu);
+    ui->treeWd14Tags->setSortingEnabled(true);
+    ui->treeWd14Tags->header()->setSectionsClickable(true);
     connect(ui->treeWd14Tags, &QWidget::customContextMenuRequested,
             this, &PromptParserWidget::showWd14TagContextMenu);
     auto *copyWd14SelectedTagsAction = new QAction("复制选中 Tag", ui->treeWd14Tags);
@@ -825,9 +846,10 @@ void PromptParserWidget::applyWd14Result(const Wd14InferenceResult &result)
     ui->treeWd14Tags->clear();
 
     for (Wd14TagScore rating : result.ratings) {
-        auto *item = new QTreeWidgetItem(ui->treeWd14Ratings);
+        auto *item = new Wd14ScoreItem(ui->treeWd14Ratings);
         item->setText(0, formatWd14Tag(rating.tag));
         item->setText(1, QString::number(rating.confidence * 100.0f, 'f', 2) + "%");
+        item->setData(1, Qt::UserRole, rating.confidence);
     }
 
     QSet<QString> excluded;
@@ -860,10 +882,11 @@ void PromptParserWidget::applyWd14Result(const Wd14InferenceResult &result)
             finalTags.append(formatted);
         }
 
-        auto *item = new QTreeWidgetItem(ui->treeWd14Tags);
+        auto *item = new Wd14ScoreItem(ui->treeWd14Tags);
         item->setText(0, formatted);
         item->setText(1, QString::number(score.confidence * 100.0f, 'f', 2) + "%");
         item->setText(2, score.translation);
+        item->setData(1, Qt::UserRole, score.confidence);
     }
 
     for (const QString &extraTag : splitWd14TagList(ui->editWd14AdditionalTags->text())) {
@@ -881,6 +904,8 @@ void PromptParserWidget::applyWd14Result(const Wd14InferenceResult &result)
     ui->treeWd14Ratings->resizeColumnToContents(1);
     ui->treeWd14Tags->resizeColumnToContents(0);
     ui->treeWd14Tags->resizeColumnToContents(1);
+    ui->treeWd14Ratings->sortByColumn(1, Qt::DescendingOrder);
+    ui->treeWd14Tags->sortByColumn(1, Qt::DescendingOrder);
 }
 
 void PromptParserWidget::updateWd14MemoryLabel(quint64 totalBytes, quint64 availableBytes)

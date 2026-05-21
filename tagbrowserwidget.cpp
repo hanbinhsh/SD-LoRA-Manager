@@ -275,9 +275,6 @@ bool TagSearchProxyModel::matchesText(const QString &value) const
 
 bool TagSearchProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const
 {
-    if (m_matchMode == ContainsMatch) {
-        return QSortFilterProxyModel::filterAcceptsRow(sourceRow, sourceParent);
-    }
     if (m_searchText.isEmpty()) return true;
     if (!sourceModel()) return true;
 
@@ -314,8 +311,11 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     ui->tableTags->setAlternatingRowColors(true);
     ui->tableTags->verticalHeader()->setVisible(false);
     ui->tableTags->horizontalHeader()->setStretchLastSection(true);
-    ui->tableTags->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    ui->tableTags->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    ui->tableTags->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    ui->tableTags->horizontalHeader()->setSectionsClickable(true);
+    ui->tableTags->horizontalHeader()->setSortIndicatorShown(false);
+    ui->tableTags->horizontalHeader()->resizeSection(0, 260);
+    ui->tableTags->horizontalHeader()->resizeSection(1, 360);
     ui->tableTags->setSortingEnabled(false);
 
     m_userTagModel->setColumnCount(4);
@@ -335,10 +335,11 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     ui->tableUserTags->setContextMenuPolicy(Qt::CustomContextMenu);
     ui->tableUserTags->verticalHeader()->setVisible(false);
     ui->tableUserTags->horizontalHeader()->setStretchLastSection(true);
-    ui->tableUserTags->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    ui->tableUserTags->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    ui->tableUserTags->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    ui->tableUserTags->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
+    ui->tableUserTags->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    ui->tableUserTags->horizontalHeader()->resizeSection(0, 260);
+    ui->tableUserTags->horizontalHeader()->resizeSection(1, 80);
+    ui->tableUserTags->horizontalHeader()->resizeSection(2, 90);
+    ui->tableUserTags->horizontalHeader()->resizeSection(3, 320);
     ui->tableUserTags->setSortingEnabled(true);
 
     connect(ui->tabWidgetTagBrowser, &QTabWidget::currentChanged, this, &TagBrowserWidget::onTabChanged);
@@ -347,6 +348,19 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
         m_proxy->setMatchMode(index);
     });
     connect(ui->comboSort, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &TagBrowserWidget::onSortModeChanged);
+    connect(ui->tableTags->horizontalHeader(), &QHeaderView::sectionClicked, this, [this](int section) {
+        if (m_loading) return;
+        ensureCsvLoadedForEditing();
+        QHeaderView *header = ui->tableTags->horizontalHeader();
+        const bool sameSection = header->sortIndicatorSection() == section && header->isSortIndicatorShown();
+        const Qt::SortOrder order = (sameSection && header->sortIndicatorOrder() == Qt::AscendingOrder)
+                                        ? Qt::DescendingOrder
+                                        : Qt::AscendingOrder;
+        header->setSortIndicatorShown(true);
+        header->setSortIndicator(section, order);
+        m_proxy->sort(section, order);
+        ui->tableTags->viewport()->update();
+    });
     connect(ui->editUserTagSearch, &QLineEdit::textChanged, this, &TagBrowserWidget::onUserTagSearchTextChanged);
     connect(ui->comboUserTagSearchMatchMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         m_userTagProxy->setMatchMode(index);
@@ -1036,12 +1050,13 @@ void TagBrowserWidget::onSortModeChanged(int index)
     if (m_loading) return;
     ensureCsvLoadedForEditing();
     if (index <= 0) {
-        ui->tableTags->setSortingEnabled(false);
+        ui->tableTags->horizontalHeader()->setSortIndicatorShown(false);
         m_proxy->sort(-1);
     } else {
-        ui->tableTags->setSortingEnabled(true);
         Qt::SortOrder order = (index == 2) ? Qt::DescendingOrder : Qt::AscendingOrder;
-        ui->tableTags->sortByColumn(0, order);
+        ui->tableTags->horizontalHeader()->setSortIndicatorShown(true);
+        ui->tableTags->horizontalHeader()->setSortIndicator(0, order);
+        m_proxy->sort(0, order);
     }
     ui->tableTags->viewport()->update();
 }
