@@ -127,6 +127,8 @@
 2.  使用 Qt Creator 打开 `CMakeLists.txt` 文件。
 3.  配置项目（推荐选择 Release 模式以获得最佳性能）。
 4.  构建并运行。
+5.  打包示例：将构建生成的exe文件复制到空文件夹，随后在文件夹打开命令行运行qt\6.11.x\msvc2022_64\bin\windeployqt.exe --release --no-translations --no-opengl-sw  --no-compiler-runtime  SD_LoRA_Manager.exe，随后使用Enigma Virtual Box打包即可，勾选上压缩可缩小打包大小
+6.  打包时，软件目录下需要有openssl库内的libssl-3-x64.dll和libcrypto-3-x64.dll，否则可能会打不开或者报错
 
 ## ⚙️ 常见问题 (FAQ)
 
