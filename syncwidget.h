@@ -4,6 +4,7 @@
 #include <QWidget>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QUdpSocket>
 #include <QFileSystemWatcher>
 #include <QSettings>
 #include <QMap>
@@ -35,6 +36,7 @@ private slots:
     // 网络与文件监控回调
     void newClientConnected();
     void onClientReadyRead();
+    void onDiscoveryReadyRead();
     void handleDirectoryChange(const QString &path);
 
 private:
@@ -42,6 +44,7 @@ private:
 
     // 网络与文件监听
     QTcpServer *tcpServer;
+    QUdpSocket *udpDiscoverySocket;
     QFileSystemWatcher *watcher;
     QList<QTcpSocket*> clients;
     QMap<QTcpSocket*, quint32> m_clientExpectedSizes;
@@ -74,6 +77,9 @@ private:
     void loadSettings();
     void saveSettings();
     void logMsg(const QString &msg);
+    void startDiscoveryResponder(quint16 port);
+    void stopDiscoveryResponder();
+    QString getLocalIPv4AddressForPeer(const QHostAddress &peerAddress) const;
     void addPathRecursive(const QString &rootPath, const QString &path);
     void removePathRecursive(const QString &rootPath);
     void updateDirState(const QString &dirPath);

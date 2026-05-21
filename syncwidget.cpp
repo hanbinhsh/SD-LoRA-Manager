@@ -8,6 +8,8 @@
 #include <QMessageBox>
 #include <QDateTime>
 #include <QTimer>
+#include <QHostInfo>
+#include <QNetworkInterface>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <QHBoxLayout>
@@ -20,9 +22,11 @@ SyncWidget::SyncWidget(QWidget *parent) :
 
     // 初始化网络和文件监控
     tcpServer = new QTcpServer(this);
+    udpDiscoverySocket = new QUdpSocket(this);
     watcher = new QFileSystemWatcher(this);
 
     connect(tcpServer, &QTcpServer::newConnection, this, &SyncWidget::newClientConnected);
+    connect(udpDiscoverySocket, &QUdpSocket::readyRead, this, &SyncWidget::onDiscoveryReadyRead);
     connect(watcher, &QFileSystemWatcher::directoryChanged, this, &SyncWidget::handleDirectoryChange);
 
     // 调整 Splitter 比例
@@ -50,6 +54,10 @@ SyncWidget::~SyncWidget()
     if (tcpServer) {
         tcpServer->disconnect(this);
         tcpServer->close();
+    }
+    if (udpDiscoverySocket) {
+        udpDiscoverySocket->disconnect(this);
+        udpDiscoverySocket->close();
     }
     const QList<QTcpSocket*> sockets = clients;
     for (QTcpSocket *client : sockets) {
@@ -121,6 +129,7 @@ void SyncWidget::on_editAesKey_editingFinished() { saveSettings(); }
 // ======================= UI 按钮响应 =======================
 void SyncWidget::on_btnStart_clicked() {
     if (tcpServer->isListening()) {
+        stopDiscoveryResponder();
         tcpServer->close();
         for (auto client : clients) client->disconnectFromHost();
         ui->btnStart->setText("启动服务 / Start");
@@ -129,12 +138,98 @@ void SyncWidget::on_btnStart_clicked() {
     } else {
         quint16 port = ui->editPort->text().toUShort();
         if (tcpServer->listen(QHostAddress::Any, port)) {
+            startDiscoveryResponder(port);
             ui->btnStart->setText("停止服务 / Stop");
             ui->btnStart->setStyleSheet("background-color: #aa3333; color: white; font-weight: bold;");
             logMsg(QString("服务已启动，监听端口: %1").arg(port));
         } else {
             QMessageBox::critical(this, "错误", "端口被占用或启动失败");
         }
+    }
+}
+
+void SyncWidget::startDiscoveryResponder(quint16 port) {
+    stopDiscoveryResponder();
+
+    const bool bound = udpDiscoverySocket->bind(
+        QHostAddress::AnyIPv4,
+        port,
+        QAbstractSocket::ShareAddress | QAbstractSocket::ReuseAddressHint
+    );
+    if (bound) {
+        logMsg(QString("UDP 发现服务已启动，监听端口: %1").arg(port));
+    } else {
+        logMsg("⚠️ UDP 发现服务启动失败，手机端自动扫描可能不可用。");
+    }
+}
+
+void SyncWidget::stopDiscoveryResponder() {
+    if (udpDiscoverySocket && udpDiscoverySocket->state() != QAbstractSocket::UnconnectedState) {
+        udpDiscoverySocket->close();
+    }
+}
+
+QString SyncWidget::getLocalIPv4AddressForPeer(const QHostAddress &peerAddress) const {
+    const QHostAddress peerV4(peerAddress.toIPv4Address());
+    const quint32 peer = peerV4.toIPv4Address();
+
+    for (const QNetworkInterface &networkInterface : QNetworkInterface::allInterfaces()) {
+        if (!(networkInterface.flags() & QNetworkInterface::IsUp)
+            || !(networkInterface.flags() & QNetworkInterface::IsRunning)
+            || (networkInterface.flags() & QNetworkInterface::IsLoopBack)) {
+            continue;
+        }
+
+        for (const QNetworkAddressEntry &entry : networkInterface.addressEntries()) {
+            const QHostAddress address = entry.ip();
+            if (address.protocol() != QAbstractSocket::IPv4Protocol || address.isLoopback()) {
+                continue;
+            }
+
+            const quint32 ip = address.toIPv4Address();
+            const quint32 mask = entry.netmask().toIPv4Address();
+            if (mask != 0 && peer != 0 && (ip & mask) == (peer & mask)) {
+                return address.toString();
+            }
+        }
+    }
+
+    for (const QHostAddress &address : QNetworkInterface::allAddresses()) {
+        if (address.protocol() == QAbstractSocket::IPv4Protocol && !address.isLoopback()) {
+            return address.toString();
+        }
+    }
+
+    return QString();
+}
+
+void SyncWidget::onDiscoveryReadyRead() {
+    while (udpDiscoverySocket->hasPendingDatagrams()) {
+        QByteArray datagram;
+        datagram.resize(int(udpDiscoverySocket->pendingDatagramSize()));
+
+        QHostAddress senderAddress;
+        quint16 senderPort = 0;
+        udpDiscoverySocket->readDatagram(datagram.data(), datagram.size(), &senderAddress, &senderPort);
+
+        const QJsonObject request = QJsonDocument::fromJson(datagram).object();
+        if (request["cmd"].toString() != "SD_SYNC_DISCOVER") continue;
+        if (request["version"].toInt() != 1) continue;
+        if (!tcpServer->isListening()) continue;
+
+        const quint16 port = tcpServer->serverPort();
+        const QString localIp = getLocalIPv4AddressForPeer(senderAddress);
+
+        QJsonObject response;
+        response["cmd"] = "SD_SYNC_DISCOVER_RESPONSE";
+        response["version"] = 1;
+        response["app"] = "SD_LoRA_Manager";
+        response["name"] = QHostInfo::localHostName();
+        response["ip"] = localIp;
+        response["port"] = int(port);
+
+        const QByteArray payload = QJsonDocument(response).toJson(QJsonDocument::Compact);
+        udpDiscoverySocket->writeDatagram(payload, senderAddress, senderPort);
     }
 }
 
