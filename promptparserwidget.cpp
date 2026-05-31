@@ -77,6 +77,13 @@ QString formatMemoryBytes(quint64 bytes)
     return QString::number(double(bytes) / (1024.0 * 1024.0 * 1024.0), 'f', 1) + " GB";
 }
 
+QString loadToolPageStyle()
+{
+    QFile file(":/styles/toolpage.qss");
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
+    return QString::fromUtf8(file.readAll());
+}
+
 Wd14TagScore parseScoreObject(const QJsonObject &obj)
 {
     Wd14TagScore score;
@@ -109,6 +116,7 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
     , m_translationMap(nullptr)
 {
     ui->setupUi(this);
+    setStyleSheet(loadToolPageStyle());
 
     setAcceptDrops(true);
     ui->lblImage->installEventFilter(this);

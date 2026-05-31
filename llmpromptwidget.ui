@@ -10,47 +10,6 @@
     <height>816</height>
    </rect>
   </property>
-  <property name="styleSheet">
-   <string notr="true">QWidget#LlmPromptWidget { background-color: #1b2838; color: #dcdedf; }
-QTabWidget::pane, QGroupBox {
-    border: 1px solid #3d4d5d;
-    background-color: #1e252f;
-    border-radius: 4px;
-}
-QGroupBox {
-    margin-top: 14px;
-    font-weight: bold;
-    color: #66c0f4;
-}
-QGroupBox::title {
-    subcontrol-origin: margin;
-    left: 8px;
-    padding: 0 4px;
-}
-QLineEdit, QComboBox, QPlainTextEdit, QTextBrowser, QListWidget, QDoubleSpinBox, QSpinBox {
-    background-color: #16191e;
-    border: 1px solid #31363d;
-    color: #dcdedf;
-    border-radius: 3px;
-    padding: 4px;
-}
-QWidget#pageChat {
-    background-color: #1e252f;
-}
-QPushButton {
-    background-color: #2a3f5a;
-    border-radius: 2px;
-    color: #66c0f4;
-    border: none;
-    padding: 6px 12px;
-}
-QPushButton:hover { background-color: #3d5677; color: #ffffff; }
-QPushButton:disabled {
-    background-color: #2a3038;
-    color: #7f8791;
-}
-QLabel#lblGenerateStatus { color: #8c96a0; }</string>
-  </property>
   <layout class="QVBoxLayout" name="verticalLayoutRoot">
    <property name="leftMargin">
     <number>18</number>

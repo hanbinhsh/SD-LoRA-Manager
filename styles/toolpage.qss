@@ -1,4 +1,5 @@
-QWidget#UsageAnalysisWidget, QWidget#TagBrowserWidget, QWidget#LlmPromptWidget {
+QWidget#UsageAnalysisWidget, QWidget#TagBrowserWidget, QWidget#LlmPromptWidget,
+QWidget#PromptParserWidget, QWidget#SyncWidget {
     background-color: #1b2838;
     color: #dcdedf;
 }
@@ -34,7 +35,8 @@ QGroupBox::title {
     padding: 0 4px;
 }
 QLineEdit, QComboBox, QTableWidget, QTableView, QListWidget,
-QPlainTextEdit, QTextBrowser, QDoubleSpinBox, QSpinBox {
+QPlainTextEdit, QTextBrowser, QTextEdit, QDoubleSpinBox, QSpinBox,
+QScrollArea, QTreeWidget {
     background-color: #16191e;
     border: 1px solid #31363d;
     color: #dcdedf;
@@ -67,6 +69,103 @@ QTableWidget, QTableView {
     gridline-color: #31363d;
     selection-background-color: #2a475e;
     selection-color: #ffffff;
+}
+QTreeWidget {
+    gridline-color: #2b3440;
+    selection-background-color: #3d5677;
+}
+QTreeWidget::item {
+    min-height: 24px;
+}
+QScrollArea::viewport, QTextBrowser::viewport, QTextEdit::viewport {
+    background-color: transparent;
+    border: none;
+}
+QWidget#scrollAreaWidgetContentsPos, QWidget#scrollAreaWidgetContentsNeg {
+    background-color: transparent;
+}
+QWidget#pageChat {
+    background-color: #1e252f;
+}
+QListWidget#listChatMessages {
+    background-color: #16191e;
+    border: 1px solid #31363d;
+    padding: 2px;
+    outline: none;
+}
+QListWidget#listChatMessages::item {
+    background-color: transparent;
+    border: none;
+    margin: 0px;
+    padding: 0px;
+}
+QListWidget#listChatMessages::item:hover,
+QListWidget#listChatMessages::item:selected {
+    background-color: transparent;
+    color: inherit;
+}
+QLabel#lblStatus, QLabel#lblUserTagStatus, QLabel#lblGenerateStatus,
+QLabel#lblWd14Status, QLabel#lblWd14Elapsed, QLabel#lblWd14Memory {
+    color: #8c96a0;
+}
+QLabel#lblImage, QLabel#lblWd14Image {
+    background-color: #16191e;
+    border: 2px dashed #363c46;
+    border-radius: 8px;
+    color: #5a6f8a;
+    font-size: 16px;
+}
+QLabel#lblImage:hover, QLabel#lblWd14Image:hover {
+    border: 2px dashed #66c0f4;
+    background-color: #1e252f;
+    color: #66c0f4;
+}
+QTextBrowser#txtParams {
+    font-family: Consolas, monospace;
+    padding: 8px;
+}
+QTextEdit#logOutput {
+    background-color: #131519;
+    border: 1px solid #131519;
+    color: #acb2b8;
+}
+QListWidget::item {
+    background-color: transparent;
+    border: none;
+    padding: 0px;
+    margin: 0px;
+}
+QListWidget::item:hover, QListWidget::item:selected {
+    background-color: transparent;
+    border: none;
+}
+QWidget#rowWidget {
+    background-color: transparent;
+    border-radius: 4px;
+    margin: 2px;
+}
+QWidget#rowWidget:hover {
+    background-color: #212831;
+}
+QPushButton#btnStart[running="true"] {
+    background-color: #3c1919;
+    color: #ff4c4c;
+    border: 1px solid #ff4c4c;
+}
+QPushButton#btnTranslate:checked {
+    background-color: #66c0f4;
+    color: #000000;
+}
+QSlider::groove:horizontal {
+    height: 6px;
+    background: #27313d;
+    border-radius: 3px;
+}
+QSlider::handle:horizontal {
+    width: 14px;
+    margin: -4px 0;
+    border-radius: 7px;
+    background: #66c0f4;
 }
 QCheckBox {
     color: #dcdedf;

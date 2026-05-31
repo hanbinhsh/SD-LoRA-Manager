@@ -13,262 +13,6 @@
   <property name="windowTitle">
    <string>LoRA Manager</string>
   </property>
-  <property name="styleSheet">
-   <string notr="true">/* === 全局样式 === */
-#sidebarWidget { background-color: #1a1f29; }
-QLineEdit { background-color: #131519; border: 1px solid #363c46; color: #dcdedf; padding: 4px; border-radius: 3px; }
-QLineEdit#editUserTagSearch {
-    background-color: transparent;
-    border: 1px solid #aaaaaa;
-    color: #ffffff;
-    padding: 4px 8px;
-    border-radius: 5px;
-    font-weight: bold;
-    height: 10px;
-}
-QLineEdit#editUserTagSearch:hover, QLineEdit#editUserTagSearch:focus {
-    border: 1px solid #eeeeee;
-}
-
-/* 列表 */
-#modelList { background-color: #1a1f29; border: none; outline: none; }
-#modelList::item { height: 32px; padding-left: 5px; color: #8c929a; border-left: 3px solid transparent; }
-#modelList::item:hover { background-color: #212831; color: #ffffff; }
-#modelList::item:selected { background-color: #3d4450; color: #ffffff; border-left: 3px solid #66c0f4; }
-
-/* 按钮 */
-#btnHome, #btnGallery { background-color: transparent; text-align: left; padding-left: 10px; font-size: 14px; font-weight: bold; color: #fff; }
-#btnHome:hover, #btnGallery:hover { background-color: #3d4450; }
-
-#btnScanLocal, #btnForceUpdate, #btnCheckModelUpdate, #btnOpenUrl, #btnFavorite, #btnShowUserGallery, #btnEditMeta, #btnCopyLoraTag { background-color: #2a3f5a; border-radius: 2px; color: #66c0f4; border: none; }
-#btnScanLocal:hover, #btnForceUpdate:hover, #btnCheckModelUpdate:hover, #btnOpenUrl:hover, #btnFavorite:hover, #btnShowUserGallery:hover, #btnEditMeta:hover, #btnCopyLoraTag:hover { background-color: #3d5677; color: #ffffff; }
-
-/* 绿色复制按钮 */
-QPushButton[class=&quot;copyBtn&quot;] { background-color: #5c7e10; color: white; border: none; border-radius: 2px; font-weight: bold; }
-QPushButton[class=&quot;copyBtn&quot;]:hover { background-color: #79a615; }
-QPushButton[class=&quot;copyBtn&quot;]:pressed { background-color: #4c6b0c; }
-
-/* Hero */
-#heroFrame { background-color: #000; }
-#lblModelName { color: #fff; background-color: rgba(0,0,0,120); padding: 15px; border-left: 5px solid #66c0f4; font-size: 24px; font-weight: bold; }
-#actionFrame { background-color: rgba(30,37,47,160); }
-
-/* 标签 */
-QLabel[class=&quot;tag&quot;] { background-color: #2a3f5a; color: #66c0f4; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; }
-QLabel[class=&quot;tagRed&quot;] { background-color: #3c1919; color: #ff4c4c; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; border: 1px solid #ff4c4c; }
-QLabel[class=&quot;tagGreen&quot;] { background-color: #1f3520; color: #7ee081; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; border: 1px solid #7ee081; }
-
-/* 标题 */
-#label_GalleryTitle, #label_DescTitle, #label_FileTitle, #label_TriggerTitle {
-    color: #fff;
-}
-
-QScrollArea {
-    border: none;
-    background-color: #1b2838;
-}
-#scrollAreaWidgetContents {
-    background-color: transparent;
-}
-#tagFlowContainer {
-    background-color: transparent;
-}
-#scrollAreaTags {
-    background-color: rgba(0,0,0,30);   /* 背景色：与 listUserImages 保持一致 */
-    border: 1px solid #3d4d5d;        /* 边框线：与 listUserImages 保持一致 */
-    border-radius: 4px;                 /* 圆角 */
-    padding: 10px;  
-}
-
-/* 文本框 */
-#textUserPrompt, #textImgPrompt, #textImgNegPrompt {
-    background-color: rgba(0,0,0,30);   /* 半透明背景 */
-    border: 1px solid #3d4d5d;        /* 相同的边框颜色 */
-    border-radius: 4px;                 /* 相同的圆角 */
-    padding: 10px;                      /* 内边距，让文字不贴边 */
-    color: #dcdedf;                   /* 确保文字颜色清晰 (灰白) */
-}
-
-#splitterUser::handle {
-    background-color: transparent;
-    border: none;
-}
-
-#splitterParameter::handle {
-    background-color: transparent;
-    border: none;
-}
-
-#scrollAreaCollections {
-    border: none;
-}
-#scrollAreaWidgetContents_2 {
-    background-color: #1e252f;
-    border: none;
-}
-
-/* 文本框 */
-QTextBrowser { background-color: #16191e; border: 1px solid #31363d; color: #acb2b8; border-radius: 3px; padding: 8px; }
-
-#textDescription {
-    background-color: transparent;
-    border: none;
-    color: #acb2b8;
-}
-
-#textLocalDescription, #textLocalTriggers, #textEditImgPrompt, #textEditImgNegPrompt {
-    background-color: #16191e;
-    border: 1px solid #31363d;
-    color: #acb2b8;
-    border-radius: 3px;
-    padding: 6px;
-}
-#lblLocalMetaStatus { color: #8c96a0; }
-#btnLocalMetaSave, #btnLocalMetaReset { background-color: #2a3f5a; border-radius: 2px; color: #66c0f4; border: none; padding: 6px 12px; }
-#btnLocalMetaSave:hover, #btnLocalMetaReset:hover { background-color: #3d5677; color: #ffffff; }
-#listEditImages { background-color: #1a1f29; border: 1px solid #31363d; color: #acb2b8; }
-
-/* 标题 */
-QLabel[class=&quot;sectionTitle&quot;] { color: #fff; font-weight: bold; letter-spacing: 1px; font-size: 14px; border-bottom: 1px solid #3d4d5d; padding-bottom: 5px; margin-top: 15px; }
-
-/* 缩略图列表 */
-#scrollAreaGallery { background-color: transparent; border: none; }
-#galleryContents { background-color: transparent; }
-#listUserImages { background-color: transparent; }
-
-/* === 图库缩略图按钮样式 === */
-QPushButton[class=&quot;galleryThumb&quot;] {
-    border: 2px solid #333;        /* 默认边框：深灰 */
-    background-color: #1a1f29;     /* 默认背景 */
-    border-radius: 4px;            /* 圆角 */
-    padding: 4px;                  /* 【关键】内边距：给图片留出物理空间 */
-    color: #acb2b8;                /* 文字颜色 */
-    text-align: center;
-}
-
-QPushButton[class=&quot;galleryThumb&quot;]:hover {
-    border: 2px solid #888;        /* 悬停变亮 */
-}
-
-QPushButton[class=&quot;galleryThumb&quot;]:checked {
-    border: 2px solid #66c0f4;     /* 选中：Steam 亮蓝色边框 */
-    background-color: #2a3f5a;     /* 选中：背景微亮 */
-}
-
-QPushButton[class=&quot;galleryThumb&quot;]:checked:hover {
-    border: 2px solid #90d0ff;     /* 选中且悬停 */
-}
-
-/* === 收藏夹按钮 (圆角正方形) === */
-QPushButton[class=&quot;collectionBtn&quot;], #btnAddCollection { 
-    background-color: #2a3f5a; 
-    color: #fff; 
-    border-radius: 12px; /* 圆角 */
-    font-size: 13px;
-    border: 2px solid transparent;
-}
-QPushButton[class=&quot;collectionBtn&quot;]:hover, #btnAddCollection:hover {
-    background-color: #3d4450;
-    border: 2px solid #888;
-}
-QPushButton[class=&quot;collectionBtn&quot;]:checked { 
-    background-color: #66c0f4; 
-    color: #000; 
-    font-weight: bold; 
-    border: 2px solid #fff;
-}
-
-/* === 主页大图列表 === */
-#homeGalleryList { 
-    background-color: #1b2838; 
-    border: none; 
-    outline: none; 
-    padding: 5px; 
-}
-
-#homeGalleryList::item { 
-    background-color: transparent; 
-    border-radius: 12px; 
-    padding: 5px;
-    color: transparent; 
-    border: 3px solid transparent; 
-}
-
-#homeGalleryList::item:hover { 
-    /* 悬停时稍微变亮 */
-    background-color: #3d4450; 
-}
-
-#homeGalleryList::item:selected { 
-    background-color: #3d4450; 
-    border: 3px solid #66c0f4; 
-}
-
-QWidget#pageSettings { background-color: #1b2838; color: #dcdedf; }
-QGroupBox { border: 1px solid #3d4d5d; margin-top: 20px; font-weight: bold; color: #66c0f4; border-radius: 4px; }
-QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 5px; padding: 0 5px; }
-#editLoraPath, #editGalleryPath, #editTransPath { background-color: #16191e; border: 1px solid #363c46; padding: 5px; color: #fff; border-radius: 3px; }
-#btnBrowseLora, #btnBrowseGallery, #btnBrowseTrans, #btnResetUA, #btnToggleCivitaiApiKey, #btnTestCivitaiApiKey, #btnClearGalleryCache { background-color: #2a3f5a; color: #fff; border: none; padding: 6px 12px; border-radius: 3px; }
-#btnBrowseLora:hover, #btnBrowseGallery:hover, #btnBrowseTrans:hover, #btnResetUA:hover, #btnToggleCivitaiApiKey:hover, #btnTestCivitaiApiKey:hover, #btnClearGalleryCache:hover { background-color: #3d5677; }
-
-/* Sidebar Tab 按钮 */
-#sidebarTabFrame {
-    background-color: #212831; /* 与 filterFrame 相似的背景 */
-    border-radius: 4px;
-    padding: 2px;
-}
-#sidebarTabFrame QPushButton {
-    background-color: #313a46; /* 默认背景色 */
-    color: #acb2b8; /* 默认文字颜色 */
-    border: none;
-    padding: 6px 10px;
-    border-radius: 3px;
-    font-size: 13px;
-    font-weight: bold;
-}
-#sidebarTabFrame QPushButton:hover {
-    background-color: #3d4450;
-    color: #ffffff;
-}
-#sidebarTabFrame QPushButton:checked {
-    background-color: #66c0f4; /* 选中时的背景色 */
-    color: #000000; /* 选中时的文字颜色 */
-}
-
-/* QTreeWidget 样式 */
-#collectionTree {
-    background-color: #1a1f29;
-    border: none;
-    outline: none;
-    color: #8c929a;
-    padding-left: 0px;
-}
-#collectionTree::item {
-    height: 32px;
-    padding-left: 0px; 
-    margin-left: 0px;
-    border-left: 3px solid transparent;
-}
-#collectionTree::item:hover {
-    background-color: #212831;
-    color: #ffffff;
-}
-#collectionTree::item:selected {
-    background-color: #3d4450;
-    color: #ffffff;
-    border-left: 3px solid #66c0f4;
-}
-#collectionTree::branch:open:!has-children, #collectionTree::branch:closed:!has-children { image: none; } /* 没有子项不显示箭头 */
-#collectionTree::branch {
-    background: transparent;
-}
-
-#btnModelsTab:checked, #btnCollectionsTab:checked {
-    background-color: #66c0f4; /* 亮蓝色背景 */
-    color: #000000;            /* 黑色文字 (对比度高) */
-}
-</string>
-  </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout_Root">
     <property name="spacing">
@@ -437,22 +181,6 @@ QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; lef
             </item>
             <item>
              <widget class="QFrame" name="filterFrame">
-              <property name="styleSheet">
-               <string notr="true">
-                QFrame#filterFrame { background-color: #212831; border-radius: 4px; padding: 4px; }
-                QLabel { color: #8c96a0; font-size: 11px; font-weight: bold; }
-                QComboBox { 
-                    background-color: #16191e; 
-                    color: #dcdedf; 
-                    border: 1px solid #363c46; 
-                    border-radius: 3px; 
-                    padding: 4px; 
-                    min-height: 20px;
-                }
-                QComboBox::drop-down { border: none; }
-                QComboBox::down-arrow { image: none; border-left: 2px solid #363c46; } 
-               </string>
-              </property>
               <property name="frameShape">
                <enum>QFrame::Shape::StyledPanel</enum>
               </property>
@@ -1200,9 +928,6 @@ New</string>
                                   <height>30</height>
                                  </size>
                                 </property>
-                                <property name="styleSheet">
-                                 <string>color: #8c96a0; font-weight: bold; margin-top: 10px;</string>
-                                </property>
                                 <property name="text">
                                  <string>Positive Prompt:</string>
                                 </property>
@@ -1239,9 +964,6 @@ New</string>
                                   <height>30</height>
                                  </size>
                                 </property>
-                                <property name="styleSheet">
-                                 <string>color: #8c96a0; font-weight: bold; margin-top: 10px;</string>
-                                </property>
                                 <property name="text">
                                  <string>Negative Prompt:</string>
                                 </property>
@@ -1266,9 +988,6 @@ New</string>
                           </item>
                           <item>
                            <widget class="QLabel" name="lblImgParams">
-                            <property name="styleSheet">
-                             <string>color: #66c0f4; font-family: Consolas; font-size: 12px; margin-top: 5px;</string>
-                            </property>
                             <property name="text">
                              <string>Sampler: -- | Steps: -- | CFG: -- | Seed: --</string>
                             </property>
@@ -1417,9 +1136,6 @@ New</string>
                               <width>0</width>
                               <height>165</height>
                              </size>
-                            </property>
-                            <property name="styleSheet">
-                             <string>color: #acb2b8; line-height: 1.4;</string>
                             </property>
                             <property name="text">
                              <string>Filename: ...
@@ -2274,9 +1990,6 @@ Hash: ...</string>
                    <height>500</height>
                   </size>
                  </property>
-                 <property name="styleSheet">
-                  <string notr="true">background-color: #1b2838;</string>
-                 </property>
                  <property name="text">
                   <string/>
                  </property>
@@ -2295,30 +2008,6 @@ Hash: ...</string>
        </layout>
       </widget>
       <widget class="QWidget" name="pageDownloads">
-       <property name="styleSheet">
-        <string notr="true">QWidget#pageDownloads { background-color: #1b2838; color: #dcdedf; }
-QGroupBox { border: 1px solid #3d4d5d; border-radius: 4px; margin-top: 10px; padding-top: 12px; color: #dcdedf; }
-QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color: #66c0f4; font-weight: bold; }
-QPushButton { background-color: #2a3f5a; color: #fff; border: none; padding: 7px 12px; border-radius: 3px; }
-QPushButton:hover { background-color: #3d5677; }
-QPushButton:disabled { background-color: #2a3038; color: #7f8791; }
-QWidget#pageDownloadsUpdates, QWidget#pageDownloadsCoexisting, QWidget#pageDownloadsIgnored, QWidget#pageDownloadsLatest, QWidget#pageDownloadsErrors, QWidget#pageDownloadsLocal { background-color: #131922; }
-QScrollArea#scrollDownloadsCards, QScrollArea#scrollDownloadsIgnored, QScrollArea#scrollDownloadsLatest, QScrollArea#scrollDownloadsErrors, QScrollArea#scrollDownloadsLocal { background-color: #131922; border: none; }
-QScrollArea#scrollDownloadsCoexisting { background-color: #131922; border: none; }
-QWidget#downloadCardsContainer, QWidget#downloadCardsContainerCoexisting, QWidget#downloadCardsContainerIgnored, QWidget#downloadCardsContainerLatest, QWidget#downloadCardsContainerErrors, QWidget#downloadCardsContainerLocal { background-color: #131922; }
-QFrame[class=&quot;downloadCard&quot;] { background-color: #16191e; border: 1px solid #313d49; border-radius: 8px; }
-QFrame[class=&quot;downloadCard&quot;]:hover { border: 1px solid #4b637a; background-color: #1b222b; }
-QFrame[class=&quot;downloadCard&quot;][selected=&quot;true&quot;] { background-color: #20344a; border: 1px solid #66c0f4; }
-QLabel[class=&quot;downloadTitle&quot;] { color: #ffffff; font-size: 15px; font-weight: bold; }
-QLabel[class=&quot;downloadMeta&quot;] { color: #aeb7c2; }
-QLabel[class=&quot;downloadStatus&quot;] { color: #66c0f4; font-weight: bold; }
-QProgressBar { background-color: #0f141a; border: 1px solid #313d49; border-radius: 4px; color: #dcdedf; text-align: center; }
-QProgressBar::chunk { background-color: #66c0f4; border-radius: 3px; }
-QTabWidget#tabDownloadsStatus::pane { border: 1px solid #313d49; background-color: #131922; top: -1px; }
-QTabWidget#tabDownloadsStatus QTabBar::tab { background: #16191e; color: #aeb7c2; padding: 8px 16px; border: 1px solid #313d49; border-bottom: none; border-top-left-radius: 5px; border-top-right-radius: 5px; margin-right: 3px; }
-QTabWidget#tabDownloadsStatus QTabBar::tab:selected { background: #243447; color: #ffffff; border-color: #4b637a; }
-QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf; border-radius: 3px; padding: 5px; }</string>
-       </property>
        <layout class="QHBoxLayout" name="horizontalLayout_DownloadsRoot">
         <property name="spacing">
          <number>14</number>
@@ -2442,9 +2131,6 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
            </item>
            <item>
             <widget class="QLabel" name="lblDownloadsSelected">
-             <property name="styleSheet">
-              <string>color:#8c96a0;</string>
-             </property>
              <property name="text">
               <string>已选择 0 个模型</string>
              </property>
@@ -2499,9 +2185,6 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
            </item>
            <item>
             <widget class="QLabel" name="lblDownloadsStatus">
-             <property name="styleSheet">
-              <string>color:#8c96a0;</string>
-             </property>
              <property name="text">
               <string>等待检查更新。</string>
              </property>
@@ -3147,9 +2830,6 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
            </item>
            <item row="2" column="5">
             <widget class="QLabel" name="lblCivitaiApiStatus">
-             <property name="styleSheet">
-              <string>color:#8c96a0;</string>
-             </property>
              <property name="text">
               <string>API Key 未测试</string>
              </property>
@@ -3574,9 +3254,6 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
                  </item>
                  <item>
                   <widget class="QLabel" name="lblNSFWHint">
-                   <property name="styleSheet">
-                    <string>color: #666; font-size: 11px;</string>
-                   </property>
                    <property name="text">
                     <string>(Civitai 标准: 1=正常, &gt;1 包含不同程度成人内容)</string>
                    </property>
@@ -3648,12 +3325,6 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
              <property name="toolTip">
               <string>重置为默认值</string>
              </property>
-             <property name="styleSheet">
-              <string notr="true">
-               QPushButton { background-color: #2a3f5a; color: #fff; border: none; border-radius: 3px; padding: 5px 10px; }
-               QPushButton:hover { background-color: #3d5677; }
-              </string>
-             </property>
              <property name="text">
               <string>↺</string>
              </property>
@@ -3677,9 +3348,6 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
         </item>
         <item>
          <widget class="QLabel" name="lblStatusSettings">
-          <property name="styleSheet">
-           <string>color: #666; font-size: 12px;</string>
-          </property>
           <property name="text">
            <string>设置已自动保存，部分设置需重新扫描生效。</string>
           </property>
@@ -3691,32 +3359,6 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
        </layout>
       </widget>
       <widget class="QWidget" name="pageAbout">
-       <property name="styleSheet">
-        <string notr="true">
-         /* 关于页独立样式 */
-         QWidget#pageAbout { background-color: #1b2838; }
-         QLabel { color: #dcdedf; }
-         QLabel#lblAboutTitle { font-size: 32px; font-weight: bold; color: #66c0f4; margin-bottom: 10px; }
-         QLabel#lblAboutVersion { font-size: 16px; color: #8c929a; font-weight: bold; }
-         QLabel#lblAboutDesc { font-size: 14px; line-height: 1.5; color: #acb2b8; margin: 20px 0; }
-         QLabel#lblAboutLink a { color: #66c0f4; text-decoration: none; font-weight: bold; }
-         QLabel#lblAboutLink a:hover { text-decoration: underline; }
-         
-         QPushButton#btnCheckUpdate {
-             background-color: #2a3f5a; 
-             color: #fff; 
-             border-radius: 4px; 
-             font-size: 14px; 
-             font-weight: bold; 
-             padding: 10px 20px;
-             border: 1px solid #3d4d5d;
-         }
-         QPushButton#btnCheckUpdate:hover { background-color: #3d5677; border: 1px solid #66c0f4; }
-         QPushButton#btnCheckUpdate:pressed { background-color: #66c0f4; color: #000; }
-         
-         QLabel#lblCopyright { color: #555; font-size: 12px; margin-top: 20px; }
-        </string>
-       </property>
        <layout class="QVBoxLayout" name="verticalLayout_About">
         <property name="spacing">
          <number>10</number>

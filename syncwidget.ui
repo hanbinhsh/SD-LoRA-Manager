@@ -10,82 +10,6 @@
     <height>657</height>
    </rect>
   </property>
-  <property name="styleSheet">
-   <string notr="true">/* 基础背景 */
-QWidget#SyncWidget { background-color: #1b2838; color: #dcdedf; }
-
-/* 分组框样式 */
-QGroupBox { 
-    border: 1px solid #3d4d5d; 
-    margin-top: 20px; 
-    font-weight: bold; 
-    color: #66c0f4; 
-    border-radius: 4px; 
-}
-QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 5px; padding: 0 5px; }
-
-/* === 列表与日志框背景=== */
-QListWidget, QTextEdit#logOutput { 
-    background-color: #1a1f29; 
-    color: #acb2b8;
-    border: 1px solid #1a1f29; 
-    border-radius: 4px;
-    outline: none;
-}
-
-QTextEdit#logOutput { 
-    background-color: #131519; 
-    border: 1px solid #131519; 
-}
-
-QListWidget::viewport, QTextEdit#logOutput::viewport {
-    background-color: transparent;
-    border: none;
-}
-
-QListWidget::item { 
-    background-color: transparent; 
-    border: none; 
-    padding: 0px; 
-    margin: 0px; 
-}
-QListWidget::item:hover, QListWidget::item:selected { 
-    background-color: transparent; 
-    border: none; 
-}
-
-QWidget#rowWidget {
-    background-color: transparent;
-    border-radius: 4px;
-    margin: 2px;
-}
-QWidget#rowWidget:hover {
-    background-color: #212831;
-}
-
-/* 输入框样式 */
-QLineEdit { 
-    background-color: #131519; 
-    border: 1px solid #363c46; 
-    color: #dcdedf; 
-    padding: 4px; 
-    border-radius: 3px; 
-}
-
-/* 按钮样式 */
-QPushButton { 
-    background-color: #2a3f5a; 
-    border-radius: 2px; 
-    color: #66c0f4; 
-    border: none; 
-    padding: 6px 12px;
-    font-weight: bold;
-}
-QPushButton:hover { background-color: #3d5677; color: #ffffff; }
-
-/* 启动/停止按钮特殊颜色 */
-QPushButton#btnStart[running=&quot;true&quot;] { background-color: #3c1919; color: #ff4c4c; border: 1px solid #ff4c4c; }</string>
-  </property>
   <layout class="QGridLayout" name="gridLayout">
    <item row="0" column="0">
     <layout class="QHBoxLayout" name="horizontalLayout">
@@ -171,11 +95,6 @@ QPushButton#btnStart[running=&quot;true&quot;] { background-color: #3c1919; colo
    </item>
    <item row="2" column="0">
     <widget class="QSplitter" name="splitter">
-     <property name="styleSheet">
-      <string notr="true">QSplitter::handle {
-background-color: #1b2838;
-}</string>
-     </property>
      <property name="orientation">
       <enum>Qt::Orientation::Horizontal</enum>
      </property>
@@ -201,9 +120,6 @@ background-color: #1b2838;
           </property>
           <item>
            <widget class="QListWidget" name="listFolders">
-            <property name="styleSheet">
-             <string notr="true"/>
-            </property>
             <property name="lineWidth">
              <number>0</number>
             </property>

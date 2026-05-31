@@ -481,7 +481,6 @@ void LlmPromptWidget::setupChatUi()
     ui->horizontalLayoutChatRoot->setStretch(0, 0);
     ui->horizontalLayoutChatRoot->setStretch(1, 1);
     ui->verticalLayoutChatHistory->setSizeConstraint(QLayout::SetMinimumSize);
-    ui->pageChat->setStyleSheet("QWidget#pageChat{background:#1e252f;}");
     ui->listChatHistory->setMinimumWidth(260);
     ui->listChatHistory->setMaximumWidth(320);
     ui->listChatHistory->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -495,16 +494,6 @@ void LlmPromptWidget::setupChatUi()
     ui->listChatMessages->setContextMenuPolicy(Qt::CustomContextMenu);
     ui->listChatMessages->viewport()->installEventFilter(this);
     connect(ui->listChatMessages, &QListWidget::customContextMenuRequested, this, &LlmPromptWidget::showChatMessageMenu);
-    ui->listChatMessages->setStyleSheet(
-        "QListWidget{background:#16191e;border:1px solid #31363d;padding:2px;outline:none;}"
-        "QListWidget::item{background:transparent;border:none;margin:0px;padding:0px;}"
-        "QListWidget::item:hover{background:transparent;}"
-        "QListWidget::item:selected{background:transparent;color:inherit;}"
-        "QScrollBar:vertical{background:#12161c;width:4px;margin:2px 0 2px 0;border-radius:2px;}"
-        "QScrollBar::handle:vertical{background:#3a4654;min-height:24px;border-radius:2px;}"
-        "QScrollBar::handle:vertical:hover{background:#4b5a6b;}"
-        "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0px;}"
-        "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}");
     if (ui->listChatMessages->verticalScrollBar()) {
         ui->listChatMessages->verticalScrollBar()->setSingleStep(18);
         connect(ui->listChatMessages->verticalScrollBar(), &QScrollBar::valueChanged, this, [this](int value) {

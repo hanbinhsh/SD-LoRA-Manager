@@ -60,6 +60,17 @@
 #include "promptparserwidget.h"
 #include "usageanalysiswidget.h"
 
+namespace {
+QString loadQssResource(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return QString();
+    }
+    return QString::fromUtf8(file.readAll());
+}
+}
+
 class HighlightItemDelegate : public QStyledItemDelegate
 {
 public:
@@ -125,6 +136,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    setStyleSheet(loadQssResource(":/styles/mainwindow.qss"));
 
     currentUserAgent = getRandomUserAgent();
 
@@ -431,7 +443,6 @@ MainWindow::MainWindow(QWidget *parent)
         ui->scrollAreaWidgetContents->installEventFilter(this);
         ui->backgroundLabel->setScaledContents(false);
         ui->backgroundLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-        ui->backgroundLabel->setStyleSheet("background-color: #1b2838;");
         updateBackgroundImage();
     }
 
@@ -5917,16 +5928,7 @@ void MainWindow::initMenuBar() {
     QMenuBar *bar = this->menuBar();
     bar->clear(); // 清空旧内容
 
-    // 2. 设置样式，确保在深色主题下可见
-    // 如果不设置，有时候文字颜色会和背景色一样导致“隐形”
-    bar->setStyleSheet(
-        "QMenuBar { background-color: #1a1f29; color: #dcdedf; border-bottom: 1px solid #3d4d5d; }"
-        "QMenuBar::item { background-color: transparent; padding: 8px 20px; font-size: 14px; font-weight: bold; }"
-        "QMenuBar::item:selected { background-color: #3d4450; color: #ffffff; }"
-        "QMenuBar::item:pressed { background-color: #66c0f4; color: #000000; }"
-    );
-
-    // 3. 直接添加“库”按钮 (Action)
+    // 2. 直接添加“库”按钮 (Action)
     // 这种直接 addAction 到 bar 的方式，效果就像是点击按钮，而不是弹出下拉菜单
     QAction *actLib = new QAction("📚 库 / Library", this);
     actLib->setShortcut(QKeySequence("Ctrl+1"));
@@ -5947,6 +5949,7 @@ void MainWindow::initMenuBar() {
     // 5. 工具页
     if (!toolsTabWidget) { // 确保只初始化一次
         toolsTabWidget = new QTabWidget(this);
+        toolsTabWidget->setObjectName("toolsTabWidget");
 
         auto makeToolPlaceholder = [this](const QString &text) {
             QWidget *page = new QWidget(toolsTabWidget);
@@ -5970,14 +5973,6 @@ void MainWindow::initMenuBar() {
         QPalette pal = toolsTabWidget->palette();
         pal.setColor(QPalette::Window, QColor("#1a1f29"));
         toolsTabWidget->setPalette(pal);
-
-        // 样式
-        toolsTabWidget->setStyleSheet(
-            "QTabBar { background-color: #1a1f29; }"
-            "QTabWidget::pane { border: 1px solid #444; background-color: #1b2838; color: #dcdedf; } "
-            "QTabBar::tab { background: #1a1f29; color: #ccc; padding: 10px; } "
-            "QTabBar::tab:selected { background: #3d4450; color: #fff; font-weight: bold; }"
-            );
 
         // 核心动作：加入堆栈
         ui->rootStack->addWidget(toolsTabWidget);
@@ -6663,7 +6658,7 @@ void MainWindow::addOrUpdateDownloadCard(const ModelUpdateInfo &info, const QStr
         preview->installEventFilter(this);
         preview->setFixedSize(96, 128);
         preview->setAlignment(Qt::AlignCenter);
-        preview->setStyleSheet("background-color:#0f141a; border:1px solid #2b3440; border-radius:6px;");
+        preview->setProperty("class", "downloadPreview");
         root->addWidget(preview);
 
         auto *content = new QVBoxLayout();
