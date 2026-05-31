@@ -288,6 +288,13 @@ bool TagSearchProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex &sou
     return false;
 }
 
+QString loadToolPageStyle()
+{
+    QFile file(":/styles/toolpage.qss");
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
+    return QString::fromUtf8(file.readAll());
+}
+
 TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::TagBrowserWidget)
@@ -297,6 +304,7 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     , m_userTagProxy(new TagSearchProxyModel(this))
 {
     ui->setupUi(this);
+    setStyleSheet(loadToolPageStyle());
 
     m_model->setColumnCount(2);
     m_model->setHorizontalHeaderLabels({"Tag", "Translation"});

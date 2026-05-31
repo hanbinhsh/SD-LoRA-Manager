@@ -16,21 +16,53 @@
 #include <QTextStream>
 #include <algorithm>
 
+namespace {
+class NumericTableItem : public QTableWidgetItem
+{
+public:
+    explicit NumericTableItem(int value)
+        : QTableWidgetItem(QString::number(value))
+        , numericValue(value)
+    {
+        setData(Qt::UserRole, value);
+    }
+
+    bool operator<(const QTableWidgetItem &other) const override
+    {
+        return numericValue < other.data(Qt::UserRole).toInt();
+    }
+
+private:
+    int numericValue = 0;
+};
+
+QString loadToolPageStyle()
+{
+    QFile file(":/styles/toolpage.qss");
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
+    return QString::fromUtf8(file.readAll());
+}
+}
+
 UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::UsageAnalysisWidget)
 {
     ui->setupUi(this);
+    setStyleSheet(loadToolPageStyle());
 
-    ui->tableModels->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
-    ui->tableModels->horizontalHeader()->setStretchLastSection(true);
-    ui->tableModels->setSortingEnabled(true);
-    ui->tableHealth->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
-    ui->tableHealth->horizontalHeader()->setStretchLastSection(true);
-    ui->tableHealth->setSortingEnabled(true);
-    ui->tableTopUsed->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    ui->tableTopTags->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    ui->tableBaseModels->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    auto setupTable = [](QTableWidget *table, bool stretchLast) {
+        table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+        table->horizontalHeader()->setStretchLastSection(stretchLast);
+        table->horizontalHeader()->setSectionsClickable(true);
+        table->setSortingEnabled(true);
+        table->setAlternatingRowColors(false);
+    };
+    setupTable(ui->tableModels, true);
+    setupTable(ui->tableHealth, true);
+    setupTable(ui->tableTopUsed, true);
+    setupTable(ui->tableTopTags, true);
+    setupTable(ui->tableBaseModels, true);
 
     connect(ui->btnRefreshAnalysis, &QPushButton::clicked, this, &UsageAnalysisWidget::requestRefresh);
     connect(ui->editSearchModels, &QLineEdit::textChanged, this, &UsageAnalysisWidget::onSearchTextChanged);
@@ -134,10 +166,9 @@ void UsageAnalysisWidget::fillTopTable(QTableWidget *table, const QVector<QPair<
 
     for (int row = 0; row < rows.size(); ++row) {
         table->setItem(row, 0, new QTableWidgetItem(rows[row].first));
-        QTableWidgetItem *countItem = new QTableWidgetItem(QString::number(rows[row].second));
-        countItem->setData(Qt::UserRole, rows[row].second);
-        table->setItem(row, 1, countItem);
+        table->setItem(row, 1, new NumericTableItem(rows[row].second));
 
+        table->setItem(row, 2, new NumericTableItem(rows[row].second));
         QProgressBar *bar = new QProgressBar(table);
         bar->setRange(0, maxValue);
         bar->setValue(rows[row].second);
@@ -165,9 +196,7 @@ void UsageAnalysisWidget::refreshModelTable()
         ui->tableModels->setItem(row, 0, nameItem);
         ui->tableModels->setItem(row, 1, new QTableWidgetItem(model.baseModel.isEmpty() ? "Unknown" : model.baseModel));
         ui->tableModels->setItem(row, 2, new QTableWidgetItem(model.localEdited ? "本地/已编辑" : "Civitai"));
-        QTableWidgetItem *usageItem = new QTableWidgetItem(QString::number(model.usageCount));
-        usageItem->setData(Qt::UserRole, model.usageCount);
-        ui->tableModels->setItem(row, 3, usageItem);
+        ui->tableModels->setItem(row, 3, new NumericTableItem(model.usageCount));
         ui->tableModels->setItem(row, 4, new QTableWidgetItem(formatTime(model.lastUsed)));
         ui->tableModels->setItem(row, 5, new QTableWidgetItem(model.syncFailure.isEmpty() ? "正常" : "同步失败"));
         ui->tableModels->setItem(row, 6, new QTableWidgetItem(model.filePath));

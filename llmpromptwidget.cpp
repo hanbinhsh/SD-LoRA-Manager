@@ -170,6 +170,13 @@ void scrollTextViewportToBottom(QWidget *widget)
     if (!scrollBar) return;
     scrollBar->setValue(scrollBar->maximum());
 }
+
+QString loadToolPageStyle()
+{
+    QFile file(":/styles/toolpage.qss");
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
+    return QString::fromUtf8(file.readAll());
+}
 }
 
 LlmPromptWidget::LlmPromptWidget(QWidget *parent)
@@ -178,6 +185,7 @@ LlmPromptWidget::LlmPromptWidget(QWidget *parent)
     , m_netManager(new QNetworkAccessManager(this))
 {
     ui->setupUi(this);
+    setStyleSheet(loadToolPageStyle());
 
     connect(ui->btnFetchModels, &QPushButton::clicked, this, &LlmPromptWidget::onFetchModelsClicked);
     connect(ui->btnRefreshCandidates, &QPushButton::clicked, this, &LlmPromptWidget::onRefreshCandidatesClicked);

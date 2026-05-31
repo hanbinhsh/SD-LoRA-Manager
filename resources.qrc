@@ -2,5 +2,6 @@
     <qresource prefix="/">
         <file>logo.ico</file>
         <file>scripts/wd14_tagger.py</file>
+        <file>styles/toolpage.qss</file>
     </qresource>
 </RCC>
