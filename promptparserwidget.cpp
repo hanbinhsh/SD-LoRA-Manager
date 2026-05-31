@@ -176,6 +176,7 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
     connect(ui->btnWd14BrowsePython, &QPushButton::clicked, this, &PromptParserWidget::browseWd14PythonPath);
     connect(ui->btnWd14BrowseScript, &QPushButton::clicked, this, &PromptParserWidget::browseWd14ScriptPath);
     connect(ui->btnWd14SavePreset, &QPushButton::clicked, this, &PromptParserWidget::saveWd14Preset);
+    connect(ui->btnWd14DeletePreset, &QPushButton::clicked, this, &PromptParserWidget::deleteWd14Preset);
     connect(ui->comboWd14Preset, &QComboBox::textActivated, this, &PromptParserWidget::loadWd14Preset);
     connect(ui->sliderWd14Threshold, &QSlider::valueChanged, this, &PromptParserWidget::updateWd14ThresholdFromSlider);
     connect(ui->spinWd14Threshold, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
@@ -192,7 +193,6 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
     connect(ui->chkWd14IncludeConfidence, &QCheckBox::toggled, this, saveSettingsLater);
     connect(ui->chkWd14ReplaceUnderscore, &QCheckBox::toggled, this, saveSettingsLater);
     connect(ui->chkWd14EscapeBrackets, &QCheckBox::toggled, this, saveSettingsLater);
-    connect(ui->chkWd14UnloadAfterInference, &QCheckBox::toggled, this, saveSettingsLater);
 
     ui->btnWd14Copy->setEnabled(false);
     ui->treeWd14Ratings->setRootIsDecorated(false);
@@ -446,7 +446,6 @@ void PromptParserWidget::loadWd14Settings()
     ui->chkWd14IncludeConfidence->setChecked(root.value("wd14_include_confidence").toBool(false));
     ui->chkWd14ReplaceUnderscore->setChecked(root.value("wd14_replace_underscore").toBool(true));
     ui->chkWd14EscapeBrackets->setChecked(root.value("wd14_escape_brackets").toBool(false));
-    ui->chkWd14UnloadAfterInference->setChecked(root.value("wd14_unload_after_inference").toBool(false));
 
     const QString presetDir = wd14PresetDirectory();
     QDir dir(presetDir);
@@ -461,6 +460,9 @@ void PromptParserWidget::loadWd14Settings()
     const QString activePreset = root.value("wd14_active_preset").toString("default.json");
     const int presetIndex = ui->comboWd14Preset->findText(activePreset);
     if (presetIndex >= 0) ui->comboWd14Preset->setCurrentIndex(presetIndex);
+    if (presetIndex >= 0 && QFile::exists(QDir(wd14PresetDirectory()).filePath(activePreset))) {
+        applyWd14Preset(activePreset, false);
+    }
 }
 
 void PromptParserWidget::saveWd14Settings() const
@@ -485,7 +487,6 @@ void PromptParserWidget::saveWd14Settings() const
     root["wd14_include_confidence"] = ui->chkWd14IncludeConfidence->isChecked();
     root["wd14_replace_underscore"] = ui->chkWd14ReplaceUnderscore->isChecked();
     root["wd14_escape_brackets"] = ui->chkWd14EscapeBrackets->isChecked();
-    root["wd14_unload_after_inference"] = ui->chkWd14UnloadAfterInference->isChecked();
     root["wd14_active_preset"] = ui->comboWd14Preset->currentText().trimmed().isEmpty()
         ? "default.json"
         : ui->comboWd14Preset->currentText().trimmed();
@@ -575,7 +576,6 @@ void PromptParserWidget::saveWd14Preset()
     preset["include_confidence"] = ui->chkWd14IncludeConfidence->isChecked();
     preset["replace_underscore"] = ui->chkWd14ReplaceUnderscore->isChecked();
     preset["escape_brackets"] = ui->chkWd14EscapeBrackets->isChecked();
-    preset["unload_after_inference"] = ui->chkWd14UnloadAfterInference->isChecked();
 
     QDir().mkpath(wd14PresetDirectory());
     QFile file(QDir(wd14PresetDirectory()).filePath(presetName));
@@ -592,13 +592,65 @@ void PromptParserWidget::saveWd14Preset()
     ui->lblWd14Status->setText("已保存预设: " + presetName);
 }
 
+void PromptParserWidget::deleteWd14Preset()
+{
+    QString presetName = ui->comboWd14Preset->currentText().trimmed();
+    if (presetName.isEmpty()) {
+        ui->lblWd14Status->setText("没有可删除的预设。");
+        return;
+    }
+    if (!presetName.endsWith(".json", Qt::CaseInsensitive)) presetName += ".json";
+
+    const QString presetPath = QDir(wd14PresetDirectory()).filePath(presetName);
+    if (!QFile::exists(presetPath)) {
+        ui->lblWd14Status->setText("预设文件不存在: " + presetName);
+        return;
+    }
+
+    const auto reply = QMessageBox::question(
+        this,
+        "删除预设",
+        QString("确定要删除预设 \"%1\" 吗？").arg(presetName),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No);
+    if (reply != QMessageBox::Yes) return;
+
+    if (!QFile::remove(presetPath)) {
+        ui->lblWd14Status->setText("预设删除失败: " + presetName);
+        return;
+    }
+
+    QDir dir(wd14PresetDirectory());
+    const QStringList presets = dir.entryList({"*.json"}, QDir::Files, QDir::Name);
+    ui->comboWd14Preset->clear();
+    if (presets.isEmpty()) {
+        ui->comboWd14Preset->addItem("default.json");
+    } else {
+        ui->comboWd14Preset->addItems(presets);
+    }
+
+    const QString nextPreset = ui->comboWd14Preset->currentText().trimmed();
+    if (!nextPreset.isEmpty() && QFile::exists(QDir(wd14PresetDirectory()).filePath(nextPreset))) {
+        applyWd14Preset(nextPreset, true);
+    } else {
+        saveWd14Settings();
+    }
+    ui->lblWd14Status->setText("已删除预设: " + presetName);
+}
+
 void PromptParserWidget::loadWd14Preset(const QString &presetName)
+{
+    applyWd14Preset(presetName, true);
+}
+
+bool PromptParserWidget::applyWd14Preset(const QString &presetName, bool persistActivePreset)
 {
     const QString path = QDir(wd14PresetDirectory()).filePath(presetName);
     QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) return;
+    if (!file.open(QIODevice::ReadOnly)) return false;
 
     const QJsonObject preset = QJsonDocument::fromJson(file.readAll()).object();
+    if (preset.isEmpty()) return false;
     ui->editWd14ModelPath->setText(preset.value("model_dir").toString());
     ui->editWd14PythonPath->setText(preset.value("python_path").toString());
     ui->editWd14ScriptPath->setText(preset.value("script_path").toString());
@@ -610,9 +662,9 @@ void PromptParserWidget::loadWd14Preset(const QString &presetName)
     ui->chkWd14IncludeConfidence->setChecked(preset.value("include_confidence").toBool(false));
     ui->chkWd14ReplaceUnderscore->setChecked(preset.value("replace_underscore").toBool(true));
     ui->chkWd14EscapeBrackets->setChecked(preset.value("escape_brackets").toBool(false));
-    ui->chkWd14UnloadAfterInference->setChecked(preset.value("unload_after_inference").toBool(false));
-    saveWd14Settings();
+    if (persistActivePreset) saveWd14Settings();
     ui->lblWd14Status->setText("已加载预设: " + presetName);
+    return true;
 }
 
 void PromptParserWidget::browseWd14ModelPath()
@@ -708,6 +760,7 @@ void PromptParserWidget::setWd14Running(bool running)
     ui->editWd14PythonPath->setEnabled(!running);
     ui->editWd14ScriptPath->setEnabled(!running);
     ui->btnWd14SavePreset->setEnabled(!running);
+    ui->btnWd14DeletePreset->setEnabled(!running);
     ui->comboWd14Preset->setEnabled(!running);
     ui->lblWd14Image->setEnabled(!running);
 }

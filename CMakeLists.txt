@@ -26,6 +26,9 @@ qt_add_executable(SD_LoRA_Manager
     llmpromptwidget.h
     llmpromptwidget.cpp
     llmpromptwidget.ui
+    usageanalysiswidget.h
+    usageanalysiswidget.cpp
+    usageanalysiswidget.ui
     imageloader.h
     resources.qrc
     app.rc

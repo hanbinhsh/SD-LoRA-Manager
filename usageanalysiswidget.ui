@@ -1,0 +1,460 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>UsageAnalysisWidget</class>
+ <widget class="QWidget" name="UsageAnalysisWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1180</width>
+    <height>780</height>
+   </rect>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QWidget#UsageAnalysisWidget { background-color: #1b2838; color: #dcdedf; }
+QTabWidget::pane {
+    border: 1px solid #3d4d5d;
+    background-color: #1e252f;
+    border-radius: 4px;
+}
+QTabBar { background-color: #1a1f29; }
+QTabBar::tab {
+    background: #1a1f29;
+    color: #ccc;
+    padding: 10px;
+}
+QTabBar::tab:selected {
+    background: #3d4450;
+    color: #fff;
+    font-weight: bold;
+}
+QGroupBox {
+    border: 1px solid #3d4d5d;
+    background-color: #1e252f;
+    border-radius: 4px;
+    margin-top: 14px;
+    font-weight: bold;
+    color: #66c0f4;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 8px;
+    padding: 0 4px;
+}
+QLineEdit, QTableWidget {
+    background-color: #16191e;
+    border: 1px solid #31363d;
+    color: #dcdedf;
+    border-radius: 3px;
+    padding: 4px;
+}
+QPushButton {
+    background-color: #2a3f5a;
+    border-radius: 2px;
+    color: #66c0f4;
+    border: none;
+    padding: 6px 12px;
+}
+QPushButton:hover { background-color: #3d5677; color: #ffffff; }
+QPushButton:disabled { background-color: #2a3038; color: #7f8791; }
+QHeaderView::section {
+    background-color: #212831;
+    color: #dcdedf;
+    padding: 6px;
+    border: none;
+    border-right: 1px solid #31363d;
+}
+QTableWidget {
+    gridline-color: #31363d;
+    selection-background-color: #2a475e;
+    selection-color: #ffffff;
+}
+QProgressBar {
+    background: #111a26;
+    border: 1px solid #3d4d5d;
+    border-radius: 4px;
+    color: #dcdedf;
+    text-align: center;
+}
+QProgressBar::chunk { background: #66c0f4; border-radius: 3px; }
+QScrollBar:vertical {
+    background: #12161c;
+    width: 4px;
+    margin: 2px 0 2px 0;
+    border-radius: 2px;
+}
+QScrollBar::handle:vertical {
+    background: #3a4654;
+    min-height: 24px;
+    border-radius: 2px;
+}
+QScrollBar::handle:vertical:hover { background: #4b5a6b; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
+QScrollBar:horizontal {
+    background: #12161c;
+    height: 4px;
+    margin: 0 2px 0 2px;
+    border-radius: 2px;
+}
+QScrollBar::handle:horizontal {
+    background: #3a4654;
+    min-width: 24px;
+    border-radius: 2px;
+}
+QScrollBar::handle:horizontal:hover { background: #4b5a6b; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0px; }
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="leftMargin">
+    <number>18</number>
+   </property>
+   <property name="topMargin">
+    <number>18</number>
+   </property>
+   <property name="rightMargin">
+    <number>18</number>
+   </property>
+   <property name="bottomMargin">
+    <number>18</number>
+   </property>
+   <item>
+    <widget class="QTabWidget" name="tabUsage">
+     <property name="currentIndex">
+      <number>0</number>
+     </property>
+     <widget class="QWidget" name="tabAnalysis">
+      <attribute name="title">
+       <string>模型使用分析</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayoutAnalysis">
+       <item>
+        <layout class="QHBoxLayout" name="layoutActions">
+         <item>
+          <widget class="QLineEdit" name="editSearchModels">
+           <property name="placeholderText">
+            <string>搜索模型、底模、路径...</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnRefreshAnalysis">
+           <property name="text">
+            <string>刷新分析</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnExportAnalysisCsv">
+           <property name="text">
+            <string>导出 CSV</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QGridLayout" name="layoutSummary">
+         <item row="0" column="0">
+          <widget class="QGroupBox" name="groupTotal">
+           <property name="title">
+            <string>模型总数</string>
+           </property>
+           <layout class="QVBoxLayout" name="verticalLayoutTotal">
+            <item>
+             <widget class="QLabel" name="lblSummaryTotal">
+              <property name="alignment">
+               <set>Qt::AlignCenter</set>
+              </property>
+              <property name="text">
+               <string>0</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QGroupBox" name="groupCivitai">
+           <property name="title">
+            <string>Civitai 元数据</string>
+           </property>
+           <layout class="QVBoxLayout" name="verticalLayoutCivitai">
+            <item>
+             <widget class="QLabel" name="lblSummaryCivitai">
+              <property name="alignment">
+               <set>Qt::AlignCenter</set>
+              </property>
+              <property name="text">
+               <string>0</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item row="0" column="2">
+          <widget class="QGroupBox" name="groupLocal">
+           <property name="title">
+            <string>本地/已编辑</string>
+           </property>
+           <layout class="QVBoxLayout" name="verticalLayoutLocal">
+            <item>
+             <widget class="QLabel" name="lblSummaryLocal">
+              <property name="alignment">
+               <set>Qt::AlignCenter</set>
+              </property>
+              <property name="text">
+               <string>0</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item row="0" column="3">
+          <widget class="QGroupBox" name="groupFailed">
+           <property name="title">
+            <string>同步失败</string>
+           </property>
+           <layout class="QVBoxLayout" name="verticalLayoutFailed">
+            <item>
+             <widget class="QLabel" name="lblSummaryFailed">
+              <property name="alignment">
+               <set>Qt::AlignCenter</set>
+              </property>
+              <property name="text">
+               <string>0</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item row="0" column="4">
+          <widget class="QGroupBox" name="groupUsed">
+           <property name="title">
+            <string>有返图使用</string>
+           </property>
+           <layout class="QVBoxLayout" name="verticalLayoutUsed">
+            <item>
+             <widget class="QLabel" name="lblSummaryUsed">
+              <property name="alignment">
+               <set>Qt::AlignCenter</set>
+              </property>
+              <property name="text">
+               <string>0</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item row="0" column="5">
+          <widget class="QGroupBox" name="groupUnused">
+           <property name="title">
+            <string>未使用</string>
+           </property>
+           <layout class="QVBoxLayout" name="verticalLayoutUnused">
+            <item>
+             <widget class="QLabel" name="lblSummaryUnused">
+              <property name="alignment">
+               <set>Qt::AlignCenter</set>
+              </property>
+              <property name="text">
+               <string>0</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QTabWidget" name="tabAnalysisTables">
+         <property name="currentIndex">
+          <number>0</number>
+         </property>
+         <widget class="QWidget" name="tabTopUsed">
+          <attribute name="title">
+           <string>使用次数</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="verticalLayoutTopUsed">
+           <item>
+            <widget class="QTableWidget" name="tableTopUsed"/>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="tabTopTags">
+          <attribute name="title">
+           <string>用户常用 Tag</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="verticalLayoutTopTags">
+           <item>
+            <widget class="QTableWidget" name="tableTopTags"/>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="tabBaseModels">
+          <attribute name="title">
+           <string>底模分布</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="verticalLayoutBaseModels">
+           <item>
+            <widget class="QTableWidget" name="tableBaseModels"/>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="tabAllModels">
+          <attribute name="title">
+           <string>所有模型</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="verticalLayoutAllModels">
+           <item>
+            <widget class="QTableWidget" name="tableModels">
+             <property name="selectionBehavior">
+              <enum>QAbstractItemView::SelectRows</enum>
+             </property>
+             <column>
+              <property name="text">
+               <string>模型</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>底模</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>状态</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>使用次数</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>最近使用</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>元数据</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>路径</string>
+              </property>
+             </column>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="lblAnalysisStatus">
+         <property name="text">
+          <string>等待模型库数据。</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tabHealth">
+      <attribute name="title">
+       <string>元数据健康检查</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayoutHealth">
+       <item>
+        <layout class="QHBoxLayout" name="layoutHealthActions">
+         <item>
+          <widget class="QPushButton" name="btnRunHealthCheck">
+           <property name="text">
+            <string>开始检查</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnOpenHealthModel">
+           <property name="text">
+            <string>跳转模型</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnCopyHealth">
+           <property name="text">
+            <string>复制选中问题</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacerHealth">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QTableWidget" name="tableHealth">
+         <property name="selectionBehavior">
+          <enum>QAbstractItemView::SelectRows</enum>
+         </property>
+         <column>
+          <property name="text">
+           <string>级别</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string>模型</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string>问题</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string>建议</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string>路径</string>
+          </property>
+         </column>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="lblHealthStatus">
+         <property name="text">
+          <string>点击开始检查后，将在后台检查本地 metadata 与预览图状态。</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

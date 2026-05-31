@@ -3073,6 +3073,26 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
            <property name="spacing">
             <number>10</number>
            </property>
+           <item row="1" column="4">
+            <widget class="QLineEdit" name="editCivitaiApiKey">
+             <property name="echoMode">
+              <enum>QLineEdit::EchoMode::Password</enum>
+             </property>
+             <property name="placeholderText">
+              <string>可选：用于认证下载和访问收藏资源</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="5">
+            <widget class="QPushButton" name="btnResetUA">
+             <property name="toolTip">
+              <string>生成一个随机的现代浏览器 UA 填入框中</string>
+             </property>
+             <property name="text">
+              <string>随机 / Random</string>
+             </property>
+            </widget>
+           </item>
            <item row="0" column="0">
             <widget class="QCheckBox" name="chkUseCustomUserAgent">
              <property name="toolTip">
@@ -3083,23 +3103,13 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
              </property>
             </widget>
            </item>
-           <item row="0" column="1">
+           <item row="0" column="4">
             <widget class="QLineEdit" name="editUserAgent">
              <property name="enabled">
               <bool>false</bool>
              </property>
              <property name="placeholderText">
               <string>Mozilla/5.0 ... (留空则使用随机生成的 UA)</string>
-             </property>
-            </widget>
-           </item>
-           <item row="0" column="2">
-            <widget class="QPushButton" name="btnResetUA">
-             <property name="toolTip">
-              <string>生成一个随机的现代浏览器 UA 填入框中</string>
-             </property>
-             <property name="text">
-              <string>随机 / Random</string>
              </property>
             </widget>
            </item>
@@ -3110,17 +3120,14 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
              </property>
             </widget>
            </item>
-           <item row="1" column="1">
-            <widget class="QLineEdit" name="editCivitaiApiKey">
-             <property name="echoMode">
-              <enum>QLineEdit::EchoMode::Password</enum>
-             </property>
-             <property name="placeholderText">
-              <string>可选：用于认证下载和访问收藏资源</string>
+           <item row="2" column="0">
+            <widget class="QLabel" name="lblModelUpdateDownloadPolicy">
+             <property name="text">
+              <string>模型更新下载策略:</string>
              </property>
             </widget>
            </item>
-           <item row="1" column="2">
+           <item row="1" column="5">
             <layout class="QHBoxLayout" name="horizontalLayout_CivitaiApiButtons">
              <item>
               <widget class="QPushButton" name="btnToggleCivitaiApiKey">
@@ -3138,33 +3145,7 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
              </item>
             </layout>
            </item>
-           <item row="2" column="0">
-            <widget class="QLabel" name="lblModelUpdateDownloadPolicy">
-             <property name="text">
-              <string>模型更新下载策略:</string>
-             </property>
-            </widget>
-           </item>
-           <item row="2" column="1">
-            <widget class="QComboBox" name="comboModelUpdateDownloadPolicy">
-             <item>
-              <property name="text">
-               <string>每次询问</string>
-              </property>
-             </item>
-             <item>
-              <property name="text">
-               <string>保留旧版</string>
-              </property>
-             </item>
-             <item>
-              <property name="text">
-               <string>覆盖当前文件</string>
-              </property>
-             </item>
-            </widget>
-           </item>
-           <item row="2" column="2">
+           <item row="2" column="5">
             <widget class="QLabel" name="lblCivitaiApiStatus">
              <property name="styleSheet">
               <string>color:#8c96a0;</string>
@@ -3173,6 +3154,42 @@ QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf
               <string>API Key 未测试</string>
              </property>
             </widget>
+           </item>
+           <item row="2" column="4">
+            <layout class="QHBoxLayout" name="horizontalLayout_4">
+             <item>
+              <widget class="QComboBox" name="comboModelUpdateDownloadPolicy">
+               <item>
+                <property name="text">
+                 <string>每次询问</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>保留旧版</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>覆盖当前文件</string>
+                </property>
+               </item>
+              </widget>
+             </item>
+             <item>
+              <widget class="QCheckBox" name="chkAutoCheckUpdatesOnStartup">
+               <property name="toolTip">
+                <string>启动软件后自动检查 GitHub Release。只有发现新版本时弹窗提醒。</string>
+               </property>
+               <property name="text">
+                <string>启动时自动检查更新 / Auto check updates on startup</string>
+               </property>
+               <property name="checked">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+            </layout>
            </item>
           </layout>
          </widget>

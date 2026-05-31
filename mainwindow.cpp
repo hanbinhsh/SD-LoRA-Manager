@@ -58,6 +58,7 @@
 #include "tagbrowserwidget.h"
 #include "syncwidget.h"
 #include "promptparserwidget.h"
+#include "usageanalysiswidget.h"
 
 class HighlightItemDelegate : public QStyledItemDelegate
 {
@@ -171,8 +172,18 @@ MainWindow::MainWindow(QWidget *parent)
                 nextHeroPixmap = rawPix;
             }
             // C. 准备背景图
-            QSize targetSize = ui->backgroundLabel->size();
+            QSize targetSize = ui->scrollAreaWidgetContents ? ui->scrollAreaWidgetContents->size() : ui->backgroundLabel->size();
+            if (QWidget *viewport = ui->scrollAreaWidgetContents ? ui->scrollAreaWidgetContents->parentWidget() : nullptr) {
+                targetSize.setWidth(qMax(targetSize.width(), viewport->width()));
+                targetSize.setHeight(qMax(targetSize.height(), viewport->height()));
+            }
             if (targetSize.isEmpty()) targetSize = QSize(1920, 1080);
+            if (ui->backgroundLabel) {
+                const QRect bgRect(QPoint(0, 0), targetSize);
+                if (ui->backgroundLabel->geometry() != bgRect) {
+                    ui->backgroundLabel->setGeometry(bgRect);
+                }
+            }
             QSize heroSize = ui->heroFrame->size();
             if (heroSize.isEmpty()) heroSize = QSize(targetSize.width(), 400);
             if (currentBlurredBgPix.isNull() && !currentHeroPixmap.isNull()) {
@@ -418,8 +429,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     if (ui->backgroundLabel && ui->scrollAreaWidgetContents) {
         ui->scrollAreaWidgetContents->installEventFilter(this);
-        ui->backgroundLabel->setScaledContents(true);
-        ui->backgroundLabel->setGeometry(ui->scrollAreaWidgetContents->rect());
+        ui->backgroundLabel->setScaledContents(false);
+        ui->backgroundLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+        ui->backgroundLabel->setStyleSheet("background-color: #1b2838;");
+        updateBackgroundImage();
     }
 
     clearDetailView();
@@ -438,6 +451,11 @@ MainWindow::MainWindow(QWidget *parent)
             if (isModelListItem(ui->modelList->item(i))) modelCount++;
         }
         ui->statusbar->showMessage(QString("加载完成，共 %1 个模型").arg(modelCount), 3000);
+        if (optAutoCheckUpdatesOnStartup) {
+            QTimer::singleShot(800, this, [this]() {
+                startAppUpdateCheck(true);
+            });
+        }
     });
 
     loadUserGalleryCache();
@@ -1598,13 +1616,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 
     if (watched == ui->scrollAreaWidgetContents && event->type() == QEvent::Resize) {
         if (ui->backgroundLabel) {
-            QSize newSize = ui->scrollAreaWidgetContents->size();
-            // 只有当尺寸不一致时才去 resize，避免循环触发
-            if (ui->backgroundLabel->size() != newSize) {
-                ui->backgroundLabel->resize(newSize);
-                // 启动防抖更新图片
-                bgResizeTimer->start(0); // 稍微增加一点延迟，减少高频模糊计算
-            }
+            bgResizeTimer->start(0);
         }
     }
 
@@ -2332,8 +2344,103 @@ void MainWindow::setLocalMetaStatus(const ModelMeta &meta)
     } else {
         status = "状态: Civitai 元数据";
     }
+
+    QStringList details;
+    QString filePath;
+    if (!meta.filePath.isEmpty()) filePath = QFileInfo(meta.filePath).absoluteFilePath();
+    if (filePath.isEmpty() && ui && ui->modelList && ui->modelList->currentItem()) {
+        const QString itemPath = ui->modelList->currentItem()->data(ROLE_FILE_PATH).toString();
+        if (!itemPath.isEmpty()) filePath = QFileInfo(itemPath).absoluteFilePath();
+    }
+
+    QString jsonPath;
+    QString baseName;
+    if (!filePath.isEmpty()) {
+        QFileInfo modelInfo(filePath);
+        baseName = modelInfo.completeBaseName();
+        jsonPath = modelInfo.absoluteDir().filePath(baseName + ".json");
+        details << (QFileInfo::exists(jsonPath) ? "JSON: 已缓存" : "JSON: 未缓存");
+    }
+
+    if (meta.modelId > 0) details << QString("Model ID: %1").arg(meta.modelId);
+    if (meta.versionId > 0) details << QString("Version ID: %1").arg(meta.versionId);
+    if (!meta.sha256.isEmpty()) details << "SHA256: 已记录";
+
+    if (ui && ui->modelList && ui->modelList->currentItem()) {
+        QListWidgetItem *item = ui->modelList->currentItem();
+        const int usageCount = item->data(ROLE_SORT_USAGE_COUNT).toInt();
+        const qint64 lastUsed = item->data(ROLE_SORT_LAST_USED).toLongLong();
+        details << QString("本地返图: %1 张").arg(usageCount);
+        if (lastUsed > 0) {
+            details << QString("最近使用: %1").arg(QDateTime::fromMSecsSinceEpoch(lastUsed).toString("yyyy-MM-dd"));
+        }
+    }
+
+    if (!filePath.isEmpty() && modelSyncFailures.contains(filePath)) {
+        const QString error = modelSyncFailures.value(filePath)["error"].toString();
+        details << (error.isEmpty() ? "同步失败缓存: 已记录" : QString("同步失败缓存: %1").arg(error));
+        color = "#ff6b6b";
+    } else if (!jsonPath.isEmpty() && !QFileInfo::exists(jsonPath)) {
+        details << "提示: 点击刷新模型详情可同步元数据";
+    }
+
+    if (!details.isEmpty()) {
+        status += "\n" + details.join(" · ");
+    }
+    ui->lblLocalMetaStatus->setWordWrap(true);
     ui->lblLocalMetaStatus->setText(status);
     ui->lblLocalMetaStatus->setStyleSheet(QString("color: %1;").arg(color));
+    ui->lblLocalMetaStatus->setToolTip(status);
+}
+
+void MainWindow::refreshCurrentDetailCacheStatus()
+{
+    if (!currentMeta.filePath.isEmpty()) setLocalMetaStatus(currentMeta);
+}
+
+void MainWindow::refreshUsageAnalysisWidget()
+{
+    if (!usageAnalysisWidget || !ui || !ui->modelList) return;
+
+    UsageAnalysisData data;
+    data.galleryImageCount = imageCache.size();
+    data.generatedAt = QDateTime::currentDateTime();
+
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (!isModelListItem(item)) continue;
+
+        UsageAnalysisModel model;
+        model.filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+        model.displayName = item->text();
+        model.baseName = item->data(ROLE_MODEL_NAME).toString();
+        if (model.baseName.isEmpty()) model.baseName = QFileInfo(model.filePath).completeBaseName();
+        model.rootName = item->data(ROLE_MODEL_ROOT_NAME).toString();
+        model.baseModel = item->data(ROLE_FILTER_BASE).toString();
+        model.previewPath = item->data(ROLE_PREVIEW_PATH).toString();
+        model.modelId = item->data(ROLE_CIVITAI_MODEL_ID).toInt();
+        model.versionId = item->data(ROLE_CIVITAI_VERSION_ID).toInt();
+        model.hasSha256 = !item->data(ROLE_CIVITAI_SHA256).toString().trimmed().isEmpty();
+        model.localEdited = item->data(ROLE_LOCAL_EDITED).toBool();
+        model.usageCount = item->data(ROLE_SORT_USAGE_COUNT).toInt();
+        model.lastUsed = item->data(ROLE_SORT_LAST_USED).toLongLong();
+        if (!model.filePath.isEmpty()) {
+            QFileInfo fi(model.filePath);
+            model.jsonPath = fi.absoluteDir().filePath(fi.completeBaseName() + ".json");
+            const QJsonObject failure = modelSyncFailures.value(model.filePath);
+            model.syncFailure = failure["error"].toString();
+        }
+        data.models.append(model);
+    }
+
+    for (auto it = imageCache.cbegin(); it != imageCache.cend(); ++it) {
+        for (const QString &tag : it.value().cleanTags) {
+            const QString clean = tag.trimmed();
+            if (!clean.isEmpty()) data.positiveTagCounts[clean] += 1;
+        }
+    }
+
+    usageAnalysisWidget->setAnalysisData(data);
 }
 
 QString MainWindow::currentEditBaseName() const
@@ -3088,9 +3195,6 @@ void MainWindow::onEditMetaTabClicked()
         ui->scrollAreaWidgetContents->installEventFilter(this);
         if (targetIndex == 0) {
             ui->scrollAreaWidgetContents->adjustSize();
-        }
-        if (ui->backgroundLabel) {
-            ui->backgroundLabel->setGeometry(ui->scrollAreaWidgetContents->rect());
         }
         updateBackgroundImage();
     });
@@ -4169,16 +4273,22 @@ void MainWindow::updateBackgroundImage()
 {
     if (!ui->backgroundLabel || !ui->heroFrame || !ui->scrollAreaWidgetContents) return;
 
-    // 1. 强制同步大小
-    if (ui->backgroundLabel->size() != ui->scrollAreaWidgetContents->size()) {
-        ui->backgroundLabel->setGeometry(ui->scrollAreaWidgetContents->rect());
+    // The background remains in content coordinates so it scrolls together
+    // with the hero, while the blur composition itself uses stable absolute
+    // fade positions and no QLabel stretching.
+    QSize targetSize = ui->scrollAreaWidgetContents->size();
+    if (QWidget *viewport = ui->scrollAreaWidgetContents->parentWidget()) {
+        targetSize.setWidth(qMax(targetSize.width(), viewport->width()));
+        targetSize.setHeight(qMax(targetSize.height(), viewport->height()));
+    }
+    if (targetSize.isEmpty()) targetSize = QSize(1920, 1080);
+    const QRect bgRect(QPoint(0, 0), targetSize);
+    if (ui->backgroundLabel->geometry() != bgRect) {
+        ui->backgroundLabel->setGeometry(bgRect);
     }
 
     // 如果正在动画，不处理 Resize，由动画循环处理
     if (transitionAnim && transitionAnim->state() == QAbstractAnimation::Running) return;
-
-    QSize targetSize = ui->backgroundLabel->size();
-    if (targetSize.isEmpty()) return;
 
     // 获取 Hero 尺寸用于对齐
     QSize heroSize = ui->heroFrame->size();
@@ -4679,6 +4789,8 @@ void MainWindow::refreshModelUsageStatsAsync()
             refreshHomeGallery();
             refreshCollectionTreeView();
         }
+        refreshCurrentDetailCacheStatus();
+        refreshUsageAnalysisWidget();
         return;
     }
 
@@ -4712,6 +4824,8 @@ void MainWindow::refreshModelUsageStatsAsync()
             refreshHomeGallery();
             refreshCollectionTreeView();
         }
+        refreshCurrentDetailCacheStatus();
+        refreshUsageAnalysisWidget();
     });
 
     watcher->setFuture(QtConcurrent::run(
@@ -5021,24 +5135,18 @@ QPixmap MainWindow::applyBlurToImage(const QImage &srcImg, const QSize &bgSize, 
     painter.drawPixmap(QRect(offsetX, offsetY, newW, newH), blurredResult);
 
     // 4. 绘制渐变遮罩 (自然融合到底部背景色)
+    // Keep fade positions in content coordinates. This avoids a visible jump
+    // when trigger words change the total detail-page height.
     QLinearGradient gradient(0, 0, 0, bgSize.height());
     gradient.setColorAt(0.0, QColor(27, 40, 56, 120)); // 顶部半透
 
-    // 计算图片结束的位置，让渐变在图片下方自然过渡
-    double imgBottomY = offsetY + newH;
-    double stopRatio = imgBottomY / bgSize.height(); // 归一化位置
-
-    // 限制范围，防止越界
-    if (stopRatio > 1.0) stopRatio = 1.0;
-    if (stopRatio < 0.0) stopRatio = 0.1;
-
-    // 在图片结束前一点点开始变深，直到图片结束处完全变为背景色
-    gradient.setColorAt(qMax(0.0, stopRatio - 0.2), QColor(27, 40, 56, 210));
-    gradient.setColorAt(stopRatio, QColor(27, 40, 56, 255));
-    // 之后全是背景色
-    if (stopRatio < 0.99) {
-        gradient.setColorAt(1.0, QColor(27, 40, 56, 255));
-    }
+    const double bgH = qMax(1, bgSize.height());
+    const double imgBottomY = offsetY + newH;
+    const double fadeStartY = qMax(0.0, imgBottomY - qMax(120.0, heroH * 0.25));
+    const double fadeEndY = qMax(fadeStartY + 1.0, imgBottomY);
+    gradient.setColorAt(qBound(0.0, fadeStartY / bgH, 1.0), QColor(27, 40, 56, 210));
+    gradient.setColorAt(qBound(0.0, fadeEndY / bgH, 1.0), QColor(27, 40, 56, 255));
+    gradient.setColorAt(1.0, QColor(27, 40, 56, 255));
 
     painter.fillRect(finalBg.rect(), gradient);
     painter.end();
@@ -5254,9 +5362,6 @@ void MainWindow::onToggleDetailTab() {
         }
 
         // 强制更新一次背景（避免尺寸不对）
-        if (ui->backgroundLabel) {
-            ui->backgroundLabel->setGeometry(ui->scrollAreaWidgetContents->rect());
-        }
         updateBackgroundImage();
     });
 
@@ -5858,6 +5963,7 @@ void MainWindow::initMenuBar() {
         toolsTabWidget->addTab(makeToolPlaceholder("点击后加载提示词解析工具..."), "📝 提示词解析 / Prompt");
         toolsTabWidget->addTab(makeToolPlaceholder("点击后加载 Tag 浏览工具..."), "🏷️ Tag 浏览 / Tag");
         toolsTabWidget->addTab(makeToolPlaceholder("点击后加载大模型提示词工具..."), "🤖 大模型提示词 / LLM");
+        toolsTabWidget->addTab(makeToolPlaceholder("点击后加载使用分析工具..."), "📊 使用分析 / Analysis");
         toolsTabWidget->setTabPosition(QTabWidget::West);
 
         toolsTabWidget->setAutoFillBackground(true);
@@ -5941,6 +6047,15 @@ void MainWindow::ensureToolTabLoaded(int index)
                 collectEnabledPaths(galleryPaths, disabledGalleryPaths)
             );
             newPage = llmPromptWidget;
+            break;
+        case 4:
+            usageAnalysisWidget = new UsageAnalysisWidget(toolsTabWidget);
+            connect(usageAnalysisWidget, &UsageAnalysisWidget::requestRefresh,
+                    this, &MainWindow::refreshUsageAnalysisWidget);
+            connect(usageAnalysisWidget, &UsageAnalysisWidget::requestOpenModel,
+                    this, &MainWindow::jumpToDownloadSource);
+            refreshUsageAnalysisWidget();
+            newPage = usageAnalysisWidget;
             break;
         default:
             break;
@@ -7406,6 +7521,7 @@ void MainWindow::loadGlobalConfig() {
         optSuppressLocalWarnings        = root["suppress_local_model_warnings"].toBool(false);
         optUserGalleryMatchMode         = root["user_gallery_match_mode"].toInt(0);
         optModelUpdateDownloadPolicy    = root["model_update_download_policy"].toInt(0);
+        optAutoCheckUpdatesOnStartup    = root["auto_check_update_on_startup"].toBool(true);
         if (optModelUpdateDownloadPolicy < 0 || optModelUpdateDownloadPolicy > 2) {
             optModelUpdateDownloadPolicy = 0;
         }
@@ -7535,6 +7651,7 @@ void MainWindow::loadGlobalConfig() {
     if (!optSavedUAString.isEmpty()) {ui->editUserAgent->setText(optSavedUAString);}
     ui->editCivitaiApiKey->setText(optCivitaiApiKey);
     ui->comboModelUpdateDownloadPolicy->setCurrentIndex(optModelUpdateDownloadPolicy);
+    ui->chkAutoCheckUpdatesOnStartup->setChecked(optAutoCheckUpdatesOnStartup);
     ui->lblCivitaiApiStatus->setText(optCivitaiApiKey.isEmpty() ? "API Key 未配置" : "API Key 未测试");
     ui->chkUseCivitaiName->setChecked(optUseCivitaiName);
     ui->chkSuppressLocalWarnings->setChecked(optSuppressLocalWarnings);
@@ -7712,6 +7829,10 @@ void MainWindow::loadGlobalConfig() {
         optSuppressLocalWarnings = checked;
         saveGlobalConfig();
     });
+    connect(ui->chkAutoCheckUpdatesOnStartup, &QCheckBox::toggled, this, [this](bool checked){
+        optAutoCheckUpdatesOnStartup = checked;
+        saveGlobalConfig();
+    });
     connect(ui->editCivitaiApiKey, &QLineEdit::editingFinished, this, [this](){
         optCivitaiApiKey = ui->editCivitaiApiKey->text().trimmed();
         ui->lblCivitaiApiStatus->setText(optCivitaiApiKey.isEmpty() ? "API Key 未配置" : "API Key 未测试");
@@ -7787,6 +7908,7 @@ void MainWindow::saveGlobalConfig() {
     root["suppress_local_model_warnings"] = optSuppressLocalWarnings;
     root["user_gallery_match_mode"]     = optUserGalleryMatchMode;
     root["model_update_download_policy"] = optModelUpdateDownloadPolicy;
+    root["auto_check_update_on_startup"] = optAutoCheckUpdatesOnStartup;
     root.remove("model_switch_delay_ms");
 
     // 记录当前 UI 的缩放比例
@@ -8825,6 +8947,11 @@ void MainWindow::onMenuSwitchToAbout()
 
 void MainWindow::onCheckUpdateClicked()
 {
+    startAppUpdateCheck(false);
+}
+
+void MainWindow::startAppUpdateCheck(bool silentIfLatest)
+{
     ui->statusbar->showMessage("正在连接 GitHub 检查更新...", 3000);
     ui->btnCheckUpdate->setText("⏳ Checking...");
     ui->btnCheckUpdate->setEnabled(false);
@@ -8833,6 +8960,7 @@ void MainWindow::onCheckUpdateClicked()
     request.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
 
     QNetworkReply *reply = netManager->get(request);
+    reply->setProperty("silentIfLatest", silentIfLatest);
     connect(reply, &QNetworkReply::finished, this, [this, reply](){
         onUpdateApiReceived(reply);
     });
@@ -8840,12 +8968,17 @@ void MainWindow::onCheckUpdateClicked()
 
 void MainWindow::onUpdateApiReceived(QNetworkReply *reply)
 {
+    const bool silentIfLatest = reply->property("silentIfLatest").toBool();
     ui->btnCheckUpdate->setText("🚀 检查更新 / Check for Updates");
     ui->btnCheckUpdate->setEnabled(true);
     reply->deleteLater();
 
     if (reply->error() != QNetworkReply::NoError) {
-        QMessageBox::warning(this, "检查失败", "无法连接到 GitHub API:\n" + reply->errorString());
+        if (silentIfLatest) {
+            ui->statusbar->showMessage("自动检查更新失败: " + reply->errorString(), 4000);
+        } else {
+            QMessageBox::warning(this, "检查失败", "无法连接到 GitHub API:\n" + reply->errorString());
+        }
         return;
     }
 
@@ -8859,7 +8992,11 @@ void MainWindow::onUpdateApiReceived(QNetworkReply *reply)
     QString body = root["body"].toString();
 
     if (remoteTag.isEmpty()) {
-        QMessageBox::warning(this, "错误", "无法解析版本信息 (Rate Limit Exceeded?)。");
+        if (silentIfLatest) {
+            ui->statusbar->showMessage("自动检查更新失败: 无法解析版本信息", 4000);
+        } else {
+            QMessageBox::warning(this, "错误", "无法解析版本信息 (Rate Limit Exceeded?)。");
+        }
         return;
     }
 
@@ -8916,7 +9053,11 @@ void MainWindow::onUpdateApiReceived(QNetworkReply *reply)
             QDesktopServices::openUrl(QUrl(htmlUrl));
         }
     } else {
-        QMessageBox::information(this, "检查更新", QString("当前已是最新版本 (%1)。").arg(CURRENT_VERSION));
+        if (silentIfLatest) {
+            ui->statusbar->showMessage(QString("当前已是最新版本 (%1)").arg(CURRENT_VERSION), 3000);
+        } else {
+            QMessageBox::information(this, "检查更新", QString("当前已是最新版本 (%1)。").arg(CURRENT_VERSION));
+        }
     }
 }
 
