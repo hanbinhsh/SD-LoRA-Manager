@@ -52,6 +52,27 @@ QPushButton[class="copyBtn"] { background-color: #5c7e10; color: white; border: 
 QPushButton[class="copyBtn"]:hover { background-color: #79a615; }
 QPushButton[class="copyBtn"]:pressed { background-color: #4c6b0c; }
 
+#btnSetSdFolder,
+#btnRescanUser,
+#btnTranslate {
+    background-color: rgba(255, 255, 255, 16);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 16);
+    border-radius: 4px;
+    font-weight: bold;
+    margin: 1px;
+    padding: 0px;
+}
+#btnSetSdFolder:hover,
+#btnRescanUser:hover,
+#btnTranslate:hover {
+    background-color: rgba(255, 255, 255, 42);
+}
+#btnTranslate:checked {
+    background-color: rgba(255, 255, 255, 64);
+    color: #ffffff;
+}
+
 /* Hero */
 #heroFrame { background-color: #000; }
 #lblModelName { color: #fff; background-color: rgba(0,0,0,120); padding: 15px; border-left: 5px solid #66c0f4; font-size: 24px; font-weight: bold; }

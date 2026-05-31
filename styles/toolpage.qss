@@ -167,12 +167,9 @@ QSlider::handle:horizontal {
     border-radius: 7px;
     background: #66c0f4;
 }
-QCheckBox {
-    color: #dcdedf;
-    spacing: 6px;
-}
 QSplitter::handle {
-    background-color: #3d4d5d;
+    background-color: transparent;
+    border: none;
 }
 QLabel {
     color: #dcdedf;
