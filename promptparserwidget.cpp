@@ -1,5 +1,6 @@
 #include "promptparserwidget.h"
 #include "ui_promptparserwidget.h"
+#include "imagemetadataparser.h"
 
 #include <QAbstractItemView>
 #include <QAction>
@@ -143,6 +144,10 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
         }
         posTagWidget->setShowTranslation(checked);
         negTagWidget->setShowTranslation(checked);
+    });
+    connect(ui->btnClearTagSelection, &QPushButton::clicked, this, [this]() {
+        posTagWidget->clearSelectedTags();
+        negTagWidget->clearSelectedTags();
     });
 
     wd14Process = new QProcess(this);
@@ -318,33 +323,7 @@ void PromptParserWidget::updateWd14ImagePreview(const QString &filePath)
 
 QString PromptParserWidget::extractPngParameters(const QString &filePath)
 {
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly)) return "";
-
-    const QByteArray signature = file.read(8);
-    const char pngSignature[] = {-119, 'P', 'N', 'G', 13, 10, 26, 10};
-    if (signature != QByteArray::fromRawData(pngSignature, 8)) return "";
-
-    while (!file.atEnd()) {
-        const QByteArray lenData = file.read(4);
-        if (lenData.size() < 4) break;
-        const quint32 length = qFromBigEndian<quint32>(lenData.constData());
-        const QByteArray type = file.read(4);
-        if (type == "tEXt") {
-            const QByteArray data = file.read(length);
-            const int nullPos = data.indexOf('\0');
-            if (nullPos != -1) {
-                const QString keyword = QString::fromLatin1(data.left(nullPos));
-                if (keyword == "parameters") {
-                    return QString::fromUtf8(data.mid(nullPos + 1));
-                }
-            }
-        } else {
-            file.seek(file.pos() + length);
-        }
-        file.seek(file.pos() + 4);
-    }
-    return "";
+    return extractPngParametersText(filePath);
 }
 
 QString PromptParserWidget::cleanTagText(QString text)
@@ -365,9 +344,14 @@ QString PromptParserWidget::cleanTagText(QString text)
 QMap<QString, int> PromptParserWidget::parsePromptToMap(const QString &rawPrompt)
 {
     QMap<QString, int> result;
-    if (rawPrompt.isEmpty()) return result;
+    const QString trimmedPrompt = rawPrompt.trimmed();
+    if (trimmedPrompt.isEmpty()) return result;
+    if (trimmedPrompt.startsWith('{') || trimmedPrompt.startsWith('[')) {
+        const QJsonDocument doc = QJsonDocument::fromJson(trimmedPrompt.toUtf8());
+        if (!doc.isNull()) return result;
+    }
 
-    QString processText = rawPrompt;
+    QString processText = trimmedPrompt;
     processText.replace("\r\n", ",");
     processText.replace("\n", ",");
     processText.replace("\r", ",");
@@ -383,43 +367,17 @@ void PromptParserWidget::processImage(const QString &filePath)
 {
     updateImagePreview(filePath);
 
-    QString text = extractPngParameters(filePath);
-    if (text.isEmpty()) {
-        QImageReader reader(filePath);
-        if (reader.canRead()) {
-            text = reader.text("parameters");
-            if (text.isEmpty()) text = reader.text("prompt");
-        }
-    }
-
-    if (text.isEmpty()) {
+    const ParsedImageMetadata parsed = parseImageMetadataFromFile(filePath);
+    if (!parsed.hasContent()) {
         ui->txtParams->setText("未找到生成参数 / No generation parameters found.");
         posTagWidget->setData({});
         negTagWidget->setData({});
         return;
     }
 
-    QString positivePrompt;
-    QString negativePrompt;
-    QString params;
-    const int stepsIndex = text.lastIndexOf("Steps: ");
-    if (stepsIndex == -1) {
-        positivePrompt = text.trimmed();
-    } else {
-        params = text.mid(stepsIndex).trimmed();
-        const QString beforeParams = text.left(stepsIndex).trimmed();
-        const int negativeIndex = beforeParams.indexOf("Negative prompt:");
-        if (negativeIndex != -1) {
-            positivePrompt = beforeParams.left(negativeIndex).trimmed();
-            negativePrompt = beforeParams.mid(negativeIndex + 16).trimmed();
-        } else {
-            positivePrompt = beforeParams.trimmed();
-        }
-    }
-
-    ui->txtParams->setText(params);
-    posTagWidget->setData(parsePromptToMap(positivePrompt));
-    negTagWidget->setData(parsePromptToMap(negativePrompt));
+    ui->txtParams->setText(parsed.parametersText);
+    posTagWidget->setData(parsePromptToMap(parsed.positivePrompt));
+    negTagWidget->setData(parsePromptToMap(parsed.negativePrompt));
 }
 
 void PromptParserWidget::processWd14Image(const QString &filePath)

@@ -65,6 +65,7 @@ const int ROLE_USER_IMAGE_PROMPT      = Qt::UserRole + 31;
 const int ROLE_USER_IMAGE_NEG         = Qt::UserRole + 32;
 const int ROLE_USER_IMAGE_PARAMS      = Qt::UserRole + 33;
 const int ROLE_USER_IMAGE_TAGS        = Qt::UserRole + 34;
+const int ROLE_USER_IMAGE_NEG_TAGS    = Qt::UserRole + 46;
 const int ROLE_EDIT_IMAGE_PATH        = Qt::UserRole + 35;
 const int ROLE_IS_FOLDER_HEADER       = Qt::UserRole + 36;
 // 树状图占位符标记
@@ -80,7 +81,7 @@ const int ROLE_COLLECTION_NAME        = Qt::UserRole + 51;  // 存储收藏夹�
 const int ROLE_ITEM_COUNT             = Qt::UserRole + 52;  // 存储该分类下的模型数量
 const int ROLE_COLLECTION_EXPAND_KEY  = Qt::UserRole + 53;  // 存储收藏夹树展开状态键
 
-const QString CURRENT_VERSION = "1.4.6";
+const QString CURRENT_VERSION = "1.4.7";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
@@ -193,9 +194,11 @@ struct UserImageInfo {
     QString path;
     QString prompt;
     QStringList cleanTags;
+    QStringList negativeCleanTags;
     QString negativePrompt;
     QString parameters;
     qint64 lastModified = 0;
+    int parserVersion = 0;
 };
 
 struct ModelMeta {
@@ -280,6 +283,7 @@ private slots:
 
     void onBrowseTranslationPath();
     void onUserGalleryContextMenu(const QPoint &pos);
+    void showRawImageMetadataDialog(const QString &filePath);
 
     void onMenuSwitchToAbout();
     void onCheckUpdateClicked();
@@ -504,6 +508,7 @@ private:
     void scanForUserImages(const QString &loraBaseName);
     void parsePngInfo(const QString &path, UserImageInfo &info);
     void updateUserStats(const QList<UserImageInfo> &images);
+    void refreshUserTagFlowStats();
     void resetUserImageThumbLoading();
     void scheduleVisibleUserImageThumbLoad();
     void dispatchVisibleUserImageThumbLoad();

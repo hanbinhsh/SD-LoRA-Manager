@@ -99,6 +99,27 @@ public:
         return set;
     }
 
+    void clearSelectedTags() {
+        bool changed = false;
+        for (auto &tag : m_allTags) {
+            if (tag.selected) {
+                tag.selected = false;
+                changed = true;
+            }
+        }
+        for (auto &tag : m_tags) {
+            if (tag.selected) {
+                tag.selected = false;
+                changed = true;
+            }
+        }
+        if (!changed) return;
+        m_lastClickedIndex = -1;
+        m_cacheDirty = true;
+        update();
+        emit filterChanged(getSelectedTags());
+    }
+
     QSize sizeHint() const override {
         return QSize(400, m_calculatedHeight > 0 ? m_calculatedHeight : 50);
     }

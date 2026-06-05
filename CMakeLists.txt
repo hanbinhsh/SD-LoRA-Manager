@@ -17,6 +17,8 @@ qt_add_executable(SD_LoRA_Manager
     mainwindow.cpp
     mainwindow.h
     mainwindow.ui
+    imagemetadataparser.h
+    imagemetadataparser.cpp
     pathlistdialog.h
     pathlistdialog.cpp
     pathlistdialog.ui

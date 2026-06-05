@@ -54,7 +54,8 @@ QPushButton[class="copyBtn"]:pressed { background-color: #4c6b0c; }
 
 #btnSetSdFolder,
 #btnRescanUser,
-#btnTranslate {
+#btnTranslate,
+#btnClearUserTagSelection {
     background-color: rgba(255, 255, 255, 16);
     color: #ffffff;
     border: 1px solid rgba(255, 255, 255, 16);
@@ -65,7 +66,8 @@ QPushButton[class="copyBtn"]:pressed { background-color: #4c6b0c; }
 }
 #btnSetSdFolder:hover,
 #btnRescanUser:hover,
-#btnTranslate:hover {
+#btnTranslate:hover,
+#btnClearUserTagSelection:hover {
     background-color: rgba(255, 255, 255, 42);
 }
 #btnTranslate:checked {

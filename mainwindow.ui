@@ -1294,6 +1294,34 @@ Hash: ...</string>
                            </widget>
                           </item>
                           <item>
+                           <widget class="QPushButton" name="btnClearUserTagSelection">
+                            <property name="minimumSize">
+                             <size>
+                              <width>28</width>
+                              <height>28</height>
+                             </size>
+                            </property>
+                            <property name="maximumSize">
+                             <size>
+                              <width>28</width>
+                              <height>28</height>
+                             </size>
+                            </property>
+                            <property name="cursor">
+                             <cursorShape>PointingHandCursor</cursorShape>
+                            </property>
+                            <property name="toolTip">
+                             <string>取消选中的 Tag</string>
+                            </property>
+                            <property name="text">
+                             <string>×</string>
+                            </property>
+                            <property name="class" stdset="0">
+                             <string>copyBtn</string>
+                            </property>
+                           </widget>
+                          </item>
+                          <item>
                            <widget class="QComboBox" name="comboUserTagSortMode">
                             <property name="minimumSize">
                              <size>
@@ -1335,6 +1363,38 @@ Hash: ...</string>
                             </property>
                             <property name="text">
                              <string>LoRA</string>
+                            </property>
+                           </widget>
+                          </item>
+                          <item>
+                           <widget class="QCheckBox" name="chkUserTagCurrentImageOnly">
+                            <property name="minimumSize">
+                             <size>
+                              <width>72</width>
+                              <height>28</height>
+                             </size>
+                            </property>
+                            <property name="toolTip">
+                             <string>TagFlow 仅显示当前选中图片的 Tag</string>
+                            </property>
+                            <property name="text">
+                             <string>当前图</string>
+                            </property>
+                           </widget>
+                          </item>
+                          <item>
+                           <widget class="QCheckBox" name="chkUserTagIncludeNegative">
+                            <property name="minimumSize">
+                             <size>
+                              <width>58</width>
+                              <height>28</height>
+                             </size>
+                            </property>
+                            <property name="toolTip">
+                             <string>TagFlow 统计时包含负面提示词 Tag</string>
+                            </property>
+                            <property name="text">
+                             <string>负面</string>
                             </property>
                            </widget>
                           </item>
