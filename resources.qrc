@@ -1,7 +1,6 @@
 <RCC>
     <qresource prefix="/">
         <file>logo.ico</file>
-        <file>images/check_black.svg</file>
         <file>scripts/wd14_tagger.py</file>
         <file>styles/mainwindow.qss</file>
         <file>styles/toolpage.qss</file>
