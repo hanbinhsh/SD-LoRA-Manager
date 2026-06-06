@@ -1,4 +1,5 @@
 #include "pathlistdialog.h"
+#include "tableviewstylehelper.h"
 #include "ui_pathlistdialog.h"
 
 #include <QFileDialog>
@@ -13,9 +14,12 @@ PathListDialog::PathListDialog(QWidget *parent)
     , ui(new Ui::PathListDialog)
 {
     ui->setupUi(this);
+    applyUnifiedTableRowStyle(ui->tablePaths);
     ui->tablePaths->setSelectionMode(QAbstractItemView::ExtendedSelection);
     ui->tablePaths->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->tablePaths->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    ui->tablePaths->setShowGrid(false);
+    ui->tablePaths->setFocusPolicy(Qt::NoFocus);
     ui->tablePaths->horizontalHeader()->setStretchLastSection(false);
     ui->tablePaths->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
     ui->tablePaths->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);

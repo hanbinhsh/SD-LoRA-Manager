@@ -1,0 +1,880 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PromptTemplateLibraryWidget</class>
+ <widget class="QWidget" name="PromptTemplateLibraryWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1188</width>
+    <height>902</height>
+   </rect>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayoutRoot">
+   <property name="spacing">
+    <number>6</number>
+   </property>
+   <property name="leftMargin">
+    <number>18</number>
+   </property>
+   <property name="topMargin">
+    <number>18</number>
+   </property>
+   <property name="rightMargin">
+    <number>18</number>
+   </property>
+   <property name="bottomMargin">
+    <number>18</number>
+   </property>
+   <item>
+    <widget class="QTabWidget" name="tabTemplateLibrary">
+     <property name="currentIndex">
+      <number>0</number>
+     </property>
+     <widget class="QWidget" name="tabGenerate">
+      <attribute name="title">
+       <string>提示词生成</string>
+      </attribute>
+      <layout class="QHBoxLayout" name="horizontalLayout">
+       <item>
+        <widget class="QSplitter" name="splitterGenerate">
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+         <widget class="QTabWidget" name="tabGenerateTools">
+          <property name="currentIndex">
+           <number>0</number>
+          </property>
+          <widget class="QWidget" name="tabGeneratePlaceholders">
+           <attribute name="title">
+            <string>占位符</string>
+           </attribute>
+           <layout class="QVBoxLayout" name="verticalLayoutGeneratePlaceholders">
+            <item>
+             <widget class="QScrollArea" name="scrollPlaceholderInputs">
+              <property name="widgetResizable">
+               <bool>true</bool>
+              </property>
+              <widget class="QWidget" name="placeholderInputContainer">
+               <property name="geometry">
+                <rect>
+                 <x>0</x>
+                 <y>0</y>
+                 <width>621</width>
+                 <height>748</height>
+                </rect>
+               </property>
+               <layout class="QVBoxLayout" name="layoutPlaceholderInputs">
+                <item>
+                 <spacer name="spacerPlaceholderInputs">
+                  <property name="orientation">
+                   <enum>Qt::Orientation::Vertical</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>20</width>
+                    <height>40</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+               </layout>
+              </widget>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+          <widget class="QWidget" name="tabGenerateImagePrompt">
+           <attribute name="title">
+            <string>图片提取提示词</string>
+           </attribute>
+           <layout class="QVBoxLayout" name="verticalLayoutGenerateImagePrompt">
+            <item>
+             <layout class="QHBoxLayout" name="layoutGenerateImageTop">
+              <item>
+               <widget class="QLineEdit" name="editGenerateImagePath">
+                <property name="placeholderText">
+                 <string>选择图片以读取元数据并提取 Tag</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnChooseGenerateImage">
+                <property name="text">
+                 <string>选择图片</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnParseGenerateImage">
+                <property name="text">
+                 <string>解析</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="layoutGenerateImageControls">
+              <item>
+               <widget class="QCheckBox" name="chkGenerateImageTranslation">
+                <property name="text">
+                 <string>显示翻译</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnSelectAllGenerateImageTags">
+                <property name="text">
+                 <string>选择全部</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnClearGenerateImageTags">
+                <property name="text">
+                 <string>取消选择</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnAddGenerateImagePositive">
+                <property name="text">
+                 <string>添加到正面</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnAddGenerateImageNegative">
+                <property name="text">
+                 <string>添加到负面</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <widget class="QSplitter" name="splitterGenerateImageTags">
+              <property name="orientation">
+               <enum>Qt::Orientation::Vertical</enum>
+              </property>
+              <widget class="QGroupBox" name="groupGenerateImagePositive">
+               <property name="title">
+                <string>正面 Tag</string>
+               </property>
+               <layout class="QVBoxLayout" name="verticalLayoutGenerateImagePositive">
+                <item>
+                 <widget class="QScrollArea" name="scrollGenerateImagePositiveTags">
+                  <property name="widgetResizable">
+                   <bool>true</bool>
+                  </property>
+                  <widget class="QWidget" name="generateImagePositiveTagsContainer">
+                   <property name="geometry">
+                    <rect>
+                     <x>0</x>
+                     <y>0</y>
+                     <width>593</width>
+                     <height>271</height>
+                    </rect>
+                   </property>
+                   <layout class="QVBoxLayout" name="layoutGenerateImagePositiveTags"/>
+                  </widget>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+              <widget class="QGroupBox" name="groupGenerateImageNegative">
+               <property name="title">
+                <string>负面 Tag</string>
+               </property>
+               <layout class="QVBoxLayout" name="verticalLayoutGenerateImageNegative">
+                <item>
+                 <widget class="QScrollArea" name="scrollGenerateImageNegativeTags">
+                  <property name="widgetResizable">
+                   <bool>true</bool>
+                  </property>
+                  <widget class="QWidget" name="generateImageNegativeTagsContainer">
+                   <property name="geometry">
+                    <rect>
+                     <x>0</x>
+                     <y>0</y>
+                     <width>593</width>
+                     <height>270</height>
+                    </rect>
+                   </property>
+                   <layout class="QVBoxLayout" name="layoutGenerateImageNegativeTags"/>
+                  </widget>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblGenerateImageStatus">
+              <property name="text">
+               <string>选择图片后解析，选中 Tag 并添加到当前提示词。</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+          <widget class="QWidget" name="tabGenerateTagPicker">
+           <attribute name="title">
+            <string>Tag Picker</string>
+           </attribute>
+           <layout class="QVBoxLayout" name="verticalLayoutTagPicker">
+            <item>
+             <layout class="QHBoxLayout" name="layoutTagPickerTop">
+              <item>
+               <widget class="QLineEdit" name="editTagSearch">
+                <property name="placeholderText">
+                 <string>搜索 Tag 或翻译，空格和下划线等价</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QComboBox" name="comboTagScope">
+                <item>
+                 <property name="text">
+                  <string>正面 Tag</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>负面 Tag</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>正面 + 负面</string>
+                 </property>
+                </item>
+               </widget>
+              </item>
+              <item>
+               <widget class="QComboBox" name="comboTagSort">
+                <item>
+                 <property name="text">
+                  <string>使用次数</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>Tag A-Z</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>Tag Z-A</string>
+                 </property>
+                </item>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnRefreshTags">
+                <property name="text">
+                 <string>刷新</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnInsertTagsPositive">
+                <property name="text">
+                 <string>插入正面</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnInsertTagsNegative">
+                <property name="text">
+                 <string>插入负面</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <widget class="QTableWidget" name="tableTagPicker">
+              <property name="selectionMode">
+               <enum>QAbstractItemView::SelectionMode::ExtendedSelection</enum>
+              </property>
+              <property name="selectionBehavior">
+               <enum>QAbstractItemView::SelectionBehavior::SelectRows</enum>
+              </property>
+              <column>
+               <property name="text">
+                <string>Tag</string>
+               </property>
+              </column>
+              <column>
+               <property name="text">
+                <string>类型</string>
+               </property>
+              </column>
+              <column>
+               <property name="text">
+                <string>使用次数</string>
+               </property>
+              </column>
+              <column>
+               <property name="text">
+                <string>翻译</string>
+               </property>
+              </column>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblTagPickerStatus">
+              <property name="text">
+               <string>切换到此页面后会读取用户图库缓存。</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupCurrentPrompts">
+         <property name="title">
+          <string>当前正负面提示词展示</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayoutCurrentPrompts">
+          <item>
+           <layout class="QHBoxLayout" name="layoutGenerateTop">
+            <item>
+             <widget class="QLabel" name="lblGenerateTemplate">
+              <property name="text">
+               <string>模板选择</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboGenerateTemplate"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnReloadLibrary">
+              <property name="text">
+               <string>重新加载</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="horizontalSpacer">
+              <property name="orientation">
+               <enum>Qt::Orientation::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="lblGeneratedPositive">
+            <property name="text">
+             <string>正面提示词</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPlainTextEdit" name="textGeneratedPositive"/>
+          </item>
+          <item>
+           <widget class="QLabel" name="lblGeneratedNegative">
+            <property name="text">
+             <string>负面提示词</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPlainTextEdit" name="textGeneratedNegative"/>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="layoutGenerateButtons">
+            <item>
+             <widget class="QPushButton" name="btnCopyPositive">
+              <property name="text">
+               <string>复制正面</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnCopyNegative">
+              <property name="text">
+               <string>复制负面</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnCopyAll">
+              <property name="text">
+               <string>复制全部</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnClearGenerate">
+              <property name="text">
+               <string>清空输入</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="lblGenerateStatus">
+            <property name="text">
+             <string>选择模板后填写占位符即可生成提示词。</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tabTemplates">
+      <attribute name="title">
+       <string>模板与占位管理</string>
+      </attribute>
+      <layout class="QHBoxLayout" name="horizontalLayoutTemplates">
+       <item>
+        <widget class="QSplitter" name="splitterTemplateManage">
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+         <widget class="QWidget" name="templateListPanel">
+          <layout class="QVBoxLayout" name="layoutTemplateList">
+           <item>
+            <widget class="QListWidget" name="listTemplates"/>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="layoutTemplateButtons">
+             <item>
+              <widget class="QPushButton" name="btnNewTemplate">
+               <property name="text">
+                <string>新增</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="btnDuplicateTemplate">
+               <property name="text">
+                <string>复制</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="btnDeleteTemplate">
+               <property name="text">
+                <string>删除</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QGroupBox" name="groupTemplateEditor">
+          <property name="title">
+           <string>模板编辑</string>
+          </property>
+          <layout class="QVBoxLayout" name="layoutTemplateEditor">
+           <item>
+            <layout class="QGridLayout" name="gridLayout_2">
+             <item row="1" column="1">
+              <widget class="QLineEdit" name="editTemplateCategory">
+               <property name="placeholderText">
+                <string>分类，例如 Character / Outfit / Quality</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QLineEdit" name="editTemplateName">
+               <property name="placeholderText">
+                <string>模板名称</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="0">
+              <widget class="QLabel" name="label_6">
+               <property name="text">
+                <string>名称</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="label_7">
+               <property name="text">
+                <string>分类</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QLabel" name="label_8">
+             <property name="text">
+              <string>正面提示词</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPlainTextEdit" name="textTemplatePositive">
+             <property name="placeholderText">
+              <string>正面模板，例如 masterpiece, {character}, {outfit}</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="label_9">
+             <property name="text">
+              <string>负面提示词</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPlainTextEdit" name="textTemplateNegative">
+             <property name="placeholderText">
+              <string>负面模板，例如 low quality, {negative_extra}</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="label_10">
+             <property name="text">
+              <string>备注</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPlainTextEdit" name="textTemplateNotes">
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>90</height>
+              </size>
+             </property>
+             <property name="placeholderText">
+              <string>备注</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QTableWidget" name="tableTemplateDefaults">
+             <column>
+              <property name="text">
+               <string>占位符</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>默认值</string>
+              </property>
+             </column>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnSaveTemplate">
+             <property name="text">
+              <string>保存模板</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QTabWidget" name="tabTemplateManageSide">
+          <property name="currentIndex">
+           <number>0</number>
+          </property>
+          <widget class="QWidget" name="tabPlaceholderManager">
+           <attribute name="title">
+            <string>占位管理</string>
+           </attribute>
+           <layout class="QVBoxLayout" name="layoutPlaceholderManager">
+            <item>
+             <widget class="QTableWidget" name="tablePlaceholders">
+              <column>
+               <property name="text">
+                <string>Name</string>
+               </property>
+              </column>
+              <column>
+               <property name="text">
+                <string>Label</string>
+               </property>
+              </column>
+              <column>
+               <property name="text">
+                <string>Type</string>
+               </property>
+              </column>
+             </widget>
+            </item>
+            <item>
+             <layout class="QGridLayout" name="gridLayout">
+              <item row="1" column="1">
+               <widget class="QLineEdit" name="editPlaceholderLabel">
+                <property name="placeholderText">
+                 <string>显示名称，例如 角色</string>
+                </property>
+               </widget>
+              </item>
+              <item row="3" column="0">
+               <widget class="QLabel" name="label_4">
+                <property name="text">
+                 <string>默认值</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="label_2">
+                <property name="text">
+                 <string>名称</string>
+                </property>
+               </widget>
+              </item>
+              <item row="2" column="0">
+               <widget class="QLabel" name="label_3">
+                <property name="text">
+                 <string>类型</string>
+                </property>
+               </widget>
+              </item>
+              <item row="3" column="1">
+               <widget class="QLineEdit" name="editPlaceholderDefault">
+                <property name="placeholderText">
+                 <string>默认值</string>
+                </property>
+               </widget>
+              </item>
+              <item row="2" column="1">
+               <widget class="QComboBox" name="comboPlaceholderType">
+                <item>
+                 <property name="text">
+                  <string>文本</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>单选</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>多选</string>
+                 </property>
+                </item>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QLineEdit" name="editPlaceholderName">
+                <property name="placeholderText">
+                 <string>占位符名称，例如 character</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="0">
+               <widget class="QLabel" name="label">
+                <property name="text">
+                 <string>占位符</string>
+                </property>
+               </widget>
+              </item>
+              <item row="4" column="1">
+               <widget class="QPlainTextEdit" name="textPlaceholderOptions">
+                <property name="placeholderText">
+                 <string>选项，每行一个；文本类型可留空。</string>
+                </property>
+               </widget>
+              </item>
+              <item row="4" column="0">
+               <widget class="QLabel" name="label_5">
+                <property name="text">
+                 <string>选项</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="layoutPlaceholderButtons">
+              <item>
+               <widget class="QPushButton" name="btnNewPlaceholder">
+                <property name="text">
+                 <string>新增</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnSavePlaceholder">
+                <property name="text">
+                 <string>保存</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnDeletePlaceholder">
+                <property name="text">
+                 <string>删除</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+          <widget class="QWidget" name="tabTemplateImageTags">
+           <attribute name="title">
+            <string>从图片添加 Tag</string>
+           </attribute>
+           <layout class="QVBoxLayout" name="verticalLayout">
+            <item>
+             <layout class="QHBoxLayout" name="layoutTemplateImageTop">
+              <item>
+               <widget class="QLineEdit" name="editTemplateImagePath">
+                <property name="placeholderText">
+                 <string>选择或拖入图片以读取元数据 Tag</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnChooseTemplateImage">
+                <property name="text">
+                 <string>选择图片</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnParseTemplateImage">
+                <property name="text">
+                 <string>解析</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="layoutTemplateImageControls">
+              <item>
+               <widget class="QCheckBox" name="chkTemplateImageTranslation">
+                <property name="text">
+                 <string>显示翻译</string>
+                </property>
+                <property name="checked">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnSelectAllTemplateImageTags">
+                <property name="text">
+                 <string>选择全部</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnClearTemplateImageTags">
+                <property name="text">
+                 <string>取消选择</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnAddTemplateImagePositive">
+                <property name="text">
+                 <string>添加正面到模板</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnAddTemplateImageNegative">
+                <property name="text">
+                 <string>添加负面到模板</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <widget class="QGroupBox" name="groupTemplateImagePositive">
+              <property name="title">
+               <string>正面 Tag</string>
+              </property>
+              <layout class="QVBoxLayout" name="layoutTemplateImagePositive">
+               <item>
+                <widget class="QScrollArea" name="scrollTemplateImagePositiveTags">
+                 <property name="widgetResizable">
+                  <bool>true</bool>
+                 </property>
+                 <widget class="QWidget" name="templateImagePositiveTagsContainer">
+                  <property name="geometry">
+                   <rect>
+                    <x>0</x>
+                    <y>0</y>
+                    <width>504</width>
+                    <height>270</height>
+                   </rect>
+                  </property>
+                  <layout class="QVBoxLayout" name="layoutTemplateImagePositiveTags"/>
+                 </widget>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <widget class="QGroupBox" name="groupTemplateImageNegative">
+              <property name="title">
+               <string>负面 Tag</string>
+              </property>
+              <layout class="QVBoxLayout" name="layoutTemplateImageNegative">
+               <item>
+                <widget class="QScrollArea" name="scrollTemplateImageNegativeTags">
+                 <property name="widgetResizable">
+                  <bool>true</bool>
+                 </property>
+                 <widget class="QWidget" name="templateImageNegativeTagsContainer">
+                  <property name="geometry">
+                   <rect>
+                    <x>0</x>
+                    <y>0</y>
+                    <width>504</width>
+                    <height>269</height>
+                   </rect>
+                  </property>
+                  <layout class="QVBoxLayout" name="layoutTemplateImageNegativeTags"/>
+                 </widget>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblTemplateImageStatus">
+              <property name="text">
+               <string>选择图片后解析，选中 Tag 并添加到当前模板。</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

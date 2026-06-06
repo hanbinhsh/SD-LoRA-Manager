@@ -1,4 +1,5 @@
 #include "tagbrowserwidget.h"
+#include "tableviewstylehelper.h"
 #include "ui_tagbrowserwidget.h"
 
 #include <QtConcurrent/QtConcurrent>
@@ -315,8 +316,11 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     m_proxy->setDynamicSortFilter(false);
 
     ui->tableTags->setModel(m_proxy);
+    applyUnifiedTableRowStyle(ui->tableTags);
     ui->tableTags->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->tableTags->setAlternatingRowColors(true);
+    ui->tableTags->setShowGrid(false);
+    ui->tableTags->setFocusPolicy(Qt::NoFocus);
     ui->tableTags->verticalHeader()->setVisible(false);
     ui->tableTags->horizontalHeader()->setStretchLastSection(true);
     ui->tableTags->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
@@ -336,9 +340,12 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     m_userTagProxy->setSortRole(Qt::UserRole);
 
     ui->tableUserTags->setModel(m_userTagProxy);
+    applyUnifiedTableRowStyle(ui->tableUserTags);
     ui->tableUserTags->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->tableUserTags->setSelectionMode(QAbstractItemView::ExtendedSelection);
     ui->tableUserTags->setAlternatingRowColors(true);
+    ui->tableUserTags->setShowGrid(false);
+    ui->tableUserTags->setFocusPolicy(Qt::NoFocus);
     ui->tableUserTags->setEditTriggers(QAbstractItemView::NoEditTriggers);
     ui->tableUserTags->setContextMenuPolicy(Qt::CustomContextMenu);
     ui->tableUserTags->verticalHeader()->setVisible(false);

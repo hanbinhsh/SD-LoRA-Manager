@@ -19,6 +19,10 @@ qt_add_executable(SD_LoRA_Manager
     mainwindow.ui
     imagemetadataparser.h
     imagemetadataparser.cpp
+    comfyworkflowviewer.h
+    comfyworkflowviewer.cpp
+    tableviewstylehelper.h
+    tableviewstylehelper.cpp
     pathlistdialog.h
     pathlistdialog.cpp
     pathlistdialog.ui
@@ -28,6 +32,9 @@ qt_add_executable(SD_LoRA_Manager
     llmpromptwidget.h
     llmpromptwidget.cpp
     llmpromptwidget.ui
+    prompttemplatelibrarywidget.h
+    prompttemplatelibrarywidget.cpp
+    prompttemplatelibrarywidget.ui
     usageanalysiswidget.h
     usageanalysiswidget.cpp
     usageanalysiswidget.ui

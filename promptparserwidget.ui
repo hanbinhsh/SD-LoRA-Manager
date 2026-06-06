@@ -218,8 +218,8 @@ Click or Drag Image Here</string>
              <rect>
               <x>0</x>
               <y>0</y>
-              <width>654</width>
-              <height>347</height>
+              <width>660</width>
+              <height>356</height>
              </rect>
             </property>
             <layout class="QVBoxLayout" name="layoutTagsPos">
@@ -262,8 +262,8 @@ Click or Drag Image Here</string>
              <rect>
               <x>0</x>
               <y>0</y>
-              <width>654</width>
-              <height>346</height>
+              <width>660</width>
+              <height>356</height>
              </rect>
             </property>
             <layout class="QVBoxLayout" name="layoutTagsNeg">

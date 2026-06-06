@@ -1,5 +1,5 @@
 QWidget#UsageAnalysisWidget, QWidget#TagBrowserWidget, QWidget#LlmPromptWidget,
-QWidget#PromptParserWidget, QWidget#SyncWidget {
+QWidget#PromptParserWidget, QWidget#PromptTemplateLibraryWidget, QWidget#SyncWidget {
     background-color: #1b2838;
     color: #dcdedf;
 }
@@ -67,17 +67,52 @@ QHeaderView::section {
 }
 QTableWidget, QTableView {
     gridline-color: #31363d;
-    selection-background-color: #2a475e;
+    selection-background-color: #3d5677;
     selection-color: #ffffff;
+    outline: none;
+    show-decoration-selected: 1;
+}
+QTableWidget::item, QTableView::item {
+    border: none;
+    padding: 4px 6px;
+}
+QTableWidget::item:focus, QTableView::item:focus,
+QTableWidget::item:selected, QTableView::item:selected {
+    border: none;
+    outline: none;
 }
 QTreeWidget {
     gridline-color: #2b3440;
     selection-background-color: #3d5677;
+    outline: none;
+    show-decoration-selected: 1;
 }
 QTreeWidget::item {
     min-height: 24px;
 }
 QScrollArea::viewport, QTextBrowser::viewport, QTextEdit::viewport {
+    background-color: transparent;
+    border: none;
+}
+QScrollArea#scrollPlaceholderInputs,
+QScrollArea#scrollGenerateImagePositiveTags,
+QScrollArea#scrollGenerateImageNegativeTags,
+QScrollArea#scrollTemplateImagePositiveTags,
+QScrollArea#scrollTemplateImageNegativeTags {
+    background-color: transparent;
+    border: none;
+    padding: 0px;
+}
+QScrollArea#scrollPlaceholderInputs::viewport,
+QScrollArea#scrollGenerateImagePositiveTags::viewport,
+QScrollArea#scrollGenerateImageNegativeTags::viewport,
+QScrollArea#scrollTemplateImagePositiveTags::viewport,
+QScrollArea#scrollTemplateImageNegativeTags::viewport,
+QWidget#placeholderInputContainer,
+QWidget#generateImagePositiveTagsContainer,
+QWidget#generateImageNegativeTagsContainer,
+QWidget#templateImagePositiveTagsContainer,
+QWidget#templateImageNegativeTagsContainer {
     background-color: transparent;
     border: none;
 }

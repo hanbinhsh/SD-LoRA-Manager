@@ -120,6 +120,17 @@ public:
         emit filterChanged(getSelectedTags());
     }
 
+    void selectAllVisibleTags() {
+        QStringList visibleTexts;
+        visibleTexts.reserve(m_tags.size());
+        for (const TagState &tag : m_tags) visibleTexts.append(tag.text);
+        if (visibleTexts.isEmpty()) return;
+        for (const QString &text : visibleTexts) setSelectedByText(text, true);
+        m_cacheDirty = true;
+        update();
+        emit filterChanged(getSelectedTags());
+    }
+
     QSize sizeHint() const override {
         return QSize(400, m_calculatedHeight > 0 ? m_calculatedHeight : 50);
     }

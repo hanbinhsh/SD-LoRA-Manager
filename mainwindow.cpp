@@ -57,12 +57,14 @@
 
 #include "imageloader.h"
 #include "imagemetadataparser.h"
+#include "comfyworkflowviewer.h"
 #include "llmpromptwidget.h"
 #include "pathlistdialog.h"
 #include "tagbrowserwidget.h"
 #include "syncwidget.h"
 #include "promptparserwidget.h"
 #include "usageanalysiswidget.h"
+#include "prompttemplatelibrarywidget.h"
 
 namespace {
 QString loadQssResource(const QString &path)
@@ -6030,6 +6032,7 @@ void MainWindow::initMenuBar() {
         toolsTabWidget->addTab(makeToolPlaceholder("点击后加载 Tag 浏览工具..."), "🏷️ Tag 浏览 / Tag");
         toolsTabWidget->addTab(makeToolPlaceholder("点击后加载大模型提示词工具..."), "🤖 大模型提示词 / LLM");
         toolsTabWidget->addTab(makeToolPlaceholder("点击后加载使用分析工具..."), "📊 使用分析 / Analysis");
+        toolsTabWidget->addTab(makeToolPlaceholder("点击后加载提示词模板库..."), "🧩 提示词模板 / Templates");
         toolsTabWidget->setTabPosition(QTabWidget::West);
 
         toolsTabWidget->setAutoFillBackground(true);
@@ -6094,6 +6097,7 @@ void MainWindow::ensureToolTabLoaded(int index)
                 translationCsvPath = path;
                 loadTranslationCSV(path);
                 if (parserWidget) parserWidget->setTranslationMap(&translationMap);
+                if (promptTemplateLibraryWidget) promptTemplateLibraryWidget->setTranslationMap(&translationMap);
                 saveGlobalConfig();
             });
             newPage = tagBrowserWidget;
@@ -6114,6 +6118,11 @@ void MainWindow::ensureToolTabLoaded(int index)
                     this, &MainWindow::jumpToDownloadSource);
             refreshUsageAnalysisWidget();
             newPage = usageAnalysisWidget;
+            break;
+        case 5:
+            promptTemplateLibraryWidget = new PromptTemplateLibraryWidget(toolsTabWidget);
+            promptTemplateLibraryWidget->setTranslationMap(&translationMap);
+            newPage = promptTemplateLibraryWidget;
             break;
         default:
             break;
@@ -8320,6 +8329,7 @@ void MainWindow::onBrowseTranslationPath() {
         // 立即加载
         loadTranslationCSV(translationCsvPath);
         if (parserWidget) parserWidget->setTranslationMap(&translationMap);
+        if (promptTemplateLibraryWidget) promptTemplateLibraryWidget->setTranslationMap(&translationMap);
         if (tagBrowserWidget) tagBrowserWidget->setCsvPath(translationCsvPath);
 
         QMessageBox::information(this, "设置", "翻译词表已加载。");
@@ -8378,6 +8388,7 @@ void MainWindow::onUserGalleryContextMenu(const QPoint &pos)
     menu.addSeparator(); // 分隔线
     QAction *actOpenImg = menu.addAction("打开图片 / Open Image");
     QAction *actOpenDir = menu.addAction("打开文件位置 / Show in Folder");
+    QAction *actShowComfyWorkflow = menu.addAction("查看 ComfyUI Workflow / View Workflow");
     QAction *actShowRawMetadata = menu.addAction("显示原始 Metadata / Raw Metadata");
     menu.addSeparator();
     QAction *actCopyPath = menu.addAction("复制路径 / Copy Path");
@@ -8443,10 +8454,19 @@ void MainWindow::onUserGalleryContextMenu(const QPoint &pos)
     else if (selected == actShowRawMetadata) {
         showRawImageMetadataDialog(filePath);
     }
+    else if (selected == actShowComfyWorkflow) {
+        showComfyWorkflowViewer(filePath);
+    }
     else if (selected == actCopyPath) {
         QGuiApplication::clipboard()->setText(QDir::toNativeSeparators(filePath));
         ui->statusbar->showMessage("路径已复制", 2000);
     }
+}
+
+void MainWindow::showComfyWorkflowViewer(const QString &filePath)
+{
+    ComfyWorkflowViewerDialog dialog(filePath, this);
+    dialog.exec();
 }
 
 void MainWindow::showRawImageMetadataDialog(const QString &filePath)

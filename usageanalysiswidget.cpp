@@ -1,4 +1,5 @@
 #include "usageanalysiswidget.h"
+#include "tableviewstylehelper.h"
 #include "ui_usageanalysiswidget.h"
 
 #include <QtConcurrent/QtConcurrent>
@@ -52,11 +53,14 @@ UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
     setStyleSheet(loadToolPageStyle());
 
     auto setupTable = [](QTableWidget *table, bool stretchLast) {
+        applyUnifiedTableRowStyle(table);
         table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
         table->horizontalHeader()->setStretchLastSection(stretchLast);
         table->horizontalHeader()->setSectionsClickable(true);
         table->setSortingEnabled(true);
         table->setAlternatingRowColors(false);
+        table->setShowGrid(false);
+        table->setFocusPolicy(Qt::NoFocus);
     };
     setupTable(ui->tableModels, true);
     setupTable(ui->tableHealth, true);
