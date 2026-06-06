@@ -59,6 +59,9 @@ const int ROLE_MODEL_FOLDER_KEY       = Qt::UserRole + 20;  // Models 列表文�
 const int ROLE_MODEL_FOLDER_COLLAPSED = Qt::UserRole + 21;  // Models 列表文件夹是否折叠
 const int ROLE_MODEL_FILTER_VISIBLE   = Qt::UserRole + 22;  // 搜索/底模/收藏夹过滤后的可见状态
 const int ROLE_MODEL_HIGHLIGHT_COLOR  = Qt::UserRole + 23;  // 模型侧边栏高亮色
+const int ROLE_USER_RATING            = Qt::UserRole + 24;  // 用户评分
+const int ROLE_USER_NOTE              = Qt::UserRole + 25;  // 用户备注
+const int ROLE_USER_TAGS              = Qt::UserRole + 26;  // 用户标签
 // 用户图库专用
 const int ROLE_USER_IMAGE_PATH        = Qt::UserRole + 30;
 const int ROLE_USER_IMAGE_PROMPT      = Qt::UserRole + 31;
@@ -102,6 +105,13 @@ struct DownloadTask {
     QString savePath;
     QString localBaseName;
     QPointer<QPushButton> button; // 使用 QPointer 防止按钮被销毁后野指针崩溃
+};
+
+struct ModelUserNote {
+    double rating = 0.0;
+    QString note;
+    QStringList tags;
+    QString updatedAt;
 };
 
 struct ModelUpdateInfo {
@@ -318,6 +328,7 @@ private:
     // Key: 收藏夹名称, Value: 模型文件名列表 (BaseName)
     QMap<QString, QStringList> collections;
     QHash<QString, QColor> modelHighlightColors;
+    QHash<QString, ModelUserNote> modelUserNotes;
     QString currentCollectionFilter; // 当前显示的收藏夹 ("" 代表全部)
 
     // 收藏夹 JSON 读写
@@ -325,6 +336,21 @@ private:
     void saveCollections();
     void loadModelHighlightColors();
     void saveModelHighlightColors();
+    void loadModelUserNotes();
+    void saveModelUserNotes() const;
+    QString modelUserNotesPath() const;
+    QStringList normalizeModelUserTags(const QStringList &tags) const;
+    QStringList normalizeModelUserTagsText(const QString &text) const;
+    QString formatModelRating(double rating) const;
+    QString formatModelUserNoteTooltip(const QString &filePath, const QString &baseTooltip = QString()) const;
+    void applyModelUserNoteData(QListWidgetItem *item);
+    void applyModelUserNoteData(QTreeWidgetItem *item);
+    void refreshModelUserNoteItems(const QString &filePath);
+    void refreshModelUserNotePanel(const QString &filePath = QString());
+    void openModelNoteDialog(QListWidgetItem *item);
+    void setUserRatingForItems(const QList<QListWidgetItem*> &items, double rating);
+    void addUserTagsForItems(const QList<QListWidgetItem*> &items, const QStringList &tags);
+    void removeUserTagsForItems(const QList<QListWidgetItem*> &items, const QStringList &tags);
     void refreshHomeCollectionsUI(); // 刷新主页顶部的按钮
     void refreshHomeGallery(); // 刷新主页下方的图库
 

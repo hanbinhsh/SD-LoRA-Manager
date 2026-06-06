@@ -12,10 +12,14 @@ class PromptTemplateLibraryWidget;
 
 template <typename T>
 class QFutureWatcher;
+class QComboBox;
 class QEvent;
+class QLabel;
 class QLineEdit;
 class QListWidgetItem;
 class QObject;
+class QPushButton;
+class QTableWidget;
 class QTableWidgetItem;
 class TagFlowWidget;
 
@@ -73,6 +77,18 @@ private:
         QString notes;
     };
 
+    struct TagPickerUi {
+        QWidget *page = nullptr;
+        QLineEdit *search = nullptr;
+        QComboBox *scope = nullptr;
+        QPushButton *refresh = nullptr;
+        QPushButton *insertPositive = nullptr;
+        QPushButton *insertNegative = nullptr;
+        QTableWidget *table = nullptr;
+        QLabel *status = nullptr;
+        bool insertIntoTemplate = false;
+    };
+
     Ui::PromptTemplateLibraryWidget *ui;
     const QHash<QString, QString> *m_translationMap = nullptr;
     QVector<PromptTemplate> m_templates;
@@ -85,6 +101,9 @@ private:
     TagFlowWidget *m_templateImagePositiveTags = nullptr;
     TagFlowWidget *m_templateImageNegativeTags = nullptr;
     QVector<TagUsageRow> m_allTagRows;
+    int m_loadedTagScope = -1;
+    TagPickerUi m_generateTagPicker;
+    TagPickerUi m_templateTagPicker;
     QString m_currentImagePath;
     QString m_lastRenderedPositivePrompt;
     QString m_lastRenderedNegativePrompt;
@@ -118,10 +137,12 @@ private:
     QString selectedTemplateId() const;
     void setStatus(const QString &text);
     void copyText(const QString &text) const;
-    void insertTagsIntoTarget(const QStringList &tags, bool positiveTarget);
-    QStringList selectedTagTexts() const;
-    void loadTagPickerRows(bool force = false);
-    void refreshTagPickerTable();
+    void createTemplateTagPickerTab();
+    void setupTagPickerUi(TagPickerUi &picker);
+    QStringList selectedTagTexts(const TagPickerUi &picker) const;
+    void loadTagPickerRows(TagPickerUi &picker, bool force = false);
+    void refreshTagPickerTable(TagPickerUi &picker);
+    void addPickerTags(TagPickerUi &picker, bool positiveTarget);
     void parseGenerateImageTags();
     void addGenerateImageTagsToPrompt(bool positiveTarget);
     void parseTemplateImageTags();
@@ -142,7 +163,7 @@ private slots:
     void onSavePlaceholderClicked();
     void onNewPlaceholderClicked();
     void onDeletePlaceholderClicked();
-    void onTagPickerFiltersChanged();
+    void onTagPickerFiltersChanged(TagPickerUi &picker);
 };
 
 #endif // PROMPTTEMPLATELIBRARYWIDGET_H

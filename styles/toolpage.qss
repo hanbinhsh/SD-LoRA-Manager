@@ -94,30 +94,17 @@ QScrollArea::viewport, QTextBrowser::viewport, QTextEdit::viewport {
     background-color: transparent;
     border: none;
 }
-QScrollArea#scrollPlaceholderInputs,
-QScrollArea#scrollGenerateImagePositiveTags,
-QScrollArea#scrollGenerateImageNegativeTags,
-QScrollArea#scrollTemplateImagePositiveTags,
-QScrollArea#scrollTemplateImageNegativeTags {
-    background-color: transparent;
-    border: none;
-    padding: 0px;
-}
-QScrollArea#scrollPlaceholderInputs::viewport,
-QScrollArea#scrollGenerateImagePositiveTags::viewport,
-QScrollArea#scrollGenerateImageNegativeTags::viewport,
-QScrollArea#scrollTemplateImagePositiveTags::viewport,
-QScrollArea#scrollTemplateImageNegativeTags::viewport,
 QWidget#placeholderInputContainer,
 QWidget#generateImagePositiveTagsContainer,
 QWidget#generateImageNegativeTagsContainer,
 QWidget#templateImagePositiveTagsContainer,
-QWidget#templateImageNegativeTagsContainer {
+QWidget#templateImageNegativeTagsContainer,
+QWidget#scrollAreaWidgetContentsPos,
+QWidget#scrollAreaWidgetContentsNeg,
+QWidget#compareTagsAContainer,
+QWidget#compareTagsBContainer {
     background-color: transparent;
     border: none;
-}
-QWidget#scrollAreaWidgetContentsPos, QWidget#scrollAreaWidgetContentsNeg {
-    background-color: transparent;
 }
 QWidget#pageChat {
     background-color: #1e252f;

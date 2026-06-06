@@ -148,6 +148,13 @@ int appendUniquePromptTags(QPlainTextEdit *target, const QStringList &tags)
     return newTags.size();
 }
 
+QTableWidgetItem *makePromptTemplateTableItem(const QVariant &value)
+{
+    auto *item = new QTableWidgetItem;
+    item->setData(Qt::DisplayRole, value);
+    return item;
+}
+
 QString cleanupRenderedPrompt(QString text)
 {
     text.replace("\r\n", ",");
@@ -277,14 +284,17 @@ PromptTemplateLibraryWidget::PromptTemplateLibraryWidget(QWidget *parent)
     ui->tablePlaceholders->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->tablePlaceholders->setEditTriggers(QAbstractItemView::NoEditTriggers);
     ui->tablePlaceholders->setToolTip("全局占位符定义，例如名称、显示名、文本/单选/多选类型。");
-    ui->tableTagPicker->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-    ui->tableTagPicker->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    ui->tableTagPicker->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    ui->tableTagPicker->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
-    ui->tableTagPicker->verticalHeader()->hide();
-    ui->tableTagPicker->setShowGrid(false);
-    ui->tableTagPicker->setFocusPolicy(Qt::NoFocus);
-    ui->tableTagPicker->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_generateTagPicker = { ui->tabGenerateTagPicker,
+                            ui->editTagSearch,
+                            ui->comboTagScope,
+                            ui->btnRefreshTags,
+                            ui->btnInsertTagsPositive,
+                            ui->btnInsertTagsNegative,
+                            ui->tableTagPicker,
+                            ui->lblTagPickerStatus,
+                            false };
+    setupTagPickerUi(m_generateTagPicker);
+    createTemplateTagPickerTab();
     applyUnifiedTableRowStyle(this);
     ui->splitterTemplateManage->setSizes({240, 520, 520});
     ui->splitterGenerate->setSizes({560, 620});
@@ -344,15 +354,11 @@ PromptTemplateLibraryWidget::PromptTemplateLibraryWidget(QWidget *parent)
     connect(ui->btnNewPlaceholder, &QPushButton::clicked, this, &PromptTemplateLibraryWidget::onNewPlaceholderClicked);
     connect(ui->btnDeletePlaceholder, &QPushButton::clicked, this, &PromptTemplateLibraryWidget::onDeletePlaceholderClicked);
 
-    connect(ui->editTagSearch, &QLineEdit::textChanged, this, &PromptTemplateLibraryWidget::onTagPickerFiltersChanged);
-    connect(ui->comboTagScope, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &PromptTemplateLibraryWidget::onTagPickerFiltersChanged);
-    connect(ui->comboTagSort, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &PromptTemplateLibraryWidget::onTagPickerFiltersChanged);
-    connect(ui->btnRefreshTags, &QPushButton::clicked, this, [this]() { loadTagPickerRows(true); });
-    connect(ui->btnInsertTagsPositive, &QPushButton::clicked, this, [this]() { insertTagsIntoTarget(selectedTagTexts(), true); });
-    connect(ui->btnInsertTagsNegative, &QPushButton::clicked, this, [this]() { insertTagsIntoTarget(selectedTagTexts(), false); });
-    connect(ui->tableTagPicker, &QTableWidget::cellDoubleClicked, this, [this](int, int) { insertTagsIntoTarget(selectedTagTexts(), true); });
+    connect(ui->tabTemplateManageSide, &QTabWidget::currentChanged, this, [this](int index) {
+        if (ui->tabTemplateManageSide->widget(index) == m_templateTagPicker.page) loadTagPickerRows(m_templateTagPicker, false);
+    });
     connect(ui->tabGenerateTools, &QTabWidget::currentChanged, this, [this](int index) {
-        if (ui->tabGenerateTools->widget(index) == ui->tabGenerateTagPicker) loadTagPickerRows(false);
+        if (ui->tabGenerateTools->widget(index) == ui->tabGenerateTagPicker) loadTagPickerRows(m_generateTagPicker, false);
     });
     connect(ui->btnChooseGenerateImage, &QPushButton::clicked, this, [this]() {
         const QString path = QFileDialog::getOpenFileName(this, "选择图片", QString(), "Images (*.png *.jpg *.jpeg *.webp)");
@@ -452,7 +458,8 @@ void PromptTemplateLibraryWidget::setTranslationMap(const QHash<QString, QString
     if (m_generateImageNegativeTags) m_generateImageNegativeTags->setTranslationMap(map);
     if (m_templateImagePositiveTags) m_templateImagePositiveTags->setTranslationMap(map);
     if (m_templateImageNegativeTags) m_templateImageNegativeTags->setTranslationMap(map);
-    refreshTagPickerTable();
+    refreshTagPickerTable(m_generateTagPicker);
+    refreshTagPickerTable(m_templateTagPicker);
 }
 
 void PromptTemplateLibraryWidget::reloadTemplateLibrary()
@@ -955,20 +962,83 @@ void PromptTemplateLibraryWidget::copyText(const QString &text) const
     QApplication::clipboard()->setText(text);
 }
 
-void PromptTemplateLibraryWidget::insertTagsIntoTarget(const QStringList &tags, bool positiveTarget)
+void PromptTemplateLibraryWidget::createTemplateTagPickerTab()
 {
-    if (tags.isEmpty()) return;
-    QPlainTextEdit *target = positiveTarget ? ui->textGeneratedPositive : ui->textGeneratedNegative;
-    const int added = appendUniquePromptTags(target, tags);
-    if (added <= 0) {
-        ui->lblGenerateStatus->setText(positiveTarget
-            ? "选中的 Tag 已存在于正面提示词中。"
-            : "选中的 Tag 已存在于负面提示词中。");
-        return;
+    m_templateTagPicker.page = new QWidget(ui->tabTemplateManageSide);
+    auto *root = new QVBoxLayout(m_templateTagPicker.page);
+    auto *top = new QHBoxLayout;
+    m_templateTagPicker.search = new QLineEdit(m_templateTagPicker.page);
+    m_templateTagPicker.search->setPlaceholderText("搜索 Tag 或翻译，空格和下划线等价");
+    m_templateTagPicker.scope = new QComboBox(m_templateTagPicker.page);
+    m_templateTagPicker.scope->addItems({"正面 Tag", "负面 Tag", "正面 + 负面"});
+    m_templateTagPicker.refresh = new QPushButton("刷新", m_templateTagPicker.page);
+    m_templateTagPicker.insertPositive = new QPushButton("插入正面", m_templateTagPicker.page);
+    m_templateTagPicker.insertNegative = new QPushButton("插入负面", m_templateTagPicker.page);
+    top->addWidget(m_templateTagPicker.search);
+    top->addWidget(m_templateTagPicker.scope);
+    top->addWidget(m_templateTagPicker.refresh);
+    top->addWidget(m_templateTagPicker.insertPositive);
+    top->addWidget(m_templateTagPicker.insertNegative);
+    root->addLayout(top);
+
+    m_templateTagPicker.table = new QTableWidget(m_templateTagPicker.page);
+    m_templateTagPicker.table->setColumnCount(4);
+    m_templateTagPicker.table->setHorizontalHeaderLabels({"Tag", "类型", "使用次数", "翻译"});
+    m_templateTagPicker.table->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    m_templateTagPicker.table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    root->addWidget(m_templateTagPicker.table);
+
+    m_templateTagPicker.status = new QLabel("切换到此页面后会读取用户图库缓存。", m_templateTagPicker.page);
+    root->addWidget(m_templateTagPicker.status);
+
+    m_templateTagPicker.insertIntoTemplate = true;
+    setupTagPickerUi(m_templateTagPicker);
+    ui->tabTemplateManageSide->addTab(m_templateTagPicker.page, "Tag Picker");
+}
+
+void PromptTemplateLibraryWidget::setupTagPickerUi(TagPickerUi &picker)
+{
+    if (!picker.table) return;
+    picker.table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    picker.table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    picker.table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    picker.table->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
+    picker.table->verticalHeader()->hide();
+    picker.table->setShowGrid(false);
+    picker.table->setFocusPolicy(Qt::NoFocus);
+    picker.table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    picker.table->setSortingEnabled(true);
+    picker.table->horizontalHeader()->setSortIndicatorShown(true);
+    picker.table->horizontalHeader()->setSortIndicator(2, Qt::DescendingOrder);
+
+    if (picker.search) {
+        connect(picker.search, &QLineEdit::textChanged, this, [this, &picker]() {
+            onTagPickerFiltersChanged(picker);
+        });
     }
-    ui->lblGenerateStatus->setText(QString("已添加 %1 个新 Tag 到%2提示词。")
-        .arg(added)
-        .arg(positiveTarget ? "正面" : "负面"));
+    if (picker.scope) {
+        connect(picker.scope, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, &picker]() {
+            onTagPickerFiltersChanged(picker);
+        });
+    }
+    if (picker.refresh) {
+        connect(picker.refresh, &QPushButton::clicked, this, [this, &picker]() {
+            loadTagPickerRows(picker, true);
+        });
+    }
+    if (picker.insertPositive) {
+        connect(picker.insertPositive, &QPushButton::clicked, this, [this, &picker]() {
+            addPickerTags(picker, true);
+        });
+    }
+    if (picker.insertNegative) {
+        connect(picker.insertNegative, &QPushButton::clicked, this, [this, &picker]() {
+            addPickerTags(picker, false);
+        });
+    }
+    connect(picker.table, &QTableWidget::cellDoubleClicked, this, [this, &picker](int, int) {
+        addPickerTags(picker, true);
+    });
 }
 
 QMap<QString, int> PromptTemplateLibraryWidget::tagCountsFromPrompt(const QString &prompt) const
@@ -1049,49 +1119,58 @@ void PromptTemplateLibraryWidget::addTemplateImageTagsToTemplate(bool positiveTa
         .arg(positiveTarget ? "正面" : "负面"));
 }
 
-QStringList PromptTemplateLibraryWidget::selectedTagTexts() const
+QStringList PromptTemplateLibraryWidget::selectedTagTexts(const TagPickerUi &picker) const
 {
     QStringList tags;
-    const auto ranges = ui->tableTagPicker->selectedRanges();
+    if (!picker.table) return tags;
+    const auto ranges = picker.table->selectedRanges();
     QSet<int> seenRows;
     for (const QTableWidgetSelectionRange &range : ranges) {
         for (int row = range.topRow(); row <= range.bottomRow(); ++row) {
             if (seenRows.contains(row)) continue;
             seenRows.insert(row);
-            if (auto *item = ui->tableTagPicker->item(row, 0)) tags << item->text();
+            if (auto *item = picker.table->item(row, 0)) tags << item->text();
         }
     }
     return tags;
 }
 
-void PromptTemplateLibraryWidget::loadTagPickerRows(bool force)
+void PromptTemplateLibraryWidget::loadTagPickerRows(TagPickerUi &picker, bool force)
 {
-    if (m_tagWatcher) return;
-    if (!force && !m_allTagRows.isEmpty()) {
-        refreshTagPickerTable();
+    if (!picker.table || !picker.scope || !picker.status) return;
+    const int scope = picker.scope->currentIndex();
+    if (m_tagWatcher) {
+        picker.status->setText("Tag 统计正在加载中...");
         return;
     }
-    ui->lblTagPickerStatus->setText("正在读取 user_gallery_cache.json 并统计常用 Tag...");
-    ui->tableTagPicker->setRowCount(0);
+    if (!force && !m_allTagRows.isEmpty() && m_loadedTagScope == scope) {
+        refreshTagPickerTable(picker);
+        return;
+    }
+    picker.status->setText("正在读取 user_gallery_cache.json 并统计常用 Tag...");
+    picker.table->setRowCount(0);
     const QString cachePath = qApp->applicationDirPath() + "/config/user_gallery_cache.json";
-    const int scope = ui->comboTagScope->currentIndex();
     m_tagWatcher = new QFutureWatcher<QVector<TagUsageRow>>(this);
-    connect(m_tagWatcher, &QFutureWatcher<QVector<TagUsageRow>>::finished, this, [this]() {
+    connect(m_tagWatcher, &QFutureWatcher<QVector<TagUsageRow>>::finished, this, [this, &picker, scope]() {
         if (!m_tagWatcher) return;
         m_allTagRows = m_tagWatcher->result();
+        m_loadedTagScope = scope;
         m_tagWatcher->deleteLater();
         m_tagWatcher = nullptr;
-        refreshTagPickerTable();
+        refreshTagPickerTable(picker);
     });
     m_tagWatcher->setFuture(QtConcurrent::run([cachePath, scope]() {
         return readTagRowsWorker(cachePath, scope);
     }));
 }
 
-void PromptTemplateLibraryWidget::refreshTagPickerTable()
+void PromptTemplateLibraryWidget::refreshTagPickerTable(TagPickerUi &picker)
 {
+    if (!picker.table || !picker.search || !picker.status) return;
+    const int pickerScope = picker.scope ? picker.scope->currentIndex() : -1;
+    if (m_loadedTagScope != pickerScope) return;
     QVector<TagUsageRow> rows = m_allTagRows;
-    const QString needle = normalizeTagSearch(ui->editTagSearch->text());
+    const QString needle = normalizeTagSearch(picker.search->text());
     if (!needle.isEmpty()) {
         QVector<TagUsageRow> filtered;
         for (const TagUsageRow &row : rows) {
@@ -1102,33 +1181,58 @@ void PromptTemplateLibraryWidget::refreshTagPickerTable()
         rows = filtered;
     }
 
-    if (ui->comboTagSort->currentIndex() == 1) {
-        std::sort(rows.begin(), rows.end(), [](const auto &a, const auto &b) {
-            return QString::compare(a.tag, b.tag, Qt::CaseInsensitive) < 0;
-        });
-    } else if (ui->comboTagSort->currentIndex() == 2) {
-        std::sort(rows.begin(), rows.end(), [](const auto &a, const auto &b) {
-            return QString::compare(a.tag, b.tag, Qt::CaseInsensitive) > 0;
-        });
-    } else {
-        std::sort(rows.begin(), rows.end(), [](const auto &a, const auto &b) {
-            if (a.count != b.count) return a.count > b.count;
-            return QString::compare(a.tag, b.tag, Qt::CaseInsensitive) < 0;
-        });
-    }
+    std::sort(rows.begin(), rows.end(), [](const auto &a, const auto &b) {
+        if (a.count != b.count) return a.count > b.count;
+        return QString::compare(a.tag, b.tag, Qt::CaseInsensitive) < 0;
+    });
 
-    ui->tableTagPicker->setRowCount(0);
+    const int sortColumn = picker.table->horizontalHeader()->sortIndicatorSection() >= 0
+        ? picker.table->horizontalHeader()->sortIndicatorSection()
+        : 2;
+    const Qt::SortOrder sortOrder = picker.table->horizontalHeader()->sortIndicatorOrder();
+    picker.table->setSortingEnabled(false);
+    picker.table->setRowCount(0);
     for (const TagUsageRow &rowData : rows) {
-        const int row = ui->tableTagPicker->rowCount();
-        ui->tableTagPicker->insertRow(row);
-        ui->tableTagPicker->setItem(row, 0, new QTableWidgetItem(rowData.tag));
-        ui->tableTagPicker->setItem(row, 1, new QTableWidgetItem(rowData.kind));
-        ui->tableTagPicker->setItem(row, 2, new QTableWidgetItem(QString::number(rowData.count)));
-        ui->tableTagPicker->setItem(row, 3, new QTableWidgetItem(translatedTextForTag(rowData.tag)));
+        const int row = picker.table->rowCount();
+        picker.table->insertRow(row);
+        picker.table->setItem(row, 0, makePromptTemplateTableItem(rowData.tag));
+        picker.table->setItem(row, 1, makePromptTemplateTableItem(rowData.kind));
+        picker.table->setItem(row, 2, makePromptTemplateTableItem(rowData.count));
+        picker.table->setItem(row, 3, makePromptTemplateTableItem(translatedTextForTag(rowData.tag)));
     }
-    ui->lblTagPickerStatus->setText(rows.isEmpty()
+    picker.table->setSortingEnabled(true);
+    picker.table->sortItems(sortColumn, sortOrder);
+    picker.status->setText(rows.isEmpty()
         ? "未找到常用 Tag。请先扫描本地图库，或调整搜索条件。"
         : QString("显示 %1 条常用 Tag").arg(rows.size()));
+}
+
+void PromptTemplateLibraryWidget::addPickerTags(TagPickerUi &picker, bool positiveTarget)
+{
+    const QStringList tags = selectedTagTexts(picker);
+    if (tags.isEmpty()) {
+        if (picker.status) picker.status->setText("请先在表格中选择 Tag。");
+        return;
+    }
+
+    QPlainTextEdit *target = nullptr;
+    QLabel *status = picker.status;
+    QString targetName;
+    if (picker.insertIntoTemplate) {
+        target = positiveTarget ? ui->textTemplatePositive : ui->textTemplateNegative;
+        targetName = positiveTarget ? "正面模板" : "负面模板";
+    } else {
+        target = positiveTarget ? ui->textGeneratedPositive : ui->textGeneratedNegative;
+        targetName = positiveTarget ? "正面提示词" : "负面提示词";
+        status = ui->lblGenerateStatus;
+    }
+
+    const int added = appendUniquePromptTags(target, tags);
+    if (status) {
+        status->setText(added == 0
+            ? QString("%1中已经包含选中的 Tag。").arg(targetName)
+            : QString("已添加 %1 个新 Tag 到%2。").arg(added).arg(targetName));
+    }
 }
 
 void PromptTemplateLibraryWidget::parseGenerateImageTags()
@@ -1179,7 +1283,10 @@ void PromptTemplateLibraryWidget::onTabChanged(int index)
 {
     if (ui->tabTemplateLibrary->widget(index) == ui->tabGenerate &&
         ui->tabGenerateTools->currentWidget() == ui->tabGenerateTagPicker) {
-        loadTagPickerRows(false);
+        loadTagPickerRows(m_generateTagPicker, false);
+    } else if (ui->tabTemplateLibrary->widget(index) == ui->tabTemplates &&
+        ui->tabTemplateManageSide->currentWidget() == m_templateTagPicker.page) {
+        loadTagPickerRows(m_templateTagPicker, false);
     }
 }
 
@@ -1284,16 +1391,18 @@ void PromptTemplateLibraryWidget::onDeletePlaceholderClicked()
     refreshAllLists();
 }
 
-void PromptTemplateLibraryWidget::onTagPickerFiltersChanged()
+void PromptTemplateLibraryWidget::onTagPickerFiltersChanged(TagPickerUi &picker)
 {
-    if (sender() == ui->comboTagScope) {
+    if (sender() == picker.scope) {
         m_allTagRows.clear();
-        loadTagPickerRows(true);
+        m_loadedTagScope = -1;
+        loadTagPickerRows(picker, true);
         return;
     }
-    if (m_allTagRows.isEmpty()) {
-        loadTagPickerRows(false);
+    const int scope = picker.scope ? picker.scope->currentIndex() : -1;
+    if (m_allTagRows.isEmpty() || m_loadedTagScope != scope) {
+        loadTagPickerRows(picker, false);
     } else {
-        refreshTagPickerTable();
+        refreshTagPickerTable(picker);
     }
 }

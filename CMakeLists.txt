@@ -35,6 +35,9 @@ qt_add_executable(SD_LoRA_Manager
     prompttemplatelibrarywidget.h
     prompttemplatelibrarywidget.cpp
     prompttemplatelibrarywidget.ui
+    modelnotedialog.h
+    modelnotedialog.cpp
+    modelnotedialog.ui
     usageanalysiswidget.h
     usageanalysiswidget.cpp
     usageanalysiswidget.ui

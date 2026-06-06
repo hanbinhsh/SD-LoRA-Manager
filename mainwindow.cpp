@@ -50,6 +50,7 @@
 #include <QUrlQuery>
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <functional>
 #include <utility>
 #include <QElapsedTimer>
@@ -65,6 +66,7 @@
 #include "promptparserwidget.h"
 #include "usageanalysiswidget.h"
 #include "prompttemplatelibrarywidget.h"
+#include "modelnotedialog.h"
 
 namespace {
 QString loadQssResource(const QString &path)
@@ -322,6 +324,11 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->btnLocalMetaSave, &QPushButton::clicked, this, &MainWindow::onLocalMetaSaveClicked);
     connect(ui->btnLocalMetaReset, &QPushButton::clicked, this, &MainWindow::onLocalMetaResetClicked);
     connect(ui->btnEditMeta, &QPushButton::clicked, this, &MainWindow::onEditMetaTabClicked);
+    connect(ui->btnEditUserNote, &QPushButton::clicked, this, [this]() {
+        if (QListWidgetItem *item = ui->modelList->currentItem(); isModelListItem(item)) {
+            openModelNoteDialog(item);
+        }
+    });
     connect(ui->listEditImages, &QListWidget::currentRowChanged, this, &MainWindow::onEditImageSelectionChanged);
     connect(ui->btnEditAddImage, &QPushButton::clicked, this, &MainWindow::onEditAddImageClicked);
     connect(ui->btnEditReplaceImage, &QPushButton::clicked, this, &MainWindow::onEditReplaceImageClicked);
@@ -467,6 +474,7 @@ MainWindow::MainWindow(QWidget *parent)
         ui->statusbar->showMessage("正在扫描本地模型库...");
         loadCollections();
         loadModelHighlightColors();
+        loadModelUserNotes();
         const QStringList activeLoraPaths = collectEnabledPaths(loraPaths, disabledLoraPaths);
         if (!activeLoraPaths.isEmpty()) scanModels(activeLoraPaths);
         ui->comboSort->setCurrentIndex(0);
@@ -1347,6 +1355,10 @@ void MainWindow::refreshHomeGallery()
         item->setData(ROLE_NSFW_LEVEL, nsfwLevel);
         item->setData(ROLE_MODEL_NAME, modelKey);
         item->setData(ROLE_CIVITAI_NAME, sideItem->data(ROLE_CIVITAI_NAME));
+        item->setData(ROLE_USER_RATING, sideItem->data(ROLE_USER_RATING));
+        item->setData(ROLE_USER_NOTE, sideItem->data(ROLE_USER_NOTE));
+        item->setData(ROLE_USER_TAGS, sideItem->data(ROLE_USER_TAGS));
+        item->setToolTip(formatModelUserNoteTooltip(filePath, displayName));
 
         item->setIcon(placeholderIcon);
         ui->homeGalleryList->addItem(item);
@@ -1746,11 +1758,12 @@ void MainWindow::scanModels(const QStringList &paths)
             if (optUseCivitaiName && !civitaiName.isEmpty()) {
                 item->setText(civitaiName);
             } else {
-                item->setText(baseName); // 默认使用文件名
+            item->setText(baseName); // 默认使用文件名
             }
 
             item->setIcon(placeholderIcon);
             applyModelHighlightColor(item);
+            applyModelUserNoteData(item);
 
             // 9. 处理底模过滤器
             QString baseModel = item->data(ROLE_FILTER_BASE).toString();
@@ -1890,6 +1903,7 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
                                  .arg(meta.fileSizeMB, 0, 'f', 1)
                                  .arg(meta.sha256.left(10) + "...")
                                  .arg(addedStr));
+    refreshModelUserNotePanel(meta.filePath);
 
     updateLocalEditorFromMeta(meta);
 
@@ -2192,6 +2206,7 @@ void MainWindow::clearDetailView()
     ui->textDescription->clear();
     ui->textDescription->setPlaceholderText("暂无简介 / No description.");
     ui->lblFileInfo->setText("Filename: --\nSize: --\nHash: --");
+    refreshModelUserNotePanel("");
 
     ui->textImgPrompt->clear();
     ui->textImgNegPrompt->clear();
@@ -2284,6 +2299,7 @@ void MainWindow::showPendingLocalModelDetail(const ModelMeta &meta, const QStrin
     ui->lblFileInfo->setText(QString("Filename: %1\nSize: %2 MB\nHash: --")
                                  .arg(fi.fileName())
                                  .arg(fi.exists() ? QString::number(fi.size() / 1024.0 / 1024.0, 'f', 2) : "--"));
+    refreshModelUserNotePanel(meta.filePath);
     if (!meta.previewPath.isEmpty() && QFile::exists(meta.previewPath)) {
         transitionToImage(meta.previewPath);
     } else {
@@ -2698,6 +2714,287 @@ void MainWindow::loadModelSyncFailures()
         const QString path = QFileInfo(it.key()).absoluteFilePath();
         if (!path.isEmpty()) modelSyncFailures.insert(path, it.value().toObject());
     }
+}
+
+QString MainWindow::modelUserNotesPath() const
+{
+    return qApp->applicationDirPath() + "/config/model_user_notes.json";
+}
+
+QStringList MainWindow::normalizeModelUserTags(const QStringList &tags) const
+{
+    QStringList result;
+    QSet<QString> seen;
+    for (const QString &raw : tags) {
+        const QString tag = raw.trimmed();
+        if (tag.isEmpty()) continue;
+        const QString key = tag.toCaseFolded();
+        if (seen.contains(key)) continue;
+        seen.insert(key);
+        result.append(tag);
+    }
+    return result;
+}
+
+QStringList MainWindow::normalizeModelUserTagsText(const QString &text) const
+{
+    QString normalizedText = text;
+    normalizedText.replace('\r', ',');
+    normalizedText.replace('\n', ',');
+    return normalizeModelUserTags(normalizedText.split(',', Qt::SkipEmptyParts));
+}
+
+void MainWindow::loadModelUserNotes()
+{
+    modelUserNotes.clear();
+
+    QFile file(modelUserNotesPath());
+    if (!file.open(QIODevice::ReadOnly)) return;
+
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    if (!doc.isObject()) return;
+
+    const QJsonObject root = doc.object();
+    for (auto it = root.begin(); it != root.end(); ++it) {
+        const QString filePath = QFileInfo(it.key()).absoluteFilePath();
+        const QJsonObject obj = it.value().toObject();
+        ModelUserNote note;
+        note.rating = obj.value("rating").toDouble(0.0);
+        if (note.rating < 0.5) note.rating = 0.0;
+        if (note.rating > 5.0) note.rating = 5.0;
+        note.rating = std::round(note.rating * 2.0) / 2.0;
+        note.note = obj.value("note").toString();
+        note.updatedAt = obj.value("updatedAt").toString();
+        QStringList tags;
+        const QJsonArray arr = obj.value("tags").toArray();
+        for (const QJsonValue &val : arr) tags.append(val.toString());
+        note.tags = normalizeModelUserTags(tags);
+        if (!filePath.isEmpty()) modelUserNotes.insert(filePath, note);
+    }
+}
+
+void MainWindow::saveModelUserNotes() const
+{
+    const QString configDir = qApp->applicationDirPath() + "/config";
+    QDir().mkpath(configDir);
+
+    QJsonObject root;
+    for (auto it = modelUserNotes.cbegin(); it != modelUserNotes.cend(); ++it) {
+        const ModelUserNote &note = it.value();
+        if (note.rating <= 0.0 && note.note.trimmed().isEmpty() && note.tags.isEmpty()) continue;
+
+        QJsonObject obj;
+        obj["rating"] = note.rating;
+        obj["note"] = note.note;
+        obj["updatedAt"] = note.updatedAt;
+        QJsonArray tags;
+        for (const QString &tag : note.tags) tags.append(tag);
+        obj["tags"] = tags;
+        root.insert(it.key(), obj);
+    }
+
+    QSaveFile file(modelUserNotesPath());
+    if (!file.open(QIODevice::WriteOnly)) return;
+    file.write(QJsonDocument(root).toJson());
+    file.commit();
+}
+
+QString MainWindow::formatModelRating(double rating) const
+{
+    if (rating <= 0.0) return "未评分";
+    return QString("%1 / 5").arg(rating, 0, 'f', (std::fmod(rating, 1.0) == 0.0) ? 0 : 1);
+}
+
+QString MainWindow::formatModelUserNoteTooltip(const QString &filePath, const QString &baseTooltip) const
+{
+    QStringList lines;
+    if (!baseTooltip.trimmed().isEmpty()) lines << baseTooltip.trimmed();
+
+    const QString key = QFileInfo(filePath).absoluteFilePath();
+    const ModelUserNote note = modelUserNotes.value(key);
+    if (note.rating > 0.0) lines << "评分: " + formatModelRating(note.rating);
+    if (!note.tags.isEmpty()) lines << "标签: " + note.tags.join(", ");
+    QString noteText = note.note.simplified();
+    if (!noteText.isEmpty()) {
+        if (noteText.size() > 120) noteText = noteText.left(117) + "...";
+        lines << "备注: " + noteText;
+    }
+    return lines.join("\n");
+}
+
+void MainWindow::applyModelUserNoteData(QListWidgetItem *item)
+{
+    if (!item || !isModelListItem(item)) return;
+    const QString filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+    const ModelUserNote note = modelUserNotes.value(filePath);
+    item->setData(ROLE_USER_RATING, note.rating);
+    item->setData(ROLE_USER_NOTE, note.note);
+    item->setData(ROLE_USER_TAGS, note.tags);
+    item->setToolTip(formatModelUserNoteTooltip(filePath, filePath));
+}
+
+void MainWindow::applyModelUserNoteData(QTreeWidgetItem *item)
+{
+    if (!item || item->data(0, ROLE_FILE_PATH).toString().isEmpty()) return;
+    const QString filePath = QFileInfo(item->data(0, ROLE_FILE_PATH).toString()).absoluteFilePath();
+    const ModelUserNote note = modelUserNotes.value(filePath);
+    item->setData(0, ROLE_USER_RATING, note.rating);
+    item->setData(0, ROLE_USER_NOTE, note.note);
+    item->setData(0, ROLE_USER_TAGS, note.tags);
+    item->setToolTip(0, formatModelUserNoteTooltip(filePath, item->text(0)));
+}
+
+void MainWindow::refreshModelUserNoteItems(const QString &filePath)
+{
+    const QString key = QFileInfo(filePath).absoluteFilePath();
+    auto refreshList = [&](QListWidget *list) {
+        if (!list) return;
+        for (int i = 0; i < list->count(); ++i) {
+            QListWidgetItem *item = list->item(i);
+            if (!item) continue;
+            if (QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath() == key) {
+                applyModelUserNoteData(item);
+            }
+        }
+    };
+    refreshList(ui->modelList);
+    refreshList(ui->homeGalleryList);
+}
+
+void MainWindow::refreshModelUserNotePanel(const QString &filePath)
+{
+    const QString sourcePath = filePath.isNull() ? currentMeta.filePath : filePath;
+    const QString key = sourcePath.isEmpty() ? QString() : QFileInfo(sourcePath).absoluteFilePath();
+    const ModelUserNote note = modelUserNotes.value(key);
+
+    ui->lblUserRating->setText("评分: " + formatModelRating(note.rating));
+    ui->textUserNotePreview->setPlainText(note.note);
+    ui->textUserNotePreview->setPlaceholderText("暂无备注 / No note.");
+
+    clearLayout(ui->layoutUserTags);
+    if (note.tags.isEmpty()) {
+        QLabel *empty = new QLabel("无用户标签");
+        empty->setStyleSheet("color:#8c96a0;background:transparent;");
+        ui->layoutUserTags->addWidget(empty);
+    } else {
+        for (const QString &tag : note.tags) {
+            QLabel *label = new QLabel(tag);
+            label->setProperty("class", "tag");
+            label->setStyleSheet("padding: 2px 8px; border-radius: 8px; background: rgba(102,192,244,48); color: #dfefff;");
+            ui->layoutUserTags->addWidget(label);
+        }
+    }
+    ui->layoutUserTags->addStretch();
+}
+
+void MainWindow::openModelNoteDialog(QListWidgetItem *item)
+{
+    if (!isModelListItem(item)) return;
+    const QString filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+    if (filePath.isEmpty()) return;
+
+    ModelUserNote current = modelUserNotes.value(filePath);
+    ModelNoteDialog dialog(this);
+    dialog.setModelName(item->text());
+    dialog.setRating(current.rating);
+    dialog.setNote(current.note);
+    dialog.setTags(current.tags);
+    if (dialog.exec() != QDialog::Accepted) return;
+
+    current.rating = dialog.rating();
+    if (current.rating < 0.5) current.rating = 0.0;
+    current.rating = std::round(current.rating * 2.0) / 2.0;
+    current.note = dialog.note();
+    current.tags = normalizeModelUserTags(dialog.tags());
+    current.updatedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+
+    if (current.rating <= 0.0 && current.note.isEmpty() && current.tags.isEmpty()) {
+        modelUserNotes.remove(filePath);
+    } else {
+        modelUserNotes.insert(filePath, current);
+    }
+
+    refreshModelUserNoteItems(filePath);
+    saveModelUserNotes();
+    refreshModelUserNotePanel(filePath);
+    executeSort();
+    refreshCollectionTreeView();
+    refreshHomeGallery();
+    ui->statusbar->showMessage("模型评分与备注已保存。", 2000);
+}
+
+void MainWindow::setUserRatingForItems(const QList<QListWidgetItem*> &items, double rating)
+{
+    const double normalizedRating = rating < 0.5 ? 0.0 : qBound(0.0, std::round(rating * 2.0) / 2.0, 5.0);
+    for (QListWidgetItem *item : items) {
+        if (!isModelListItem(item)) continue;
+        const QString filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+        if (filePath.isEmpty()) continue;
+        ModelUserNote note = modelUserNotes.value(filePath);
+        note.rating = normalizedRating;
+        note.updatedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+        if (note.rating <= 0.0 && note.note.isEmpty() && note.tags.isEmpty()) {
+            modelUserNotes.remove(filePath);
+        } else {
+            modelUserNotes.insert(filePath, note);
+        }
+        refreshModelUserNoteItems(filePath);
+    }
+    saveModelUserNotes();
+    refreshModelUserNotePanel();
+    executeSort();
+    refreshCollectionTreeView();
+    refreshHomeGallery();
+}
+
+void MainWindow::addUserTagsForItems(const QList<QListWidgetItem*> &items, const QStringList &tags)
+{
+    const QStringList cleanTags = normalizeModelUserTags(tags);
+    if (cleanTags.isEmpty()) return;
+    for (QListWidgetItem *item : items) {
+        if (!isModelListItem(item)) continue;
+        const QString filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+        if (filePath.isEmpty()) continue;
+        ModelUserNote note = modelUserNotes.value(filePath);
+        note.tags = normalizeModelUserTags(note.tags + cleanTags);
+        note.updatedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+        modelUserNotes.insert(filePath, note);
+        refreshModelUserNoteItems(filePath);
+    }
+    saveModelUserNotes();
+    refreshModelUserNotePanel();
+    refreshCollectionTreeView();
+    refreshHomeGallery();
+}
+
+void MainWindow::removeUserTagsForItems(const QList<QListWidgetItem*> &items, const QStringList &tags)
+{
+    const QStringList cleanTags = normalizeModelUserTags(tags);
+    if (cleanTags.isEmpty()) return;
+    QSet<QString> removeSet;
+    for (const QString &tag : cleanTags) removeSet.insert(tag.toCaseFolded());
+    for (QListWidgetItem *item : items) {
+        if (!isModelListItem(item)) continue;
+        const QString filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+        if (filePath.isEmpty()) continue;
+        ModelUserNote note = modelUserNotes.value(filePath);
+        QStringList nextTags;
+        for (const QString &tag : note.tags) {
+            if (!removeSet.contains(tag.toCaseFolded())) nextTags.append(tag);
+        }
+        note.tags = nextTags;
+        note.updatedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+        if (note.rating <= 0.0 && note.note.isEmpty() && note.tags.isEmpty()) {
+            modelUserNotes.remove(filePath);
+        } else {
+            modelUserNotes.insert(filePath, note);
+        }
+        refreshModelUserNoteItems(filePath);
+    }
+    saveModelUserNotes();
+    refreshModelUserNotePanel();
+    refreshCollectionTreeView();
+    refreshHomeGallery();
 }
 
 void MainWindow::saveModelSyncFailures() const
@@ -4332,8 +4629,22 @@ void MainWindow::onSearchTextChanged(const QString &text)
         QString modelName = item->data(ROLE_MODEL_NAME).toString();
         if (modelName.isEmpty()) modelName = item->text();
 
-        // A. 名称匹配
-        bool nameMatch = modelName.contains(query, Qt::CaseInsensitive);
+        QStringList searchable;
+        searchable << modelName
+                   << item->text()
+                   << item->data(ROLE_CIVITAI_NAME).toString()
+                   << item->data(ROLE_USER_NOTE).toString()
+                   << item->data(ROLE_USER_TAGS).toStringList();
+
+        bool nameMatch = query.isEmpty();
+        if (!nameMatch) {
+            for (const QString &part : searchable) {
+                if (part.contains(query, Qt::CaseInsensitive)) {
+                    nameMatch = true;
+                    break;
+                }
+            }
+        }
 
         // B. 底模匹配
         bool baseMatch = true;
@@ -4427,6 +4738,52 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
     actClearHighlightColor->setEnabled(hasHighlightColor);
     connect(actClearHighlightColor, &QAction::triggered, this, [this, modelItems]() {
         clearHighlightColorForItems(modelItems);
+    });
+
+    menu.addSeparator();
+
+    QAction *actEditUserNote = menu.addAction("编辑评分与备注... / Edit Rating && Note...");
+    actEditUserNote->setEnabled(modelItems.count() == 1);
+    connect(actEditUserNote, &QAction::triggered, this, [this, modelItems]() {
+        if (modelItems.count() == 1) openModelNoteDialog(modelItems.first());
+    });
+
+    QMenu *ratingMenu = menu.addMenu("设置评分 / Set Rating");
+    QAction *clearRatingAct = ratingMenu->addAction("未评分 / Clear Rating");
+    connect(clearRatingAct, &QAction::triggered, this, [this, modelItems]() {
+        setUserRatingForItems(modelItems, 0.0);
+    });
+    ratingMenu->addSeparator();
+    for (int half = 2; half <= 10; ++half) {
+        const double rating = half / 2.0;
+        QAction *act = ratingMenu->addAction(formatModelRating(rating));
+        connect(act, &QAction::triggered, this, [this, modelItems, rating]() {
+            setUserRatingForItems(modelItems, rating);
+        });
+    }
+
+    QAction *actAddUserTags = menu.addAction("添加用户标签... / Add User Tags...");
+    connect(actAddUserTags, &QAction::triggered, this, [this, modelItems]() {
+        bool ok = false;
+        const QString text = QInputDialog::getMultiLineText(this,
+                                                            "添加用户标签",
+                                                            "输入标签，逗号或换行分隔：",
+                                                            QString(),
+                                                            &ok);
+        if (!ok) return;
+        addUserTagsForItems(modelItems, normalizeModelUserTagsText(text));
+    });
+
+    QAction *actRemoveUserTags = menu.addAction("移除用户标签... / Remove User Tags...");
+    connect(actRemoveUserTags, &QAction::triggered, this, [this, modelItems]() {
+        bool ok = false;
+        const QString text = QInputDialog::getMultiLineText(this,
+                                                            "移除用户标签",
+                                                            "输入要移除的标签，逗号或换行分隔：",
+                                                            QString(),
+                                                            &ok);
+        if (!ok) return;
+        removeUserTagsForItems(modelItems, normalizeModelUserTagsText(text));
     });
 
     menu.addSeparator();
@@ -4911,7 +5268,7 @@ void MainWindow::toggleModelFolderCollapsed(const QString &folderKey)
 
 void MainWindow::executeSort()
 {
-    // 0: Name, 1: Date(New), 2: Downloads, 3: Likes, 4: Date Added, 5: Usage, 6: Recently Used
+    // 0: Name, 1: Date(New), 2: Downloads, 3: Likes, 4: Date Added, 5: Usage, 6: Recently Used, 7: User Rating
     int sortType = ui->comboSort->currentIndex();
 
     // 1. 取出所有 Item
@@ -4967,6 +5324,14 @@ void MainWindow::executeSort()
                 const qint64 usedA = a->data(ROLE_SORT_LAST_USED).toLongLong();
                 const qint64 usedB = b->data(ROLE_SORT_LAST_USED).toLongLong();
                 if (usedA != usedB) return usedA > usedB;
+                return compareByName(a, b);
+            }
+
+            case 7: // Rating (User)
+            {
+                const double ratingA = a->data(ROLE_USER_RATING).toDouble();
+                const double ratingB = b->data(ROLE_USER_RATING).toDouble();
+                if (!qFuzzyCompare(ratingA + 1.0, ratingB + 1.0)) return ratingA > ratingB;
                 return compareByName(a, b);
             }
 
@@ -8815,8 +9180,12 @@ void MainWindow::refreshCollectionTreeView()
                 child->setData(0, ROLE_PREVIEW_PATH, sourceItem->data(ROLE_PREVIEW_PATH));
                 child->setData(0, ROLE_NSFW_LEVEL, sourceItem->data(ROLE_NSFW_LEVEL));
                 child->setData(0, ROLE_MODEL_NAME, sourceItem->data(ROLE_MODEL_NAME));
+                child->setData(0, ROLE_USER_RATING, sourceItem->data(ROLE_USER_RATING));
+                child->setData(0, ROLE_USER_NOTE, sourceItem->data(ROLE_USER_NOTE));
+                child->setData(0, ROLE_USER_TAGS, sourceItem->data(ROLE_USER_TAGS));
                 child->setIcon(0, sourceItem->icon());
                 applyModelHighlightColor(child);
+                applyModelUserNoteData(child);
             }
         }
     };
@@ -9337,6 +9706,7 @@ void MainWindow::updateModelListNames()
         } else {
             item->setText(baseName);
         }
+        applyModelUserNoteData(item);
     }
 
     // 恢复排序 (executeSort 会处理)

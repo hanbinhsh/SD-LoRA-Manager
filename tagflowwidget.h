@@ -6,6 +6,7 @@
 #include <QMouseEvent>
 #include <QMap>
 #include <QSet>
+#include <QHash>
 #include <QPair>
 #include <QVector>
 #include <algorithm>
@@ -46,6 +47,13 @@ public:
         SortAlphabetically = 1
     };
 
+    enum DiffState {
+        DiffNone = 0,
+        DiffOnlyA,
+        DiffOnlyB,
+        DiffCommon
+    };
+
     explicit TagFlowWidget(QWidget *parent = nullptr) : QWidget(parent) {
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
         setMouseTracking(true);
@@ -59,6 +67,19 @@ public:
             m_allTags.append({it.key(), it.value(), selected.contains(it.key()), QRect()});
         }
         rebuildVisibleTags();
+    }
+
+    void setTagDiffStates(const QHash<QString, DiffState> &states) {
+        m_diffStates = states;
+        m_cacheDirty = true;
+        update();
+    }
+
+    void clearTagDiffStates() {
+        if (m_diffStates.isEmpty()) return;
+        m_diffStates.clear();
+        m_cacheDirty = true;
+        update();
     }
 
     void setTranslationMap(const QHash<QString, QString> *map) {
@@ -76,6 +97,14 @@ public:
         if (m_sortMode == mode) return;
         m_sortMode = mode;
         rebuildVisibleTags();
+    }
+
+    void setPixmapCacheEnabled(bool enabled) {
+        if (m_pixmapCacheEnabled == enabled) return;
+        m_pixmapCacheEnabled = enabled;
+        m_cachedPixmap = QPixmap();
+        m_cacheDirty = true;
+        update();
     }
 
     void setSearchText(const QString &text) {
@@ -145,6 +174,8 @@ protected:
     SortMode m_sortMode = SortByCount;
     QString m_searchText;
     bool m_loraOnly = false;
+    bool m_pixmapCacheEnabled = true;
+    QHash<QString, DiffState> m_diffStates;
     bool m_layoutDirty = true;
     bool m_cacheDirty = true;
     int m_layoutWidth = -1;
@@ -270,6 +301,7 @@ protected:
     }
 
     bool shouldUsePixmapCache(const QSize &logicalSize) const {
+        if (!m_pixmapCacheEnabled) return false;
         if (m_tags.isEmpty()) return false;
         if (logicalSize.width() <= 1 || logicalSize.height() <= 1) return false;
         return qsizetype(logicalSize.width()) * qsizetype(logicalSize.height()) <= kMaxCachedPixels;
@@ -294,7 +326,12 @@ protected:
             const QString line1 = QString("%1  %2").arg(tag.text).arg(tag.count);
             const QString line2 = m_showTranslation ? tryGetTranslation(tag.text) : QString();
 
-            const QColor bgColor = tag.selected ? QColor("#66c0f4") : QColor("#2a3f5a");
+            QColor bgColor = QColor("#2a3f5a");
+            const DiffState diffState = m_diffStates.value(tag.text, DiffNone);
+            if (diffState == DiffOnlyA) bgColor = QColor("#7a4a2a");
+            else if (diffState == DiffOnlyB) bgColor = QColor("#2f6a4f");
+            else if (diffState == DiffCommon) bgColor = QColor("#314f7a");
+            if (tag.selected) bgColor = QColor("#66c0f4");
             p.setBrush(bgColor);
             p.setPen(Qt::NoPen);
             p.drawRoundedRect(tag.rect, 4, 4);
@@ -368,7 +405,9 @@ protected:
     }
 
     void paintEvent(QPaintEvent *event) override {
-        const QSize expectedSize(qMax(1, width()), qMax(1, m_calculatedHeight));
+        if (width() <= 0 || height() <= 0) return;
+
+        const QSize expectedSize(qMax(1, width()), qMax(1, height()));
         const qreal expectedDpr = qMax<qreal>(1.0, devicePixelRatioF());
         const bool useCache = shouldUsePixmapCache(expectedSize);
         QSize cachedLogicalSize;

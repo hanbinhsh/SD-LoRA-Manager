@@ -1,6 +1,8 @@
 #ifndef PROMPTPARSERWIDGET_H
 #define PROMPTPARSERWIDGET_H
 
+#include "imagemetadataparser.h"
+
 #include <QWidget>
 #include <QHash>
 #include <QMap>
@@ -14,6 +16,7 @@ class PromptParserWidget;
 }
 
 class QLabel;
+class QListWidget;
 class QProcess;
 
 struct Wd14TagScore
@@ -58,12 +61,25 @@ private:
     // 两个流式布局控件
     TagFlowWidget *posTagWidget;
     TagFlowWidget *negTagWidget;
+    TagFlowWidget *compareTagWidgetA = nullptr;
+    TagFlowWidget *compareTagWidgetB = nullptr;
     QProcess *wd14Process = nullptr;
     QString wd14ImagePath;
     QString wd14LastTagsText;
+    ParsedImageMetadata compareMetaA;
+    ParsedImageMetadata compareMetaB;
+    QString compareImagePathA;
+    QString compareImagePathB;
+    QStringList compareOnlyATags;
+    QStringList compareOnlyBTags;
+    QStringList compareCommonTags;
 
     // 核心函数
     void processImage(const QString &filePath);
+    void processCompareImage(bool imageA, const QString &filePath);
+    void updateImageCompare();
+    void copyCompareTags(const QStringList &tags, const QString &label);
+    void copyCompareAll();
     void processWd14Image(const QString &filePath);
     QString extractPngParameters(const QString &filePath);
     void updateImagePreview(const QString &filePath);
@@ -98,8 +114,14 @@ private:
     QStringList splitWd14TagList(const QString &text) const;
 
     // 解析辅助函数
-    QString cleanTagText(QString t);
+    QString cleanTagText(QString t) const;
     QMap<QString, int> parsePromptToMap(const QString &rawPrompt);
+    QString normalizeCompareTag(QString tag) const;
+    QStringList tagsFromMap(const QMap<QString, int> &tags) const;
+    void fillCompareList(QListWidget *list, const QStringList &tags);
+    void fillCompareParams();
+    QString compareParamValue(const ParsedImageMetadata &meta, const QString &key) const;
+    QString extractParameterLine(const QString &parameters, const QStringList &keys) const;
 };
 
 #endif // PROMPTPARSERWIDGET_H

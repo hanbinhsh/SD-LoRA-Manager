@@ -1,6 +1,7 @@
 #include "promptparserwidget.h"
 #include "ui_promptparserwidget.h"
 #include "imagemetadataparser.h"
+#include "tableviewstylehelper.h"
 
 #include <QAbstractItemView>
 #include <QAction>
@@ -35,6 +36,7 @@
 #include <QSlider>
 #include <QStandardPaths>
 #include <QSaveFile>
+#include <QTableWidgetItem>
 #include <QTreeWidgetItem>
 #include <QTreeWidget>
 #include <QUrl>
@@ -122,18 +124,32 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
     setAcceptDrops(true);
     ui->lblImage->installEventFilter(this);
     ui->lblWd14Image->installEventFilter(this);
+    ui->editCompareImageA->setAcceptDrops(true);
+    ui->editCompareImageB->setAcceptDrops(true);
+    ui->editCompareImageA->installEventFilter(this);
+    ui->editCompareImageB->installEventFilter(this);
+
+    applyUnifiedTableRowStyle(ui->tableCompareParams);
 
     posTagWidget = new TagFlowWidget(ui->scrollAreaWidgetContentsPos);
     negTagWidget = new TagFlowWidget(ui->scrollAreaWidgetContentsNeg);
+    compareTagWidgetA = new TagFlowWidget(ui->compareTagsAContainer);
+    compareTagWidgetB = new TagFlowWidget(ui->compareTagsBContainer);
+    posTagWidget->setPixmapCacheEnabled(false);
+    negTagWidget->setPixmapCacheEnabled(false);
+    compareTagWidgetA->setPixmapCacheEnabled(false);
+    compareTagWidgetB->setPixmapCacheEnabled(false);
 
     const bool showTrans = ui->btnTranslate->isChecked();
     posTagWidget->setShowTranslation(showTrans);
     negTagWidget->setShowTranslation(showTrans);
+    compareTagWidgetA->setShowTranslation(showTrans);
+    compareTagWidgetB->setShowTranslation(showTrans);
 
     ui->layoutTagsPos->addWidget(posTagWidget);
-    ui->layoutTagsPos->addStretch();
     ui->layoutTagsNeg->addWidget(negTagWidget);
-    ui->layoutTagsNeg->addStretch();
+    ui->layoutCompareTagsAContainer->addWidget(compareTagWidgetA);
+    ui->layoutCompareTagsBContainer->addWidget(compareTagWidgetB);
 
     connect(ui->btnTranslate, &QPushButton::toggled, this, [this](bool checked) {
         if (checked && (!m_translationMap || m_translationMap->isEmpty())) {
@@ -144,11 +160,39 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
         }
         posTagWidget->setShowTranslation(checked);
         negTagWidget->setShowTranslation(checked);
+        compareTagWidgetA->setShowTranslation(checked);
+        compareTagWidgetB->setShowTranslation(checked);
     });
     connect(ui->btnClearTagSelection, &QPushButton::clicked, this, [this]() {
         posTagWidget->clearSelectedTags();
         negTagWidget->clearSelectedTags();
     });
+
+    ui->tableCompareParams->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    ui->tableCompareParams->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    ui->tableCompareParams->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    ui->tableCompareParams->verticalHeader()->hide();
+    ui->tableCompareParams->setShowGrid(false);
+    ui->tableCompareParams->setFocusPolicy(Qt::NoFocus);
+    ui->splitterCompareMain->setSizes({300, 280});
+    ui->splitterCompareTags->setSizes({1, 1});
+    ui->splitterCompareBottom->setSizes({1, 1});
+    ui->listCompareOnlyA->setToolTip("仅图片 A 中存在的 Tag");
+    ui->listCompareOnlyB->setToolTip("仅图片 B 中存在的 Tag");
+    ui->listCompareCommon->setToolTip("两张图片共同存在的 Tag");
+    connect(ui->btnBrowseCompareA, &QPushButton::clicked, this, [this]() {
+        const QString filePath = QFileDialog::getOpenFileName(this, "选择图片 A", QString(), "Images (*.png *.jpg *.jpeg *.webp)");
+        if (!filePath.isEmpty()) processCompareImage(true, filePath);
+    });
+    connect(ui->btnBrowseCompareB, &QPushButton::clicked, this, [this]() {
+        const QString filePath = QFileDialog::getOpenFileName(this, "选择图片 B", QString(), "Images (*.png *.jpg *.jpeg *.webp)");
+        if (!filePath.isEmpty()) processCompareImage(false, filePath);
+    });
+    connect(ui->chkCompareNegative, &QCheckBox::toggled, this, &PromptParserWidget::updateImageCompare);
+    connect(ui->btnCopyOnlyA, &QPushButton::clicked, this, [this]() { copyCompareTags(compareOnlyATags, "仅图片 A"); });
+    connect(ui->btnCopyOnlyB, &QPushButton::clicked, this, [this]() { copyCompareTags(compareOnlyBTags, "仅图片 B"); });
+    connect(ui->btnCopyCommon, &QPushButton::clicked, this, [this]() { copyCompareTags(compareCommonTags, "共同 Tag"); });
+    connect(ui->btnCopyCompareAll, &QPushButton::clicked, this, &PromptParserWidget::copyCompareAll);
 
     wd14Process = new QProcess(this);
     wd14Process->setProcessChannelMode(QProcess::SeparateChannels);
@@ -249,10 +293,40 @@ void PromptParserWidget::setTranslationMap(const QHash<QString, QString> *map)
     m_translationMap = map;
     posTagWidget->setTranslationMap(map);
     negTagWidget->setTranslationMap(map);
+    if (compareTagWidgetA) compareTagWidgetA->setTranslationMap(map);
+    if (compareTagWidgetB) compareTagWidgetB->setTranslationMap(map);
 }
 
 bool PromptParserWidget::eventFilter(QObject *watched, QEvent *event)
 {
+    const auto imagePathFromEvent = [](QEvent *event) -> QString {
+        const QMimeData *mimeData = nullptr;
+        if (event->type() == QEvent::DragEnter) {
+            mimeData = static_cast<QDragEnterEvent*>(event)->mimeData();
+        } else if (event->type() == QEvent::Drop) {
+            mimeData = static_cast<QDropEvent*>(event)->mimeData();
+        }
+        if (!mimeData || !mimeData->hasUrls() || mimeData->urls().isEmpty()) return QString();
+        const QString filePath = mimeData->urls().first().toLocalFile();
+        const QString lower = filePath.toLower();
+        return (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".webp"))
+            ? filePath
+            : QString();
+    };
+    if ((watched == ui->editCompareImageA || watched == ui->editCompareImageB) && event->type() == QEvent::DragEnter) {
+        if (!imagePathFromEvent(event).isEmpty()) {
+            static_cast<QDragEnterEvent*>(event)->acceptProposedAction();
+            return true;
+        }
+    }
+    if ((watched == ui->editCompareImageA || watched == ui->editCompareImageB) && event->type() == QEvent::Drop) {
+        const QString filePath = imagePathFromEvent(event);
+        if (!filePath.isEmpty()) {
+            processCompareImage(watched == ui->editCompareImageA, filePath);
+            static_cast<QDropEvent*>(event)->acceptProposedAction();
+            return true;
+        }
+    }
     if (watched == ui->lblImage && event->type() == QEvent::MouseButtonPress) {
         const QString filePath = QFileDialog::getOpenFileName(this, "选择图片", "", "Images (*.png *.jpg *.jpeg *.webp)");
         if (!filePath.isEmpty()) processImage(filePath);
@@ -289,6 +363,11 @@ void PromptParserWidget::dropEvent(QDropEvent *event)
     const QString filePath = mimeData->urls().first().toLocalFile();
     if (ui->tabPromptParser->currentWidget() == ui->tabWd14) {
         processWd14Image(filePath);
+    } else if (ui->tabPromptParser->currentWidget() == ui->tabImageCompare) {
+        const bool targetA = ui->editCompareImageB->hasFocus()
+            ? false
+            : (compareImagePathA.isEmpty() || !compareImagePathB.isEmpty());
+        processCompareImage(targetA, filePath);
     } else {
         processImage(filePath);
     }
@@ -326,7 +405,7 @@ QString PromptParserWidget::extractPngParameters(const QString &filePath)
     return extractPngParametersText(filePath);
 }
 
-QString PromptParserWidget::cleanTagText(QString text)
+QString PromptParserWidget::cleanTagText(QString text) const
 {
     text = text.trimmed();
     if (text.isEmpty()) return "";
@@ -378,6 +457,222 @@ void PromptParserWidget::processImage(const QString &filePath)
     ui->txtParams->setText(parsed.parametersText);
     posTagWidget->setData(parsePromptToMap(parsed.positivePrompt));
     negTagWidget->setData(parsePromptToMap(parsed.negativePrompt));
+}
+
+void PromptParserWidget::processCompareImage(bool imageA, const QString &filePath)
+{
+    if (filePath.isEmpty() || !QFile::exists(filePath)) {
+        ui->lblCompareStatus->setText(imageA ? "图片 A 不存在。" : "图片 B 不存在。");
+        return;
+    }
+
+    ParsedImageMetadata parsed = parseImageMetadataFromFile(filePath);
+    if (imageA) {
+        compareImagePathA = filePath;
+        compareMetaA = parsed;
+        ui->editCompareImageA->setText(filePath);
+    } else {
+        compareImagePathB = filePath;
+        compareMetaB = parsed;
+        ui->editCompareImageB->setText(filePath);
+    }
+    updateImageCompare();
+}
+
+QString PromptParserWidget::normalizeCompareTag(QString tag) const
+{
+    tag = cleanTagText(tag).toCaseFolded().trimmed();
+    tag.replace('_', ' ');
+    static const QRegularExpression spaces("\\s+");
+    tag.replace(spaces, " ");
+    return tag;
+}
+
+QStringList PromptParserWidget::tagsFromMap(const QMap<QString, int> &tags) const
+{
+    QStringList out = tags.keys();
+    std::sort(out.begin(), out.end(), [](const QString &a, const QString &b) {
+        return QString::compare(a, b, Qt::CaseInsensitive) < 0;
+    });
+    return out;
+}
+
+void PromptParserWidget::fillCompareList(QListWidget *list, const QStringList &tags)
+{
+    if (!list) return;
+    list->clear();
+    list->addItems(tags);
+}
+
+QString PromptParserWidget::extractParameterLine(const QString &parameters, const QStringList &keys) const
+{
+    QString normalized = parameters;
+    normalized.replace("\r\n", "\n");
+    normalized.replace('\r', '\n');
+    normalized.replace('\n', ",");
+    const QStringList parts = normalized.split(',', Qt::SkipEmptyParts);
+    for (const QString &part : parts) {
+        const QString trimmed = part.trimmed();
+        for (const QString &key : keys) {
+            if (trimmed.startsWith(key + ":", Qt::CaseInsensitive)) {
+                return trimmed.mid(key.size() + 1).trimmed();
+            }
+        }
+    }
+    return QString();
+}
+
+QString PromptParserWidget::compareParamValue(const ParsedImageMetadata &meta, const QString &key) const
+{
+    if (key == "Source") return meta.sourceType;
+    if (key == "Seed") return meta.seed.isEmpty() ? extractParameterLine(meta.parametersText, {"Seed"}) : meta.seed;
+    if (key == "Steps") return meta.steps.isEmpty() ? extractParameterLine(meta.parametersText, {"Steps"}) : meta.steps;
+    if (key == "CFG") return meta.cfg.isEmpty() ? extractParameterLine(meta.parametersText, {"CFG scale", "CFG"}) : meta.cfg;
+    if (key == "Sampler") return meta.sampler.isEmpty() ? extractParameterLine(meta.parametersText, {"Sampler"}) : meta.sampler;
+    if (key == "Scheduler") return meta.scheduler.isEmpty() ? extractParameterLine(meta.parametersText, {"Schedule type", "Scheduler"}) : meta.scheduler;
+    if (key == "Model") return meta.checkpoint.isEmpty() ? extractParameterLine(meta.parametersText, {"Model"}) : meta.checkpoint;
+    if (key == "LoRA") {
+        if (!meta.loraDescriptions.isEmpty()) return meta.loraDescriptions.join(", ");
+        QStringList loras;
+        static const QRegularExpression loraRegex("<\\s*lora:([^>]+)>", QRegularExpression::CaseInsensitiveOption);
+        auto it = loraRegex.globalMatch(meta.positivePrompt + ", " + meta.negativePrompt);
+        while (it.hasNext()) loras << it.next().captured(1).trimmed();
+        if (!loras.isEmpty()) return loras.join(", ");
+        return extractParameterLine(meta.parametersText, {"Lora hashes", "LoRA", "ComfyUI LoRAs"});
+    }
+    return QString();
+}
+
+void PromptParserWidget::fillCompareParams()
+{
+    const QStringList keys = {"Source", "Seed", "Steps", "CFG", "Sampler", "Scheduler", "Model", "LoRA"};
+    ui->tableCompareParams->setRowCount(0);
+    for (const QString &key : keys) {
+        const QString valueA = compareParamValue(compareMetaA, key);
+        const QString valueB = compareParamValue(compareMetaB, key);
+        if (valueA.isEmpty() && valueB.isEmpty()) continue;
+        const int row = ui->tableCompareParams->rowCount();
+        ui->tableCompareParams->insertRow(row);
+        auto *keyItem = new QTableWidgetItem(key);
+        auto *itemA = new QTableWidgetItem(valueA.isEmpty() ? "-" : valueA);
+        auto *itemB = new QTableWidgetItem(valueB.isEmpty() ? "-" : valueB);
+        if (QString::compare(valueA, valueB, Qt::CaseInsensitive) != 0) {
+            itemA->setBackground(QColor(122, 74, 42, 120));
+            itemB->setBackground(QColor(47, 106, 79, 120));
+        }
+        ui->tableCompareParams->setItem(row, 0, keyItem);
+        ui->tableCompareParams->setItem(row, 1, itemA);
+        ui->tableCompareParams->setItem(row, 2, itemB);
+    }
+}
+
+void PromptParserWidget::updateImageCompare()
+{
+    const bool useNegative = ui->chkCompareNegative->isChecked();
+    const QString promptA = useNegative ? compareMetaA.negativePrompt : compareMetaA.positivePrompt;
+    const QString promptB = useNegative ? compareMetaB.negativePrompt : compareMetaB.positivePrompt;
+    const QMap<QString, int> tagsA = parsePromptToMap(promptA);
+    const QMap<QString, int> tagsB = parsePromptToMap(promptB);
+
+    compareTagWidgetA->setData(tagsA);
+    compareTagWidgetB->setData(tagsB);
+
+    QHash<QString, QString> displayA;
+    QHash<QString, QString> displayB;
+    for (const QString &tag : tagsA.keys()) {
+        const QString key = normalizeCompareTag(tag);
+        if (!key.isEmpty() && !displayA.contains(key)) displayA.insert(key, tag);
+    }
+    for (const QString &tag : tagsB.keys()) {
+        const QString key = normalizeCompareTag(tag);
+        if (!key.isEmpty() && !displayB.contains(key)) displayB.insert(key, tag);
+    }
+
+    compareOnlyATags.clear();
+    compareOnlyBTags.clear();
+    compareCommonTags.clear();
+    QHash<QString, TagFlowWidget::DiffState> statesA;
+    QHash<QString, TagFlowWidget::DiffState> statesB;
+
+    for (auto it = displayA.constBegin(); it != displayA.constEnd(); ++it) {
+        if (displayB.contains(it.key())) {
+            compareCommonTags << it.value();
+            statesA.insert(it.value(), TagFlowWidget::DiffCommon);
+            statesB.insert(displayB.value(it.key()), TagFlowWidget::DiffCommon);
+        } else {
+            compareOnlyATags << it.value();
+            statesA.insert(it.value(), TagFlowWidget::DiffOnlyA);
+        }
+    }
+    for (auto it = displayB.constBegin(); it != displayB.constEnd(); ++it) {
+        if (!displayA.contains(it.key())) {
+            compareOnlyBTags << it.value();
+            statesB.insert(it.value(), TagFlowWidget::DiffOnlyB);
+        }
+    }
+    auto sortTags = [](QStringList &tags) {
+        std::sort(tags.begin(), tags.end(), [](const QString &a, const QString &b) {
+            return QString::compare(a, b, Qt::CaseInsensitive) < 0;
+        });
+    };
+    sortTags(compareOnlyATags);
+    sortTags(compareOnlyBTags);
+    sortTags(compareCommonTags);
+
+    compareTagWidgetA->setTagDiffStates(statesA);
+    compareTagWidgetB->setTagDiffStates(statesB);
+    fillCompareList(ui->listCompareOnlyA, compareOnlyATags);
+    fillCompareList(ui->listCompareOnlyB, compareOnlyBTags);
+    fillCompareList(ui->listCompareCommon, compareCommonTags);
+    fillCompareParams();
+
+    const bool hasA = compareMetaA.hasContent();
+    const bool hasB = compareMetaB.hasContent();
+    if (!hasA && !hasB) {
+        ui->lblCompareStatus->setText("请选择两张包含元数据的图片。");
+    } else if (!hasA || !hasB) {
+        ui->lblCompareStatus->setText(hasA ? "图片 B 未解析到可用元数据。" : "图片 A 未解析到可用元数据。");
+    } else {
+        ui->lblCompareStatus->setText(QString("%1对比：仅 A %2 个，仅 B %3 个，共同 %4 个。")
+            .arg(useNegative ? "负面 Tag " : "正面 Tag ")
+            .arg(compareOnlyATags.size())
+            .arg(compareOnlyBTags.size())
+            .arg(compareCommonTags.size()));
+    }
+}
+
+void PromptParserWidget::copyCompareTags(const QStringList &tags, const QString &label)
+{
+    QApplication::clipboard()->setText(tags.join(", "));
+    ui->lblCompareStatus->setText(QString("已复制 %1：%2 个 Tag。").arg(label).arg(tags.size()));
+}
+
+void PromptParserWidget::copyCompareAll()
+{
+    QStringList lines;
+    lines << "Image Compare";
+    lines << "Image A: " + (compareImagePathA.isEmpty() ? "-" : compareImagePathA);
+    lines << "Image B: " + (compareImagePathB.isEmpty() ? "-" : compareImagePathB);
+    lines << "Scope: " + QString(ui->chkCompareNegative->isChecked() ? "Negative" : "Positive");
+    lines << "";
+    lines << "Only A:";
+    lines << compareOnlyATags.join(", ");
+    lines << "";
+    lines << "Only B:";
+    lines << compareOnlyBTags.join(", ");
+    lines << "";
+    lines << "Common:";
+    lines << compareCommonTags.join(", ");
+    lines << "";
+    lines << "Parameter differences:";
+    for (int row = 0; row < ui->tableCompareParams->rowCount(); ++row) {
+        const QString key = ui->tableCompareParams->item(row, 0) ? ui->tableCompareParams->item(row, 0)->text() : QString();
+        const QString a = ui->tableCompareParams->item(row, 1) ? ui->tableCompareParams->item(row, 1)->text() : QString();
+        const QString b = ui->tableCompareParams->item(row, 2) ? ui->tableCompareParams->item(row, 2)->text() : QString();
+        if (a != b) lines << QString("%1: A=%2 | B=%3").arg(key, a, b);
+    }
+    QApplication::clipboard()->setText(lines.join("\n"));
+    ui->lblCompareStatus->setText("已复制全部图片差异。");
 }
 
 void PromptParserWidget::processWd14Image(const QString &filePath)

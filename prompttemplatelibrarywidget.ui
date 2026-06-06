@@ -253,25 +253,6 @@
                </widget>
               </item>
               <item>
-               <widget class="QComboBox" name="comboTagSort">
-                <item>
-                 <property name="text">
-                  <string>使用次数</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>Tag A-Z</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>Tag Z-A</string>
-                 </property>
-                </item>
-               </widget>
-              </item>
-              <item>
                <widget class="QPushButton" name="btnRefreshTags">
                 <property name="text">
                  <string>刷新</string>

@@ -84,7 +84,7 @@ QPushButton[class="copyBtn"]:pressed { background-color: #4c6b0c; }
 QLabel[class="tag"] { background-color: #2a3f5a; color: #66c0f4; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; }
 QLabel[class="tagRed"] { background-color: #3c1919; color: #ff4c4c; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; border: 1px solid #ff4c4c; }
 QLabel[class="tagGreen"] { background-color: #1f3520; color: #7ee081; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; border: 1px solid #7ee081; }
-#label_GalleryTitle, #label_DescTitle, #label_FileTitle, #label_TriggerTitle { color: #fff; }
+#label_GalleryTitle, #label_DescTitle, #label_FileTitle, #label_TriggerTitle, #label_UserNotes { color: #fff; }
 QLabel[class="sectionTitle"] { color: #fff; font-weight: bold; letter-spacing: 1px; font-size: 14px; border-bottom: 1px solid #3d4d5d; padding-bottom: 5px; margin-top: 15px; }
 
 QScrollArea { border: none; background-color: #1b2838; }
@@ -113,7 +113,7 @@ QScrollArea { border: none; background-color: #1b2838; }
 #scrollAreaCollections { border: none; }
 #scrollAreaWidgetContents_2 { background-color: #1e252f; border: none; }
 QTextBrowser { background-color: #16191e; border: 1px solid #31363d; color: #acb2b8; border-radius: 3px; padding: 8px; }
-#textDescription { background-color: transparent; border: none; color: #acb2b8; }
+#textDescription, #textUserNotePreview { background-color: transparent; border: none; color: #acb2b8; }
 #textLocalDescription, #textLocalTriggers, #textEditImgPrompt, #textEditImgNegPrompt {
     background-color: #16191e;
     border: 1px solid #31363d;
