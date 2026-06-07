@@ -555,7 +555,7 @@ New</string>
                 <property name="geometry">
                  <rect>
                   <x>0</x>
-                  <y>-385</y>
+                  <y>0</y>
                   <width>982</width>
                   <height>1464</height>
                  </rect>
@@ -1065,6 +1065,91 @@ New</string>
                            <number>4</number>
                           </property>
                           <item>
+                           <widget class="QLabel" name="label_UserNotes">
+                            <property name="text">
+                             <string>USER NOTES / 用户备注</string>
+                            </property>
+                            <property name="class" stdset="0">
+                             <string>sectionTitle</string>
+                            </property>
+                           </widget>
+                          </item>
+                          <item>
+                           <layout class="QHBoxLayout" name="horizontalLayout_UserRating">
+                            <item>
+                             <widget class="QLabel" name="lblUserRating">
+                              <property name="text">
+                               <string>评分: 未评分</string>
+                              </property>
+                             </widget>
+                            </item>
+                            <item>
+                             <spacer name="horizontalSpacer_UserNotes">
+                              <property name="orientation">
+                               <enum>Qt::Orientation::Horizontal</enum>
+                              </property>
+                              <property name="sizeHint" stdset="0">
+                               <size>
+                                <width>40</width>
+                                <height>20</height>
+                               </size>
+                              </property>
+                             </spacer>
+                            </item>
+                            <item>
+                             <widget class="QPushButton" name="btnEditUserNote">
+                              <property name="text">
+                               <string>编辑</string>
+                              </property>
+                             </widget>
+                            </item>
+                           </layout>
+                          </item>
+                          <item>
+                           <widget class="QWidget" name="userTagsContainer" native="true">
+                            <layout class="QHBoxLayout" name="layoutUserTags">
+                             <property name="leftMargin">
+                              <number>0</number>
+                             </property>
+                             <property name="topMargin">
+                              <number>0</number>
+                             </property>
+                             <property name="rightMargin">
+                              <number>0</number>
+                             </property>
+                             <property name="bottomMargin">
+                              <number>0</number>
+                             </property>
+                            </layout>
+                           </widget>
+                          </item>
+                          <item>
+                           <widget class="QTextBrowser" name="textUserNotePreview">
+                            <property name="minimumSize">
+                             <size>
+                              <width>0</width>
+                              <height>70</height>
+                             </size>
+                            </property>
+                            <property name="maximumSize">
+                             <size>
+                              <width>16777215</width>
+                              <height>90</height>
+                             </size>
+                            </property>
+                            <property name="placeholderText">
+                             <string>暂无备注 / No note.</string>
+                            </property>
+                           </widget>
+                          </item>
+                          <item>
+                           <widget class="Line" name="line_9">
+                            <property name="orientation">
+                             <enum>Qt::Orientation::Horizontal</enum>
+                            </property>
+                           </widget>
+                          </item>
+                          <item>
                            <widget class="QLabel" name="label_DescTitle">
                             <property name="minimumSize">
                              <size>
@@ -1155,91 +1240,6 @@ Hash: ...</string>
                             </property>
                             <property name="textInteractionFlags">
                              <set>Qt::TextInteractionFlag::TextSelectableByMouse</set>
-                            </property>
-                           </widget>
-                          </item>
-                          <item>
-                           <widget class="Line" name="line_9">
-                            <property name="orientation">
-                             <enum>Qt::Orientation::Horizontal</enum>
-                            </property>
-                           </widget>
-                          </item>
-                          <item>
-                           <widget class="QLabel" name="label_UserNotes">
-                            <property name="text">
-                             <string>USER NOTES / 用户备注</string>
-                            </property>
-                            <property name="class" stdset="0">
-                             <string>sectionTitle</string>
-                            </property>
-                           </widget>
-                          </item>
-                          <item>
-                           <layout class="QHBoxLayout" name="horizontalLayout_UserRating">
-                            <item>
-                             <widget class="QLabel" name="lblUserRating">
-                              <property name="text">
-                               <string>评分: 未评分</string>
-                              </property>
-                             </widget>
-                            </item>
-                            <item>
-                             <spacer name="horizontalSpacer_UserNotes">
-                              <property name="orientation">
-                               <enum>Qt::Orientation::Horizontal</enum>
-                              </property>
-                              <property name="sizeHint" stdset="0">
-                               <size>
-                                <width>40</width>
-                                <height>20</height>
-                               </size>
-                              </property>
-                             </spacer>
-                            </item>
-                            <item>
-                             <widget class="QPushButton" name="btnEditUserNote">
-                              <property name="text">
-                               <string>编辑</string>
-                              </property>
-                             </widget>
-                            </item>
-                           </layout>
-                          </item>
-                          <item>
-                           <widget class="QWidget" name="userTagsContainer" native="true">
-                            <layout class="QHBoxLayout" name="layoutUserTags">
-                             <property name="leftMargin">
-                              <number>0</number>
-                             </property>
-                             <property name="topMargin">
-                              <number>0</number>
-                             </property>
-                             <property name="rightMargin">
-                              <number>0</number>
-                             </property>
-                             <property name="bottomMargin">
-                              <number>0</number>
-                             </property>
-                            </layout>
-                           </widget>
-                          </item>
-                          <item>
-                           <widget class="QTextBrowser" name="textUserNotePreview">
-                            <property name="minimumSize">
-                             <size>
-                              <width>0</width>
-                              <height>70</height>
-                             </size>
-                            </property>
-                            <property name="maximumSize">
-                             <size>
-                              <width>16777215</width>
-                              <height>90</height>
-                             </size>
-                            </property>
-                            <property name="placeholderText">
-                             <string>暂无备注 / No note.</string>
                             </property>
                            </widget>
                           </item>
@@ -2381,8 +2381,8 @@ Hash: ...</string>
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>952</width>
-                 <height>889</height>
+                 <width>61</width>
+                 <height>16</height>
                 </rect>
                </property>
                <layout class="QVBoxLayout" name="downloadCardsLayout">

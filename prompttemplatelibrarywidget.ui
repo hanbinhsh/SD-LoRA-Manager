@@ -60,7 +60,7 @@
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>621</width>
+                 <width>532</width>
                  <height>748</height>
                 </rect>
                </property>
@@ -173,7 +173,7 @@
                     <rect>
                      <x>0</x>
                      <y>0</y>
-                     <width>593</width>
+                     <width>504</width>
                      <height>271</height>
                     </rect>
                    </property>
@@ -198,7 +198,7 @@
                     <rect>
                      <x>0</x>
                      <y>0</y>
-                     <width>593</width>
+                     <width>504</width>
                      <height>270</height>
                     </rect>
                    </property>
@@ -255,7 +255,7 @@
               <item>
                <widget class="QPushButton" name="btnRefreshTags">
                 <property name="text">
-                 <string>刷新</string>
+                 <string>↻</string>
                 </property>
                </widget>
               </item>
@@ -283,26 +283,6 @@
               <property name="selectionBehavior">
                <enum>QAbstractItemView::SelectionBehavior::SelectRows</enum>
               </property>
-              <column>
-               <property name="text">
-                <string>Tag</string>
-               </property>
-              </column>
-              <column>
-               <property name="text">
-                <string>类型</string>
-               </property>
-              </column>
-              <column>
-               <property name="text">
-                <string>使用次数</string>
-               </property>
-              </column>
-              <column>
-               <property name="text">
-                <string>翻译</string>
-               </property>
-              </column>
              </widget>
             </item>
             <item>
@@ -714,7 +694,7 @@
           </widget>
           <widget class="QWidget" name="tabTemplateImageTags">
            <attribute name="title">
-            <string>从图片添加 Tag</string>
+            <string>图片提取提示词</string>
            </attribute>
            <layout class="QVBoxLayout" name="verticalLayout">
             <item>
@@ -842,6 +822,74 @@
              <widget class="QLabel" name="lblTemplateImageStatus">
               <property name="text">
                <string>选择图片后解析，选中 Tag 并添加到当前模板。</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+          <widget class="QWidget" name="tabTemplateTagPicker">
+           <attribute name="title">
+            <string>Tag Picker</string>
+           </attribute>
+           <layout class="QVBoxLayout" name="verticalLayout_2">
+            <item>
+             <layout class="QHBoxLayout" name="horizontalLayout_2">
+              <item>
+               <widget class="QLineEdit" name="editTemplateTagSearch">
+                <property name="placeholderText">
+                 <string>搜索 Tag 或翻译，空格和下划线等价</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QComboBox" name="comboTemplateTagScope">
+                <item>
+                 <property name="text">
+                  <string>正面 Tag</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>负面 Tag</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>正面 + 负面</string>
+                 </property>
+                </item>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnRefreshTemplateTags">
+                <property name="text">
+                 <string>↻</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnInsertTemplateTagsPositive">
+                <property name="text">
+                 <string>插入正面</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnInsertTemplateTagsNegative">
+                <property name="text">
+                 <string>插入负面</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <widget class="QTableWidget" name="tableTemplateTagPicker"/>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblTemplateTagPickerStatus">
+              <property name="text">
+               <string>切换到此页面后会读取用户图库缓存。</string>
               </property>
              </widget>
             </item>

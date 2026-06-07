@@ -137,7 +137,6 @@ private:
     QString selectedTemplateId() const;
     void setStatus(const QString &text);
     void copyText(const QString &text) const;
-    void createTemplateTagPickerTab();
     void setupTagPickerUi(TagPickerUi &picker);
     QStringList selectedTagTexts(const TagPickerUi &picker) const;
     void loadTagPickerRows(TagPickerUi &picker, bool force = false);

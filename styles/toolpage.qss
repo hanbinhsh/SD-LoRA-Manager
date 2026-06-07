@@ -106,9 +106,6 @@ QWidget#compareTagsBContainer {
     background-color: transparent;
     border: none;
 }
-QWidget#pageChat {
-    background-color: #1e252f;
-}
 QListWidget#listChatMessages {
     background-color: #16191e;
     border: 1px solid #31363d;
@@ -246,4 +243,23 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
 }
 QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
     background: transparent;
+}
+
+QListWidget#listTemplates {
+    outline: none;
+    show-decoration-selected: 0;
+}
+
+QListWidget#listTemplates::item:hover {
+    background-color: #2a3442;
+    color: #ffffff;
+}
+
+QListWidget#listTemplates::item:selected,
+QListWidget#listTemplates::item:selected:active,
+QListWidget#listTemplates::item:selected:!active {
+    background-color: #3D4450;
+    color: #ffffff;
+    border-left: 4px solid #66c0f4;
+    font-weight: bold;
 }

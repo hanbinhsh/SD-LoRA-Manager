@@ -84,7 +84,7 @@ const int ROLE_COLLECTION_NAME        = Qt::UserRole + 51;  // 存储收藏夹�
 const int ROLE_ITEM_COUNT             = Qt::UserRole + 52;  // 存储该分类下的模型数量
 const int ROLE_COLLECTION_EXPAND_KEY  = Qt::UserRole + 53;  // 存储收藏夹树展开状态键
 
-const QString CURRENT_VERSION = "1.5.0";
+const QString CURRENT_VERSION = "1.5.1";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";

@@ -31,6 +31,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <QSignalBlocker>
 
 namespace {
 QStringList parseCsvLineWorker(const QString &line)
@@ -59,9 +60,87 @@ QStringList parseCsvLineWorker(const QString &line)
     return parts;
 }
 
-QVector<QPair<QString, QString>> readCsvRowsWorker(const QString &csvPath)
+bool isIntegerTextWorker(const QString &text)
 {
-    QVector<QPair<QString, QString>> rows;
+    if (text.isEmpty()) return false;
+    for (const QChar ch : text) {
+        if (!ch.isDigit()) return false;
+    }
+    return true;
+}
+
+QString removeLeadingTagFromDisplayWorker(const QString &tag, QString display)
+{
+    display = display.trimmed();
+
+    const QString prefix1 = tag + " ";
+    const QString prefix2 = tag + "\t";
+
+    if (display.startsWith(prefix1, Qt::CaseSensitive)) {
+        return display.mid(prefix1.size()).trimmed();
+    }
+    if (display.startsWith(prefix2, Qt::CaseSensitive)) {
+        return display.mid(prefix2.size()).trimmed();
+    }
+
+    return display;
+}
+
+void splitCategoryAndTranslationWorker(const QString &text, QString &category, QString &translation)
+{
+    QString value = text.trimmed();
+    category.clear();
+    translation.clear();
+
+    if (value.isEmpty()) return;
+
+    int dash = value.indexOf('-');
+    if (dash < 0) dash = value.indexOf(QChar(0xFF0D)); // －
+    if (dash < 0) dash = value.indexOf(QChar(0x2014)); // —
+    if (dash < 0) dash = value.indexOf(QChar(0x2013)); // –
+
+    if (dash > 0) {
+        category = value.left(dash).trimmed();
+        translation = value.mid(dash + 1).trimmed();
+    } else {
+        translation = value.trimmed();
+    }
+}
+
+TagTranslationRow parseTagCsvRowWorker(const QStringList &parts)
+{
+    TagTranslationRow row;
+
+    row.tag = parts.value(0).trimmed();
+
+    QString displayOrTranslation;
+    QString count;
+
+    // 新格式：
+    // 1girl,1girl 人物-一个女孩,4114588
+    //
+    // 只有最后一列是纯数字时，才认为它是优先级。
+    if (parts.size() >= 3 && isIntegerTextWorker(parts.last().trimmed())) {
+        count = parts.last().trimmed();
+        displayOrTranslation = parts.mid(1, parts.size() - 2).join(",").trimmed();
+    } else {
+        // 旧格式：
+        // 1girl,一个女孩
+        //
+        // 兼容未加引号但翻译里带逗号的旧数据。
+        displayOrTranslation = parts.mid(1).join(",").trimmed();
+    }
+
+    QString cleaned = removeLeadingTagFromDisplayWorker(row.tag, displayOrTranslation);
+    splitCategoryAndTranslationWorker(cleaned, row.category, row.translation);
+    row.count = count;
+
+    return row;
+}
+
+QVector<TagTranslationRow> readCsvRowsWorker(const QString &csvPath)
+{
+    QVector<TagTranslationRow> rows;
     if (csvPath.isEmpty() || !QFile::exists(csvPath)) return rows;
 
     QFile file(csvPath);
@@ -69,21 +148,40 @@ QVector<QPair<QString, QString>> readCsvRowsWorker(const QString &csvPath)
 
     QTextStream in(&file);
     in.setEncoding(QStringConverter::Utf8);
+
     int rowIndex = 0;
     while (!in.atEnd()) {
         QString line = in.readLine();
         if (line.trimmed().isEmpty()) continue;
+
         QStringList parts = parseCsvLineWorker(line);
         if (parts.isEmpty()) continue;
 
         QString tagText = parts.value(0).trimmed();
         if (rowIndex == 0 && tagText.startsWith(QChar(0xFEFF))) {
             tagText.remove(0, 1);
+            parts[0] = tagText;
         }
-        QString translationText = parts.mid(1).join(",").trimmed();
-        rows.append(qMakePair(tagText, translationText));
+
+        // 只跳过真正的表头，不再误删 tag,1705 这种真实 tag。
+        if (rowIndex == 0) {
+            const QString first = parts.value(0).trimmed().toLower();
+            const QString second = parts.value(1).trimmed().toLower();
+            if ((first == "tag" || first == "name") &&
+                (second == "translation" || second == "count" || second == "post_count" || second == "postcount")) {
+                ++rowIndex;
+                continue;
+            }
+        }
+
+        TagTranslationRow row = parseTagCsvRowWorker(parts);
+        if (!row.tag.isEmpty()) {
+            rows.append(row);
+        }
+
         ++rowIndex;
     }
+
     return rows;
 }
 
@@ -280,12 +378,48 @@ bool TagSearchProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex &sou
     if (!sourceModel()) return true;
 
     const int columnCount = sourceModel()->columnCount(sourceParent);
+
+    QVector<int> searchColumns;
+
+    // 只搜索 Tag 和翻译列，避免匹配类别、优先级、使用次数等列。
     for (int column = 0; column < columnCount; ++column) {
+        const QString header = sourceModel()
+        ->headerData(column, Qt::Horizontal, Qt::DisplayRole)
+            .toString()
+            .trimmed();
+
+        if (header == "Tag" || header == "翻译" || header == "Translation") {
+            searchColumns.append(column);
+        }
+    }
+
+    // 兜底兼容旧表：
+    // 2列：Tag / Translation
+    // 4列：Tag / 类别 / 翻译 / 优先级
+    // 6列：Tag / 类型 / 类别 / 翻译 / 优先级 / 使用次数
+    if (searchColumns.isEmpty()) {
+        searchColumns.append(0);
+
+        if (columnCount >= 6) {
+            searchColumns.append(3);
+        } else if (columnCount >= 4) {
+            searchColumns.append(2);
+        } else if (columnCount >= 2) {
+            searchColumns.append(1);
+        }
+    }
+
+    for (int column : searchColumns) {
+        if (column < 0 || column >= columnCount) continue;
+
         const QModelIndex index = sourceModel()->index(sourceRow, column, sourceParent);
-        if (matchesText(sourceModel()->data(index, Qt::DisplayRole).toString())) {
+        const QString value = sourceModel()->data(index, Qt::DisplayRole).toString();
+
+        if (matchesText(value)) {
             return true;
         }
     }
+
     return false;
 }
 
@@ -307,13 +441,14 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     ui->setupUi(this);
     setStyleSheet(loadToolPageStyle());
 
-    m_model->setColumnCount(2);
-    m_model->setHorizontalHeaderLabels({"Tag", "Translation"});
+    m_model->setColumnCount(4);
+    m_model->setHorizontalHeaderLabels({"Tag", "类别", "翻译", "优先级"});
 
     m_proxy->setSourceModel(m_model);
     m_proxy->setFilterCaseSensitivity(Qt::CaseInsensitive);
     m_proxy->setFilterKeyColumn(-1);
     m_proxy->setDynamicSortFilter(false);
+    m_proxy->setSortRole(Qt::UserRole);
 
     ui->tableTags->setModel(m_proxy);
     applyUnifiedTableRowStyle(ui->tableTags);
@@ -322,16 +457,27 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     ui->tableTags->setShowGrid(false);
     ui->tableTags->setFocusPolicy(Qt::NoFocus);
     ui->tableTags->verticalHeader()->setVisible(false);
-    ui->tableTags->horizontalHeader()->setStretchLastSection(true);
-    ui->tableTags->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
-    ui->tableTags->horizontalHeader()->setSectionsClickable(true);
-    ui->tableTags->horizontalHeader()->setSortIndicatorShown(false);
-    ui->tableTags->horizontalHeader()->resizeSection(0, 260);
-    ui->tableTags->horizontalHeader()->resizeSection(1, 360);
+    QHeaderView *tagHeader = ui->tableTags->horizontalHeader();
+
+    tagHeader->setStretchLastSection(false);
+    tagHeader->setSectionResizeMode(QHeaderView::Interactive);
+    tagHeader->setSectionsClickable(true);
+    tagHeader->setSortIndicatorShown(false);
+
+    tagHeader->resizeSection(0, 240);  // Tag
+    tagHeader->resizeSection(1, 80);   // 类别
+    tagHeader->resizeSection(2, 420);  // 翻译
+    tagHeader->resizeSection(3, 90);   // 优先级
+
+    tagHeader->setSectionResizeMode(0, QHeaderView::Interactive);
+    tagHeader->setSectionResizeMode(1, QHeaderView::Fixed);
+    tagHeader->setSectionResizeMode(2, QHeaderView::Stretch);
+    tagHeader->setSectionResizeMode(3, QHeaderView::Fixed);
+
     ui->tableTags->setSortingEnabled(false);
 
-    m_userTagModel->setColumnCount(4);
-    m_userTagModel->setHorizontalHeaderLabels({"Tag", "类型", "使用次数", "Translation"});
+    m_userTagModel->setColumnCount(6);
+    m_userTagModel->setHorizontalHeaderLabels({"Tag", "类型", "类别", "翻译", "优先级", "使用次数"});
 
     m_userTagProxy->setSourceModel(m_userTagModel);
     m_userTagProxy->setFilterCaseSensitivity(Qt::CaseInsensitive);
@@ -349,12 +495,26 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     ui->tableUserTags->setEditTriggers(QAbstractItemView::NoEditTriggers);
     ui->tableUserTags->setContextMenuPolicy(Qt::CustomContextMenu);
     ui->tableUserTags->verticalHeader()->setVisible(false);
-    ui->tableUserTags->horizontalHeader()->setStretchLastSection(true);
-    ui->tableUserTags->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
-    ui->tableUserTags->horizontalHeader()->resizeSection(0, 260);
-    ui->tableUserTags->horizontalHeader()->resizeSection(1, 80);
-    ui->tableUserTags->horizontalHeader()->resizeSection(2, 90);
-    ui->tableUserTags->horizontalHeader()->resizeSection(3, 320);
+
+    QHeaderView *userHeader = ui->tableUserTags->horizontalHeader();
+    userHeader->setStretchLastSection(false);
+    userHeader->setSectionsClickable(true);
+    userHeader->setSortIndicatorShown(true);
+
+    userHeader->setSectionResizeMode(0, QHeaderView::Interactive); // Tag
+    userHeader->setSectionResizeMode(1, QHeaderView::Fixed);       // 类型
+    userHeader->setSectionResizeMode(2, QHeaderView::Fixed);       // 类别
+    userHeader->setSectionResizeMode(3, QHeaderView::Stretch);     // 翻译
+    userHeader->setSectionResizeMode(4, QHeaderView::Fixed);       // 优先级
+    userHeader->setSectionResizeMode(5, QHeaderView::Fixed);       // 使用次数
+
+    userHeader->resizeSection(0, 220);
+    userHeader->resizeSection(1, 70);
+    userHeader->resizeSection(2, 80);
+    userHeader->resizeSection(3, 320);
+    userHeader->resizeSection(4, 90);
+    userHeader->resizeSection(5, 90);
+
     ui->tableUserTags->setSortingEnabled(true);
 
     connect(ui->tabWidgetTagBrowser, &QTabWidget::currentChanged, this, &TagBrowserWidget::onTabChanged);
@@ -362,25 +522,32 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     connect(ui->comboSearchMatchMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         m_proxy->setMatchMode(index);
     });
-    connect(ui->comboSort, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &TagBrowserWidget::onSortModeChanged);
     connect(ui->tableTags->horizontalHeader(), &QHeaderView::sectionClicked, this, [this](int section) {
         if (m_loading) return;
         ensureCsvLoadedForEditing();
+
         QHeaderView *header = ui->tableTags->horizontalHeader();
-        const bool sameSection = header->sortIndicatorSection() == section && header->isSortIndicatorShown();
-        const Qt::SortOrder order = (sameSection && header->sortIndicatorOrder() == Qt::AscendingOrder)
-                                        ? Qt::DescendingOrder
-                                        : Qt::AscendingOrder;
+
+        Qt::SortOrder nextOrder = Qt::AscendingOrder;
+        if (m_tagSortSection == section) {
+            nextOrder = (m_tagSortOrder == Qt::AscendingOrder)
+            ? Qt::DescendingOrder
+            : Qt::AscendingOrder;
+        }
+
+        m_tagSortSection = section;
+        m_tagSortOrder = nextOrder;
+
         header->setSortIndicatorShown(true);
-        header->setSortIndicator(section, order);
-        m_proxy->sort(section, order);
+        header->setSortIndicator(section, nextOrder);
+        m_proxy->sort(section, nextOrder);
+
         ui->tableTags->viewport()->update();
     });
     connect(ui->editUserTagSearch, &QLineEdit::textChanged, this, &TagBrowserWidget::onUserTagSearchTextChanged);
     connect(ui->comboUserTagSearchMatchMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         m_userTagProxy->setMatchMode(index);
     });
-    connect(ui->comboUserTagSort, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &TagBrowserWidget::onUserTagSortModeChanged);
     connect(ui->comboUserTagScope, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &TagBrowserWidget::onUserTagScopeChanged);
     connect(ui->btnRefreshUserTags, &QPushButton::clicked, this, &TagBrowserWidget::onRefreshUserTagsClicked);
     connect(ui->tableUserTags, &QWidget::customContextMenuRequested, this, &TagBrowserWidget::onUserTagContextMenu);
@@ -475,7 +642,6 @@ void TagBrowserWidget::setLoadingState(bool loading, const QString &message)
     ui->tableTags->setVisible(!loading);
     ui->editSearch->setEnabled(!loading);
     ui->comboSearchMatchMode->setEnabled(!loading);
-    ui->comboSort->setEnabled(!loading);
     ui->btnAdd->setEnabled(!loading);
     ui->btnDelete->setEnabled(!loading);
     ui->btnResetSort->setEnabled(!loading);
@@ -554,10 +720,10 @@ void TagBrowserWidget::loadCsv()
         m_loadWatcher = nullptr;
     }
 
-    m_loadWatcher = new QFutureWatcher<QVector<QPair<QString, QString>>>(this);
-    connect(m_loadWatcher, &QFutureWatcher<QVector<QPair<QString, QString>>>::finished, this, [this, generation, csvPath]() {
+    m_loadWatcher = new QFutureWatcher<QVector<TagTranslationRow>>(this);
+    connect(m_loadWatcher, &QFutureWatcher<QVector<TagTranslationRow>>::finished, this, [this, generation, csvPath]() {
         if (!m_loadWatcher) return;
-        const QVector<QPair<QString, QString>> rows = m_loadWatcher->result();
+        const QVector<TagTranslationRow> rows = m_loadWatcher->result();
         m_loadWatcher->deleteLater();
         m_loadWatcher = nullptr;
 
@@ -592,8 +758,22 @@ void TagBrowserWidget::appendPendingRowsBatch()
     const int end = qMin(m_pendingRowIndex + kRowsPerBatch, m_pendingRows.size());
     for (; m_pendingRowIndex < end; ++m_pendingRowIndex) {
         const auto &rowData = m_pendingRows[m_pendingRowIndex];
+
+        QStandardItem *tagItem = new QStandardItem(rowData.tag);
+        QStandardItem *categoryItem = new QStandardItem(rowData.category);
+        QStandardItem *translationItem = new QStandardItem(rowData.translation);
+        QStandardItem *countItem = new QStandardItem(rowData.count);
+
+        tagItem->setData(rowData.tag, Qt::UserRole);
+        categoryItem->setData(rowData.category, Qt::UserRole);
+        translationItem->setData(rowData.translation, Qt::UserRole);
+
+        bool ok = false;
+        const int countValue = rowData.count.toInt(&ok);
+        countItem->setData(ok ? countValue : 0, Qt::UserRole);
+
         QList<QStandardItem*> row;
-        row << new QStandardItem(rowData.first) << new QStandardItem(rowData.second);
+        row << tagItem << categoryItem << translationItem << countItem;
         m_model->appendRow(row);
     }
 
@@ -611,7 +791,7 @@ void TagBrowserWidget::appendPendingRowsBatch()
 
     m_proxy->setMatchMode(ui->comboSearchMatchMode->currentIndex());
     m_proxy->setSearchText(ui->editSearch->text());
-    onSortModeChanged(ui->comboSort->currentIndex());
+    resetTagSort();
     if (m_userTagsLoaded) {
         updateUserTagTranslations();
         updateUserTagStatusLabel();
@@ -658,13 +838,66 @@ void TagBrowserWidget::updateStatusLabel()
 QHash<QString, QString> TagBrowserWidget::currentTranslationMap() const
 {
     QHash<QString, QString> out;
-    for (int row = 0; row < m_model->rowCount(); ++row) {
-        const QString tag = m_model->item(row, 0) ? m_model->item(row, 0)->text().trimmed() : QString();
-        const QString translation = m_model->item(row, 1) ? m_model->item(row, 1)->text().trimmed() : QString();
-        if (!tag.isEmpty() && !translation.isEmpty()) {
-            out.insert(tag, translation);
+    const QHash<QString, TagTranslationInfo> infos = currentTranslationInfoMap();
+
+    for (auto it = infos.constBegin(); it != infos.constEnd(); ++it) {
+        const QString tag = it.key();
+        const TagTranslationInfo &info = it.value();
+
+        QString display;
+        if (!info.category.isEmpty() && !info.translation.isEmpty()) {
+            display = info.category + "-" + info.translation;
+        } else if (!info.translation.isEmpty()) {
+            display = info.translation;
+        } else if (!info.category.isEmpty()) {
+            display = info.category;
+        }
+
+        if (!display.isEmpty()) {
+            out.insert(tag, display);
         }
     }
+
+    return out;
+}
+
+TagTranslationInfo translatedInfoForTag(const QString &tag, const QHash<QString, TagTranslationInfo> &infos)
+{
+    TagTranslationInfo info = infos.value(tag);
+
+    if (info.translation.isEmpty() && info.category.isEmpty() && info.priority.isEmpty() && tag.contains(' ')) {
+        QString key = tag;
+        key.replace(' ', '_');
+        info = infos.value(key);
+    }
+
+    if (info.translation.isEmpty() && info.category.isEmpty() && info.priority.isEmpty() && tag.contains('_')) {
+        QString key = tag;
+        key.replace('_', ' ');
+        info = infos.value(key);
+    }
+
+    return info;
+}
+
+QHash<QString, TagTranslationInfo> TagBrowserWidget::currentTranslationInfoMap() const
+{
+    QHash<QString, TagTranslationInfo> out;
+
+    for (int row = 0; row < m_model->rowCount(); ++row) {
+        const QString tag = m_model->item(row, 0) ? m_model->item(row, 0)->text().trimmed() : QString();
+        if (tag.isEmpty()) continue;
+
+        TagTranslationInfo info;
+        info.category = m_model->item(row, 1) ? m_model->item(row, 1)->text().trimmed() : QString();
+        info.translation = m_model->item(row, 2) ? m_model->item(row, 2)->text().trimmed() : QString();
+        info.priority = m_model->item(row, 3) ? m_model->item(row, 3)->text().trimmed() : QString();
+
+        if (!info.category.isEmpty() || !info.translation.isEmpty() || !info.priority.isEmpty()) {
+            out.insert(tag, info);
+        }
+    }
+
     return out;
 }
 
@@ -686,16 +919,34 @@ QString TagBrowserWidget::translatedTextForTag(const QString &tag, const QHash<Q
 
 void TagBrowserWidget::updateUserTagTranslations()
 {
-    const QHash<QString, QString> translations = currentTranslationMap();
+    const QHash<QString, TagTranslationInfo> infos = currentTranslationInfoMap();
+
     for (int row = 0; row < m_userTagModel->rowCount(); ++row) {
         const QString tag = m_userTagModel->item(row, 0) ? m_userTagModel->item(row, 0)->text() : QString();
-        const QString translated = translatedTextForTag(tag, translations);
-        QStandardItem *item = m_userTagModel->item(row, 3);
-        if (item) {
-            item->setText(translated);
-            item->setData(translated, Qt::UserRole);
+        const TagTranslationInfo info = translatedInfoForTag(tag, infos);
+
+        QStandardItem *categoryItem = m_userTagModel->item(row, 2);
+        QStandardItem *translationItem = m_userTagModel->item(row, 3);
+        QStandardItem *priorityItem = m_userTagModel->item(row, 4);
+
+        if (categoryItem) {
+            categoryItem->setText(info.category);
+            categoryItem->setData(info.category, Qt::UserRole);
+        }
+
+        if (translationItem) {
+            translationItem->setText(info.translation);
+            translationItem->setData(info.translation, Qt::UserRole);
+        }
+
+        if (priorityItem) {
+            priorityItem->setText(info.priority);
+            bool ok = false;
+            const int value = info.priority.toInt(&ok);
+            priorityItem->setData(ok ? value : 0, Qt::UserRole);
         }
     }
+
     if (m_userTagProxy) m_userTagProxy->invalidate();
 }
 
@@ -726,6 +977,9 @@ void TagBrowserWidget::loadUserTags()
     const int generation = m_userTagLoadGeneration;
     m_userTagsLoading = true;
     m_userTagsLoaded = false;
+
+    ui->tableUserTags->setSortingEnabled(false);
+
     m_userTagModel->removeRows(0, m_userTagModel->rowCount());
     updateUserTagStatusLabel();
 
@@ -747,23 +1001,41 @@ void TagBrowserWidget::loadUserTags()
         m_userTagWatcher = nullptr;
         if (generation != m_userTagLoadGeneration) return;
 
-        const QHash<QString, QString> translations = currentTranslationMap();
+        const QHash<QString, TagTranslationInfo> infos = currentTranslationInfoMap();
         m_userTagModel->removeRows(0, m_userTagModel->rowCount());
+
         for (const auto &rowData : rows) {
             const QString tag = rowData.tag;
             const int count = rowData.count;
-            const QString translated = translatedTextForTag(tag, translations);
+            const TagTranslationInfo info = translatedInfoForTag(tag, infos);
 
             QList<QStandardItem*> row;
+
             QStandardItem *tagItem = new QStandardItem(tag);
             QStandardItem *kindItem = new QStandardItem(rowData.kind);
+            QStandardItem *categoryItem = new QStandardItem(info.category);
+            QStandardItem *translationItem = new QStandardItem(info.translation);
+            QStandardItem *priorityItem = new QStandardItem(info.priority);
             QStandardItem *countItem = new QStandardItem(QString::number(count));
-            QStandardItem *translationItem = new QStandardItem(translated);
+
             tagItem->setData(tag, Qt::UserRole);
             kindItem->setData(rowData.kind == "负面" ? 1 : 0, Qt::UserRole);
+            categoryItem->setData(info.category, Qt::UserRole);
+            translationItem->setData(info.translation, Qt::UserRole);
+
+            bool priorityOk = false;
+            const int priorityValue = info.priority.toInt(&priorityOk);
+            priorityItem->setData(priorityOk ? priorityValue : 0, Qt::UserRole);
+
             countItem->setData(count, Qt::UserRole);
-            translationItem->setData(translated, Qt::UserRole);
-            row << tagItem << kindItem << countItem << translationItem;
+
+            row << tagItem
+                << kindItem
+                << categoryItem
+                << translationItem
+                << priorityItem
+                << countItem;
+
             m_userTagModel->appendRow(row);
         }
 
@@ -771,7 +1043,12 @@ void TagBrowserWidget::loadUserTags()
         m_userTagsLoaded = true;
         m_userTagProxy->setMatchMode(ui->comboUserTagSearchMatchMode->currentIndex());
         m_userTagProxy->setSearchText(ui->editUserTagSearch->text());
-        onUserTagSortModeChanged(ui->comboUserTagSort->currentIndex());
+
+        // 默认按“用户实际使用次数”降序显示。
+        // 后续用户点击表头时，QTableView 会自动按对应列排序。
+        ui->tableUserTags->setSortingEnabled(true);
+        ui->tableUserTags->sortByColumn(5, Qt::DescendingOrder);
+
         updateUserTagStatusLabel();
     });
 
@@ -794,13 +1071,19 @@ QVector<UserTagUsageRow> TagBrowserWidget::allUserTagRows() const
 {
     QVector<UserTagUsageRow> rows;
     rows.reserve(m_userTagModel->rowCount());
+
     for (int row = 0; row < m_userTagModel->rowCount(); ++row) {
         UserTagUsageRow item;
         item.tag = m_userTagModel->item(row, 0) ? m_userTagModel->item(row, 0)->text() : QString();
         item.kind = m_userTagModel->item(row, 1) ? m_userTagModel->item(row, 1)->text() : QString();
-        item.count = m_userTagModel->item(row, 2) ? m_userTagModel->item(row, 2)->text().toInt() : 0;
+        item.category = m_userTagModel->item(row, 2) ? m_userTagModel->item(row, 2)->text() : QString();
+        item.translation = m_userTagModel->item(row, 3) ? m_userTagModel->item(row, 3)->text() : QString();
+        item.priority = m_userTagModel->item(row, 4) ? m_userTagModel->item(row, 4)->text() : QString();
+        item.count = m_userTagModel->item(row, 5) ? m_userTagModel->item(row, 5)->text().toInt() : 0;
+
         if (!item.tag.isEmpty()) rows.append(item);
     }
+
     return rows;
 }
 
@@ -808,15 +1091,24 @@ QVector<UserTagUsageRow> TagBrowserWidget::visibleUserTagRows() const
 {
     QVector<UserTagUsageRow> rows;
     rows.reserve(m_userTagProxy->rowCount());
+
     for (int row = 0; row < m_userTagProxy->rowCount(); ++row) {
         const QModelIndex sourceIndex = m_userTagProxy->mapToSource(m_userTagProxy->index(row, 0));
         if (!sourceIndex.isValid()) continue;
+
+        const int sourceRow = sourceIndex.row();
+
         UserTagUsageRow item;
-        item.tag = m_userTagModel->item(sourceIndex.row(), 0) ? m_userTagModel->item(sourceIndex.row(), 0)->text() : QString();
-        item.kind = m_userTagModel->item(sourceIndex.row(), 1) ? m_userTagModel->item(sourceIndex.row(), 1)->text() : QString();
-        item.count = m_userTagModel->item(sourceIndex.row(), 2) ? m_userTagModel->item(sourceIndex.row(), 2)->text().toInt() : 0;
+        item.tag = m_userTagModel->item(sourceRow, 0) ? m_userTagModel->item(sourceRow, 0)->text() : QString();
+        item.kind = m_userTagModel->item(sourceRow, 1) ? m_userTagModel->item(sourceRow, 1)->text() : QString();
+        item.category = m_userTagModel->item(sourceRow, 2) ? m_userTagModel->item(sourceRow, 2)->text() : QString();
+        item.translation = m_userTagModel->item(sourceRow, 3) ? m_userTagModel->item(sourceRow, 3)->text() : QString();
+        item.priority = m_userTagModel->item(sourceRow, 4) ? m_userTagModel->item(sourceRow, 4)->text() : QString();
+        item.count = m_userTagModel->item(sourceRow, 5) ? m_userTagModel->item(sourceRow, 5)->text().toInt() : 0;
+
         if (!item.tag.isEmpty()) rows.append(item);
     }
+
     return rows;
 }
 
@@ -840,7 +1132,11 @@ QVector<UserTagUsageRow> TagBrowserWidget::selectedUserTagRows() const
         UserTagUsageRow item;
         item.tag = m_userTagModel->item(sourceIndex.row(), 0) ? m_userTagModel->item(sourceIndex.row(), 0)->text() : QString();
         item.kind = m_userTagModel->item(sourceIndex.row(), 1) ? m_userTagModel->item(sourceIndex.row(), 1)->text() : QString();
-        item.count = m_userTagModel->item(sourceIndex.row(), 2) ? m_userTagModel->item(sourceIndex.row(), 2)->text().toInt() : 0;
+        item.category = m_userTagModel->item(sourceIndex.row(), 2) ? m_userTagModel->item(sourceIndex.row(), 2)->text() : QString();
+        item.translation = m_userTagModel->item(sourceIndex.row(), 3) ? m_userTagModel->item(sourceIndex.row(), 3)->text() : QString();
+        item.priority = m_userTagModel->item(sourceIndex.row(), 4) ? m_userTagModel->item(sourceIndex.row(), 4)->text() : QString();
+        item.count = m_userTagModel->item(sourceIndex.row(), 5) ? m_userTagModel->item(sourceIndex.row(), 5)->text().toInt() : 0;
+
         if (!item.tag.isEmpty()) rows.append(item);
     }
     return rows;
@@ -891,18 +1187,28 @@ void TagBrowserWidget::showUserTagExportDialog()
     QLabel *columnsLabel = new QLabel("CSV 导出列:", &dlg);
     root->addWidget(columnsLabel);
     QHBoxLayout *columnsRow = new QHBoxLayout();
+
     QCheckBox *chkTag = new QCheckBox("Tag", &dlg);
     QCheckBox *chkType = new QCheckBox("类型", &dlg);
+    QCheckBox *chkCategory = new QCheckBox("类别", &dlg);
+    QCheckBox *chkTranslation = new QCheckBox("翻译", &dlg);
+    QCheckBox *chkPriority = new QCheckBox("优先级", &dlg);
     QCheckBox *chkCount = new QCheckBox("使用次数", &dlg);
-    QCheckBox *chkTranslation = new QCheckBox("Translation", &dlg);
+
     chkTag->setChecked(true);
     chkType->setChecked(true);
-    chkCount->setChecked(true);
+    chkCategory->setChecked(true);
     chkTranslation->setChecked(true);
+    chkPriority->setChecked(true);
+    chkCount->setChecked(true);
+
     columnsRow->addWidget(chkTag);
     columnsRow->addWidget(chkType);
-    columnsRow->addWidget(chkCount);
+    columnsRow->addWidget(chkCategory);
     columnsRow->addWidget(chkTranslation);
+    columnsRow->addWidget(chkPriority);
+    columnsRow->addWidget(chkCount);
+
     columnsRow->addStretch(1);
     root->addLayout(columnsRow);
 
@@ -924,13 +1230,15 @@ void TagBrowserWidget::showUserTagExportDialog()
     connect(rangeBox, QOverload<int>::of(&QComboBox::currentIndexChanged), &dlg, refreshValueRow);
     refreshValueRow();
 
-    auto refreshColumnOptions = [outputBox, columnsLabel, chkTag, chkType, chkCount, chkTranslation]() {
+    auto refreshColumnOptions = [outputBox, columnsLabel, chkTag, chkType, chkCategory, chkTranslation, chkPriority, chkCount]() {
         const bool csvMode = outputBox->currentData().toString() == "csv";
         columnsLabel->setEnabled(csvMode);
         chkTag->setEnabled(csvMode);
         chkType->setEnabled(csvMode);
-        chkCount->setEnabled(csvMode);
+        chkCategory->setEnabled(csvMode);
         chkTranslation->setEnabled(csvMode);
+        chkPriority->setEnabled(csvMode);
+        chkCount->setEnabled(csvMode);
     };
     connect(outputBox, QOverload<int>::of(&QComboBox::currentIndexChanged), &dlg, refreshColumnOptions);
     refreshColumnOptions();
@@ -985,8 +1293,10 @@ void TagBrowserWidget::showUserTagExportDialog()
     QStringList headers;
     if (chkTag->isChecked()) headers << "Tag";
     if (chkType->isChecked()) headers << "Type";
-    if (chkCount->isChecked()) headers << "Count";
+    if (chkCategory->isChecked()) headers << "Category";
     if (chkTranslation->isChecked()) headers << "Translation";
+    if (chkPriority->isChecked()) headers << "Priority";
+    if (chkCount->isChecked()) headers << "Count";
     if (headers.isEmpty()) {
         QMessageBox::information(nullptr, "提示", "请至少选择一列导出。");
         return;
@@ -998,7 +1308,6 @@ void TagBrowserWidget::showUserTagExportDialog()
         return;
     }
 
-    const QHash<QString, QString> translations = currentTranslationMap();
     file.write("\xEF\xBB\xBF", 3);
     QTextStream out(&file);
     out.setEncoding(QStringConverter::Utf8);
@@ -1007,8 +1316,10 @@ void TagBrowserWidget::showUserTagExportDialog()
         QStringList values;
         if (chkTag->isChecked()) values << escapeUserTagCsvField(row.tag);
         if (chkType->isChecked()) values << escapeUserTagCsvField(row.kind);
+        if (chkCategory->isChecked()) values << escapeUserTagCsvField(row.category);
+        if (chkTranslation->isChecked()) values << escapeUserTagCsvField(row.translation);
+        if (chkPriority->isChecked()) values << escapeUserTagCsvField(row.priority);
         if (chkCount->isChecked()) values << QString::number(row.count);
-        if (chkTranslation->isChecked()) values << escapeUserTagCsvField(translatedTextForTag(row.tag, translations));
         out << values.join(",") << "\n";
     }
     QMessageBox::information(nullptr, "成功", "导出成功！");
@@ -1060,40 +1371,11 @@ void TagBrowserWidget::onSearchTextChanged(const QString &text)
     m_proxy->setSearchText(text);
 }
 
-void TagBrowserWidget::onSortModeChanged(int index)
-{
-    if (m_loading) return;
-    ensureCsvLoadedForEditing();
-    if (index <= 0) {
-        ui->tableTags->horizontalHeader()->setSortIndicatorShown(false);
-        m_proxy->sort(-1);
-    } else {
-        Qt::SortOrder order = (index == 2) ? Qt::DescendingOrder : Qt::AscendingOrder;
-        ui->tableTags->horizontalHeader()->setSortIndicatorShown(true);
-        ui->tableTags->horizontalHeader()->setSortIndicator(0, order);
-        m_proxy->sort(0, order);
-    }
-    ui->tableTags->viewport()->update();
-}
-
 void TagBrowserWidget::onUserTagSearchTextChanged(const QString &text)
 {
     if (m_userTagsLoading) return;
     if (!m_userTagsLoaded) loadUserTags();
     m_userTagProxy->setSearchText(text);
-}
-
-void TagBrowserWidget::onUserTagSortModeChanged(int index)
-{
-    if (m_userTagsLoading) return;
-    if (!m_userTagsLoaded) return;
-    ui->tableUserTags->setSortingEnabled(true);
-    if (index <= 0) {
-        ui->tableUserTags->sortByColumn(2, Qt::DescendingOrder);
-    } else {
-        ui->tableUserTags->sortByColumn(0, index == 2 ? Qt::DescendingOrder : Qt::AscendingOrder);
-    }
-    ui->tableUserTags->viewport()->update();
 }
 
 void TagBrowserWidget::onUserTagScopeChanged(int index)
@@ -1112,24 +1394,36 @@ void TagBrowserWidget::onRefreshUserTagsClicked()
 
 void TagBrowserWidget::onResetSortClicked()
 {
-    if (ui->comboSort->currentIndex() != 0) {
-        ui->comboSort->setCurrentIndex(0);
-    } else {
-        onSortModeChanged(0);
-    }
+    if (m_loading) return;
+    ensureCsvLoadedForEditing();
+    resetTagSort();
 }
 
 void TagBrowserWidget::onAddRowClicked()
 {
     if (m_loading) return;
     ensureCsvLoadedForEditing();
+
+    QStandardItem *tagItem = new QStandardItem();
+    QStandardItem *categoryItem = new QStandardItem();
+    QStandardItem *translationItem = new QStandardItem();
+    QStandardItem *countItem = new QStandardItem();
+
+    tagItem->setData(QString(), Qt::UserRole);
+    categoryItem->setData(QString(), Qt::UserRole);
+    translationItem->setData(QString(), Qt::UserRole);
+    countItem->setData(0, Qt::UserRole);
+
     QList<QStandardItem*> row;
-    row << new QStandardItem() << new QStandardItem();
+    row << tagItem << categoryItem << translationItem << countItem;
+
     m_model->appendRow(row);
+
     QModelIndex sourceIndex = m_model->index(m_model->rowCount() - 1, 0);
     QModelIndex proxyIndex = m_proxy->mapFromSource(sourceIndex);
     ui->tableTags->setCurrentIndex(proxyIndex);
     ui->tableTags->edit(proxyIndex);
+
     m_dirty = true;
     updateStatusLabel();
 }
@@ -1185,9 +1479,49 @@ void TagBrowserWidget::onSaveClicked()
     out.setEncoding(QStringConverter::Utf8);
     for (int row = 0; row < m_model->rowCount(); ++row) {
         QString tag = m_model->item(row, 0) ? m_model->item(row, 0)->text().trimmed() : QString();
-        QString translation = m_model->item(row, 1) ? m_model->item(row, 1)->text().trimmed() : QString();
-        if (tag.isEmpty() && translation.isEmpty()) continue;
-        out << escapeCsvField(tag) << "," << escapeCsvField(translation) << "\n";
+        QString category = m_model->item(row, 1) ? m_model->item(row, 1)->text().trimmed() : QString();
+        QString translation = m_model->item(row, 2) ? m_model->item(row, 2)->text().trimmed() : QString();
+        QString count = m_model->item(row, 3) ? m_model->item(row, 3)->text().trimmed() : QString();
+
+        if (tag.isEmpty() && category.isEmpty() && translation.isEmpty() && count.isEmpty()) {
+            continue;
+        }
+
+        // 如果有类别或使用次数，就保存为 ComfyUI-Custom-Scripts 兼容格式：
+        // 1girl,1girl 人物-一个女孩,4114588
+        //
+        // 如果只是旧格式 tag,翻译，则继续保存为：
+        // 1girl,一个女孩
+        const bool saveAsAutocompleteFormat = !category.isEmpty() || !count.isEmpty();
+
+        if (saveAsAutocompleteFormat) {
+            QString display = tag;
+
+            QString zhDisplay;
+            if (!category.isEmpty() && !translation.isEmpty()) {
+                zhDisplay = category + "-" + translation;
+            } else if (!translation.isEmpty()) {
+                zhDisplay = translation;
+            } else if (!category.isEmpty()) {
+                zhDisplay = category;
+            }
+
+            if (!zhDisplay.isEmpty()) {
+                display += " " + zhDisplay;
+            }
+
+            out << escapeCsvField(tag)
+                << ","
+                << escapeCsvField(display)
+                << ","
+                << escapeCsvField(count)
+                << "\n";
+        } else {
+            out << escapeCsvField(tag)
+            << ","
+            << escapeCsvField(translation)
+            << "\n";
+        }
     }
     file.close();
 
@@ -1207,4 +1541,18 @@ void TagBrowserWidget::onModelChanged()
         updateUserTagStatusLabel();
     }
     updateStatusLabel();
+}
+
+void TagBrowserWidget::resetTagSort()
+{
+    m_tagSortSection = -1;
+    m_tagSortOrder = Qt::AscendingOrder;
+
+    QHeaderView *header = ui->tableTags->horizontalHeader();
+    header->setSortIndicatorShown(false);
+
+    // 恢复为 source model 的原始顺序，也就是 CSV 加载顺序
+    m_proxy->sort(-1);
+
+    ui->tableTags->viewport()->update();
 }

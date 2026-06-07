@@ -19,8 +19,25 @@ class QTimer;
 struct UserTagUsageRow
 {
     QString tag;
-    QString kind;
-    int count = 0;
+    QString kind;        // 正面 / 负面
+    QString category;    // 来自翻译表
+    QString translation; // 来自翻译表
+    QString priority;    // 来自翻译表
+    int count = 0;       // 用户图库实际使用次数
+};
+struct TagTranslationRow
+{
+    QString tag;
+    QString category;
+    QString translation;
+    QString count; // priority
+};
+
+struct TagTranslationInfo
+{
+    QString category;
+    QString translation;
+    QString priority;
 };
 
 class TagSearchProxyModel : public QSortFilterProxyModel
@@ -72,9 +89,7 @@ signals:
 private slots:
     void onTabChanged(int index);
     void onSearchTextChanged(const QString &text);
-    void onSortModeChanged(int index);
     void onUserTagSearchTextChanged(const QString &text);
-    void onUserTagSortModeChanged(int index);
     void onUserTagScopeChanged(int index);
     void onRefreshUserTagsClicked();
     void onUserTagContextMenu(const QPoint &pos);
@@ -96,10 +111,10 @@ private:
     bool m_dirty = false;
     bool m_loading = false;
     int m_loadGeneration = 0;
-    QVector<QPair<QString, QString>> m_pendingRows;
+    QVector<TagTranslationRow> m_pendingRows;
     int m_pendingRowIndex = 0;
     QTimer *m_batchAppendTimer = nullptr;
-    QFutureWatcher<QVector<QPair<QString, QString>>> *m_loadWatcher = nullptr;
+    QFutureWatcher<QVector<TagTranslationRow>> *m_loadWatcher = nullptr;
     QFutureWatcher<QVector<UserTagUsageRow>> *m_userTagWatcher = nullptr;
     bool m_userTagsLoaded = false;
     bool m_userTagsLoading = false;
@@ -115,6 +130,7 @@ private:
     void loadUserTags();
     void updateUserTagTranslations();
     void updateUserTagStatusLabel();
+    QHash<QString, TagTranslationInfo> currentTranslationInfoMap() const;
     QHash<QString, QString> currentTranslationMap() const;
     QString translatedTextForTag(const QString &tag, const QHash<QString, QString> &translations) const;
     QString escapeUserTagCsvField(const QString &value) const;
@@ -122,6 +138,11 @@ private:
     QVector<UserTagUsageRow> visibleUserTagRows() const;
     QVector<UserTagUsageRow> allUserTagRows() const;
     void showUserTagExportDialog();
+
+    int m_tagSortSection = -1;
+    Qt::SortOrder m_tagSortOrder = Qt::AscendingOrder;
+
+    void resetTagSort();
 };
 
 #endif // TAGBROWSERWIDGET_H

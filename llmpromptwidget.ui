@@ -770,7 +770,7 @@
        </item>
       </layout>
      </widget>
-     <widget class="QWidget" name="pageSettings">
+     <widget class="QWidget" name="pageLLMSettings">
       <attribute name="title">
        <string>设置</string>
       </attribute>

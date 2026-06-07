@@ -111,25 +111,6 @@
           </widget>
          </item>
          <item>
-          <widget class="QComboBox" name="comboSort">
-           <item>
-            <property name="text">
-             <string>CSV 默认顺序</string>
-            </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>Tag A-Z</string>
-            </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>Tag Z-A</string>
-            </property>
-           </item>
-          </widget>
-         </item>
-         <item>
           <widget class="QPushButton" name="btnAdd">
            <property name="text">
             <string>新增</string>
@@ -237,25 +218,6 @@
            <item>
             <property name="text">
              <string>正面 + 负面</string>
-            </property>
-           </item>
-          </widget>
-         </item>
-         <item>
-          <widget class="QComboBox" name="comboUserTagSort">
-           <item>
-            <property name="text">
-             <string>使用次数降序</string>
-            </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>Tag A-Z</string>
-            </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>Tag Z-A</string>
             </property>
            </item>
           </widget>
