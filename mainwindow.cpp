@@ -341,6 +341,18 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->homeGalleryList, &QListWidget::itemClicked, this, &MainWindow::onHomeGalleryClicked);
     connect(ui->btnAddCollection, &QPushButton::clicked, this, &MainWindow::onCreateCollection);
     connect(ui->btnGallery, &QPushButton::clicked, this, &MainWindow::onGalleryButtonClicked);
+    connect(ui->editHomeAuthorFilter, &QLineEdit::textChanged, this, [this](const QString &text) {
+        currentHomeAuthorFilter = text.trimmed();
+        refreshHomeFilterChips();
+        refreshHomeGallery();
+    });
+    connect(ui->editHomeTagFilter, &QLineEdit::returnPressed, this, [this]() {
+        addHomeTagFilter(ui->editHomeTagFilter->text());
+    });
+    connect(ui->btnHomeAddTagFilter, &QPushButton::clicked, this, [this]() {
+        addHomeTagFilter(ui->editHomeTagFilter->text());
+    });
+    connect(ui->btnHomeClearFilters, &QPushButton::clicked, this, &MainWindow::clearHomeFilters);
 
     ui->listEditImages->setUniformItemSizes(true);
     ui->listEditImages->setGridSize(QSize(118, 186));
@@ -469,12 +481,18 @@ MainWindow::MainWindow(QWidget *parent)
     }
 
     clearDetailView();
+    refreshHomeFilterChips();
 
-    QTimer::singleShot(10, this, [this](){
+    QTimer::singleShot(0, this, [this]() {
+        reloadTranslationMaps();
+    });
+
+    QTimer::singleShot(300, this, [this](){
         ui->statusbar->showMessage("正在扫描本地模型库...");
         loadCollections();
         loadModelHighlightColors();
         loadModelUserNotes();
+        loadUserGalleryCache();
         const QStringList activeLoraPaths = collectEnabledPaths(loraPaths, disabledLoraPaths);
         if (!activeLoraPaths.isEmpty()) scanModels(activeLoraPaths);
         ui->comboSort->setCurrentIndex(0);
@@ -492,7 +510,6 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
-    loadUserGalleryCache();
 }
 
 QString forceWrap(const QString &text) { // 强制加入零宽空格换行
@@ -1058,6 +1075,14 @@ void MainWindow::onHomeButtonClicked()
     ui->modelList->clearSelection();   // 清除侧边栏选中
     ui->collectionTree->clearSelection();
     currentCollectionFilter = "";      // 重置过滤，显示全部
+    currentHomeAuthorFilter.clear();
+    currentHomeTagFilters.clear();
+    {
+        QSignalBlocker blocker(ui->editHomeAuthorFilter);
+        ui->editHomeAuthorFilter->clear();
+    }
+    ui->editHomeTagFilter->clear();
+    refreshHomeFilterChips();
     refreshHomeGallery();
     refreshHomeCollectionsUI();
 }
@@ -1313,6 +1338,9 @@ void MainWindow::refreshHomeGallery()
         QString previewPath = sideItem->data(ROLE_PREVIEW_PATH).toString();
         QString filePath = sideItem->data(ROLE_FILE_PATH).toString();
         QString itemBaseModel = sideItem->data(ROLE_FILTER_BASE).toString();
+        const QString itemCreator = sideItem->data(ROLE_MODEL_CREATOR).toString();
+        const QStringList itemModelTags = sideItem->data(ROLE_MODEL_TAGS).toStringList();
+        const QStringList itemUserTags = sideItem->data(ROLE_USER_TAGS).toStringList();
 
         // --- NSFW 拦截逻辑 ---
         if (optFilterNSFW && isNSFW && optNSFWMode == 0) {
@@ -1322,11 +1350,36 @@ void MainWindow::refreshHomeGallery()
         if (!searchText.isEmpty()) {
             bool matchDisplay = displayName.contains(searchText, Qt::CaseInsensitive);
             bool matchKey = modelKey.contains(searchText, Qt::CaseInsensitive);
-            if (!matchDisplay && !matchKey) continue;
+            bool matchCreator = itemCreator.contains(searchText, Qt::CaseInsensitive);
+            bool matchModelTags = itemModelTags.join(' ').contains(searchText, Qt::CaseInsensitive);
+            bool matchUserTags = itemUserTags.join(' ').contains(searchText, Qt::CaseInsensitive);
+            bool matchUserNote = sideItem->data(ROLE_USER_NOTE).toString().contains(searchText, Qt::CaseInsensitive);
+            if (!matchDisplay && !matchKey && !matchCreator && !matchModelTags && !matchUserTags && !matchUserNote) continue;
         }
 
         if (targetBaseModel != "All") {
             if (itemBaseModel != targetBaseModel) continue;
+        }
+
+        if (!currentHomeAuthorFilter.isEmpty() &&
+            itemCreator.compare(currentHomeAuthorFilter, Qt::CaseInsensitive) != 0) {
+            continue;
+        }
+
+        if (!currentHomeTagFilters.isEmpty()) {
+            QSet<QString> modelTagSet;
+            for (const QString &tag : itemModelTags + itemUserTags) {
+                const QString key = tag.trimmed().toCaseFolded();
+                if (!key.isEmpty()) modelTagSet.insert(key);
+            }
+            bool allTagsMatched = true;
+            for (const QString &tag : currentHomeTagFilters) {
+                if (!modelTagSet.contains(tag.trimmed().toCaseFolded())) {
+                    allTagsMatched = false;
+                    break;
+                }
+            }
+            if (!allTagsMatched) continue;
         }
 
         if (!currentCollectionFilter.isEmpty()) {
@@ -1355,9 +1408,12 @@ void MainWindow::refreshHomeGallery()
         item->setData(ROLE_NSFW_LEVEL, nsfwLevel);
         item->setData(ROLE_MODEL_NAME, modelKey);
         item->setData(ROLE_CIVITAI_NAME, sideItem->data(ROLE_CIVITAI_NAME));
+        item->setData(ROLE_MODEL_CREATOR, sideItem->data(ROLE_MODEL_CREATOR));
+        item->setData(ROLE_MODEL_TAGS, sideItem->data(ROLE_MODEL_TAGS));
         item->setData(ROLE_USER_RATING, sideItem->data(ROLE_USER_RATING));
         item->setData(ROLE_USER_NOTE, sideItem->data(ROLE_USER_NOTE));
         item->setData(ROLE_USER_TAGS, sideItem->data(ROLE_USER_TAGS));
+        item->setData(ROLE_USER_CUSTOM_TRIGGERS, sideItem->data(ROLE_USER_CUSTOM_TRIGGERS));
         item->setToolTip(formatModelUserNoteTooltip(filePath, displayName));
 
         item->setIcon(placeholderIcon);
@@ -1374,6 +1430,90 @@ void MainWindow::refreshHomeGallery()
             threadPool->start(task);
         }
     }
+}
+
+void MainWindow::refreshHomeFilterChips()
+{
+    if (!ui || !ui->layoutHomeFilterChips) return;
+    clearLayout(ui->layoutHomeFilterChips);
+
+    auto addChip = [this](const QString &text, const QString &tooltip, const std::function<void()> &removeFn) {
+        QPushButton *chip = new QPushButton(text);
+        chip->setProperty("class", "filterChip");
+        chip->setCursor(Qt::PointingHandCursor);
+        chip->setToolTip(tooltip);
+        connect(chip, &QPushButton::clicked, this, removeFn);
+        ui->layoutHomeFilterChips->addWidget(chip);
+    };
+
+    if (!currentHomeAuthorFilter.isEmpty()) {
+        addChip("作者: " + currentHomeAuthorFilter + " ×",
+                "点击移除作者筛选",
+                [this]() { setHomeAuthorFilter(QString()); });
+    }
+
+    QStringList tags = currentHomeTagFilters.values();
+    std::sort(tags.begin(), tags.end(), [](const QString &a, const QString &b) {
+        return QString::localeAwareCompare(a, b) < 0;
+    });
+    for (const QString &tag : tags) {
+        addChip("Tag: " + tag + " ×",
+                "点击移除此 Tag 筛选",
+                [this, tag]() {
+                    currentHomeTagFilters.remove(tag);
+                    refreshHomeFilterChips();
+                    refreshHomeGallery();
+                });
+    }
+
+    if (currentHomeAuthorFilter.isEmpty() && currentHomeTagFilters.isEmpty()) {
+        QLabel *empty = new QLabel("未启用主页作者/Tag 筛选");
+        empty->setStyleSheet("color:#8c96a0;background:transparent;");
+        ui->layoutHomeFilterChips->addWidget(empty);
+    }
+    ui->layoutHomeFilterChips->addStretch();
+}
+
+void MainWindow::setHomeAuthorFilter(const QString &author)
+{
+    currentHomeAuthorFilter = author.trimmed();
+    if (ui && ui->editHomeAuthorFilter && ui->editHomeAuthorFilter->text() != currentHomeAuthorFilter) {
+        QSignalBlocker blocker(ui->editHomeAuthorFilter);
+        ui->editHomeAuthorFilter->setText(currentHomeAuthorFilter);
+    }
+    refreshHomeFilterChips();
+    refreshHomeGallery();
+}
+
+void MainWindow::addHomeTagFilter(const QString &tag)
+{
+    const QString clean = tag.trimmed();
+    if (clean.isEmpty()) return;
+
+    QString existing;
+    for (const QString &value : currentHomeTagFilters) {
+        if (value.compare(clean, Qt::CaseInsensitive) == 0) {
+            existing = value;
+            break;
+        }
+    }
+    if (existing.isEmpty()) currentHomeTagFilters.insert(clean);
+    if (ui && ui->editHomeTagFilter) ui->editHomeTagFilter->clear();
+    refreshHomeFilterChips();
+    refreshHomeGallery();
+}
+
+void MainWindow::clearHomeFilters()
+{
+    currentHomeAuthorFilter.clear();
+    currentHomeTagFilters.clear();
+    if (ui && ui->editHomeAuthorFilter) {
+        QSignalBlocker blocker(ui->editHomeAuthorFilter);
+        ui->editHomeAuthorFilter->clear();
+    }
+    if (ui && ui->editHomeTagFilter) ui->editHomeTagFilter->clear();
+    refreshHomeFilterChips();
+    refreshHomeGallery();
 }
 
 // 点击主页的大图 -> 跳转详情页
@@ -1839,41 +1979,7 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
     ((QHBoxLayout*)ui->badgesFrame->layout())->addStretch(); // 左对齐
 
     // 3. 动态生成触发词框 (Trigger Words)
-    clearLayout(ui->layoutTriggerStack);
-
-    if (meta.trainedWordsGroups.isEmpty()) {
-        QLabel *lbl = new QLabel("No trigger words provided.");
-        lbl->setStyleSheet("color: #666; font-style: italic; margin-left: 10px;");
-        ui->layoutTriggerStack->addWidget(lbl);
-    } else {
-        for (const QString &words : meta.trainedWordsGroups) {
-            // 创建容器：[文本框] [复制按钮]
-            QWidget *rowWidget = new QWidget();
-            QHBoxLayout *rowLayout = new QHBoxLayout(rowWidget);
-            rowLayout->setContentsMargins(0,0,0,10);
-            rowLayout->setSpacing(5);
-
-            QTextBrowser *tb = new QTextBrowser();
-            tb->setText(words);
-            tb->setFixedHeight(90);
-
-            QPushButton *btnCopy = new QPushButton("Copy");
-            btnCopy->setFixedSize(60, 90);
-            btnCopy->setCursor(Qt::PointingHandCursor);
-            btnCopy->setProperty("class", "copyBtn"); // 应用 XML 里的 QSS
-
-            connect(btnCopy, &QPushButton::clicked, this, [words, this](){
-                QClipboard *clip = QGuiApplication::clipboard();
-                clip->setText(words);
-                ui->statusbar->showMessage("Copied trigger words!", 1500);
-            });
-
-            rowLayout->addWidget(tb);
-            rowLayout->addWidget(btnCopy);
-
-            ui->layoutTriggerStack->addWidget(rowWidget);
-        }
-    }
+    refreshTriggerWordsPanel(meta);
 
     // 4. 图库 (Gallery)
     clearLayout(ui->layoutGallery);
@@ -1903,6 +2009,7 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
                                  .arg(meta.fileSizeMB, 0, 'f', 1)
                                  .arg(meta.sha256.left(10) + "...")
                                  .arg(addedStr));
+    refreshModelAttributionPanel(meta);
     refreshModelUserNotePanel(meta.filePath);
 
     updateLocalEditorFromMeta(meta);
@@ -2166,6 +2273,66 @@ void MainWindow::onGalleryImageClicked(int index)
     }
 }
 
+void MainWindow::refreshTriggerWordsPanel(const ModelMeta &meta)
+{
+    if (!ui || !ui->layoutTriggerStack) return;
+
+    clearLayout(ui->layoutTriggerStack);
+
+    const QString modelNoteKey = meta.filePath.isEmpty() ? QString() : QFileInfo(meta.filePath).absoluteFilePath();
+    const QStringList customTriggerGroups = normalizeModelCustomTriggers(modelUserNotes.value(modelNoteKey).customTriggers);
+
+    auto addTriggerGroup = [this](const QString &words, const QString &sourceLabel, const QString &accentColor) {
+        QWidget *rowWidget = new QWidget();
+        QVBoxLayout *outerLayout = new QVBoxLayout(rowWidget);
+        outerLayout->setContentsMargins(0, 0, 0, 10);
+        outerLayout->setSpacing(4);
+
+        QLabel *source = new QLabel(sourceLabel);
+        source->setStyleSheet(QString("color:%1;font-weight:bold;background:transparent;margin-left:2px;").arg(accentColor));
+        outerLayout->addWidget(source);
+
+        QHBoxLayout *rowLayout = new QHBoxLayout();
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        rowLayout->setSpacing(5);
+
+        QTextBrowser *tb = new QTextBrowser();
+        tb->setText(words);
+        tb->setFixedHeight(90);
+        tb->setStyleSheet(QString("QTextBrowser { border: 1px solid %1; border-radius: 8px; }").arg(accentColor));
+
+        QPushButton *btnCopy = new QPushButton("Copy");
+        btnCopy->setFixedSize(60, 90);
+        btnCopy->setCursor(Qt::PointingHandCursor);
+        btnCopy->setProperty("class", "copyBtn");
+
+        connect(btnCopy, &QPushButton::clicked, this, [words, this]() {
+            QClipboard *clip = QGuiApplication::clipboard();
+            clip->setText(words);
+            ui->statusbar->showMessage("Copied trigger words!", 1500);
+        });
+
+        rowLayout->addWidget(tb);
+        rowLayout->addWidget(btnCopy);
+        outerLayout->addLayout(rowLayout);
+        ui->layoutTriggerStack->addWidget(rowWidget);
+    };
+
+    if (meta.trainedWordsGroups.isEmpty() && customTriggerGroups.isEmpty()) {
+        QLabel *lbl = new QLabel("No trigger words provided.");
+        lbl->setStyleSheet("color: #666; font-style: italic; margin-left: 10px;");
+        ui->layoutTriggerStack->addWidget(lbl);
+        return;
+    }
+
+    for (const QString &words : meta.trainedWordsGroups) {
+        addTriggerGroup(words, "Civitai / Metadata", "#66c0f4");
+    }
+    for (const QString &words : customTriggerGroups) {
+        addTriggerGroup(words, "Custom / 用户自定义", "#5fd38d");
+    }
+}
+
 // 辅助函数
 void MainWindow::addBadge(QString text, bool isRed)
 {
@@ -2206,6 +2373,7 @@ void MainWindow::clearDetailView()
     ui->textDescription->clear();
     ui->textDescription->setPlaceholderText("暂无简介 / No description.");
     ui->lblFileInfo->setText("Filename: --\nSize: --\nHash: --");
+    refreshModelAttributionPanel(ModelMeta());
     refreshModelUserNotePanel("");
 
     ui->textImgPrompt->clear();
@@ -2299,6 +2467,7 @@ void MainWindow::showPendingLocalModelDetail(const ModelMeta &meta, const QStrin
     ui->lblFileInfo->setText(QString("Filename: %1\nSize: %2 MB\nHash: --")
                                  .arg(fi.fileName())
                                  .arg(fi.exists() ? QString::number(fi.size() / 1024.0 / 1024.0, 'f', 2) : "--"));
+    refreshModelAttributionPanel(meta);
     refreshModelUserNotePanel(meta.filePath);
     if (!meta.previewPath.isEmpty() && QFile::exists(meta.previewPath)) {
         transitionToImage(meta.previewPath);
@@ -2744,6 +2913,26 @@ QStringList MainWindow::normalizeModelUserTagsText(const QString &text) const
     return normalizeModelUserTags(normalizedText.split(',', Qt::SkipEmptyParts));
 }
 
+QStringList MainWindow::normalizeModelCustomTriggers(const QStringList &triggers) const
+{
+    QStringList result;
+    QSet<QString> seen;
+    for (const QString &raw : triggers) {
+        const QString trigger = raw.trimmed();
+        if (trigger.isEmpty()) continue;
+        const QString key = trigger.toCaseFolded();
+        if (seen.contains(key)) continue;
+        seen.insert(key);
+        result.append(trigger);
+    }
+    return result;
+}
+
+QStringList MainWindow::normalizeModelCustomTriggersText(const QString &text) const
+{
+    return normalizeModelCustomTriggers(text.split('\n', Qt::SkipEmptyParts));
+}
+
 void MainWindow::loadModelUserNotes()
 {
     modelUserNotes.clear();
@@ -2769,6 +2958,10 @@ void MainWindow::loadModelUserNotes()
         const QJsonArray arr = obj.value("tags").toArray();
         for (const QJsonValue &val : arr) tags.append(val.toString());
         note.tags = normalizeModelUserTags(tags);
+        QStringList customTriggers;
+        const QJsonArray triggerArr = obj.value("customTriggers").toArray();
+        for (const QJsonValue &val : triggerArr) customTriggers.append(val.toString());
+        note.customTriggers = normalizeModelCustomTriggers(customTriggers);
         if (!filePath.isEmpty()) modelUserNotes.insert(filePath, note);
     }
 }
@@ -2781,7 +2974,7 @@ void MainWindow::saveModelUserNotes() const
     QJsonObject root;
     for (auto it = modelUserNotes.cbegin(); it != modelUserNotes.cend(); ++it) {
         const ModelUserNote &note = it.value();
-        if (note.rating <= 0.0 && note.note.trimmed().isEmpty() && note.tags.isEmpty()) continue;
+        if (note.rating <= 0.0 && note.note.trimmed().isEmpty() && note.tags.isEmpty() && note.customTriggers.isEmpty()) continue;
 
         QJsonObject obj;
         obj["rating"] = note.rating;
@@ -2790,6 +2983,9 @@ void MainWindow::saveModelUserNotes() const
         QJsonArray tags;
         for (const QString &tag : note.tags) tags.append(tag);
         obj["tags"] = tags;
+        QJsonArray triggers;
+        for (const QString &trigger : note.customTriggers) triggers.append(trigger);
+        obj["customTriggers"] = triggers;
         root.insert(it.key(), obj);
     }
 
@@ -2814,6 +3010,7 @@ QString MainWindow::formatModelUserNoteTooltip(const QString &filePath, const QS
     const ModelUserNote note = modelUserNotes.value(key);
     if (note.rating > 0.0) lines << "评分: " + formatModelRating(note.rating);
     if (!note.tags.isEmpty()) lines << "标签: " + note.tags.join(", ");
+    if (!note.customTriggers.isEmpty()) lines << "自定义触发词: " + note.customTriggers.join(" | ");
     QString noteText = note.note.simplified();
     if (!noteText.isEmpty()) {
         if (noteText.size() > 120) noteText = noteText.left(117) + "...";
@@ -2830,6 +3027,7 @@ void MainWindow::applyModelUserNoteData(QListWidgetItem *item)
     item->setData(ROLE_USER_RATING, note.rating);
     item->setData(ROLE_USER_NOTE, note.note);
     item->setData(ROLE_USER_TAGS, note.tags);
+    item->setData(ROLE_USER_CUSTOM_TRIGGERS, note.customTriggers);
     item->setToolTip(formatModelUserNoteTooltip(filePath, filePath));
 }
 
@@ -2841,6 +3039,7 @@ void MainWindow::applyModelUserNoteData(QTreeWidgetItem *item)
     item->setData(0, ROLE_USER_RATING, note.rating);
     item->setData(0, ROLE_USER_NOTE, note.note);
     item->setData(0, ROLE_USER_TAGS, note.tags);
+    item->setData(0, ROLE_USER_CUSTOM_TRIGGERS, note.customTriggers);
     item->setToolTip(0, formatModelUserNoteTooltip(filePath, item->text(0)));
 }
 
@@ -2887,6 +3086,65 @@ void MainWindow::refreshModelUserNotePanel(const QString &filePath)
     ui->layoutUserTags->addStretch();
 }
 
+void MainWindow::refreshModelAttributionPanel(const ModelMeta &meta)
+{
+    if (!ui || !ui->layoutModelAuthor || !ui->layoutModelTags) return;
+
+    clearLayout(ui->layoutModelAuthor);
+    clearLayout(ui->layoutModelTags);
+
+    if (meta.creatorName.trimmed().isEmpty()) {
+        QLabel *empty = new QLabel("暂无作者信息");
+        empty->setStyleSheet("color:#8c96a0;background:transparent;");
+        ui->layoutModelAuthor->addWidget(empty);
+    } else {
+        QPushButton *author = new QPushButton(meta.creatorName);
+        author->setProperty("class", "filterChip");
+        author->setCursor(Qt::PointingHandCursor);
+        author->setToolTip("点击在主页筛选该作者");
+        connect(author, &QPushButton::clicked, this, [this, name = meta.creatorName]() {
+            ui->rootStack->setCurrentWidget(ui->pageLibrary);
+            ui->mainStack->setCurrentWidget(ui->pageHome);
+            setHomeAuthorFilter(name);
+            ui->statusbar->showMessage("已按作者筛选: " + name, 2000);
+        });
+        ui->layoutModelAuthor->addWidget(author);
+    }
+    ui->layoutModelAuthor->addStretch();
+
+    if (meta.modelTags.isEmpty()) {
+        QLabel *empty = new QLabel("暂无模型标签");
+        empty->setStyleSheet("color:#8c96a0;background:transparent;");
+        ui->layoutModelTags->addWidget(empty);
+    } else {
+        QWidget *tagGridWidget = new QWidget();
+        tagGridWidget->setStyleSheet("background:transparent;");
+        QGridLayout *tagGrid = new QGridLayout(tagGridWidget);
+        tagGrid->setContentsMargins(0, 0, 0, 0);
+        tagGrid->setHorizontalSpacing(6);
+        tagGrid->setVerticalSpacing(6);
+        constexpr int kTagColumns = 3;
+        int tagIndex = 0;
+        for (const QString &tag : meta.modelTags) {
+            QPushButton *tagButton = new QPushButton(tag);
+            tagButton->setProperty("class", "filterChip");
+            tagButton->setCursor(Qt::PointingHandCursor);
+            tagButton->setToolTip("点击在主页添加该 Tag 筛选");
+            tagButton->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+            connect(tagButton, &QPushButton::clicked, this, [this, tag]() {
+                ui->rootStack->setCurrentWidget(ui->pageLibrary);
+                ui->mainStack->setCurrentWidget(ui->pageHome);
+                addHomeTagFilter(tag);
+                ui->statusbar->showMessage("已添加 Tag 筛选: " + tag, 2000);
+            });
+            tagGrid->addWidget(tagButton, tagIndex / kTagColumns, tagIndex % kTagColumns);
+            ++tagIndex;
+        }
+        ui->layoutModelTags->addWidget(tagGridWidget);
+    }
+    ui->layoutModelTags->addStretch();
+}
+
 void MainWindow::openModelNoteDialog(QListWidgetItem *item)
 {
     if (!isModelListItem(item)) return;
@@ -2899,6 +3157,7 @@ void MainWindow::openModelNoteDialog(QListWidgetItem *item)
     dialog.setRating(current.rating);
     dialog.setNote(current.note);
     dialog.setTags(current.tags);
+    dialog.setCustomTriggers(current.customTriggers);
     if (dialog.exec() != QDialog::Accepted) return;
 
     current.rating = dialog.rating();
@@ -2906,9 +3165,10 @@ void MainWindow::openModelNoteDialog(QListWidgetItem *item)
     current.rating = std::round(current.rating * 2.0) / 2.0;
     current.note = dialog.note();
     current.tags = normalizeModelUserTags(dialog.tags());
+    current.customTriggers = normalizeModelCustomTriggers(dialog.customTriggers());
     current.updatedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
 
-    if (current.rating <= 0.0 && current.note.isEmpty() && current.tags.isEmpty()) {
+    if (current.rating <= 0.0 && current.note.isEmpty() && current.tags.isEmpty() && current.customTriggers.isEmpty()) {
         modelUserNotes.remove(filePath);
     } else {
         modelUserNotes.insert(filePath, current);
@@ -2917,10 +3177,18 @@ void MainWindow::openModelNoteDialog(QListWidgetItem *item)
     refreshModelUserNoteItems(filePath);
     saveModelUserNotes();
     refreshModelUserNotePanel(filePath);
+    if (QFileInfo(currentMeta.filePath).absoluteFilePath() == filePath) {
+        refreshTriggerWordsPanel(currentMeta);
+    }
     executeSort();
     refreshCollectionTreeView();
     refreshHomeGallery();
-    ui->statusbar->showMessage("模型评分与备注已保存。", 2000);
+    if (QListWidgetItem *restoredItem = findModelItemByFilePath(filePath)) {
+        ui->modelList->setCurrentItem(restoredItem);
+        restoredItem->setSelected(true);
+        syncTreeSelection(filePath);
+    }
+    ui->statusbar->showMessage("模型评分、备注与自定义触发词已保存。", 2000);
 }
 
 void MainWindow::setUserRatingForItems(const QList<QListWidgetItem*> &items, double rating)
@@ -2933,7 +3201,7 @@ void MainWindow::setUserRatingForItems(const QList<QListWidgetItem*> &items, dou
         ModelUserNote note = modelUserNotes.value(filePath);
         note.rating = normalizedRating;
         note.updatedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
-        if (note.rating <= 0.0 && note.note.isEmpty() && note.tags.isEmpty()) {
+        if (note.rating <= 0.0 && note.note.isEmpty() && note.tags.isEmpty() && note.customTriggers.isEmpty()) {
             modelUserNotes.remove(filePath);
         } else {
             modelUserNotes.insert(filePath, note);
@@ -2984,7 +3252,7 @@ void MainWindow::removeUserTagsForItems(const QList<QListWidgetItem*> &items, co
         }
         note.tags = nextTags;
         note.updatedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
-        if (note.rating <= 0.0 && note.note.isEmpty() && note.tags.isEmpty()) {
+        if (note.rating <= 0.0 && note.note.isEmpty() && note.tags.isEmpty() && note.customTriggers.isEmpty()) {
             modelUserNotes.remove(filePath);
         } else {
             modelUserNotes.insert(filePath, note);
@@ -3328,6 +3596,7 @@ void MainWindow::onLocalMetaSaveClicked()
     root["localEditedAt"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
 
     int modelId = root["modelId"].toInt();
+    if (modelId <= 0) modelId = root["model"].toObject()["id"].toInt();
     if (!modelUrl.isEmpty()) {
         root["modelUrl"] = modelUrl;
         QRegularExpression re("/models/(\\d+)");
@@ -3690,6 +3959,65 @@ QString MainWindow::civitaiNetworkErrorMessage(QNetworkReply *reply) const
     return text;
 }
 
+QStringList MainWindow::readModelTagsFromJson(const QJsonObject &root) const
+{
+    QJsonArray arr = root.value("model").toObject().value("tags").toArray();
+    if (arr.isEmpty()) arr = root.value("tags").toArray();
+
+    QStringList tags;
+    QSet<QString> seen;
+    for (const QJsonValue &value : arr) {
+        const QString tag = value.toString().trimmed();
+        if (tag.isEmpty()) continue;
+        const QString key = tag.toCaseFolded();
+        if (seen.contains(key)) continue;
+        seen.insert(key);
+        tags.append(tag);
+    }
+    return tags;
+}
+
+QString MainWindow::readModelCreatorFromJson(const QJsonObject &root) const
+{
+    QJsonObject creator = root.value("model").toObject().value("creator").toObject();
+    if (creator.isEmpty()) creator = root.value("creator").toObject();
+    QString name = creator.value("username").toString().trimmed();
+    if (name.isEmpty()) name = creator.value("name").toString().trimmed();
+    return name;
+}
+
+QString MainWindow::readModelCreatorAvatarFromJson(const QJsonObject &root) const
+{
+    QJsonObject creator = root.value("model").toObject().value("creator").toObject();
+    if (creator.isEmpty()) creator = root.value("creator").toObject();
+    return creator.value("image").toString().trimmed();
+}
+
+QJsonObject MainWindow::mergeCivitaiModelIntoVersion(const QJsonObject &versionRoot, const QJsonObject &modelRoot) const
+{
+    QJsonObject merged = versionRoot;
+    if (modelRoot.isEmpty()) return merged;
+
+    QJsonObject modelObj = merged.value("model").toObject();
+    for (auto it = modelRoot.constBegin(); it != modelRoot.constEnd(); ++it) {
+        modelObj.insert(it.key(), it.value());
+    }
+    merged["model"] = modelObj;
+
+    if (!merged.contains("modelId")) merged["modelId"] = modelRoot.value("id").toInt();
+    if (!merged.contains("description") && modelRoot.contains("description")) {
+        merged["description"] = modelRoot.value("description");
+    }
+    return merged;
+}
+
+void MainWindow::applyCivitaiAttributionToItem(QListWidgetItem *item, const QString &creator, const QStringList &tags)
+{
+    if (!item) return;
+    item->setData(ROLE_MODEL_CREATOR, creator);
+    item->setData(ROLE_MODEL_TAGS, tags);
+}
+
 void MainWindow::fetchModelInfoFromCivitai(const QString &hash) {
     // 获取当前正在处理的文件名 (从属性或当前选中项)
     // 建议直接传参进来，或者确保 ui->modelList->property("current_processing_file") 是本地文件名(BaseName)
@@ -3753,6 +4081,9 @@ bool MainWindow::readLocalJson(const QString &dirPath, const QString &baseName, 
     if (meta.fileName.isEmpty() && !meta.filePath.isEmpty()) {
         meta.fileName = QFileInfo(meta.filePath).fileName();
     }
+    meta.creatorName = readModelCreatorFromJson(root);
+    meta.creatorAvatarUrl = readModelCreatorAvatarFromJson(root);
+    meta.modelTags = readModelTagsFromJson(root);
 
     // 2. 解析触发词组
     QJsonArray twArray = root["trainedWords"].toArray();
@@ -3855,22 +4186,29 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
         return;
     }
 
+    const QByteArray versionJsonBytes = reply->property("versionJson").toByteArray();
     if (reply->error() != QNetworkReply::NoError) {
-        clearLayout(ui->layoutTriggerStack); // 清空触发词区域
-        const QString err = civitaiNetworkErrorMessage(reply);
-        recordModelSyncFailure(filePath, localBaseName, err);
-        setModelTitleError(err);
-        ui->textDescription->setPlainText(QString("上次同步失败，请点击刷新模型详情重新同步。\n%1").arg(err));
-        transitionToImage("");
-        m_forceResyncPreview = false;
-        m_skipPreviewSync = false;
-        ui->statusbar->showMessage("元数据获取失败: " + err, 4000);
-        return;
+        if (!versionJsonBytes.isEmpty()) {
+            qDebug() << "Civitai model detail fetch failed, falling back to version metadata:" << reply->errorString();
+        } else {
+            clearLayout(ui->layoutTriggerStack); // 清空触发词区域
+            const QString err = civitaiNetworkErrorMessage(reply);
+            recordModelSyncFailure(filePath, localBaseName, err);
+            setModelTitleError(err);
+            ui->textDescription->setPlainText(QString("上次同步失败，请点击刷新模型详情重新同步。\n%1").arg(err));
+            transitionToImage("");
+            m_forceResyncPreview = false;
+            m_skipPreviewSync = false;
+            ui->statusbar->showMessage("元数据获取失败: " + err, 4000);
+            return;
+        }
     }
 
-    QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-    QJsonObject root = doc.object();
-    if (doc.isNull() || root.isEmpty()) {
+    const QByteArray responseBody = reply->readAll();
+    QJsonDocument doc = QJsonDocument::fromJson(responseBody);
+    const bool usingVersionFallback = !versionJsonBytes.isEmpty() && reply->error() != QNetworkReply::NoError;
+    QJsonObject root = usingVersionFallback ? QJsonDocument::fromJson(versionJsonBytes).object() : doc.object();
+    if ((!usingVersionFallback && doc.isNull()) || root.isEmpty()) {
         const QString err = "返回数据为空或不是有效 JSON";
         recordModelSyncFailure(filePath, localBaseName, err);
         setModelTitleError(err);
@@ -3882,6 +4220,29 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
         return;
     }
 
+    if (!versionJsonBytes.isEmpty()) {
+        const QJsonObject versionRoot = QJsonDocument::fromJson(versionJsonBytes).object();
+        if (reply->error() == QNetworkReply::NoError) {
+            root = mergeCivitaiModelIntoVersion(versionRoot, root);
+        } else {
+            root = versionRoot;
+        }
+    } else {
+        const int modelIdForDetail = root["modelId"].toInt();
+        if (modelIdForDetail > 0) {
+            QNetworkReply *detailReply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/models/%1").arg(modelIdForDetail))));
+            detailReply->setProperty("localBaseName", localBaseName);
+            detailReply->setProperty("modelDir", modelDir);
+            detailReply->setProperty("localFilePath", filePath);
+            detailReply->setProperty("filePath", filePath);
+            detailReply->setProperty("versionJson", QJsonDocument(root).toJson(QJsonDocument::Compact));
+            connect(detailReply, &QNetworkReply::finished, this, [this, detailReply]() {
+                this->onApiMetadataReceived(detailReply);
+            });
+            return;
+        }
+    }
+
     clearModelSyncFailure(filePath);
     setModelTitleNormal();
     ModelMeta meta;
@@ -3889,7 +4250,9 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     // 1. 基础信息
     QString modelRealName = root["model"].toObject()["name"].toString();
     QString versionName = root["name"].toString();
-    QString fullName = modelRealName + " [" + versionName + "]"; // 组合名称
+    if (modelRealName.isEmpty()) modelRealName = localBaseName;
+    QString fullName = modelRealName;
+    if (!versionName.isEmpty()) fullName += " [" + versionName + "]";
     meta.modelName = modelRealName;
     meta.versionName = versionName;
     meta.name = fullName;
@@ -3897,6 +4260,9 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     meta.fileName = QFileInfo(filePath).fileName();
     meta.isLocalEdited = false;
     meta.isLocalOnly = false;
+    meta.creatorName = readModelCreatorFromJson(root);
+    meta.creatorAvatarUrl = readModelCreatorAvatarFromJson(root);
+    meta.modelTags = readModelTagsFromJson(root);
 
     // 更新 UI 列表项
     // 找到对应的 Item (可能通过 localBaseName 查找)
@@ -3907,6 +4273,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
             item->setData(ROLE_LOCAL_EDITED, false);
             item->setData(ROLE_CIVITAI_MODEL_ID, root["modelId"].toInt());
             item->setData(ROLE_CIVITAI_VERSION_ID, root["id"].toInt());
+            applyCivitaiAttributionToItem(item, meta.creatorName, meta.modelTags);
 
             // 如果开启了选项，立即更新显示文本
             if (optUseCivitaiName) {
@@ -4002,11 +4369,27 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
         }
     }
 
-    // 强制更新后清理本地编辑标记
-    root["localEdited"] = false;
-    root.remove("localEditedAt");
-    root["localOnly"] = false;
-    root.remove("modelUrl");
+    // 保留本地私有状态字段，避免同步 Civitai metadata 时丢失用户本地信息。
+    QFile existingMetadata(QDir(modelDir).filePath(localBaseName + ".json"));
+    if (existingMetadata.exists() && existingMetadata.open(QIODevice::ReadOnly)) {
+        const QJsonObject oldRoot = QJsonDocument::fromJson(existingMetadata.readAll()).object();
+        const QStringList localKeys = {"localEdited", "localEditedAt", "localOnly", "modelUrl"};
+        for (const QString &key : localKeys) {
+            if (oldRoot.contains(key)) root[key] = oldRoot.value(key);
+        }
+    } else {
+        root["localOnly"] = false;
+    }
+    meta.isLocalEdited = root["localEdited"].toBool(false);
+    meta.isLocalOnly = root["localOnly"].toBool(false);
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (item && item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
+            item->setData(ROLE_LOCAL_EDITED, meta.isLocalEdited || meta.isLocalOnly);
+            applyCivitaiAttributionToItem(item, meta.creatorName, meta.modelTags);
+            break;
+        }
+    }
 
     // 保存并更新UI
     saveLocalMetadata(modelDir, localBaseName, root);
@@ -4633,8 +5016,11 @@ void MainWindow::onSearchTextChanged(const QString &text)
         searchable << modelName
                    << item->text()
                    << item->data(ROLE_CIVITAI_NAME).toString()
+                   << item->data(ROLE_MODEL_CREATOR).toString()
+                   << item->data(ROLE_MODEL_TAGS).toStringList()
                    << item->data(ROLE_USER_NOTE).toString()
-                   << item->data(ROLE_USER_TAGS).toStringList();
+                   << item->data(ROLE_USER_TAGS).toStringList()
+                   << item->data(ROLE_USER_CUSTOM_TRIGGERS).toStringList();
 
         bool nameMatch = query.isEmpty();
         if (!nameMatch) {
@@ -4742,7 +5128,7 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
 
     menu.addSeparator();
 
-    QAction *actEditUserNote = menu.addAction("编辑评分与备注... / Edit Rating && Note...");
+    QAction *actEditUserNote = menu.addAction("编辑评分、备注与触发词... / Edit Rating, Note && Triggers...");
     actEditUserNote->setEnabled(modelItems.count() == 1);
     connect(actEditUserNote, &QAction::triggered, this, [this, modelItems]() {
         if (modelItems.count() == 1) openModelNoteDialog(modelItems.first());
@@ -5023,6 +5409,8 @@ void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonP
     item->setData(ROLE_CIVITAI_MODEL_ID, 0);
     item->setData(ROLE_CIVITAI_VERSION_ID, 0);
     item->setData(ROLE_CIVITAI_SHA256, QString());
+    item->setData(ROLE_MODEL_CREATOR, QString());
+    item->setData(ROLE_MODEL_TAGS, QStringList());
 
     // === 读取本地文件时间 (下载/添加时间) ===
     QString filePath = item->data(ROLE_FILE_PATH).toString();
@@ -5045,6 +5433,7 @@ void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonP
 
     QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
     QJsonObject root = doc.object();
+    applyCivitaiAttributionToItem(item, readModelCreatorFromJson(root), readModelTagsFromJson(root));
 
     // 读取模型真实名称
     QString modelName = root["model"].toObject()["name"].toString();
@@ -6458,11 +6847,13 @@ void MainWindow::ensureToolTabLoaded(int index)
         case 2:
             tagBrowserWidget = new TagBrowserWidget(toolsTabWidget);
             tagBrowserWidget->setCsvPath(translationCsvPath);
+            tagBrowserWidget->setMergedTranslationMap(&translationMap);
             connect(tagBrowserWidget, &TagBrowserWidget::csvSaved, this, [this](const QString &path){
-                translationCsvPath = path;
-                loadTranslationCSV(path);
-                if (parserWidget) parserWidget->setTranslationMap(&translationMap);
-                if (promptTemplateLibraryWidget) promptTemplateLibraryWidget->setTranslationMap(&translationMap);
+                const QString normalized = QFileInfo(path).absoluteFilePath();
+                if (!translationCsvPaths.contains(normalized)) translationCsvPaths.prepend(normalized);
+                translationCsvPath = normalized;
+                reloadTranslationMaps();
+                applyPathListsToUi();
                 saveGlobalConfig();
             });
             newPage = tagBrowserWidget;
@@ -6979,6 +7370,9 @@ void MainWindow::handleModelUpdateReply(QNetworkReply *reply)
         if (sourceItem->data(ROLE_CIVITAI_VERSION_ID).toInt() <= 0 && currentVersionId > 0) {
             sourceItem->setData(ROLE_CIVITAI_VERSION_ID, currentVersionId);
         }
+        applyCivitaiAttributionToItem(sourceItem,
+                                      readModelCreatorFromJson(root),
+                                      readModelTagsFromJson(root));
         info = parseModelUpdateInfo(sourceItem, root);
         modelUpdateInfos.insert(info.filePath, info);
     } else {
@@ -7030,11 +7424,7 @@ ModelUpdateInfo MainWindow::parseModelUpdateInfo(QListWidgetItem *item, const QJ
     }
 
     if (latestVersionObj.isEmpty() && !versions.isEmpty()) latestVersionObj = versions.first().toObject();
-    QJsonObject modelObj;
-    modelObj["name"] = modelRoot["name"].toString();
-    modelObj["type"] = modelRoot["type"].toString();
-    modelObj["nsfw"] = modelRoot["nsfw"].toBool();
-    if (!latestVersionObj.contains("model")) latestVersionObj["model"] = modelObj;
+    latestVersionObj = mergeCivitaiModelIntoVersion(latestVersionObj, modelRoot);
     if (!latestVersionObj.contains("modelId")) latestVersionObj["modelId"] = info.modelId;
     info.latestVersionJson = latestVersionObj;
     info.latestVersionId = latestVersionObj["id"].toInt();
@@ -7995,8 +8385,10 @@ void MainWindow::loadGlobalConfig() {
 
         loraPaths = normalizePathList(readPathList(root, "lora_paths", {"lora_path"}));
         galleryPaths = normalizePathList(readPathList(root, "gallery_paths", {"gallery_path", "sd_folder"}));
+        translationCsvPaths = normalizePathList(readPathList(root, "translation_paths", {"translation_path"}));
         disabledLoraPaths = normalizePathSet(readPathSet(root, "lora_paths_disabled"));
         disabledGalleryPaths = normalizePathSet(readPathSet(root, "gallery_paths_disabled"));
+        disabledTranslationCsvPaths = normalizePathSet(readPathSet(root, "translation_paths_disabled"));
         collapsedModelFolders = normalizePathSet(readPathSet(root, "model_list_collapsed_folders"));
         {
             QSet<QString> filtered;
@@ -8023,7 +8415,14 @@ void MainWindow::loadGlobalConfig() {
             }
             disabledGalleryPaths = filtered;
         }
-        translationCsvPath = root["translation_path"].toString().trimmed();
+        {
+            QSet<QString> filtered;
+            for (const QString &path : translationCsvPaths) {
+                if (disabledTranslationCsvPaths.contains(path)) filtered.insert(path);
+            }
+            disabledTranslationCsvPaths = filtered;
+        }
+        translationCsvPath = collectEnabledPaths(translationCsvPaths, disabledTranslationCsvPaths).value(0);
 
         // 解析过滤词
         optFilterTags = filterStr.split(',', Qt::SkipEmptyParts);
@@ -8050,9 +8449,6 @@ void MainWindow::loadGlobalConfig() {
     }
 
     applyPathListsToUi();
-    if (!translationCsvPath.isEmpty()) {
-        loadTranslationCSV(translationCsvPath);
-    }
 
     // 将配置应用到 UI 控件 (初始化 UI 状态)
     ui->chkRecursiveLora->setChecked(optLoraRecursive);
@@ -8305,18 +8701,24 @@ void MainWindow::saveGlobalConfig() {
     for (const QString &path : loraPaths) loraArr.append(path);
     QJsonArray galleryArr;
     for (const QString &path : galleryPaths) galleryArr.append(path);
+    QJsonArray translationArr;
+    for (const QString &path : translationCsvPaths) translationArr.append(path);
     QJsonArray loraDisabledArr;
     for (const QString &path : disabledLoraPaths) loraDisabledArr.append(path);
     QJsonArray galleryDisabledArr;
     for (const QString &path : disabledGalleryPaths) galleryDisabledArr.append(path);
+    QJsonArray translationDisabledArr;
+    for (const QString &path : disabledTranslationCsvPaths) translationDisabledArr.append(path);
     QJsonArray collapsedModelFoldersArr;
     for (const QString &path : collapsedModelFolders) collapsedModelFoldersArr.append(path);
     root["lora_paths"]                 = loraArr;
     root["gallery_paths"]              = galleryArr;
+    root["translation_paths"]          = translationArr;
     root["lora_paths_disabled"]        = loraDisabledArr;
     root["gallery_paths_disabled"]     = galleryDisabledArr;
+    root["translation_paths_disabled"] = translationDisabledArr;
     root["model_list_collapsed_folders"] = collapsedModelFoldersArr;
-    root["translation_path"]           = translationCsvPath;
+    root["translation_path"]           = collectEnabledPaths(translationCsvPaths, disabledTranslationCsvPaths).value(0);
     root["lora_recursive"]              = optLoraRecursive;
     root["gallery_recursive"]           = optGalleryRecursive;
     root["blur_radius"]                 = optBlurRadius;
@@ -8480,13 +8882,18 @@ void MainWindow::applyPathListsToUi()
 {
     const QStringList activeLoraPaths = collectEnabledPaths(loraPaths, disabledLoraPaths);
     const QStringList activeGalleryPaths = collectEnabledPaths(galleryPaths, disabledGalleryPaths);
+    const QStringList activeTranslationPaths = collectEnabledPaths(translationCsvPaths, disabledTranslationCsvPaths);
     currentLoraPath = activeLoraPaths.value(0);
     sdOutputFolder = activeGalleryPaths.value(0);
+    translationCsvPath = activeTranslationPaths.value(0);
 
     if (ui->editLoraPath) ui->editLoraPath->setText(formatPathListForEdit(activeLoraPaths));
     if (ui->editGalleryPath) ui->editGalleryPath->setText(formatPathListForEdit(activeGalleryPaths));
-    if (ui->editTransPath) ui->editTransPath->setText(translationCsvPath);
-    if (tagBrowserWidget) tagBrowserWidget->setCsvPath(translationCsvPath);
+    if (ui->editTransPath) ui->editTransPath->setText(formatPathListForEdit(activeTranslationPaths));
+    if (tagBrowserWidget) {
+        tagBrowserWidget->setCsvPath(translationCsvPath);
+        tagBrowserWidget->setMergedTranslationMap(&translationMap);
+    }
     if (llmPromptWidget) llmPromptWidget->setLibraryPaths(activeLoraPaths, activeGalleryPaths);
 }
 
@@ -8681,24 +9088,36 @@ QPixmap MainWindow::applyRoundedMask(const QPixmap &src, int radius)
 
 // 浏览翻译文件
 void MainWindow::onBrowseTranslationPath() {
-    QString fileName = QFileDialog::getOpenFileName(this, "选择翻译文件 (CSV)",
-                                                    QFileInfo(translationCsvPath).path(),
-                                                    "CSV Files (*.csv);;All Files (*.*)");
-    if (!fileName.isEmpty()) {
-        translationCsvPath = fileName;
-        ui->editTransPath->setText(fileName);
-
-        // 保存到配置
-        saveGlobalConfig();
-
-        // 立即加载
-        loadTranslationCSV(translationCsvPath);
-        if (parserWidget) parserWidget->setTranslationMap(&translationMap);
-        if (promptTemplateLibraryWidget) promptTemplateLibraryWidget->setTranslationMap(&translationMap);
-        if (tagBrowserWidget) tagBrowserWidget->setCsvPath(translationCsvPath);
-
+    if (editTranslationCsvPaths()) {
         QMessageBox::information(this, "设置", "翻译词表已加载。");
     }
+}
+
+bool MainWindow::editTranslationCsvPaths()
+{
+    PathListDialog dlg(this);
+    dlg.setDialogTitle("Tag 翻译表管理");
+    dlg.setHintText("可添加多个 Tag 翻译 CSV。列表越靠上优先级越高，可通过右侧复选框临时停用。");
+    dlg.setSelectionMode(PathListDialog::FileMode, "CSV Files (*.csv);;All Files (*.*)");
+    dlg.setPathEntries(buildPathEntries(translationCsvPaths, disabledTranslationCsvPaths));
+
+    if (dlg.exec() != QDialog::Accepted) return false;
+
+    applyPathEntries(dlg.pathEntries(), translationCsvPaths, disabledTranslationCsvPaths);
+    translationCsvPaths = normalizePathList(translationCsvPaths);
+    disabledTranslationCsvPaths = normalizePathSet(disabledTranslationCsvPaths);
+    {
+        QSet<QString> filtered;
+        for (const QString &path : translationCsvPaths) {
+            if (disabledTranslationCsvPaths.contains(path)) filtered.insert(path);
+        }
+        disabledTranslationCsvPaths = filtered;
+    }
+
+    applyPathListsToUi();
+    reloadTranslationMaps();
+    saveGlobalConfig();
+    return true;
 }
 
 // 加载 CSV 逻辑
@@ -8733,6 +9152,48 @@ void MainWindow::loadTranslationCSV(const QString &path) {
     }
     file.close();
     qDebug() << "Loaded translation entries:" << translationMap.size();
+}
+
+void MainWindow::reloadTranslationMaps(bool notifyWidgets)
+{
+    translationMap.clear();
+    const QStringList activePaths = collectEnabledPaths(translationCsvPaths, disabledTranslationCsvPaths);
+    for (int i = activePaths.size() - 1; i >= 0; --i) {
+        const QString path = activePaths.at(i);
+        if (path.isEmpty() || !QFile::exists(path)) continue;
+
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+        QTextStream in(&file);
+        while (!in.atEnd()) {
+            QString line = in.readLine();
+            if (line.trimmed().isEmpty()) continue;
+
+            int firstComma = line.indexOf(',');
+            if (firstComma == -1) continue;
+            QString en = line.left(firstComma).trimmed();
+            QString cn = line.mid(firstComma + 1).trimmed();
+            if (en.startsWith('"') && en.endsWith('"')) en = en.mid(1, en.length() - 2);
+            if (cn.startsWith('"') && cn.endsWith('"')) cn = cn.mid(1, cn.length() - 2);
+            if (!en.isEmpty() && !cn.isEmpty()) {
+                translationMap.insert(en, cn);
+            }
+        }
+    }
+
+    translationCsvPath = activePaths.value(0);
+    if (!notifyWidgets) {
+        qDebug() << "Loaded translation entries:" << translationMap.size() << "from" << activePaths.size() << "CSV file(s)";
+        return;
+    }
+    if (parserWidget) parserWidget->setTranslationMap(&translationMap);
+    if (promptTemplateLibraryWidget) promptTemplateLibraryWidget->setTranslationMap(&translationMap);
+    if (tagBrowserWidget) {
+        tagBrowserWidget->setCsvPath(translationCsvPath);
+        tagBrowserWidget->setMergedTranslationMap(&translationMap);
+    }
+    if (tagFlowWidget) tagFlowWidget->setTranslationMap(&translationMap);
+    qDebug() << "Loaded translation entries:" << translationMap.size() << "from" << activePaths.size() << "CSV file(s)";
 }
 
 void MainWindow::onUserGalleryContextMenu(const QPoint &pos)
@@ -9180,9 +9641,12 @@ void MainWindow::refreshCollectionTreeView()
                 child->setData(0, ROLE_PREVIEW_PATH, sourceItem->data(ROLE_PREVIEW_PATH));
                 child->setData(0, ROLE_NSFW_LEVEL, sourceItem->data(ROLE_NSFW_LEVEL));
                 child->setData(0, ROLE_MODEL_NAME, sourceItem->data(ROLE_MODEL_NAME));
+                child->setData(0, ROLE_MODEL_CREATOR, sourceItem->data(ROLE_MODEL_CREATOR));
+                child->setData(0, ROLE_MODEL_TAGS, sourceItem->data(ROLE_MODEL_TAGS));
                 child->setData(0, ROLE_USER_RATING, sourceItem->data(ROLE_USER_RATING));
                 child->setData(0, ROLE_USER_NOTE, sourceItem->data(ROLE_USER_NOTE));
                 child->setData(0, ROLE_USER_TAGS, sourceItem->data(ROLE_USER_TAGS));
+                child->setData(0, ROLE_USER_CUSTOM_TRIGGERS, sourceItem->data(ROLE_USER_CUSTOM_TRIGGERS));
                 child->setIcon(0, sourceItem->icon());
                 applyModelHighlightColor(child);
                 applyModelUserNoteData(child);

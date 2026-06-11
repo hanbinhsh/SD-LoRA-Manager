@@ -174,7 +174,7 @@
                      <x>0</x>
                      <y>0</y>
                      <width>504</width>
-                     <height>271</height>
+                     <height>269</height>
                     </rect>
                    </property>
                    <layout class="QVBoxLayout" name="layoutGenerateImagePositiveTags"/>
@@ -199,7 +199,7 @@
                      <x>0</x>
                      <y>0</y>
                      <width>504</width>
-                     <height>270</height>
+                     <height>269</height>
                     </rect>
                    </property>
                    <layout class="QVBoxLayout" name="layoutGenerateImageNegativeTags"/>
@@ -581,35 +581,110 @@
             </item>
             <item>
              <layout class="QGridLayout" name="gridLayout">
-              <item row="1" column="1">
-               <widget class="QLineEdit" name="editPlaceholderLabel">
-                <property name="placeholderText">
-                 <string>显示名称，例如 角色</string>
+              <item row="4" column="0" colspan="4">
+               <layout class="QGridLayout" name="gridLayout_3">
+                <property name="leftMargin">
+                 <number>0</number>
                 </property>
-               </widget>
-              </item>
-              <item row="3" column="0">
-               <widget class="QLabel" name="label_4">
-                <property name="text">
-                 <string>默认值</string>
+                <property name="topMargin">
+                 <number>0</number>
                 </property>
-               </widget>
+                <property name="rightMargin">
+                 <number>0</number>
+                </property>
+                <property name="bottomMargin">
+                 <number>0</number>
+                </property>
+                <item row="1" column="0">
+                 <widget class="QTableWidget" name="tablePlaceholderOptions">
+                  <property name="selectionMode">
+                   <enum>QAbstractItemView::SelectionMode::SingleSelection</enum>
+                  </property>
+                  <property name="selectionBehavior">
+                   <enum>QAbstractItemView::SelectionBehavior::SelectRows</enum>
+                  </property>
+                  <attribute name="horizontalHeaderVisible">
+                   <bool>false</bool>
+                  </attribute>
+                  <column>
+                   <property name="text">
+                    <string>选项</string>
+                   </property>
+                  </column>
+                 </widget>
+                </item>
+                <item row="1" column="1">
+                 <layout class="QVBoxLayout" name="verticalLayout_3">
+                  <item>
+                   <widget class="QLabel" name="label_5">
+                    <property name="text">
+                     <string>选项</string>
+                    </property>
+                    <property name="alignment">
+                     <set>Qt::AlignmentFlag::AlignCenter</set>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPushButton" name="btnDeletePlaceholderOption">
+                    <property name="text">
+                     <string>删除</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPushButton" name="btnUpdatePlaceholderOption">
+                    <property name="text">
+                     <string>更新</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPushButton" name="btnAddPlaceholderOption">
+                    <property name="text">
+                     <string>添加</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPushButton" name="btnMovePlaceholderOptionUp">
+                    <property name="text">
+                     <string>上移</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPushButton" name="btnMovePlaceholderOptionDown">
+                    <property name="text">
+                     <string>下移</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </item>
+                <item row="2" column="0" colspan="2">
+                 <widget class="QPlainTextEdit" name="editPlaceholderOptionValue">
+                  <property name="maximumSize">
+                   <size>
+                    <width>16777215</width>
+                    <height>16777215</height>
+                   </size>
+                  </property>
+                  <property name="placeholderText">
+                   <string>在这里编辑当前选项内容；可以包含换行，也可以留空作为空选项。</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
               </item>
-              <item row="1" column="0">
+              <item row="0" column="2">
                <widget class="QLabel" name="label_2">
                 <property name="text">
                  <string>名称</string>
                 </property>
                </widget>
               </item>
-              <item row="2" column="0">
-               <widget class="QLabel" name="label_3">
-                <property name="text">
-                 <string>类型</string>
-                </property>
-               </widget>
-              </item>
-              <item row="3" column="1">
+              <item row="2" column="3">
                <widget class="QLineEdit" name="editPlaceholderDefault">
                 <property name="placeholderText">
                  <string>默认值</string>
@@ -635,13 +710,6 @@
                 </item>
                </widget>
               </item>
-              <item row="0" column="1">
-               <widget class="QLineEdit" name="editPlaceholderName">
-                <property name="placeholderText">
-                 <string>占位符名称，例如 character</string>
-                </property>
-               </widget>
-              </item>
               <item row="0" column="0">
                <widget class="QLabel" name="label">
                 <property name="text">
@@ -649,17 +717,31 @@
                 </property>
                </widget>
               </item>
-              <item row="4" column="1">
-               <widget class="QPlainTextEdit" name="textPlaceholderOptions">
+              <item row="0" column="1">
+               <widget class="QLineEdit" name="editPlaceholderName">
                 <property name="placeholderText">
-                 <string>选项，每行一个；文本类型可留空。</string>
+                 <string>占位符名称，例如 character</string>
                 </property>
                </widget>
               </item>
-              <item row="4" column="0">
-               <widget class="QLabel" name="label_5">
+              <item row="2" column="2">
+               <widget class="QLabel" name="label_4">
                 <property name="text">
-                 <string>选项</string>
+                 <string>默认值</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="3">
+               <widget class="QLineEdit" name="editPlaceholderLabel">
+                <property name="placeholderText">
+                 <string>显示名称，例如 角色</string>
+                </property>
+               </widget>
+              </item>
+              <item row="2" column="0">
+               <widget class="QLabel" name="label_3">
+                <property name="text">
+                 <string>类型</string>
                 </property>
                </widget>
               </item>
@@ -780,8 +862,8 @@
                    <rect>
                     <x>0</x>
                     <y>0</y>
-                    <width>504</width>
-                    <height>270</height>
+                    <width>31</width>
+                    <height>22</height>
                    </rect>
                   </property>
                   <layout class="QVBoxLayout" name="layoutTemplateImagePositiveTags"/>
@@ -807,8 +889,8 @@
                    <rect>
                     <x>0</x>
                     <y>0</y>
-                    <width>504</width>
-                    <height>269</height>
+                    <width>31</width>
+                    <height>22</height>
                    </rect>
                   </property>
                   <layout class="QVBoxLayout" name="layoutTemplateImageNegativeTags"/>

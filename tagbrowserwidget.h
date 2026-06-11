@@ -8,6 +8,7 @@
 #include <QPair>
 #include <QVector>
 #include <QFutureWatcher>
+#include <QHash>
 
 namespace Ui {
 class TagBrowserWidget;
@@ -79,6 +80,7 @@ public:
 
     void setCsvPath(const QString &path);
     QString csvPath() const;
+    void setMergedTranslationMap(const QHash<QString, QString> *map);
 
 protected:
     void showEvent(QShowEvent *event) override;
@@ -119,6 +121,7 @@ private:
     bool m_userTagsLoaded = false;
     bool m_userTagsLoading = false;
     int m_userTagLoadGeneration = 0;
+    const QHash<QString, QString> *m_mergedTranslationMap = nullptr;
 
     QStringList parseCsvLine(const QString &line) const;
     QString escapeCsvField(const QString &value) const;

@@ -117,6 +117,18 @@ private:
     QString translatedTextForTag(const QString &tag) const;
     QStringList splitOptions(const QString &text) const;
 
+    QStringList currentPlaceholderOptionValues() const;
+    void setPlaceholderOptionValues(const QStringList &options);
+    void updatePlaceholderOptionEditorFromSelection();
+    void updatePlaceholderOptionControls();
+    void addPlaceholderOptionFromEditor();
+    void updateSelectedPlaceholderOptionFromEditor();
+    void deleteSelectedPlaceholderOption();
+    void moveSelectedPlaceholderOptionUp();
+    void moveSelectedPlaceholderOptionDown();
+
+    void refreshPlaceholderTableKeepingName(const QString &name);
+
     void loadLibrary();
     void saveLibrary();
     void createDefaultLibrary();

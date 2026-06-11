@@ -62,6 +62,9 @@ const int ROLE_MODEL_HIGHLIGHT_COLOR  = Qt::UserRole + 23;  // 模型侧边栏�
 const int ROLE_USER_RATING            = Qt::UserRole + 24;  // 用户评分
 const int ROLE_USER_NOTE              = Qt::UserRole + 25;  // 用户备注
 const int ROLE_USER_TAGS              = Qt::UserRole + 26;  // 用户标签
+const int ROLE_USER_CUSTOM_TRIGGERS   = Qt::UserRole + 27;  // 用户自定义触发词
+const int ROLE_MODEL_CREATOR          = Qt::UserRole + 28;  // Civitai 作者
+const int ROLE_MODEL_TAGS             = Qt::UserRole + 29;  // Civitai 模型标签
 // 用户图库专用
 const int ROLE_USER_IMAGE_PATH        = Qt::UserRole + 30;
 const int ROLE_USER_IMAGE_PROMPT      = Qt::UserRole + 31;
@@ -84,7 +87,7 @@ const int ROLE_COLLECTION_NAME        = Qt::UserRole + 51;  // 存储收藏夹�
 const int ROLE_ITEM_COUNT             = Qt::UserRole + 52;  // 存储该分类下的模型数量
 const int ROLE_COLLECTION_EXPAND_KEY  = Qt::UserRole + 53;  // 存储收藏夹树展开状态键
 
-const QString CURRENT_VERSION = "1.5.1";
+const QString CURRENT_VERSION = "1.5.2";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
@@ -111,6 +114,7 @@ struct ModelUserNote {
     double rating = 0.0;
     QString note;
     QStringList tags;
+    QStringList customTriggers;
     QString updatedAt;
 };
 
@@ -231,6 +235,9 @@ struct ModelMeta {
     double fileSizeMB;
     QString sha256;
     QString fileNameServer;
+    QString creatorName;
+    QString creatorAvatarUrl;
+    QStringList modelTags;
     int modelId = 0;
     int versionId = 0;
     bool isLocalEdited = false;
@@ -311,7 +318,7 @@ private slots:
     void onEditSetCoverClicked();
 
 private:
-    Ui::MainWindow *ui;
+    Ui::MainWindow *ui = nullptr;
     QTabWidget *toolsTabWidget = nullptr;
     PromptParserWidget *parserWidget = nullptr;
     TagBrowserWidget *tagBrowserWidget = nullptr;
@@ -319,7 +326,7 @@ private:
     UsageAnalysisWidget *usageAnalysisWidget = nullptr;
     PromptTemplateLibraryWidget *promptTemplateLibraryWidget = nullptr;
     QSet<int> pendingToolTabLoads;
-    QNetworkAccessManager *netManager;
+    QNetworkAccessManager *netManager = nullptr;
     QPixmap currentHeroPixmap;
     QString currentHeroPath;
     ModelMeta currentMeta;
@@ -330,6 +337,8 @@ private:
     QHash<QString, QColor> modelHighlightColors;
     QHash<QString, ModelUserNote> modelUserNotes;
     QString currentCollectionFilter; // 当前显示的收藏夹 ("" 代表全部)
+    QString currentHomeAuthorFilter;
+    QSet<QString> currentHomeTagFilters;
 
     // 收藏夹 JSON 读写
     void loadCollections();
@@ -341,12 +350,19 @@ private:
     QString modelUserNotesPath() const;
     QStringList normalizeModelUserTags(const QStringList &tags) const;
     QStringList normalizeModelUserTagsText(const QString &text) const;
+    QStringList normalizeModelCustomTriggers(const QStringList &triggers) const;
+    QStringList normalizeModelCustomTriggersText(const QString &text) const;
     QString formatModelRating(double rating) const;
     QString formatModelUserNoteTooltip(const QString &filePath, const QString &baseTooltip = QString()) const;
     void applyModelUserNoteData(QListWidgetItem *item);
     void applyModelUserNoteData(QTreeWidgetItem *item);
     void refreshModelUserNoteItems(const QString &filePath);
     void refreshModelUserNotePanel(const QString &filePath = QString());
+    void refreshModelAttributionPanel(const ModelMeta &meta);
+    void refreshHomeFilterChips();
+    void setHomeAuthorFilter(const QString &author);
+    void addHomeTagFilter(const QString &tag);
+    void clearHomeFilters();
     void openModelNoteDialog(QListWidgetItem *item);
     void setUserRatingForItems(const QList<QListWidgetItem*> &items, double rating);
     void addUserTagsForItems(const QList<QListWidgetItem*> &items, const QStringList &tags);
@@ -357,6 +373,7 @@ private:
     void scanModels(const QString &path);
     void scanModels(const QStringList &paths);
     void updateDetailView(const ModelMeta &meta);
+    void refreshTriggerWordsPanel(const ModelMeta &meta);
     void clearDetailView();
     QIcon getSquareIcon(const QPixmap &srcPix);
 
@@ -381,6 +398,11 @@ private:
     bool shouldUseCivitaiBearerAuth(const QUrl &url) const;
     QUrl civitaiUrlWithToken(const QUrl &url) const;
     QString civitaiNetworkErrorMessage(QNetworkReply *reply) const;
+    QJsonObject mergeCivitaiModelIntoVersion(const QJsonObject &versionRoot, const QJsonObject &modelRoot) const;
+    QStringList readModelTagsFromJson(const QJsonObject &root) const;
+    QString readModelCreatorFromJson(const QJsonObject &root) const;
+    QString readModelCreatorAvatarFromJson(const QJsonObject &root) const;
+    void applyCivitaiAttributionToItem(QListWidgetItem *item, const QString &creator, const QStringList &tags);
     void saveLocalMetadata(const QString &modelDir, const QString &baseName, const QJsonObject &data);
     bool readLocalJson(const QString &dirPath, const QString &baseName, ModelMeta &meta);
     void clearLayout(QLayout *layout);
@@ -413,7 +435,7 @@ private:
     // 快速读取单个 JSON 的元数据用于列表显示
     void preloadItemMetadata(QListWidgetItem *item, const QString &jsonPath);
     void refreshModelUsageStatsAsync();
-    QFutureWatcher<ImageLoadResult> *imageLoadWatcher;
+    QFutureWatcher<ImageLoadResult> *imageLoadWatcher = nullptr;
     QPixmap applyBlurToImage(const QImage &srcImg, const QSize &bgSize, const QSize &heroSize);
     static ImageLoadResult processImageTask(const QString &path);
     QPixmap nextHeroPixmap;         // 即将显示的新 Hero 图
@@ -486,14 +508,14 @@ private:
     bool m_forceResyncPreview = false;
     bool m_skipPreviewSync = false;
 
-    QFutureWatcher<QString> *hashWatcher;
+    QFutureWatcher<QString> *hashWatcher = nullptr;
     QString currentProcessingPath;
 
-    QThreadPool *threadPool;           //用于详情页、大图 (可被 cancel)
-    QThreadPool *backgroundThreadPool; // 【新增】用于侧边栏、主页列表 (不可被 cancel)
+    QThreadPool *threadPool = nullptr;           //用于详情页、大图 (可被 cancel)
+    QThreadPool *backgroundThreadPool = nullptr; // 【新增】用于侧边栏、主页列表 (不可被 cancel)
     QIcon placeholderIcon;
 
-    QTimer *bgResizeTimer;
+    QTimer *bgResizeTimer = nullptr;
     QTimer *detailGalleryBuildTimer = nullptr;
     ModelMeta pendingGalleryMeta;
     QString pendingGalleryModelDir;
@@ -532,7 +554,7 @@ private:
     int updateCheckToken = 0;
 
 
-    TagFlowWidget *tagFlowWidget;
+    TagFlowWidget *tagFlowWidget = nullptr;
 
     void scanForUserImages(const QString &loraBaseName);
     void parsePngInfo(const QString &path, UserImageInfo &info);
@@ -583,6 +605,8 @@ private:
     QStringList   galleryPaths;                                                   // 图库路径列表
     QSet<QString> disabledLoraPaths;                                              // 关闭的 LoRA 路径
     QSet<QString> disabledGalleryPaths;                                           // 关闭的图库路径
+    QStringList   translationCsvPaths;                                            // Tag 翻译表路径列表
+    QSet<QString> disabledTranslationCsvPaths;                                    // 关闭的 Tag 翻译表路径
     QString       currentLoraPath;                                                // LoRA主路径 (兼容)
     QString       translationCsvPath;                                             // 翻译文件路径
     QString       sdOutputFolder;                                                 // 图库主路径 (兼容)
@@ -638,6 +662,8 @@ private:
     void applyPathListsToUi();
     bool editLoraPaths(bool rescanAfter);
     bool editGalleryPaths(bool rescanAfter);
+    bool editTranslationCsvPaths();
+    void reloadTranslationMaps(bool notifyWidgets = true);
 };
 
 #endif // MAINWINDOW_H

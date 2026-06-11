@@ -178,12 +178,23 @@ void splitCategoryAndTranslationText(const QString &text, QString &category, QSt
 int appendUniquePromptTags(QPlainTextEdit *target, const QStringList &tags)
 {
     if (!target) return 0;
-    const QString currentText = target->toPlainText().trimmed();
+
+    const QString currentText = target->toPlainText();
     const QStringList newTags = newPromptTagsOnly(currentText, tags);
     if (newTags.isEmpty()) return 0;
 
     QString nextText = currentText;
-    if (!nextText.isEmpty() && !nextText.endsWith(',')) nextText += ", ";
+
+    if (!nextText.trimmed().isEmpty()) {
+        if (nextText.endsWith('\n') || nextText.endsWith('\r')) {
+            // 保留模板末尾已有换行/空行，直接在后面追加
+        } else if (!nextText.trimmed().endsWith(',')) {
+            nextText += ", ";
+        } else if (!nextText.endsWith(' ')) {
+            nextText += " ";
+        }
+    }
+
     nextText += newTags.join(", ");
     target->setPlainText(nextText);
     return newTags.size();
@@ -196,17 +207,73 @@ QTableWidgetItem *makePromptTemplateTableItem(const QVariant &value)
     return item;
 }
 
+QString placeholderOptionDisplayText(QString value)
+{
+    value.replace("\r\n", "\n");
+    value.replace('\r', '\n');
+
+    if (value.isEmpty()) return "<空选项>";
+
+    const bool hasNewline = value.contains('\n');
+    QString firstLine = value.section('\n', 0, 0);
+
+    if (firstLine.isEmpty()) firstLine = "⏎";
+    if (hasNewline) firstLine += "  ↵";
+
+    return firstLine;
+}
+
+QTableWidgetItem *makePlaceholderOptionItem(const QString &value)
+{
+    auto *item = new QTableWidgetItem(placeholderOptionDisplayText(value));
+    item->setData(Qt::UserRole, value);
+    item->setToolTip(value.isEmpty() ? "空选项" : value);
+    item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+    return item;
+}
+
+void swapPlaceholderOptionRows(QTableWidget *table, int rowA, int rowB)
+{
+    if (!table) return;
+    if (rowA < 0 || rowB < 0) return;
+    if (rowA >= table->rowCount() || rowB >= table->rowCount()) return;
+    if (rowA == rowB) return;
+
+    QTableWidgetItem *itemA = table->takeItem(rowA, 0);
+    QTableWidgetItem *itemB = table->takeItem(rowB, 0);
+
+    table->setItem(rowA, 0, itemB);
+    table->setItem(rowB, 0, itemA);
+}
+
 QString cleanupRenderedPrompt(QString text)
 {
-    text.replace("\r\n", ",");
-    text.replace('\n', ',');
-    text.replace('\r', ',');
-    QStringList parts;
-    for (const QString &part : text.split(',', Qt::SkipEmptyParts)) {
-        const QString trimmed = part.trimmed();
-        if (!trimmed.isEmpty()) parts.append(trimmed);
-    }
-    return parts.join(", ");
+    text.replace("\r\n", "\n");
+    text.replace('\r', '\n');
+    return text;
+}
+
+QStringList placeholderNamesInTemplateText(const QString &positive, const QString &negative)
+{
+    QStringList names;
+    QSet<QString> seen;
+
+    static const QRegularExpression regex("\\{([A-Za-z0-9_]+)\\}");
+
+    auto collect = [&names, &seen](const QString &text) {
+        auto it = regex.globalMatch(text);
+        while (it.hasNext()) {
+            const QRegularExpressionMatch match = it.next();
+            const QString name = match.captured(1).trimmed();
+            if (name.isEmpty() || seen.contains(name)) continue;
+            seen.insert(name);
+            names.append(name);
+        }
+    };
+
+    collect(positive);
+    collect(negative);
+    return names;
 }
 
 QStringList promptTagsNotInBase(const QString &prompt, const QString &basePrompt)
@@ -384,6 +451,15 @@ PromptTemplateLibraryWidget::PromptTemplateLibraryWidget(QWidget *parent)
     ui->tablePlaceholders->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->tablePlaceholders->setEditTriggers(QAbstractItemView::NoEditTriggers);
     ui->tablePlaceholders->setToolTip("全局占位符定义，例如名称、显示名、文本/单选/多选类型。");
+    ui->tablePlaceholderOptions->setColumnCount(1);
+    ui->tablePlaceholderOptions->setHorizontalHeaderLabels({"选项"});
+    ui->tablePlaceholderOptions->horizontalHeader()->setStretchLastSection(true);
+    ui->tablePlaceholderOptions->verticalHeader()->hide();
+    ui->tablePlaceholderOptions->setShowGrid(false);
+    ui->tablePlaceholderOptions->setSelectionBehavior(QAbstractItemView::SelectRows);
+    ui->tablePlaceholderOptions->setSelectionMode(QAbstractItemView::SingleSelection);
+    ui->tablePlaceholderOptions->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    ui->tablePlaceholderOptions->setToolTip("单选/多选的候选项。选项内容可以包含换行，也可以为空。");
     m_generateTagPicker = { ui->tabGenerateTagPicker,
                             ui->editTagSearch,
                             ui->comboTagScope,
@@ -462,7 +538,10 @@ PromptTemplateLibraryWidget::PromptTemplateLibraryWidget(QWidget *parent)
     connect(ui->btnDuplicateTemplate, &QPushButton::clicked, this, &PromptTemplateLibraryWidget::onDuplicateTemplateClicked);
     connect(ui->btnDeleteTemplate, &QPushButton::clicked, this, &PromptTemplateLibraryWidget::onDeleteTemplateClicked);
 
-    connect(ui->tablePlaceholders, &QTableWidget::cellClicked, this, &PromptTemplateLibraryWidget::onPlaceholderCellChanged);
+    connect(ui->tablePlaceholders, &QTableWidget::currentCellChanged, this,
+            [this](int row, int, int, int) {
+                if (row >= 0) updatePlaceholderEditorFromSelection();
+            });
     connect(ui->btnSavePlaceholder, &QPushButton::clicked, this, &PromptTemplateLibraryWidget::onSavePlaceholderClicked);
     connect(ui->btnNewPlaceholder, &QPushButton::clicked, this, &PromptTemplateLibraryWidget::onNewPlaceholderClicked);
     connect(ui->btnDeletePlaceholder, &QPushButton::clicked, this, &PromptTemplateLibraryWidget::onDeletePlaceholderClicked);
@@ -515,6 +594,31 @@ PromptTemplateLibraryWidget::PromptTemplateLibraryWidget(QWidget *parent)
     });
     connect(ui->btnAddTemplateImagePositive, &QPushButton::clicked, this, [this]() { addTemplateImageTagsToTemplate(true); });
     connect(ui->btnAddTemplateImageNegative, &QPushButton::clicked, this, [this]() { addTemplateImageTagsToTemplate(false); });
+    connect(ui->tablePlaceholderOptions, &QTableWidget::currentCellChanged, this,
+            [this](int, int, int, int) {
+                updatePlaceholderOptionEditorFromSelection();
+                updatePlaceholderOptionControls();
+            });
+
+    connect(ui->comboPlaceholderType, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this]() {
+                updatePlaceholderOptionControls();
+            });
+
+    connect(ui->btnAddPlaceholderOption, &QPushButton::clicked,
+            this, &PromptTemplateLibraryWidget::addPlaceholderOptionFromEditor);
+
+    connect(ui->btnUpdatePlaceholderOption, &QPushButton::clicked,
+            this, &PromptTemplateLibraryWidget::updateSelectedPlaceholderOptionFromEditor);
+
+    connect(ui->btnDeletePlaceholderOption, &QPushButton::clicked,
+            this, &PromptTemplateLibraryWidget::deleteSelectedPlaceholderOption);
+
+    connect(ui->btnMovePlaceholderOptionUp, &QPushButton::clicked,
+            this, &PromptTemplateLibraryWidget::moveSelectedPlaceholderOptionUp);
+
+    connect(ui->btnMovePlaceholderOptionDown, &QPushButton::clicked,
+            this, &PromptTemplateLibraryWidget::moveSelectedPlaceholderOptionDown);
 
     loadLibrary();
 }
@@ -839,8 +943,15 @@ void PromptTemplateLibraryWidget::refreshTemplateList()
 
 void PromptTemplateLibraryWidget::refreshPlaceholderTable()
 {
+    const QString previousName =
+        ui->tablePlaceholders->currentRow() >= 0 && ui->tablePlaceholders->currentRow() < m_placeholders.size()
+            ? m_placeholders.at(ui->tablePlaceholders->currentRow()).name
+            : ui->editPlaceholderName->text().trimmed();
+
     QSignalBlocker blocker(ui->tablePlaceholders);
+
     ui->tablePlaceholders->setRowCount(0);
+
     for (const PromptPlaceholder &item : std::as_const(m_placeholders)) {
         const int row = ui->tablePlaceholders->rowCount();
         ui->tablePlaceholders->insertRow(row);
@@ -848,6 +959,7 @@ void PromptTemplateLibraryWidget::refreshPlaceholderTable()
         ui->tablePlaceholders->setItem(row, 1, new QTableWidgetItem(item.label));
         ui->tablePlaceholders->setItem(row, 2, new QTableWidgetItem(typeToString(item.type)));
     }
+
     QHeaderView *header = ui->tablePlaceholders->horizontalHeader();
     header->setStretchLastSection(false);
     header->setSectionResizeMode(0, QHeaderView::Interactive);
@@ -855,9 +967,53 @@ void PromptTemplateLibraryWidget::refreshPlaceholderTable()
     header->setSectionResizeMode(2, QHeaderView::Stretch);
     header->resizeSection(0, 150);
     header->resizeSection(1, 150);
-    if (ui->tablePlaceholders->rowCount() > 0 && ui->tablePlaceholders->currentRow() < 0) {
-        ui->tablePlaceholders->setCurrentCell(0, 0);
+
+    int nextRow = -1;
+    if (!previousName.isEmpty()) {
+        nextRow = placeholderIndexByName(previousName);
     }
+    if (nextRow < 0 && ui->tablePlaceholders->rowCount() > 0) {
+        nextRow = qMin(ui->tablePlaceholders->rowCount() - 1, qMax(0, ui->tablePlaceholders->currentRow()));
+    }
+
+    if (nextRow >= 0) {
+        ui->tablePlaceholders->setCurrentCell(nextRow, 0);
+        ui->tablePlaceholders->selectRow(nextRow);
+    }
+
+    updatePlaceholderEditorFromSelection();
+}
+
+void PromptTemplateLibraryWidget::refreshPlaceholderTableKeepingName(const QString &name)
+{
+    QSignalBlocker blocker(ui->tablePlaceholders);
+
+    ui->tablePlaceholders->setRowCount(0);
+
+    for (const PromptPlaceholder &item : std::as_const(m_placeholders)) {
+        const int row = ui->tablePlaceholders->rowCount();
+        ui->tablePlaceholders->insertRow(row);
+        ui->tablePlaceholders->setItem(row, 0, new QTableWidgetItem(item.name));
+        ui->tablePlaceholders->setItem(row, 1, new QTableWidgetItem(item.label));
+        ui->tablePlaceholders->setItem(row, 2, new QTableWidgetItem(typeToString(item.type)));
+    }
+
+    QHeaderView *header = ui->tablePlaceholders->horizontalHeader();
+    header->setStretchLastSection(false);
+    header->setSectionResizeMode(0, QHeaderView::Interactive);
+    header->setSectionResizeMode(1, QHeaderView::Interactive);
+    header->setSectionResizeMode(2, QHeaderView::Stretch);
+    header->resizeSection(0, 150);
+    header->resizeSection(1, 150);
+
+    int row = placeholderIndexByName(name);
+    if (row < 0 && ui->tablePlaceholders->rowCount() > 0) row = 0;
+
+    if (row >= 0) {
+        ui->tablePlaceholders->setCurrentCell(row, 0);
+        ui->tablePlaceholders->selectRow(row);
+    }
+
     updatePlaceholderEditorFromSelection();
 }
 
@@ -870,14 +1026,36 @@ void PromptTemplateLibraryWidget::rebuildPlaceholderInputs()
     m_placeholderEditors.clear();
 
     const int templateIndex = templateIndexById(selectedTemplateId());
-    const QHash<QString, QString> defaults = templateIndex >= 0 ? m_templates.at(templateIndex).placeholderDefaults : QHash<QString, QString>();
+    if (templateIndex < 0) {
+        ui->layoutPlaceholderInputs->addStretch(1);
+        return;
+    }
+
+    const PromptTemplate &currentTemplate = m_templates.at(templateIndex);
+    const QStringList usedNames = placeholderNamesInTemplateText(
+        currentTemplate.positiveTemplate,
+        currentTemplate.negativeTemplate
+        );
+
+    QSet<QString> usedNameSet;
+    for (const QString &name : usedNames) usedNameSet.insert(name);
+
+    const QHash<QString, QString> defaults = currentTemplate.placeholderDefaults;
+
+    bool addedAny = false;
+
     for (const PromptPlaceholder &placeholder : std::as_const(m_placeholders)) {
+        if (!usedNameSet.contains(placeholder.name)) continue;
+
+        addedAny = true;
+
         auto *row = new QWidget(ui->placeholderInputContainer);
         auto *layout = new QVBoxLayout(row);
         layout->setContentsMargins(0, 0, 0, 8);
         layout->addWidget(new QLabel(QString("%1  {%2}").arg(placeholder.label, placeholder.name), row));
 
         const QString value = defaults.value(placeholder.name, placeholder.defaultValue);
+
         if (placeholder.type == PlaceholderType::Text) {
             auto *line = new QLineEdit(row);
             line->setText(value);
@@ -887,8 +1065,16 @@ void PromptTemplateLibraryWidget::rebuildPlaceholderInputs()
         } else if (placeholder.type == PlaceholderType::SingleChoice) {
             auto *combo = new QComboBox(row);
             combo->setEditable(true);
-            combo->addItems(placeholder.options);
-            combo->setCurrentText(value);
+            for (const QString &option : placeholder.options) {
+                combo->addItem(placeholderOptionDisplayText(option), option);
+            }
+
+            const int optionIndex = combo->findData(value);
+            if (optionIndex >= 0) {
+                combo->setCurrentIndex(optionIndex);
+            } else {
+                combo->setCurrentText(value);
+            }
             connect(combo, &QComboBox::currentTextChanged, this, &PromptTemplateLibraryWidget::updateGeneratedPrompt);
             layout->addWidget(combo);
             m_placeholderEditors.insert(placeholder.name, combo);
@@ -896,45 +1082,84 @@ void PromptTemplateLibraryWidget::rebuildPlaceholderInputs()
             auto *container = new QWidget(row);
             auto *boxLayout = new QVBoxLayout(container);
             boxLayout->setContentsMargins(0, 0, 0, 0);
+
             QSet<QString> selected;
             for (const QString &part : value.split(',', Qt::SkipEmptyParts)) {
                 selected.insert(part.trimmed());
             }
+
             for (const QString &option : placeholder.options) {
-                auto *box = new QCheckBox(option, container);
-                box->setChecked(selected.contains(option.trimmed()));
+                auto *box = new QCheckBox(placeholderOptionDisplayText(option), container);
+                box->setProperty("optionValue", option);
+                box->setToolTip(option.isEmpty() ? "空选项" : option);
+                box->setChecked(selected.contains(option));
                 connect(box, &QCheckBox::toggled, this, &PromptTemplateLibraryWidget::updateGeneratedPrompt);
                 boxLayout->addWidget(box);
             }
+
             layout->addWidget(container);
             m_placeholderEditors.insert(placeholder.name, container);
         }
+
         ui->layoutPlaceholderInputs->addWidget(row);
     }
+
+    if (!addedAny) {
+        auto *emptyLabel = new QLabel("当前模板没有使用全局占位符。", ui->placeholderInputContainer);
+        emptyLabel->setWordWrap(true);
+        ui->layoutPlaceholderInputs->addWidget(emptyLabel);
+    }
+
     ui->layoutPlaceholderInputs->addStretch(1);
 }
 
 QHash<QString, QString> PromptTemplateLibraryWidget::currentPlaceholderValues(QStringList *missing) const
 {
     QHash<QString, QString> values;
+
     for (const PromptPlaceholder &placeholder : m_placeholders) {
-        QString value;
         QWidget *editor = m_placeholderEditors.value(placeholder.name, nullptr);
+        if (!editor) continue; // 没有出现在当前模板里的占位符，不参与渲染和未填写判断
+
+        QString value;
+        bool hasValidEmptyChoice = false;
+
         if (auto *line = qobject_cast<QLineEdit*>(editor)) {
-            value = line->text().trimmed();
+            value = line->text();
         } else if (auto *combo = qobject_cast<QComboBox*>(editor)) {
-            value = combo->currentText().trimmed();
-        } else if (editor) {
+            const QVariant data = combo->currentData();
+
+            if (data.isValid()) {
+                value = data.toString();
+                hasValidEmptyChoice = value.isEmpty();
+            } else {
+                value = combo->currentText();
+            }
+        } else {
             QStringList selected;
             const auto boxes = editor->findChildren<QCheckBox*>();
+
             for (QCheckBox *box : boxes) {
-                if (box->isChecked()) selected << box->text();
+                if (!box->isChecked()) continue;
+
+                const QString optionValue = box->property("optionValue").toString();
+                selected << optionValue;
+
+                if (optionValue.isEmpty()) {
+                    hasValidEmptyChoice = true;
+                }
             }
+
             value = selected.join(", ");
         }
-        if (value.isEmpty() && missing) missing->append(placeholder.name);
+
+        if (value.isEmpty() && missing && !hasValidEmptyChoice) {
+            missing->append(placeholder.name);
+        }
+
         values.insert(placeholder.name, value);
     }
+
     return values;
 }
 
@@ -984,70 +1209,315 @@ void PromptTemplateLibraryWidget::updateGeneratedPrompt()
 
 void PromptTemplateLibraryWidget::updateTemplateEditorFromSelection()
 {
-    const int index = templateIndexById(ui->listTemplates->currentItem() ? ui->listTemplates->currentItem()->data(Qt::UserRole).toString() : QString());
+    const int index = templateIndexById(
+        ui->listTemplates->currentItem()
+            ? ui->listTemplates->currentItem()->data(Qt::UserRole).toString()
+            : QString()
+        );
+
     QSignalBlocker blocker(ui->tableTemplateDefaults);
     ui->tableTemplateDefaults->setRowCount(0);
+
     if (index < 0) return;
+
     const PromptTemplate item = m_templates.at(index);
+
     ui->editTemplateName->setText(item.name);
     ui->editTemplateCategory->setText(item.category);
     ui->textTemplatePositive->setPlainText(item.positiveTemplate);
     ui->textTemplateNegative->setPlainText(item.negativeTemplate);
     ui->textTemplateNotes->setPlainText(item.notes);
+
+    const QStringList usedNames = placeholderNamesInTemplateText(
+        item.positiveTemplate,
+        item.negativeTemplate
+        );
+
+    QSet<QString> usedNameSet;
+    for (const QString &name : usedNames) usedNameSet.insert(name);
+
     for (const PromptPlaceholder &placeholder : std::as_const(m_placeholders)) {
+        if (!usedNameSet.contains(placeholder.name)) continue;
+
         const int row = ui->tableTemplateDefaults->rowCount();
         ui->tableTemplateDefaults->insertRow(row);
+
         auto *nameItem = new QTableWidgetItem(placeholder.name);
         nameItem->setFlags(nameItem->flags() & ~Qt::ItemIsEditable);
+
         ui->tableTemplateDefaults->setItem(row, 0, nameItem);
-        ui->tableTemplateDefaults->setItem(row, 1, new QTableWidgetItem(item.placeholderDefaults.value(placeholder.name, placeholder.defaultValue)));
+        ui->tableTemplateDefaults->setItem(
+            row,
+            1,
+            new QTableWidgetItem(item.placeholderDefaults.value(placeholder.name, placeholder.defaultValue))
+            );
     }
 }
 
 void PromptTemplateLibraryWidget::updatePlaceholderEditorFromSelection()
 {
     const int row = ui->tablePlaceholders->currentRow();
-    if (row < 0 || row >= m_placeholders.size()) return;
+
+    if (row < 0 || row >= m_placeholders.size()) {
+        ui->editPlaceholderName->clear();
+        ui->editPlaceholderLabel->clear();
+        ui->comboPlaceholderType->setCurrentIndex(0);
+        ui->editPlaceholderDefault->clear();
+        setPlaceholderOptionValues({});
+        updatePlaceholderOptionControls();
+        return;
+    }
+
     const PromptPlaceholder item = m_placeholders.at(row);
+
     ui->editPlaceholderName->setText(item.name);
     ui->editPlaceholderLabel->setText(item.label);
-    ui->comboPlaceholderType->setCurrentIndex(item.type == PlaceholderType::Text ? 0 : item.type == PlaceholderType::SingleChoice ? 1 : 2);
+    ui->comboPlaceholderType->setCurrentIndex(
+        item.type == PlaceholderType::Text ? 0
+        : item.type == PlaceholderType::SingleChoice ? 1
+                                                     : 2
+        );
     ui->editPlaceholderDefault->setText(item.defaultValue);
-    ui->textPlaceholderOptions->setPlainText(item.options.join("\n"));
+
+    setPlaceholderOptionValues(item.options);
+    updatePlaceholderOptionControls();
+}
+
+QStringList PromptTemplateLibraryWidget::currentPlaceholderOptionValues() const
+{
+    QStringList values;
+
+    for (int row = 0; row < ui->tablePlaceholderOptions->rowCount(); ++row) {
+        QTableWidgetItem *item = ui->tablePlaceholderOptions->item(row, 0);
+        if (!item) {
+            values << QString();
+            continue;
+        }
+
+        values << item->data(Qt::UserRole).toString();
+    }
+
+    return values;
+}
+
+void PromptTemplateLibraryWidget::setPlaceholderOptionValues(const QStringList &options)
+{
+    {
+        QSignalBlocker tableBlocker(ui->tablePlaceholderOptions);
+        QSignalBlocker editorBlocker(ui->editPlaceholderOptionValue);
+
+        ui->tablePlaceholderOptions->setRowCount(0);
+
+        for (const QString &option : options) {
+            const int row = ui->tablePlaceholderOptions->rowCount();
+            ui->tablePlaceholderOptions->insertRow(row);
+            ui->tablePlaceholderOptions->setItem(row, 0, makePlaceholderOptionItem(option));
+        }
+
+        if (ui->tablePlaceholderOptions->rowCount() > 0) {
+            ui->tablePlaceholderOptions->setCurrentCell(0, 0);
+            ui->tablePlaceholderOptions->selectRow(0);
+        } else {
+            ui->editPlaceholderOptionValue->clear();
+        }
+    }
+
+    updatePlaceholderOptionEditorFromSelection();
+    updatePlaceholderOptionControls();
+}
+
+void PromptTemplateLibraryWidget::updatePlaceholderOptionEditorFromSelection()
+{
+    const int row = ui->tablePlaceholderOptions->currentRow();
+
+    QSignalBlocker blocker(ui->editPlaceholderOptionValue);
+
+    if (row < 0 || row >= ui->tablePlaceholderOptions->rowCount()) {
+        ui->editPlaceholderOptionValue->clear();
+        return;
+    }
+
+    QTableWidgetItem *item = ui->tablePlaceholderOptions->item(row, 0);
+    ui->editPlaceholderOptionValue->setPlainText(
+        item ? item->data(Qt::UserRole).toString() : QString()
+        );
+}
+
+void PromptTemplateLibraryWidget::updatePlaceholderOptionControls()
+{
+    const bool isChoiceType = ui->comboPlaceholderType->currentIndex() != 0;
+
+    const int row = ui->tablePlaceholderOptions->currentRow();
+    const int rowCount = ui->tablePlaceholderOptions->rowCount();
+
+    const bool hasSelection = row >= 0 && row < rowCount;
+
+    ui->tablePlaceholderOptions->setEnabled(isChoiceType);
+    ui->editPlaceholderOptionValue->setEnabled(isChoiceType);
+
+    ui->btnAddPlaceholderOption->setEnabled(isChoiceType);
+    ui->btnUpdatePlaceholderOption->setEnabled(isChoiceType && hasSelection);
+    ui->btnDeletePlaceholderOption->setEnabled(isChoiceType && hasSelection);
+
+    ui->btnMovePlaceholderOptionUp->setEnabled(isChoiceType && hasSelection && row > 0);
+    ui->btnMovePlaceholderOptionDown->setEnabled(isChoiceType && hasSelection && row < rowCount - 1);
+}
+
+void PromptTemplateLibraryWidget::addPlaceholderOptionFromEditor()
+{
+    const QString value = ui->editPlaceholderOptionValue->toPlainText();
+
+    int insertRow = ui->tablePlaceholderOptions->currentRow();
+    if (insertRow < 0) insertRow = ui->tablePlaceholderOptions->rowCount();
+    else insertRow += 1;
+
+    ui->tablePlaceholderOptions->insertRow(insertRow);
+    ui->tablePlaceholderOptions->setItem(insertRow, 0, makePlaceholderOptionItem(value));
+    ui->tablePlaceholderOptions->setCurrentCell(insertRow, 0);
+    ui->tablePlaceholderOptions->selectRow(insertRow);
+
+    updatePlaceholderOptionControls();
+}
+
+void PromptTemplateLibraryWidget::updateSelectedPlaceholderOptionFromEditor()
+{
+    const int row = ui->tablePlaceholderOptions->currentRow();
+    if (row < 0 || row >= ui->tablePlaceholderOptions->rowCount()) return;
+
+    const QString value = ui->editPlaceholderOptionValue->toPlainText();
+
+    delete ui->tablePlaceholderOptions->takeItem(row, 0);
+    ui->tablePlaceholderOptions->setItem(row, 0, makePlaceholderOptionItem(value));
+    ui->tablePlaceholderOptions->setCurrentCell(row, 0);
+    ui->tablePlaceholderOptions->selectRow(row);
+
+    updatePlaceholderOptionControls();
+}
+
+void PromptTemplateLibraryWidget::deleteSelectedPlaceholderOption()
+{
+    const int row = ui->tablePlaceholderOptions->currentRow();
+    if (row < 0 || row >= ui->tablePlaceholderOptions->rowCount()) return;
+
+    ui->tablePlaceholderOptions->removeRow(row);
+
+    if (ui->tablePlaceholderOptions->rowCount() > 0) {
+        const int nextRow = qMin(row, ui->tablePlaceholderOptions->rowCount() - 1);
+        ui->tablePlaceholderOptions->setCurrentCell(nextRow, 0);
+        ui->tablePlaceholderOptions->selectRow(nextRow);
+    } else {
+        ui->editPlaceholderOptionValue->clear();
+    }
+
+    updatePlaceholderOptionEditorFromSelection();
+    updatePlaceholderOptionControls();
+}
+
+void PromptTemplateLibraryWidget::moveSelectedPlaceholderOptionUp()
+{
+    const int row = ui->tablePlaceholderOptions->currentRow();
+    if (row <= 0 || row >= ui->tablePlaceholderOptions->rowCount()) return;
+
+    swapPlaceholderOptionRows(ui->tablePlaceholderOptions, row, row - 1);
+
+    ui->tablePlaceholderOptions->setCurrentCell(row - 1, 0);
+    ui->tablePlaceholderOptions->selectRow(row - 1);
+
+    updatePlaceholderOptionEditorFromSelection();
+    updatePlaceholderOptionControls();
+}
+
+void PromptTemplateLibraryWidget::moveSelectedPlaceholderOptionDown()
+{
+    const int row = ui->tablePlaceholderOptions->currentRow();
+    const int rowCount = ui->tablePlaceholderOptions->rowCount();
+
+    if (row < 0 || row >= rowCount - 1) return;
+
+    swapPlaceholderOptionRows(ui->tablePlaceholderOptions, row, row + 1);
+
+    ui->tablePlaceholderOptions->setCurrentCell(row + 1, 0);
+    ui->tablePlaceholderOptions->selectRow(row + 1);
+
+    updatePlaceholderOptionEditorFromSelection();
+    updatePlaceholderOptionControls();
 }
 
 void PromptTemplateLibraryWidget::saveCurrentTemplateEditor()
 {
-    const int index = templateIndexById(ui->listTemplates->currentItem() ? ui->listTemplates->currentItem()->data(Qt::UserRole).toString() : QString());
+    const int index = templateIndexById(
+        ui->listTemplates->currentItem()
+            ? ui->listTemplates->currentItem()->data(Qt::UserRole).toString()
+            : QString()
+        );
+
     if (index < 0) return;
+
     PromptTemplate &item = m_templates[index];
+
+    QHash<QString, QString> editedDefaults;
+    for (int row = 0; row < ui->tableTemplateDefaults->rowCount(); ++row) {
+        const QString name = ui->tableTemplateDefaults->item(row, 0)
+        ? ui->tableTemplateDefaults->item(row, 0)->text()
+        : QString();
+
+        const QString value = ui->tableTemplateDefaults->item(row, 1)
+                                  ? ui->tableTemplateDefaults->item(row, 1)->text()
+                                  : QString();
+
+        if (!name.isEmpty()) editedDefaults.insert(name, value);
+    }
+
+    const QHash<QString, QString> oldDefaults = item.placeholderDefaults;
+
     item.name = ui->editTemplateName->text().trimmed();
     if (item.name.isEmpty()) item.name = "Untitled Template";
+
     item.category = ui->editTemplateCategory->text().trimmed();
     item.positiveTemplate = ui->textTemplatePositive->toPlainText();
     item.negativeTemplate = ui->textTemplateNegative->toPlainText();
     item.notes = ui->textTemplateNotes->toPlainText();
+
+    const QStringList usedNames = placeholderNamesInTemplateText(
+        item.positiveTemplate,
+        item.negativeTemplate
+        );
+
+    QSet<QString> usedNameSet;
+    for (const QString &name : usedNames) usedNameSet.insert(name);
+
     item.placeholderDefaults.clear();
-    for (int row = 0; row < ui->tableTemplateDefaults->rowCount(); ++row) {
-        const QString name = ui->tableTemplateDefaults->item(row, 0) ? ui->tableTemplateDefaults->item(row, 0)->text() : QString();
-        const QString value = ui->tableTemplateDefaults->item(row, 1) ? ui->tableTemplateDefaults->item(row, 1)->text() : QString();
-        if (!name.isEmpty()) item.placeholderDefaults.insert(name, value);
+
+    for (const PromptPlaceholder &placeholder : std::as_const(m_placeholders)) {
+        if (!usedNameSet.contains(placeholder.name)) continue;
+
+        const QString value = editedDefaults.value(
+            placeholder.name,
+            oldDefaults.value(placeholder.name, placeholder.defaultValue)
+            );
+
+        item.placeholderDefaults.insert(placeholder.name, value);
     }
 }
 
 void PromptTemplateLibraryWidget::saveCurrentPlaceholderEditor()
 {
-    int row = ui->tablePlaceholders->currentRow();
+    const int row = ui->tablePlaceholders->currentRow();
     if (row < 0 || row >= m_placeholders.size()) return;
+
     PromptPlaceholder &item = m_placeholders[row];
+
     item.name = ui->editPlaceholderName->text().trimmed();
     item.label = ui->editPlaceholderLabel->text().trimmed();
     if (item.label.isEmpty()) item.label = item.name;
+
     item.type = ui->comboPlaceholderType->currentIndex() == 1 ? PlaceholderType::SingleChoice
-             : ui->comboPlaceholderType->currentIndex() == 2 ? PlaceholderType::MultiChoice
-             : PlaceholderType::Text;
-    item.defaultValue = ui->editPlaceholderDefault->text().trimmed();
-    item.options = splitOptions(ui->textPlaceholderOptions->toPlainText());
+                : ui->comboPlaceholderType->currentIndex() == 2 ? PlaceholderType::MultiChoice
+                                                                : PlaceholderType::Text;
+
+    item.defaultValue = ui->editPlaceholderDefault->text();
+
+    item.options = currentPlaceholderOptionValues();
 }
 
 int PromptTemplateLibraryWidget::templateIndexById(const QString &id) const
@@ -1437,12 +1907,31 @@ void PromptTemplateLibraryWidget::onTemplateListCurrentRowChanged(int)
 
 void PromptTemplateLibraryWidget::onSaveTemplateClicked()
 {
+    const QString currentTemplateId =
+        ui->listTemplates->currentItem()
+            ? ui->listTemplates->currentItem()->data(Qt::UserRole).toString()
+            : QString();
+
     saveCurrentTemplateEditor();
     saveLibrary();
-    refreshAllLists();
+
+    refreshGenerateTemplateCombo();
+    refreshTemplateList();
+
+    if (!currentTemplateId.isEmpty()) {
+        for (int i = 0; i < ui->listTemplates->count(); ++i) {
+            if (ui->listTemplates->item(i)->data(Qt::UserRole).toString() == currentTemplateId) {
+                ui->listTemplates->setCurrentRow(i);
+                break;
+            }
+        }
+    }
+
+    rebuildPlaceholderInputs();
+    updateGeneratedPrompt();
+
     setStatus("模板已保存");
 }
-
 void PromptTemplateLibraryWidget::onNewTemplateClicked()
 {
     PromptTemplate item;
@@ -1487,32 +1976,63 @@ void PromptTemplateLibraryWidget::onPlaceholderCellChanged(int row, int)
 
 void PromptTemplateLibraryWidget::onSavePlaceholderClicked()
 {
+    const int currentRow = ui->tablePlaceholders->currentRow();
     const QString nextName = ui->editPlaceholderName->text().trimmed();
+
     if (nextName.isEmpty()) {
         QMessageBox::information(this, "提示", "占位符名称不能为空。");
         return;
     }
+
     const int duplicateIndex = placeholderIndexByName(nextName);
-    if (duplicateIndex >= 0 && duplicateIndex != ui->tablePlaceholders->currentRow()) {
+    if (duplicateIndex >= 0 && duplicateIndex != currentRow) {
         QMessageBox::information(this, "提示", "占位符名称已存在。");
         return;
     }
+
     saveCurrentPlaceholderEditor();
     saveLibrary();
-    refreshAllLists();
-}
 
+    refreshPlaceholderTableKeepingName(nextName);
+    rebuildPlaceholderInputs();
+    updateGeneratedPrompt();
+
+    setStatus("占位符已保存");
+}
 void PromptTemplateLibraryWidget::onNewPlaceholderClicked()
 {
+    QString name = "new_placeholder";
+    int suffix = 2;
+
+    while (placeholderIndexByName(name) >= 0) {
+        name = QString("new_placeholder_%1").arg(suffix++);
+    }
+
     PromptPlaceholder item;
     item.id = ensureId("placeholder");
-    item.name = "new_placeholder";
+    item.name = name;
     item.label = "新占位符";
     item.type = PlaceholderType::Text;
+
     m_placeholders.append(item);
+
     saveLibrary();
     refreshAllLists();
-    ui->tablePlaceholders->setCurrentCell(ui->tablePlaceholders->rowCount() - 1, 0);
+
+    const int row = placeholderIndexByName(name);
+    if (row >= 0) {
+        ui->tablePlaceholders->setCurrentCell(row, 0);
+        ui->tablePlaceholders->selectRow(row);
+
+        if (QTableWidgetItem *cell = ui->tablePlaceholders->item(row, 0)) {
+            ui->tablePlaceholders->scrollToItem(cell, QAbstractItemView::PositionAtCenter);
+        }
+
+        updatePlaceholderEditorFromSelection();
+
+        ui->editPlaceholderName->setFocus();
+        ui->editPlaceholderName->selectAll();
+    }
 }
 
 void PromptTemplateLibraryWidget::onDeletePlaceholderClicked()

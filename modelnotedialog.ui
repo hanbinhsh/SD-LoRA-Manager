@@ -3,14 +3,14 @@
  <class>ModelNoteDialog</class>
  <widget class="QDialog" name="ModelNoteDialog">
   <property name="windowTitle">
-   <string>模型评分与备注</string>
+   <string>模型评分、备注与触发词</string>
   </property>
   <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
     <width>520</width>
-    <height>460</height>
+    <height>560</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -89,6 +89,29 @@
       </widget>
      </item>
      <item row="2" column="0">
+      <widget class="QLabel" name="lblCustomTriggers">
+       <property name="text">
+        <string>自定义触发词</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="1">
+      <widget class="QPlainTextEdit" name="editCustomTriggers">
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>84</height>
+        </size>
+       </property>
+       <property name="placeholderText">
+        <string>一行一组触发词，例如：masterpiece, character name</string>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="0">
       <widget class="QLabel" name="lblNote">
        <property name="text">
         <string>备注</string>
@@ -98,12 +121,12 @@
        </property>
       </widget>
      </item>
-     <item row="2" column="1">
+     <item row="3" column="1">
       <widget class="QPlainTextEdit" name="textNote">
        <property name="minimumSize">
         <size>
          <width>0</width>
-         <height>180</height>
+         <height>150</height>
         </size>
        </property>
        <property name="placeholderText">

@@ -263,7 +263,7 @@ Click or Drag Image Here</string>
               <x>0</x>
               <y>0</y>
               <width>660</width>
-              <height>356</height>
+              <height>355</height>
              </rect>
             </property>
             <layout class="QVBoxLayout" name="layoutTagsNeg">
@@ -790,62 +790,23 @@ Click or Drag Image Here</string>
       <attribute name="title">
        <string>图片对比</string>
       </attribute>
-      <layout class="QVBoxLayout" name="verticalLayoutImageCompare">
-       <property name="spacing">
-        <number>10</number>
-       </property>
-       <item>
-        <layout class="QGridLayout" name="gridCompareInputs">
-         <item row="0" column="0">
-          <widget class="QLabel" name="lblCompareImageA">
-           <property name="text">
-            <string>图片 A</string>
-           </property>
-          </widget>
-         </item>
-         <item row="0" column="1">
-          <widget class="QLineEdit" name="editCompareImageA">
-           <property name="placeholderText">
-            <string>选择或拖入第一张图片</string>
-           </property>
-          </widget>
-         </item>
-         <item row="0" column="2">
-          <widget class="QPushButton" name="btnBrowseCompareA">
-           <property name="text">
-            <string>选择...</string>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="0">
-          <widget class="QLabel" name="lblCompareImageB">
-           <property name="text">
-            <string>图片 B</string>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="1">
-          <widget class="QLineEdit" name="editCompareImageB">
-           <property name="placeholderText">
-            <string>选择或拖入第二张图片</string>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="2">
-          <widget class="QPushButton" name="btnBrowseCompareB">
-           <property name="text">
-            <string>选择...</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </item>
-       <item>
+      <layout class="QGridLayout" name="gridLayout_2">
+       <item row="0" column="1">
         <layout class="QHBoxLayout" name="layoutCompareOptions">
          <item>
           <widget class="QCheckBox" name="chkCompareNegative">
            <property name="text">
             <string>显示负面 Tag 对比</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QCheckBox" name="chkCompareTranslate">
+           <property name="text">
+            <string>显示翻译</string>
+           </property>
+           <property name="checked">
+            <bool>true</bool>
            </property>
           </widget>
          </item>
@@ -871,6 +832,12 @@ Click or Drag Image Here</string>
          </item>
          <item>
           <widget class="QLabel" name="lblCompareStatus">
+           <property name="maximumSize">
+            <size>
+             <width>16777215</width>
+             <height>25</height>
+            </size>
+           </property>
            <property name="text">
             <string>请选择两张图片进行对比。</string>
            </property>
@@ -878,7 +845,7 @@ Click or Drag Image Here</string>
          </item>
         </layout>
        </item>
-       <item>
+       <item row="1" column="1" rowspan="2">
         <widget class="QSplitter" name="splitterCompareMain">
          <property name="orientation">
           <enum>Qt::Orientation::Vertical</enum>
@@ -902,8 +869,8 @@ Click or Drag Image Here</string>
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>487</width>
-                 <height>155</height>
+                 <width>352</width>
+                 <height>118</height>
                 </rect>
                </property>
                <layout class="QVBoxLayout" name="layoutCompareTagsAContainer"/>
@@ -927,8 +894,8 @@ Click or Drag Image Here</string>
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>486</width>
-                 <height>155</height>
+                 <width>352</width>
+                 <height>118</height>
                 </rect>
                </property>
                <layout class="QVBoxLayout" name="layoutCompareTagsBContainer"/>
@@ -1038,6 +1005,53 @@ Click or Drag Image Here</string>
           </widget>
          </widget>
         </widget>
+       </item>
+       <item row="0" column="0" rowspan="3">
+        <layout class="QVBoxLayout" name="verticalLayout_5">
+         <property name="spacing">
+          <number>12</number>
+         </property>
+         <item>
+          <widget class="QLabel" name="lblComparePreviewA">
+           <property name="minimumSize">
+            <size>
+             <width>260</width>
+             <height>160</height>
+            </size>
+           </property>
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="text">
+            <string>图片 A
+点击或拖入图片</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="lblComparePreviewB">
+           <property name="minimumSize">
+            <size>
+             <width>260</width>
+             <height>160</height>
+            </size>
+           </property>
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="text">
+            <string>图片 B
+点击或拖入图片</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </item>
       </layout>
      </widget>

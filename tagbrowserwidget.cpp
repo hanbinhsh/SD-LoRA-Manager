@@ -618,6 +618,12 @@ QString TagBrowserWidget::csvPath() const
     return m_csvPath;
 }
 
+void TagBrowserWidget::setMergedTranslationMap(const QHash<QString, QString> *map)
+{
+    m_mergedTranslationMap = map;
+    updateUserTagTranslations();
+}
+
 void TagBrowserWidget::showEvent(QShowEvent *event)
 {
     QWidget::showEvent(event);
@@ -923,7 +929,10 @@ void TagBrowserWidget::updateUserTagTranslations()
 
     for (int row = 0; row < m_userTagModel->rowCount(); ++row) {
         const QString tag = m_userTagModel->item(row, 0) ? m_userTagModel->item(row, 0)->text() : QString();
-        const TagTranslationInfo info = translatedInfoForTag(tag, infos);
+        TagTranslationInfo info = translatedInfoForTag(tag, infos);
+        if (info.translation.isEmpty() && m_mergedTranslationMap) {
+            info.translation = translatedTextForTag(tag, *m_mergedTranslationMap);
+        }
 
         QStandardItem *categoryItem = m_userTagModel->item(row, 2);
         QStandardItem *translationItem = m_userTagModel->item(row, 3);

@@ -127,14 +127,16 @@ QLabel#lblStatus, QLabel#lblUserTagStatus, QLabel#lblGenerateStatus,
 QLabel#lblWd14Status, QLabel#lblWd14Elapsed, QLabel#lblWd14Memory {
     color: #8c96a0;
 }
-QLabel#lblImage, QLabel#lblWd14Image {
+QLabel#lblImage, QLabel#lblWd14Image,
+QLabel#lblComparePreviewA, QLabel#lblComparePreviewB {
     background-color: #16191e;
     border: 2px dashed #363c46;
     border-radius: 8px;
     color: #5a6f8a;
     font-size: 16px;
 }
-QLabel#lblImage:hover, QLabel#lblWd14Image:hover {
+QLabel#lblImage:hover, QLabel#lblWd14Image:hover,
+QLabel#lblComparePreviewA:hover, QLabel#lblComparePreviewB:hover {
     border: 2px dashed #66c0f4;
     background-color: #1e252f;
     color: #66c0f4;

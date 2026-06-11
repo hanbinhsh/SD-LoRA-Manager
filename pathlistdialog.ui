@@ -49,9 +49,23 @@
       </widget>
      </item>
      <item>
-      <widget class="QPushButton" name="btnRemovePath">
+     <widget class="QPushButton" name="btnRemovePath">
        <property name="text">
         <string>删除</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnMoveUp">
+       <property name="text">
+        <string>上移</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnMoveDown">
+       <property name="text">
+        <string>下移</string>
        </property>
       </widget>
      </item>

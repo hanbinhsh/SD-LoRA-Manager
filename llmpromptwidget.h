@@ -83,6 +83,7 @@ private:
         QString previewPath;
         QString insertionTag;
         QStringList triggerWords;
+        QStringList customTriggerWords;
         QStringList previewPrompts;
         QString description;
     };

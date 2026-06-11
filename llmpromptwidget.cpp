@@ -171,6 +171,32 @@ void scrollTextViewportToBottom(QWidget *widget)
     scrollBar->setValue(scrollBar->maximum());
 }
 
+QStringList readCustomTriggerWordsForLora(const QString &filePath)
+{
+    const QString key = QFileInfo(filePath).absoluteFilePath();
+    if (key.isEmpty()) return {};
+
+    QFile file(QCoreApplication::applicationDirPath() + "/config/model_user_notes.json");
+    if (!file.open(QIODevice::ReadOnly)) return {};
+
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    if (!doc.isObject()) return {};
+
+    const QJsonObject obj = doc.object().value(key).toObject();
+    QStringList triggers;
+    QSet<QString> seen;
+    const QJsonArray arr = obj.value("customTriggers").toArray();
+    for (const QJsonValue &value : arr) {
+        const QString trigger = value.toString().trimmed();
+        if (trigger.isEmpty()) continue;
+        const QString seenKey = trigger.toCaseFolded();
+        if (seen.contains(seenKey)) continue;
+        seen.insert(seenKey);
+        triggers.append(trigger);
+    }
+    return triggers;
+}
+
 QString loadToolPageStyle()
 {
     QFile file(":/styles/toolpage.qss");
@@ -2074,6 +2100,8 @@ LlmPromptWidget::LoraMetadataInfo LlmPromptWidget::readLoraMetadata(const QStrin
         break;
     }
 
+    info.customTriggerWords = readCustomTriggerWordsForLora(filePath);
+
     return info;
 }
 
@@ -2149,6 +2177,7 @@ QListWidgetItem *LlmPromptWidget::createLoraCandidateItem(const QString &path,
     tip << path << meta.insertionTag;
     if (!meta.previewPath.isEmpty()) tip << ("Preview image: " + meta.previewPath);
     if (!meta.triggerWords.isEmpty()) tip << ("Trigger: " + meta.triggerWords.join(", "));
+    if (!meta.customTriggerWords.isEmpty()) tip << ("Custom trigger: " + meta.customTriggerWords.join(", "));
     if (!meta.previewPrompts.isEmpty()) tip << ("Preview: " + meta.previewPrompts.first().left(200));
     item->setToolTip(tip.join("\n"));
     item->setCheckState(checked ? Qt::Checked : Qt::Unchecked);
@@ -2566,6 +2595,9 @@ QString LlmPromptWidget::selectedLoraContext() const
         one.append(QString("Insertion tag: %1").arg(meta.insertionTag));
         if (ui->chkUseTriggerWords->isChecked() && !meta.triggerWords.isEmpty()) {
             one.append("Trigger words: " + meta.triggerWords.join(", "));
+        }
+        if (ui->chkUseTriggerWords->isChecked() && !meta.customTriggerWords.isEmpty()) {
+            one.append("Custom trigger words: " + meta.customTriggerWords.join(", "));
         }
         if (ui->chkUsePreviewPrompts->isChecked() && !meta.previewPrompts.isEmpty()) {
             QStringList prompts;
@@ -3043,12 +3075,18 @@ void LlmPromptWidget::onRefreshCandidatesClicked()
             for (const QString &word : meta.triggerWords) {
                 if (normalizeLooseText(word).contains(newTargetNorm)) score += 10;
             }
+            for (const QString &word : meta.customTriggerWords) {
+                if (normalizeLooseText(word).contains(newTargetNorm)) score += 10;
+            }
         }
 
         for (const QString &keyword : keywords) {
             if (baseName.contains(keyword, Qt::CaseInsensitive)) score += 2;
             if (path.contains(keyword, Qt::CaseInsensitive)) score += 1;
             for (const QString &word : meta.triggerWords) {
+                if (word.contains(keyword, Qt::CaseInsensitive) || keyword.contains(word, Qt::CaseInsensitive)) score += 3;
+            }
+            for (const QString &word : meta.customTriggerWords) {
                 if (word.contains(keyword, Qt::CaseInsensitive) || keyword.contains(word, Qt::CaseInsensitive)) score += 3;
             }
             for (const QString &prompt : meta.previewPrompts) {

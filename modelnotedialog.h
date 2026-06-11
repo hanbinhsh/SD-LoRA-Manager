@@ -23,6 +23,8 @@ public:
     QString note() const;
     void setTags(const QStringList &tags);
     QStringList tags() const;
+    void setCustomTriggers(const QStringList &triggers);
+    QStringList customTriggers() const;
 
 private:
     Ui::ModelNoteDialog *ui;

@@ -21,6 +21,22 @@ static QStringList normalizeModelNoteTags(const QString &text)
     return result;
 }
 
+static QStringList normalizeModelNoteTriggerGroups(const QString &text)
+{
+    QStringList result;
+    QSet<QString> seen;
+    const QStringList lines = text.split('\n', Qt::SkipEmptyParts);
+    for (QString line : lines) {
+        line = line.trimmed();
+        if (line.isEmpty()) continue;
+        const QString key = line.toCaseFolded();
+        if (seen.contains(key)) continue;
+        seen.insert(key);
+        result.append(line);
+    }
+    return result;
+}
+
 ModelNoteDialog::ModelNoteDialog(QWidget *parent)
     : QDialog(parent)
     , ui(new Ui::ModelNoteDialog)
@@ -68,4 +84,14 @@ void ModelNoteDialog::setTags(const QStringList &tags)
 QStringList ModelNoteDialog::tags() const
 {
     return normalizeModelNoteTags(ui->editTags->toPlainText());
+}
+
+void ModelNoteDialog::setCustomTriggers(const QStringList &triggers)
+{
+    ui->editCustomTriggers->setPlainText(triggers.join("\n"));
+}
+
+QStringList ModelNoteDialog::customTriggers() const
+{
+    return normalizeModelNoteTriggerGroups(ui->editCustomTriggers->toPlainText());
 }

@@ -485,6 +485,106 @@ New</string>
               </widget>
              </item>
              <item>
+              <widget class="QFrame" name="homeFilterFrame">
+               <property name="frameShape">
+                <enum>QFrame::Shape::StyledPanel</enum>
+               </property>
+               <property name="frameShadow">
+                <enum>QFrame::Shadow::Raised</enum>
+               </property>
+               <layout class="QVBoxLayout" name="verticalLayout_HomeFilters">
+                <property name="leftMargin">
+                 <number>30</number>
+                </property>
+                <property name="topMargin">
+                 <number>8</number>
+                </property>
+                <property name="rightMargin">
+                 <number>30</number>
+                </property>
+                <property name="bottomMargin">
+                 <number>8</number>
+                </property>
+                <property name="spacing">
+                 <number>6</number>
+                </property>
+                <item>
+                 <layout class="QHBoxLayout" name="horizontalLayout_HomeFilterInputs">
+                  <property name="spacing">
+                   <number>8</number>
+                  </property>
+                  <item>
+                   <widget class="QLabel" name="lblHomeAuthorFilter">
+                    <property name="text">
+                     <string>作者 / Author:</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLineEdit" name="editHomeAuthorFilter">
+                    <property name="placeholderText">
+                     <string>输入作者名，或从详情页点击作者</string>
+                    </property>
+                    <property name="clearButtonEnabled">
+                     <bool>true</bool>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="lblHomeTagFilter">
+                    <property name="text">
+                     <string>Tag:</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLineEdit" name="editHomeTagFilter">
+                    <property name="placeholderText">
+                     <string>输入模型 Tag，多个 Tag 为全部满足</string>
+                    </property>
+                    <property name="clearButtonEnabled">
+                     <bool>true</bool>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPushButton" name="btnHomeAddTagFilter">
+                    <property name="text">
+                     <string>添加 Tag</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPushButton" name="btnHomeClearFilters">
+                    <property name="text">
+                     <string>清除筛选</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </item>
+                <item>
+                 <widget class="QWidget" name="homeFilterChipsContainer" native="true">
+                  <layout class="QHBoxLayout" name="layoutHomeFilterChips">
+                   <property name="leftMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="topMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="rightMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="bottomMargin">
+                    <number>0</number>
+                   </property>
+                  </layout>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
               <widget class="QListWidget" name="homeGalleryList">
                <property name="contextMenuPolicy">
                 <enum>Qt::ContextMenuPolicy::NoContextMenu</enum>
@@ -1065,6 +1165,69 @@ New</string>
                            <number>4</number>
                           </property>
                           <item>
+                           <widget class="QLabel" name="label_AuthorTitle">
+                            <property name="text">
+                             <string>AUTHOR / 作者</string>
+                            </property>
+                            <property name="class" stdset="0">
+                             <string>sectionTitle</string>
+                            </property>
+                           </widget>
+                          </item>
+                          <item>
+                           <widget class="QWidget" name="modelAuthorContainer" native="true">
+                            <layout class="QHBoxLayout" name="layoutModelAuthor">
+                             <property name="leftMargin">
+                              <number>0</number>
+                             </property>
+                             <property name="topMargin">
+                              <number>0</number>
+                             </property>
+                             <property name="rightMargin">
+                              <number>0</number>
+                             </property>
+                             <property name="bottomMargin">
+                              <number>0</number>
+                             </property>
+                            </layout>
+                           </widget>
+                          </item>
+                          <item>
+                           <widget class="QLabel" name="label_ModelTagsTitle">
+                            <property name="text">
+                             <string>MODEL TAGS / 模型标签</string>
+                            </property>
+                            <property name="class" stdset="0">
+                             <string>sectionTitle</string>
+                            </property>
+                           </widget>
+                          </item>
+                          <item>
+                           <widget class="QWidget" name="modelTagsContainer" native="true">
+                            <layout class="QHBoxLayout" name="layoutModelTags">
+                             <property name="leftMargin">
+                              <number>0</number>
+                             </property>
+                             <property name="topMargin">
+                              <number>0</number>
+                             </property>
+                             <property name="rightMargin">
+                              <number>0</number>
+                             </property>
+                             <property name="bottomMargin">
+                              <number>0</number>
+                             </property>
+                            </layout>
+                           </widget>
+                          </item>
+                          <item>
+                           <widget class="Line" name="line_ModelAttribution">
+                            <property name="orientation">
+                             <enum>Qt::Orientation::Horizontal</enum>
+                            </property>
+                           </widget>
+                          </item>
+                          <item>
                            <widget class="QLabel" name="label_UserNotes">
                             <property name="text">
                              <string>USER NOTES / 用户备注</string>
@@ -1098,9 +1261,9 @@ New</string>
                             </item>
                             <item>
                              <widget class="QPushButton" name="btnEditUserNote">
-                              <property name="text">
-                               <string>编辑</string>
-                              </property>
+                             <property name="text">
+                               <string>编辑信息</string>
+                             </property>
                              </widget>
                             </item>
                            </layout>
@@ -2841,9 +3004,9 @@ Hash: ...</string>
             </widget>
            </item>
            <item row="2" column="0">
-            <widget class="QLabel" name="lblSetTrans">
+           <widget class="QLabel" name="lblSetTrans">
              <property name="text">
-              <string>Tag 翻译表 (CSV):</string>
+              <string>Tag 翻译表 (CSV，可多选):</string>
              </property>
             </widget>
            </item>
@@ -2853,7 +3016,7 @@ Hash: ...</string>
               <bool>true</bool>
              </property>
              <property name="placeholderText">
-              <string>可选：选择 \extensions\...\tags 目录下的 csv 文件</string>
+              <string>可选：管理多个 csv 文件，上方优先覆盖</string>
              </property>
             </widget>
            </item>
