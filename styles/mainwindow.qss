@@ -129,7 +129,39 @@ QScrollArea { border: none; background-color: #1b2838; }
     border-radius: 5px;
     padding: 5px 8px;
 }
-#btnHomeAddTagFilter, #btnHomeClearFilters, QPushButton[class="filterChip"] {
+#scrollHomeFilterSummary, #homeFilterSummaryContents {
+    background-color: transparent;
+    border: none;
+}
+#scrollHomeFilterTags, #homeFilterChipsContainer {
+    background-color: transparent;
+    border: none;
+}
+#scrollHomeFilterSummary QScrollBar:horizontal {
+    height: 4px;
+    background: transparent;
+}
+#scrollHomeFilterTags QScrollBar:vertical {
+    width: 4px;
+    background: transparent;
+}
+#scrollHomeFilterSummary QScrollBar::handle:horizontal {
+    background: rgba(255,255,255,70);
+    border-radius: 2px;
+}
+#scrollHomeFilterTags QScrollBar::handle:vertical {
+    background: rgba(255,255,255,70);
+    border-radius: 2px;
+}
+#scrollHomeFilterSummary QScrollBar::add-line:horizontal,
+#scrollHomeFilterSummary QScrollBar::sub-line:horizontal,
+#scrollHomeFilterTags QScrollBar::add-line:vertical,
+#scrollHomeFilterTags QScrollBar::sub-line:vertical {
+    width: 0;
+    height: 0;
+    border: none;
+}
+#btnHomeAddTagFilter, #btnHomeClearFilters, #btnHomeFilterToggle, QPushButton[class="filterChip"] {
     background-color: rgba(255,255,255,20);
     color: #ffffff;
     border: 1px solid rgba(255,255,255,28);
@@ -137,9 +169,13 @@ QScrollArea { border: none; background-color: #1b2838; }
     padding: 4px 9px;
     font-weight: bold;
 }
-#btnHomeAddTagFilter:hover, #btnHomeClearFilters:hover, QPushButton[class="filterChip"]:hover {
+#btnHomeAddTagFilter:hover, #btnHomeClearFilters:hover, #btnHomeFilterToggle:hover, QPushButton[class="filterChip"]:hover {
     background-color: rgba(102,192,244,72);
     border-color: rgba(102,192,244,160);
+}
+#btnHomeFilterToggle:checked, QPushButton[class="filterChip"]:checked {
+    background-color: rgba(102,192,244,92);
+    border-color: rgba(102,192,244,190);
 }
 QTextBrowser { background-color: #16191e; border: 1px solid #31363d; color: #acb2b8; border-radius: 3px; padding: 8px; }
 #textDescription, #textUserNotePreview { background-color: transparent; border: none; color: #acb2b8; }

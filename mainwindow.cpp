@@ -77,6 +77,80 @@ QString loadQssResource(const QString &path)
     }
     return QString::fromUtf8(file.readAll());
 }
+
+class FlowLayout : public QLayout
+{
+public:
+    explicit FlowLayout(QWidget *parent = nullptr, int margin = 0, int hSpacing = 6, int vSpacing = 6)
+        : QLayout(parent), m_hSpace(hSpacing), m_vSpace(vSpacing)
+    {
+        setContentsMargins(margin, margin, margin, margin);
+    }
+
+    ~FlowLayout() override
+    {
+        QLayoutItem *item = nullptr;
+        while ((item = takeAt(0)) != nullptr) delete item;
+    }
+
+    void addItem(QLayoutItem *item) override { itemList.append(item); }
+    int count() const override { return itemList.size(); }
+    QLayoutItem *itemAt(int index) const override { return itemList.value(index); }
+    QLayoutItem *takeAt(int index) override
+    {
+        if (index < 0 || index >= itemList.size()) return nullptr;
+        return itemList.takeAt(index);
+    }
+
+    Qt::Orientations expandingDirections() const override { return {}; }
+    bool hasHeightForWidth() const override { return true; }
+    int heightForWidth(int width) const override { return doLayout(QRect(0, 0, width, 0), true); }
+    QSize minimumSize() const override
+    {
+        QSize size;
+        for (QLayoutItem *item : itemList) size = size.expandedTo(item->minimumSize());
+        const QMargins margins = contentsMargins();
+        size += QSize(margins.left() + margins.right(), margins.top() + margins.bottom());
+        return size;
+    }
+    QSize sizeHint() const override { return minimumSize(); }
+    void setGeometry(const QRect &rect) override
+    {
+        QLayout::setGeometry(rect);
+        doLayout(rect, false);
+    }
+
+private:
+    int doLayout(const QRect &rect, bool testOnly) const
+    {
+        const QMargins margins = contentsMargins();
+        QRect effectiveRect = rect.adjusted(margins.left(), margins.top(), -margins.right(), -margins.bottom());
+        int x = effectiveRect.x();
+        int y = effectiveRect.y();
+        int lineHeight = 0;
+
+        for (QLayoutItem *item : itemList) {
+            const int spaceX = m_hSpace;
+            const int spaceY = m_vSpace;
+            const QSize itemSize = item->sizeHint();
+            int nextX = x + itemSize.width() + spaceX;
+            if (nextX - spaceX > effectiveRect.right() && lineHeight > 0) {
+                x = effectiveRect.x();
+                y += lineHeight + spaceY;
+                nextX = x + itemSize.width() + spaceX;
+                lineHeight = 0;
+            }
+            if (!testOnly) item->setGeometry(QRect(QPoint(x, y), itemSize));
+            x = nextX;
+            lineHeight = qMax(lineHeight, itemSize.height());
+        }
+        return y + lineHeight - rect.y() + margins.bottom();
+    }
+
+    QList<QLayoutItem*> itemList;
+    int m_hSpace = 6;
+    int m_vSpace = 6;
+};
 }
 
 class HighlightItemDelegate : public QStyledItemDelegate
@@ -353,6 +427,10 @@ MainWindow::MainWindow(QWidget *parent)
         addHomeTagFilter(ui->editHomeTagFilter->text());
     });
     connect(ui->btnHomeClearFilters, &QPushButton::clicked, this, &MainWindow::clearHomeFilters);
+    connect(ui->btnHomeFilterToggle, &QPushButton::clicked, this, [this](bool checked) {
+        homeFilterExpanded = checked;
+        refreshHomeFilterChips();
+    });
 
     ui->listEditImages->setUniformItemSizes(true);
     ui->listEditImages->setGridSize(QSize(118, 186));
@@ -1077,6 +1155,8 @@ void MainWindow::onHomeButtonClicked()
     currentCollectionFilter = "";      // 重置过滤，显示全部
     currentHomeAuthorFilter.clear();
     currentHomeTagFilters.clear();
+    homeFilterExpanded = false;
+    if (ui->btnHomeFilterToggle) ui->btnHomeFilterToggle->setChecked(false);
     {
         QSignalBlocker blocker(ui->editHomeAuthorFilter);
         ui->editHomeAuthorFilter->clear();
@@ -1434,44 +1514,159 @@ void MainWindow::refreshHomeGallery()
 
 void MainWindow::refreshHomeFilterChips()
 {
-    if (!ui || !ui->layoutHomeFilterChips) return;
+    if (!ui || !ui->layoutHomeFilterChips || !ui->layoutHomeFilterSummaryChips) return;
+    clearLayout(ui->layoutHomeFilterSummaryChips);
     clearLayout(ui->layoutHomeFilterChips);
+    ui->scrollHomeFilterSummary->setWidgetResizable(false);
+    ui->scrollHomeFilterSummary->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    ui->scrollHomeFilterSummary->setMinimumWidth(320);
+    ui->scrollHomeFilterSummary->setFixedHeight(32);
+    ui->homeFilterSummaryContents->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    ui->homeFilterSummaryContents->setFixedHeight(28);
+    if (ui->scrollHomeFilterTags) {
+        ui->scrollHomeFilterTags->setVisible(homeFilterExpanded);
+        ui->scrollHomeFilterTags->setMaximumHeight(homeFilterExpanded ? 170 : 0);
+        ui->scrollHomeFilterTags->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    }
+    ui->homeFilterChipsContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
 
-    auto addChip = [this](const QString &text, const QString &tooltip, const std::function<void()> &removeFn) {
+    auto setLayoutVisible = [](QLayout *layout, bool visible) {
+        if (!layout) return;
+        for (int i = 0; i < layout->count(); ++i) {
+            QLayoutItem *item = layout->itemAt(i);
+            if (!item) continue;
+            if (QWidget *widget = item->widget()) widget->setVisible(visible);
+            if (QLayout *childLayout = item->layout()) {
+                for (int j = 0; j < childLayout->count(); ++j) {
+                    if (QWidget *childWidget = childLayout->itemAt(j)->widget()) {
+                        childWidget->setVisible(visible);
+                    }
+                }
+            }
+        }
+    };
+
+    QStringList selectedTags = currentHomeTagFilters.values();
+    std::sort(selectedTags.begin(), selectedTags.end(), [](const QString &a, const QString &b) {
+        return QString::localeAwareCompare(a, b) < 0;
+    });
+
+    auto addSummaryChip = [this](const QString &text, const QString &tooltip, const std::function<void()> &removeFn) {
         QPushButton *chip = new QPushButton(text);
         chip->setProperty("class", "filterChip");
         chip->setCursor(Qt::PointingHandCursor);
         chip->setToolTip(tooltip);
+        chip->setMaximumHeight(28);
+        chip->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
         connect(chip, &QPushButton::clicked, this, removeFn);
-        ui->layoutHomeFilterChips->addWidget(chip);
+        ui->layoutHomeFilterSummaryChips->addWidget(chip);
     };
 
     if (!currentHomeAuthorFilter.isEmpty()) {
-        addChip("作者: " + currentHomeAuthorFilter + " ×",
-                "点击移除作者筛选",
-                [this]() { setHomeAuthorFilter(QString()); });
+        addSummaryChip("作者: " + currentHomeAuthorFilter + " ×",
+                       "点击移除作者筛选",
+                       [this]() { setHomeAuthorFilter(QString()); });
     }
+    for (const QString &tag : selectedTags) {
+        addSummaryChip("Tag: " + tag + " ×",
+                       "点击移除此 Tag 筛选",
+                       [this, tag]() {
+                           currentHomeTagFilters.remove(tag);
+                           refreshHomeFilterChips();
+                           refreshHomeGallery();
+                       });
+    }
+    if (currentHomeAuthorFilter.isEmpty() && currentHomeTagFilters.isEmpty()) {
+        QLabel *emptySummary = new QLabel("未启用主页作者/Tag 筛选");
+        emptySummary->setStyleSheet("color:#8c96a0;background:transparent;font-weight:bold;");
+        emptySummary->setFixedHeight(28);
+        emptySummary->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+        ui->layoutHomeFilterSummaryChips->addWidget(emptySummary);
+    }
+    const int summaryWidth = qMax(ui->layoutHomeFilterSummaryChips->sizeHint().width() + 8,
+                                  ui->scrollHomeFilterSummary->viewport()->width());
+    ui->homeFilterSummaryContents->setFixedSize(summaryWidth, 28);
 
-    QStringList tags = currentHomeTagFilters.values();
+    ui->btnHomeFilterToggle->setChecked(homeFilterExpanded);
+    ui->btnHomeFilterToggle->setText(homeFilterExpanded ? "收起筛选" : "展开筛选");
+
+    setLayoutVisible(ui->horizontalLayout_HomeFilterInputs, homeFilterExpanded);
+    if (ui->scrollHomeFilterTags) {
+        ui->scrollHomeFilterTags->setVisible(homeFilterExpanded);
+    } else {
+        ui->homeFilterChipsContainer->setVisible(homeFilterExpanded);
+    }
+    if (!homeFilterExpanded) return;
+
+    QWidget *availableTagsWidget = new QWidget();
+    availableTagsWidget->setStyleSheet("background:transparent;");
+    availableTagsWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    FlowLayout *availableTagsLayout = new FlowLayout(availableTagsWidget, 0, 6, 6);
+    const QStringList availableTags = collectAvailableHomeFilterTags();
+    for (const QString &tag : availableTags) {
+        bool tagSelected = false;
+        for (const QString &selected : currentHomeTagFilters) {
+            if (selected.compare(tag, Qt::CaseInsensitive) == 0) {
+                tagSelected = true;
+                break;
+            }
+        }
+        QPushButton *tagButton = new QPushButton(forceWrap(tag));
+        tagButton->setProperty("class", "filterChip");
+        tagButton->setCheckable(true);
+        tagButton->setChecked(tagSelected);
+        tagButton->setCursor(Qt::PointingHandCursor);
+        tagButton->setToolTip("点击添加/移除此 Tag 筛选");
+        tagButton->setMaximumWidth(180);
+        tagButton->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+        connect(tagButton, &QPushButton::clicked, this, [this, tag]() {
+            QString existing;
+            for (const QString &value : currentHomeTagFilters) {
+                if (value.compare(tag, Qt::CaseInsensitive) == 0) {
+                    existing = value;
+                    break;
+                }
+            }
+            if (existing.isEmpty()) {
+                currentHomeTagFilters.insert(tag);
+            } else {
+                currentHomeTagFilters.remove(existing);
+            }
+            refreshHomeFilterChips();
+            refreshHomeGallery();
+        });
+        availableTagsLayout->addWidget(tagButton);
+    }
+    if (availableTags.isEmpty()) {
+        QLabel *emptyTags = new QLabel("当前模型库没有可用模型 Tag");
+        emptyTags->setStyleSheet("color:#8c96a0;background:transparent;");
+        availableTagsLayout->addWidget(emptyTags);
+    }
+    ui->layoutHomeFilterChips->addWidget(availableTagsWidget);
+}
+
+QStringList MainWindow::collectAvailableHomeFilterTags() const
+{
+    QStringList tags;
+    QSet<QString> seen;
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (!isModelListItem(item)) continue;
+        const QStringList itemTags = item->data(ROLE_MODEL_TAGS).toStringList()
+                                   + item->data(ROLE_USER_TAGS).toStringList();
+        for (const QString &raw : itemTags) {
+            const QString tag = raw.trimmed();
+            if (tag.isEmpty()) continue;
+            const QString key = tag.toCaseFolded();
+            if (seen.contains(key)) continue;
+            seen.insert(key);
+            tags.append(tag);
+        }
+    }
     std::sort(tags.begin(), tags.end(), [](const QString &a, const QString &b) {
         return QString::localeAwareCompare(a, b) < 0;
     });
-    for (const QString &tag : tags) {
-        addChip("Tag: " + tag + " ×",
-                "点击移除此 Tag 筛选",
-                [this, tag]() {
-                    currentHomeTagFilters.remove(tag);
-                    refreshHomeFilterChips();
-                    refreshHomeGallery();
-                });
-    }
-
-    if (currentHomeAuthorFilter.isEmpty() && currentHomeTagFilters.isEmpty()) {
-        QLabel *empty = new QLabel("未启用主页作者/Tag 筛选");
-        empty->setStyleSheet("color:#8c96a0;background:transparent;");
-        ui->layoutHomeFilterChips->addWidget(empty);
-    }
-    ui->layoutHomeFilterChips->addStretch();
+    return tags;
 }
 
 void MainWindow::setHomeAuthorFilter(const QString &author)
@@ -1944,7 +2139,8 @@ void MainWindow::scanModels(const QStringList &paths)
 void MainWindow::updateDetailView(const ModelMeta &meta)
 {
     // 1. 基础信息
-    ui->lblModelName->setText(meta.name);
+    ui->lblModelName->setWordWrap(true);
+    ui->lblModelName->setText(forceWrap(meta.name));
     ui->heroFrame->setProperty("fullImagePath", meta.previewPath);
     ui->btnCheckModelUpdate->setVisible(true);
 
@@ -2004,8 +2200,10 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
     QDateTime addedTime = fi.birthTime();
     if(!addedTime.isValid()) addedTime = fi.lastModified();
     QString addedStr = addedTime.toString("yyyy-MM-dd");
+    ui->lblFileInfo->setWordWrap(true);
+    const QString displayFileName = meta.fileNameServer.isEmpty() ? meta.fileName : meta.fileNameServer;
     ui->lblFileInfo->setText(QString("Filename: %1\nSize: %2 MB\nSHA256: %3\nAdded: %4")
-                                 .arg(meta.fileNameServer.isEmpty() ? meta.fileName : meta.fileNameServer)
+                                 .arg(forceWrap(displayFileName))
                                  .arg(meta.fileSizeMB, 0, 'f', 1)
                                  .arg(meta.sha256.left(10) + "...")
                                  .arg(addedStr));
@@ -2461,11 +2659,13 @@ void MainWindow::showPendingLocalModelDetail(const ModelMeta &meta, const QStrin
     ui->btnOpenUrl->setVisible(false);
     ui->btnCheckModelUpdate->setVisible(false);
     setModelTitleNormal();
-    ui->lblModelName->setText(meta.name.isEmpty() ? meta.fileName : meta.name);
+    ui->lblModelName->setWordWrap(true);
+    ui->lblModelName->setText(forceWrap(meta.name.isEmpty() ? meta.fileName : meta.name));
     ui->textDescription->setPlainText(message);
     QFileInfo fi(meta.filePath);
+    ui->lblFileInfo->setWordWrap(true);
     ui->lblFileInfo->setText(QString("Filename: %1\nSize: %2 MB\nHash: --")
-                                 .arg(fi.fileName())
+                                 .arg(forceWrap(fi.fileName()))
                                  .arg(fi.exists() ? QString::number(fi.size() / 1024.0 / 1024.0, 'f', 2) : "--"));
     refreshModelAttributionPanel(meta);
     refreshModelUserNotePanel(meta.filePath);
@@ -3098,10 +3298,12 @@ void MainWindow::refreshModelAttributionPanel(const ModelMeta &meta)
         empty->setStyleSheet("color:#8c96a0;background:transparent;");
         ui->layoutModelAuthor->addWidget(empty);
     } else {
-        QPushButton *author = new QPushButton(meta.creatorName);
+        QPushButton *author = new QPushButton(forceWrap(meta.creatorName));
         author->setProperty("class", "filterChip");
         author->setCursor(Qt::PointingHandCursor);
         author->setToolTip("点击在主页筛选该作者");
+        author->setMaximumWidth(260);
+        author->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
         connect(author, &QPushButton::clicked, this, [this, name = meta.creatorName]() {
             ui->rootStack->setCurrentWidget(ui->pageLibrary);
             ui->mainStack->setCurrentWidget(ui->pageHome);
@@ -3117,19 +3319,16 @@ void MainWindow::refreshModelAttributionPanel(const ModelMeta &meta)
         empty->setStyleSheet("color:#8c96a0;background:transparent;");
         ui->layoutModelTags->addWidget(empty);
     } else {
-        QWidget *tagGridWidget = new QWidget();
-        tagGridWidget->setStyleSheet("background:transparent;");
-        QGridLayout *tagGrid = new QGridLayout(tagGridWidget);
-        tagGrid->setContentsMargins(0, 0, 0, 0);
-        tagGrid->setHorizontalSpacing(6);
-        tagGrid->setVerticalSpacing(6);
-        constexpr int kTagColumns = 3;
-        int tagIndex = 0;
+        QWidget *tagFlowWidget = new QWidget();
+        tagFlowWidget->setStyleSheet("background:transparent;");
+        tagFlowWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+        FlowLayout *tagFlowLayout = new FlowLayout(tagFlowWidget, 0, 6, 6);
         for (const QString &tag : meta.modelTags) {
-            QPushButton *tagButton = new QPushButton(tag);
+            QPushButton *tagButton = new QPushButton(forceWrap(tag));
             tagButton->setProperty("class", "filterChip");
             tagButton->setCursor(Qt::PointingHandCursor);
             tagButton->setToolTip("点击在主页添加该 Tag 筛选");
+            tagButton->setMaximumWidth(150);
             tagButton->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
             connect(tagButton, &QPushButton::clicked, this, [this, tag]() {
                 ui->rootStack->setCurrentWidget(ui->pageLibrary);
@@ -3137,12 +3336,10 @@ void MainWindow::refreshModelAttributionPanel(const ModelMeta &meta)
                 addHomeTagFilter(tag);
                 ui->statusbar->showMessage("已添加 Tag 筛选: " + tag, 2000);
             });
-            tagGrid->addWidget(tagButton, tagIndex / kTagColumns, tagIndex % kTagColumns);
-            ++tagIndex;
+            tagFlowLayout->addWidget(tagButton);
         }
-        ui->layoutModelTags->addWidget(tagGridWidget);
+        ui->layoutModelTags->addWidget(tagFlowWidget);
     }
-    ui->layoutModelTags->addStretch();
 }
 
 void MainWindow::openModelNoteDialog(QListWidgetItem *item)

@@ -486,6 +486,18 @@ New</string>
              </item>
              <item>
               <widget class="QFrame" name="homeFilterFrame">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>16777215</width>
+                 <height>270</height>
+                </size>
+               </property>
                <property name="frameShape">
                 <enum>QFrame::Shape::StyledPanel</enum>
                </property>
@@ -493,6 +505,9 @@ New</string>
                 <enum>QFrame::Shadow::Raised</enum>
                </property>
                <layout class="QVBoxLayout" name="verticalLayout_HomeFilters">
+                <property name="spacing">
+                 <number>6</number>
+                </property>
                 <property name="leftMargin">
                  <number>30</number>
                 </property>
@@ -505,9 +520,85 @@ New</string>
                 <property name="bottomMargin">
                  <number>8</number>
                 </property>
-                <property name="spacing">
-                 <number>6</number>
-                </property>
+                <item>
+                 <layout class="QHBoxLayout" name="horizontalLayout_HomeFilterSummary">
+                  <property name="spacing">
+                   <number>8</number>
+                  </property>
+                  <item>
+                   <widget class="QScrollArea" name="scrollHomeFilterSummary">
+                    <property name="maximumSize">
+                     <size>
+                      <width>16777215</width>
+                      <height>29</height>
+                     </size>
+                    </property>
+                    <property name="frameShape">
+                     <enum>QFrame::Shape::NoFrame</enum>
+                    </property>
+                    <property name="verticalScrollBarPolicy">
+                     <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>
+                    </property>
+                    <property name="horizontalScrollBarPolicy">
+                     <enum>Qt::ScrollBarPolicy::ScrollBarAsNeeded</enum>
+                    </property>
+                    <property name="widgetResizable">
+                     <bool>true</bool>
+                    </property>
+                    <widget class="QWidget" name="homeFilterSummaryContents">
+                     <property name="geometry">
+                      <rect>
+                       <x>0</x>
+                       <y>0</y>
+                       <width>759</width>
+                       <height>29</height>
+                      </rect>
+                     </property>
+                     <property name="maximumSize">
+                      <size>
+                       <width>16777215</width>
+                       <height>29</height>
+                      </size>
+                     </property>
+                     <layout class="QHBoxLayout" name="layoutHomeFilterSummaryChips">
+                      <property name="spacing">
+                       <number>6</number>
+                      </property>
+                      <property name="leftMargin">
+                       <number>0</number>
+                      </property>
+                      <property name="topMargin">
+                       <number>0</number>
+                      </property>
+                      <property name="rightMargin">
+                       <number>0</number>
+                      </property>
+                      <property name="bottomMargin">
+                       <number>0</number>
+                      </property>
+                     </layout>
+                    </widget>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPushButton" name="btnHomeClearFilters">
+                    <property name="text">
+                     <string>×</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPushButton" name="btnHomeFilterToggle">
+                    <property name="text">
+                     <string>展开筛选</string>
+                    </property>
+                    <property name="checkable">
+                     <bool>true</bool>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </item>
                 <item>
                  <layout class="QHBoxLayout" name="horizontalLayout_HomeFilterInputs">
                   <property name="spacing">
@@ -554,31 +645,42 @@ New</string>
                     </property>
                    </widget>
                   </item>
-                  <item>
-                   <widget class="QPushButton" name="btnHomeClearFilters">
-                    <property name="text">
-                     <string>清除筛选</string>
-                    </property>
-                   </widget>
-                  </item>
                  </layout>
                 </item>
                 <item>
-                 <widget class="QWidget" name="homeFilterChipsContainer" native="true">
-                  <layout class="QHBoxLayout" name="layoutHomeFilterChips">
-                   <property name="leftMargin">
-                    <number>0</number>
+                 <widget class="QScrollArea" name="scrollHomeFilterTags">
+                  <property name="minimumSize">
+                   <size>
+                    <width>0</width>
+                    <height>170</height>
+                   </size>
+                  </property>
+                  <property name="maximumSize">
+                   <size>
+                    <width>16777215</width>
+                    <height>16777215</height>
+                   </size>
+                  </property>
+                  <property name="frameShape">
+                   <enum>QFrame::Shape::NoFrame</enum>
+                  </property>
+                  <property name="horizontalScrollBarPolicy">
+                   <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>
+                  </property>
+                  <property name="widgetResizable">
+                   <bool>true</bool>
+                  </property>
+                  <widget class="QWidget" name="homeFilterChipsContainer">
+                   <property name="geometry">
+                    <rect>
+                     <x>0</x>
+                     <y>0</y>
+                     <width>937</width>
+                     <height>170</height>
+                    </rect>
                    </property>
-                   <property name="topMargin">
-                    <number>0</number>
-                   </property>
-                   <property name="rightMargin">
-                    <number>0</number>
-                   </property>
-                   <property name="bottomMargin">
-                    <number>0</number>
-                   </property>
-                  </layout>
+                   
+                  </widget>
                  </widget>
                 </item>
                </layout>
@@ -656,8 +758,8 @@ New</string>
                  <rect>
                   <x>0</x>
                   <y>0</y>
-                  <width>982</width>
-                  <height>1464</height>
+                  <width>929</width>
+                  <height>1469</height>
                  </rect>
                 </property>
                 <property name="minimumSize">
@@ -991,7 +1093,7 @@ New</string>
                               <rect>
                                <x>0</x>
                                <y>0</y>
-                               <width>617</width>
+                               <width>564</width>
                                <height>163</height>
                               </rect>
                              </property>
@@ -1204,7 +1306,7 @@ New</string>
                           </item>
                           <item>
                            <widget class="QWidget" name="modelTagsContainer" native="true">
-                            <layout class="QHBoxLayout" name="layoutModelTags">
+                            <layout class="QVBoxLayout" name="layoutModelTags">
                              <property name="leftMargin">
                               <number>0</number>
                              </property>
@@ -1261,9 +1363,9 @@ New</string>
                             </item>
                             <item>
                              <widget class="QPushButton" name="btnEditUserNote">
-                             <property name="text">
+                              <property name="text">
                                <string>编辑信息</string>
-                             </property>
+                              </property>
                              </widget>
                             </item>
                            </layout>
@@ -3004,7 +3106,7 @@ Hash: ...</string>
             </widget>
            </item>
            <item row="2" column="0">
-           <widget class="QLabel" name="lblSetTrans">
+            <widget class="QLabel" name="lblSetTrans">
              <property name="text">
               <string>Tag 翻译表 (CSV，可多选):</string>
              </property>
@@ -3832,7 +3934,7 @@ Hash: ...</string>
      <x>0</x>
      <y>0</y>
      <width>1300</width>
-     <height>24</height>
+     <height>25</height>
     </rect>
    </property>
   </widget>
