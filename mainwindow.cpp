@@ -1515,27 +1515,166 @@ void MainWindow::refreshHomeGallery()
 void MainWindow::refreshHomeFilterChips()
 {
     if (!ui || !ui->layoutHomeFilterChips || !ui->layoutHomeFilterSummaryChips) return;
+
+    constexpr int kSummaryChipHeight = 28;
+    constexpr int kSummaryAreaHeight = 46;     // chip 高度 + 横向滚动条空间
+    constexpr int kSummarySpacing = 6;
+    constexpr int kTagsMaxHeight = 170;
+
     clearLayout(ui->layoutHomeFilterSummaryChips);
     clearLayout(ui->layoutHomeFilterChips);
+
+    // =========================
+    // 1. 第一行：已选作者 / Tag 摘要区
+    // =========================
     ui->scrollHomeFilterSummary->setWidgetResizable(false);
+    ui->scrollHomeFilterSummary->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    ui->scrollHomeFilterSummary->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    ui->scrollHomeFilterSummary->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     ui->scrollHomeFilterSummary->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     ui->scrollHomeFilterSummary->setMinimumWidth(320);
-    ui->scrollHomeFilterSummary->setFixedHeight(32);
+    ui->scrollHomeFilterSummary->setFixedHeight(kSummaryAreaHeight);
+
     ui->homeFilterSummaryContents->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    ui->homeFilterSummaryContents->setFixedHeight(28);
-    if (ui->scrollHomeFilterTags) {
-        ui->scrollHomeFilterTags->setVisible(homeFilterExpanded);
-        ui->scrollHomeFilterTags->setMaximumHeight(homeFilterExpanded ? 170 : 0);
-        ui->scrollHomeFilterTags->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    ui->homeFilterSummaryContents->setFixedHeight(kSummaryChipHeight);
+
+    ui->layoutHomeFilterSummaryChips->setContentsMargins(0, 0, 0, 0);
+    ui->layoutHomeFilterSummaryChips->setSpacing(kSummarySpacing);
+    ui->layoutHomeFilterSummaryChips->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+
+    int summaryContentWidth = 0;
+
+    auto appendSummaryWidth = [&](int itemWidth) {
+        if (summaryContentWidth > 0) {
+            summaryContentWidth += kSummarySpacing;
+        }
+        summaryContentWidth += itemWidth;
+    };
+
+    auto fixSummaryWidgetSize = [&](QWidget *widget) {
+        if (!widget) return;
+
+        widget->ensurePolished();
+        widget->style()->unpolish(widget);
+        widget->style()->polish(widget);
+
+        int width = 0;
+
+        if (auto *btn = qobject_cast<QPushButton *>(widget)) {
+            const QString text = btn->text();
+
+    #if QT_VERSION >= QT_VERSION_CHECK(5, 11, 0)
+            width = btn->fontMetrics().horizontalAdvance(text);
+    #else
+            width = btn->fontMetrics().width(text);
+    #endif
+
+            // 不用 QPushButton::sizeHint，因为它会带 Qt 默认按钮最小宽度
+            // 这里的 18 对应 QSS 左右 padding: 9px + 9px
+            // 再加一点边框和安全余量
+            width += 22;
+        } else if (auto *label = qobject_cast<QLabel *>(widget)) {
+            const QString text = label->text();
+
+    #if QT_VERSION >= QT_VERSION_CHECK(5, 11, 0)
+            width = label->fontMetrics().horizontalAdvance(text);
+    #else
+            width = label->fontMetrics().width(text);
+    #endif
+
+            width += 6;
+        }
+
+        width = qMax(width, 18);
+
+        widget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        widget->setMinimumSize(width, kSummaryChipHeight);
+        widget->setMaximumSize(width, kSummaryChipHeight);
+        widget->resize(width, kSummaryChipHeight);
+
+        appendSummaryWidth(width);
+    };
+
+    auto addSummaryChip = [this, &fixSummaryWidgetSize](const QString &text,
+                                                        const QString &tooltip,
+                                                        const std::function<void()> &removeFn) {
+        QPushButton *chip = new QPushButton(text);
+        chip->setProperty("class", "filterChip");
+        chip->setCursor(Qt::PointingHandCursor);
+        chip->setToolTip(tooltip);
+        chip->setCheckable(false);
+        chip->setAutoDefault(false);
+        chip->setDefault(false);
+
+        fixSummaryWidgetSize(chip);
+
+        connect(chip, &QPushButton::clicked, this, removeFn);
+        ui->layoutHomeFilterSummaryChips->addWidget(chip);
+    };
+
+    QStringList selectedTags = currentHomeTagFilters.values();
+    std::sort(selectedTags.begin(), selectedTags.end(), [](const QString &a, const QString &b) {
+        return QString::localeAwareCompare(a, b) < 0;
+    });
+
+    if (!currentHomeAuthorFilter.isEmpty()) {
+        addSummaryChip("作者: " + currentHomeAuthorFilter + " ×",
+                       "点击移除作者筛选",
+                       [this]() {
+                           setHomeAuthorFilter(QString());
+                       });
     }
-    ui->homeFilterChipsContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+
+    for (const QString &tag : selectedTags) {
+        addSummaryChip(tag + " ×",
+                       "点击移除此 Tag 筛选",
+                       [this, tag]() {
+                           currentHomeTagFilters.remove(tag);
+                           refreshHomeFilterChips();
+                           refreshHomeGallery();
+                       });
+    }
+
+    if (currentHomeAuthorFilter.isEmpty() && currentHomeTagFilters.isEmpty()) {
+        QLabel *emptySummary = new QLabel("未启用主页作者/Tag 筛选");
+        emptySummary->setStyleSheet("color:#8c96a0;background:transparent;font-weight:bold;");
+        emptySummary->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+
+        fixSummaryWidgetSize(emptySummary);
+
+        ui->layoutHomeFilterSummaryChips->addWidget(emptySummary);
+    }
+
+    // 这里不要依赖 layout 的 sizeHint，直接使用手动累加的宽度
+    const int summaryViewportWidth = qMax(1, ui->scrollHomeFilterSummary->viewport()->width());
+    const int finalSummaryWidth = qMax(summaryContentWidth + 2, summaryViewportWidth);
+
+    ui->homeFilterSummaryContents->setFixedSize(finalSummaryWidth, kSummaryChipHeight);
+    ui->homeFilterSummaryContents->updateGeometry();
+
+    ui->layoutHomeFilterSummaryChips->invalidate();
+    ui->layoutHomeFilterSummaryChips->activate();
+
+    ui->scrollHomeFilterSummary->horizontalScrollBar()->setSingleStep(40);
+    ui->scrollHomeFilterSummary->horizontalScrollBar()->setPageStep(summaryViewportWidth);
+
+    // =========================
+    // 2. 展开 / 收起按钮和输入区
+    // =========================
+    ui->btnHomeFilterToggle->setChecked(homeFilterExpanded);
+    ui->btnHomeFilterToggle->setText(homeFilterExpanded ? "收起筛选" : "展开筛选");
 
     auto setLayoutVisible = [](QLayout *layout, bool visible) {
         if (!layout) return;
+
         for (int i = 0; i < layout->count(); ++i) {
             QLayoutItem *item = layout->itemAt(i);
             if (!item) continue;
-            if (QWidget *widget = item->widget()) widget->setVisible(visible);
+
+            if (QWidget *widget = item->widget()) {
+                widget->setVisible(visible);
+            }
+
             if (QLayout *childLayout = item->layout()) {
                 for (int j = 0; j < childLayout->count(); ++j) {
                     if (QWidget *childWidget = childLayout->itemAt(j)->widget()) {
@@ -1546,71 +1685,55 @@ void MainWindow::refreshHomeFilterChips()
         }
     };
 
-    QStringList selectedTags = currentHomeTagFilters.values();
-    std::sort(selectedTags.begin(), selectedTags.end(), [](const QString &a, const QString &b) {
-        return QString::localeAwareCompare(a, b) < 0;
-    });
-
-    auto addSummaryChip = [this](const QString &text, const QString &tooltip, const std::function<void()> &removeFn) {
-        QPushButton *chip = new QPushButton(text);
-        chip->setProperty("class", "filterChip");
-        chip->setCursor(Qt::PointingHandCursor);
-        chip->setToolTip(tooltip);
-        chip->setMaximumHeight(28);
-        chip->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
-        connect(chip, &QPushButton::clicked, this, removeFn);
-        ui->layoutHomeFilterSummaryChips->addWidget(chip);
-    };
-
-    if (!currentHomeAuthorFilter.isEmpty()) {
-        addSummaryChip("作者: " + currentHomeAuthorFilter + " ×",
-                       "点击移除作者筛选",
-                       [this]() { setHomeAuthorFilter(QString()); });
-    }
-    for (const QString &tag : selectedTags) {
-        addSummaryChip("Tag: " + tag + " ×",
-                       "点击移除此 Tag 筛选",
-                       [this, tag]() {
-                           currentHomeTagFilters.remove(tag);
-                           refreshHomeFilterChips();
-                           refreshHomeGallery();
-                       });
-    }
-    if (currentHomeAuthorFilter.isEmpty() && currentHomeTagFilters.isEmpty()) {
-        QLabel *emptySummary = new QLabel("未启用主页作者/Tag 筛选");
-        emptySummary->setStyleSheet("color:#8c96a0;background:transparent;font-weight:bold;");
-        emptySummary->setFixedHeight(28);
-        emptySummary->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
-        ui->layoutHomeFilterSummaryChips->addWidget(emptySummary);
-    }
-    const int summaryWidth = qMax(ui->layoutHomeFilterSummaryChips->sizeHint().width() + 8,
-                                  ui->scrollHomeFilterSummary->viewport()->width());
-    ui->homeFilterSummaryContents->setFixedSize(summaryWidth, 28);
-
-    ui->btnHomeFilterToggle->setChecked(homeFilterExpanded);
-    ui->btnHomeFilterToggle->setText(homeFilterExpanded ? "收起筛选" : "展开筛选");
-
     setLayoutVisible(ui->horizontalLayout_HomeFilterInputs, homeFilterExpanded);
+
+    // =========================
+    // 3. 第二行：展开后的全部 Tag 区域
+    // =========================
+    ui->homeFilterChipsContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    ui->layoutHomeFilterChips->setContentsMargins(0, 0, 0, 0);
+    ui->layoutHomeFilterChips->setSpacing(0);
+    ui->layoutHomeFilterChips->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+
     if (ui->scrollHomeFilterTags) {
+        ui->scrollHomeFilterTags->setWidgetResizable(true);
+        ui->scrollHomeFilterTags->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+        ui->scrollHomeFilterTags->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        ui->scrollHomeFilterTags->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         ui->scrollHomeFilterTags->setVisible(homeFilterExpanded);
     } else {
         ui->homeFilterChipsContainer->setVisible(homeFilterExpanded);
     }
-    if (!homeFilterExpanded) return;
+
+    if (!homeFilterExpanded) {
+        if (ui->scrollHomeFilterTags) {
+            ui->scrollHomeFilterTags->setFixedHeight(0);
+            ui->scrollHomeFilterTags->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        }
+
+        ui->homeFilterChipsContainer->setMinimumHeight(0);
+        ui->homeFilterChipsContainer->setMaximumHeight(0);
+        return;
+    }
 
     QWidget *availableTagsWidget = new QWidget();
     availableTagsWidget->setStyleSheet("background:transparent;");
-    availableTagsWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    availableTagsWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+
     FlowLayout *availableTagsLayout = new FlowLayout(availableTagsWidget, 0, 6, 6);
+
     const QStringList availableTags = collectAvailableHomeFilterTags();
+
     for (const QString &tag : availableTags) {
         bool tagSelected = false;
+
         for (const QString &selected : currentHomeTagFilters) {
             if (selected.compare(tag, Qt::CaseInsensitive) == 0) {
                 tagSelected = true;
                 break;
             }
         }
+
         QPushButton *tagButton = new QPushButton(forceWrap(tag));
         tagButton->setProperty("class", "filterChip");
         tagButton->setCheckable(true);
@@ -1619,30 +1742,66 @@ void MainWindow::refreshHomeFilterChips()
         tagButton->setToolTip("点击添加/移除此 Tag 筛选");
         tagButton->setMaximumWidth(180);
         tagButton->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+
         connect(tagButton, &QPushButton::clicked, this, [this, tag]() {
             QString existing;
+
             for (const QString &value : currentHomeTagFilters) {
                 if (value.compare(tag, Qt::CaseInsensitive) == 0) {
                     existing = value;
                     break;
                 }
             }
+
             if (existing.isEmpty()) {
                 currentHomeTagFilters.insert(tag);
             } else {
                 currentHomeTagFilters.remove(existing);
             }
+
             refreshHomeFilterChips();
             refreshHomeGallery();
         });
+
         availableTagsLayout->addWidget(tagButton);
     }
+
     if (availableTags.isEmpty()) {
         QLabel *emptyTags = new QLabel("当前模型库没有可用模型 Tag");
         emptyTags->setStyleSheet("color:#8c96a0;background:transparent;");
+        emptyTags->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         availableTagsLayout->addWidget(emptyTags);
     }
+
     ui->layoutHomeFilterChips->addWidget(availableTagsWidget);
+
+    ui->layoutHomeFilterChips->invalidate();
+    ui->layoutHomeFilterChips->activate();
+
+    if (ui->scrollHomeFilterTags) {
+        const int tagViewportWidth = qMax(1, ui->scrollHomeFilterTags->viewport()->width());
+
+        int tagContentHeight = availableTagsLayout->heightForWidth(tagViewportWidth);
+        tagContentHeight = qMax(tagContentHeight, availableTagsLayout->minimumSize().height());
+        tagContentHeight = qMax(tagContentHeight, kSummaryChipHeight + 4);
+
+        availableTagsWidget->setMinimumHeight(tagContentHeight);
+        availableTagsWidget->setMaximumHeight(tagContentHeight);
+
+        ui->homeFilterChipsContainer->setMinimumHeight(tagContentHeight);
+        ui->homeFilterChipsContainer->setMaximumHeight(tagContentHeight);
+
+        const int visibleHeight = qMin(tagContentHeight, kTagsMaxHeight);
+
+        ui->scrollHomeFilterTags->setFixedHeight(visibleHeight);
+        ui->scrollHomeFilterTags->setVerticalScrollBarPolicy(
+            tagContentHeight > visibleHeight ? Qt::ScrollBarAsNeeded
+                                             : Qt::ScrollBarAlwaysOff
+        );
+
+        ui->scrollHomeFilterTags->verticalScrollBar()->setSingleStep(40);
+        ui->scrollHomeFilterTags->verticalScrollBar()->setValue(0);
+    }
 }
 
 QStringList MainWindow::collectAvailableHomeFilterTags() const

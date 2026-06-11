@@ -543,7 +543,7 @@ New</string>
                      <enum>Qt::ScrollBarPolicy::ScrollBarAsNeeded</enum>
                     </property>
                     <property name="widgetResizable">
-                     <bool>true</bool>
+                     <bool>false</bool>
                     </property>
                     <widget class="QWidget" name="homeFilterSummaryContents">
                      <property name="geometry">
@@ -652,7 +652,7 @@ New</string>
                   <property name="minimumSize">
                    <size>
                     <width>0</width>
-                    <height>170</height>
+                    <height>0</height>
                    </size>
                   </property>
                   <property name="maximumSize">
@@ -679,7 +679,23 @@ New</string>
                      <height>170</height>
                     </rect>
                    </property>
-                   
+                   <layout class="QVBoxLayout" name="layoutHomeFilterChips">
+                    <property name="spacing">
+                     <number>6</number>
+                    </property>
+                    <property name="leftMargin">
+                     <number>0</number>
+                    </property>
+                    <property name="topMargin">
+                     <number>0</number>
+                    </property>
+                    <property name="rightMargin">
+                     <number>0</number>
+                    </property>
+                    <property name="bottomMargin">
+                     <number>0</number>
+                    </property>
+                   </layout>
                   </widget>
                  </widget>
                 </item>

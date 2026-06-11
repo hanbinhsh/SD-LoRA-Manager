@@ -137,30 +137,6 @@ QScrollArea { border: none; background-color: #1b2838; }
     background-color: transparent;
     border: none;
 }
-#scrollHomeFilterSummary QScrollBar:horizontal {
-    height: 4px;
-    background: transparent;
-}
-#scrollHomeFilterTags QScrollBar:vertical {
-    width: 4px;
-    background: transparent;
-}
-#scrollHomeFilterSummary QScrollBar::handle:horizontal {
-    background: rgba(255,255,255,70);
-    border-radius: 2px;
-}
-#scrollHomeFilterTags QScrollBar::handle:vertical {
-    background: rgba(255,255,255,70);
-    border-radius: 2px;
-}
-#scrollHomeFilterSummary QScrollBar::add-line:horizontal,
-#scrollHomeFilterSummary QScrollBar::sub-line:horizontal,
-#scrollHomeFilterTags QScrollBar::add-line:vertical,
-#scrollHomeFilterTags QScrollBar::sub-line:vertical {
-    width: 0;
-    height: 0;
-    border: none;
-}
 #btnHomeAddTagFilter, #btnHomeClearFilters, #btnHomeFilterToggle, QPushButton[class="filterChip"] {
     background-color: rgba(255,255,255,20);
     color: #ffffff;
