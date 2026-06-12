@@ -37,6 +37,7 @@
 #include <QVBoxLayout>
 
 #include "pages/downloadmodels.h"
+#include "pages/settingspage.h"
 #include "tagflowwidget.h"
 
 // 模型列表相关
@@ -290,6 +291,7 @@ private:
     UsageAnalysisWidget *usageAnalysisWidget = nullptr;
     PromptTemplateLibraryWidget *promptTemplateLibraryWidget = nullptr;
     DownloadsPage *downloadsPage = nullptr;
+    SettingsPage *settingsPage = nullptr;
     QSet<int> pendingToolTabLoads;
     QNetworkAccessManager *netManager = nullptr;
     QPixmap currentHeroPixmap;

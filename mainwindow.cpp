@@ -67,6 +67,7 @@
 #include "tools/usageanalysiswidget.h"
 #include "tools/prompttemplatelibrarywidget.h"
 #include "pages/downloadspage.h"
+#include "pages/settingspage.h"
 #include "modelnotedialog.h"
 
 namespace {
@@ -220,7 +221,11 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
     setStyleSheet(loadQssResource(":/styles/mainwindow.qss"));
-    downloadsPage = new DownloadsPage(ui->pageDownloads, this);
+    downloadsPage = new DownloadsPage(ui->pageDownloads);
+    if (ui->pageDownloads && ui->pageDownloads->layout()) {
+        ui->pageDownloads->layout()->addWidget(downloadsPage);
+    }
+    settingsPage = new SettingsPage(ui->pageSettings, this);
 
     currentUserAgent = getRandomUserAgent();
 
@@ -326,12 +331,6 @@ MainWindow::MainWindow(QWidget *parent)
     // === 应用线程数 ===
     threadPool->setMaxThreadCount(optRenderThreadCount);
     backgroundThreadPool->setMaxThreadCount(optRenderThreadCount);
-    // === 3. 连接路径设置信号 ===
-    connect(ui->btnBrowseLora, &QPushButton::clicked, this, &MainWindow::onBrowseLoraPath);
-    connect(ui->btnBrowseGallery, &QPushButton::clicked, this, &MainWindow::onBrowseGalleryPath);
-    connect(ui->btnBrowseTrans, &QPushButton::clicked, this, &MainWindow::onBrowseTranslationPath);
-    connect(ui->btnClearGalleryCache, &QPushButton::clicked, this, &MainWindow::onClearUserGalleryCacheClicked);
-
     // 样式设置
     QGraphicsDropShadowEffect *shadow = new QGraphicsDropShadowEffect;
     shadow->setBlurRadius(20);
@@ -486,7 +485,7 @@ MainWindow::MainWindow(QWidget *parent)
 
                 if (reply == QMessageBox::Yes) {
                     ui->rootStack->setCurrentWidget(ui->pageSettings); // 跳转到设置页
-                    ui->editTransPath->setFocus();
+                    if (settingsPage) settingsPage->focusTranslationPath();
                 }
                 return;
             }
@@ -7425,7 +7424,7 @@ void MainWindow::onMenuSwitchToSettings() {
 
 void MainWindow::onMenuSwitchToDownloads()
 {
-    ui->rootStack->setCurrentWidget(downloadsPage->widget());
+    ui->rootStack->setCurrentWidget(ui->pageDownloads);
     if (!downloadCardsCacheLoaded) {
         downloadsPage->setStatusText("正在恢复上次下载列表...");
         QTimer::singleShot(0, this, [this]() {
@@ -7439,30 +7438,32 @@ void MainWindow::onMenuSwitchToDownloads()
 
 void MainWindow::onTestCivitaiApiKeyClicked()
 {
-    optCivitaiApiKey = ui->editCivitaiApiKey->text().trimmed();
+    if (settingsPage) optCivitaiApiKey = settingsPage->state().civitaiApiKey;
     saveGlobalConfig();
     if (optCivitaiApiKey.isEmpty()) {
-        ui->lblCivitaiApiStatus->setText("请先输入 Civitai API Key");
+        if (settingsPage) settingsPage->setCivitaiApiStatus("请先输入 Civitai API Key");
         return;
     }
-    ui->lblCivitaiApiStatus->setText("正在测试 API Key...");
-    ui->btnTestCivitaiApiKey->setEnabled(false);
+    if (settingsPage) {
+        settingsPage->setCivitaiApiStatus("正在测试 API Key...");
+        settingsPage->setCivitaiApiTesting(true);
+    }
 
     QNetworkRequest request = makeNetworkRequest(QUrl("https://civitai.com/api/v1/models?limit=1&favorites=true"));
     QNetworkReply *reply = netManager->get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
-        ui->btnTestCivitaiApiKey->setEnabled(true);
+        if (settingsPage) settingsPage->setCivitaiApiTesting(false);
         if (reply->error() != QNetworkReply::NoError) {
-            ui->lblCivitaiApiStatus->setText("API Key 测试失败: " + civitaiNetworkErrorMessage(reply));
+            if (settingsPage) settingsPage->setCivitaiApiStatus("API Key 测试失败: " + civitaiNetworkErrorMessage(reply));
             return;
         }
         QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
         if (!doc.isObject()) {
-            ui->lblCivitaiApiStatus->setText("API Key 测试失败: 返回不是有效 JSON");
+            if (settingsPage) settingsPage->setCivitaiApiStatus("API Key 测试失败: 返回不是有效 JSON");
             return;
         }
-        ui->lblCivitaiApiStatus->setText("API Key 可用");
+        if (settingsPage) settingsPage->setCivitaiApiStatus("API Key 可用");
     });
 }
 
@@ -8578,238 +8579,145 @@ void MainWindow::loadGlobalConfig() {
 
     applyPathListsToUi();
 
-    // 将配置应用到 UI 控件 (初始化 UI 状态)
-    ui->chkRecursiveLora->setChecked(optLoraRecursive);
-    ui->chkRecursiveGallery->setChecked(optGalleryRecursive);
-    ui->sliderBlur->setValue(optBlurRadius);
-    ui->lblBlurValue->setText(QString::number(optBlurRadius) + "px");
-    ui->chkDownscaleBlur->setChecked(optDownscaleBlur);
-    ui->spinBlurWidth->setValue(optBlurProcessWidth);
-    ui->spinBlurWidth->setEnabled(optDownscaleBlur);
-    ui->chkFilterNSFW->setChecked(optFilterNSFW);
-    if (optNSFWMode == 0) ui->radioNSFW_Hide->setChecked(true);
-    else ui->radioNSFW_Blur->setChecked(true);
-    ui->spinNSFWLevel->setValue(optNSFWLevel);
-    bool nsfwEnabled = optFilterNSFW;
-    ui->radioNSFW_Hide->setEnabled(nsfwEnabled);
-    ui->radioNSFW_Blur->setEnabled(nsfwEnabled);
-    ui->spinNSFWLevel->setEnabled(nsfwEnabled);
-    ui->spinRenderThreads->setValue(optRenderThreadCount);
-    ui->chkRestoreTreeState->setChecked(optRestoreTreeState);
-    ui->chkSplitOnNewline->setChecked(optSplitOnNewline);
-    ui->editFilterTags->setText(optFilterTags.join(", "));
-    ui->chkShowEmptyCollections->setChecked(optShowEmptyCollections);
-    ui->chkCollectionFolderTopLevel->setChecked(optCollectionFolderTopLevel);
-    ui->chkCollectionFolderSecondLevel->setChecked(optCollectionFolderSecondLevel);
-    ui->chkModelListFolderGrouping->setChecked(optModelListFolderGrouping);
-    ui->chkUseCustomUserAgent->setChecked(optUseArrangedUA);
-    ui->editUserAgent->setEnabled(optUseArrangedUA);
-    if (!optSavedUAString.isEmpty()) {ui->editUserAgent->setText(optSavedUAString);}
-    ui->editCivitaiApiKey->setText(optCivitaiApiKey);
-    ui->comboModelUpdateDownloadPolicy->setCurrentIndex(optModelUpdateDownloadPolicy);
-    ui->chkAutoCheckUpdatesOnStartup->setChecked(optAutoCheckUpdatesOnStartup);
-    ui->lblCivitaiApiStatus->setText(optCivitaiApiKey.isEmpty() ? "API Key 未配置" : "API Key 未测试");
-    ui->chkUseCivitaiName->setChecked(optUseCivitaiName);
-    ui->chkSuppressLocalWarnings->setChecked(optSuppressLocalWarnings);
-    ui->comboUserGalleryMatchMode->setCurrentIndex(optUserGalleryMatchMode);
-    ui->spinUiScale->setValue(optUiScale);
+    SettingsState settings;
+    settings.loraRecursive = optLoraRecursive;
+    settings.galleryRecursive = optGalleryRecursive;
+    settings.blurRadius = optBlurRadius;
+    settings.downscaleBlur = optDownscaleBlur;
+    settings.blurProcessWidth = optBlurProcessWidth;
+    settings.filterNSFW = optFilterNSFW;
+    settings.nsfwMode = optNSFWMode;
+    settings.nsfwLevel = optNSFWLevel;
+    settings.renderThreadCount = optRenderThreadCount;
+    settings.restoreTreeState = optRestoreTreeState;
+    settings.splitOnNewline = optSplitOnNewline;
+    settings.filterTagsText = optFilterTags.join(", ");
+    settings.showEmptyCollections = optShowEmptyCollections;
+    settings.collectionFolderTopLevel = optCollectionFolderTopLevel;
+    settings.collectionFolderSecondLevel = optCollectionFolderSecondLevel;
+    settings.modelListFolderGrouping = optModelListFolderGrouping;
+    settings.useCustomUserAgent = optUseArrangedUA;
+    settings.customUserAgent = optSavedUAString;
+    settings.civitaiApiKey = optCivitaiApiKey;
+    settings.modelUpdateDownloadPolicy = optModelUpdateDownloadPolicy;
+    settings.autoCheckUpdatesOnStartup = optAutoCheckUpdatesOnStartup;
+    settings.useCivitaiName = optUseCivitaiName;
+    settings.suppressLocalWarnings = optSuppressLocalWarnings;
+    settings.userGalleryMatchMode = optUserGalleryMatchMode;
+    settings.uiScale = optUiScale;
+    settingsPage->setState(settings);
+    settingsPage->setCivitaiApiStatus(optCivitaiApiKey.isEmpty() ? "API Key 未配置" : "API Key 未测试");
 
-    // ===============================
-    // === 连接 Settings 页面的信号 ===
-    // ===============================
-    // UI缩放
-    connect(ui->spinUiScale, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double newScale){
-        if (newScale != optUiScale) {
-            optUiScale = newScale;
-            saveGlobalConfig();
-            // 提示重启
-            ui->statusbar->showMessage(QString("缩放比例已设置为 %1x，重启后生效").arg(newScale), 3000);
-        }
-    });
-    // 递归查找
-    connect(ui->chkRecursiveLora, &QCheckBox::toggled, this, &MainWindow::onSettingsChanged);
-    connect(ui->chkRecursiveGallery, &QCheckBox::toggled, this, &MainWindow::onSettingsChanged);
-    // 模糊滑块
-    connect(ui->sliderBlur, &QSlider::valueChanged, this, &MainWindow::onBlurSliderChanged);
-    connect(ui->sliderBlur, &QSlider::sliderReleased, this, &MainWindow::saveGlobalConfig);
-    // 缩放模糊
-    connect(ui->chkDownscaleBlur, &QCheckBox::toggled, this, [this](bool checked){
-        optDownscaleBlur = checked;
-        ui->spinBlurWidth->setEnabled(checked);
+    connect(settingsPage, &SettingsPage::loraPathsEditRequested, this, &MainWindow::onBrowseLoraPath);
+    connect(settingsPage, &SettingsPage::galleryPathsEditRequested, this, &MainWindow::onBrowseGalleryPath);
+    connect(settingsPage, &SettingsPage::translationPathsEditRequested, this, &MainWindow::onBrowseTranslationPath);
+    connect(settingsPage, &SettingsPage::clearGalleryCacheRequested, this, &MainWindow::onClearUserGalleryCacheClicked);
+    connect(settingsPage, &SettingsPage::testCivitaiApiKeyRequested, this, [this](const QString &key) {
+        optCivitaiApiKey = key.trimmed();
         saveGlobalConfig();
+        onTestCivitaiApiKeyClicked();
     });
-    connect(ui->spinBlurWidth, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val){
-        optBlurProcessWidth = val;
-        saveGlobalConfig();
+    connect(settingsPage, &SettingsPage::blurChanged, this, [this](int value, bool finalSave) {
+        onBlurSliderChanged(value);
+        if (finalSave) saveGlobalConfig();
     });
-    // NSFW 设置
-    connect(ui->chkFilterNSFW, &QCheckBox::toggled, this, [this](bool checked){
-        optFilterNSFW = checked;
-        ui->radioNSFW_Hide->setEnabled(checked);
-        ui->radioNSFW_Blur->setEnabled(checked);
-        ui->spinNSFWLevel->setEnabled(checked);
-        saveGlobalConfig();
-    });
-    connect(ui->radioNSFW_Hide, &QRadioButton::toggled, this, [this](bool checked){
-        if(checked) optNSFWMode = 0;
-        saveGlobalConfig();
-    });
-    connect(ui->radioNSFW_Blur, &QRadioButton::toggled, this, [this](bool checked){
-        if(checked) optNSFWMode = 1;
-        saveGlobalConfig();
-    });
-    connect(ui->spinNSFWLevel, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val){
-        optNSFWLevel = val;
-        saveGlobalConfig();
-    });
-    // 线程数
-    connect(ui->spinRenderThreads, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val){
-        optRenderThreadCount = val;
-        threadPool->setMaxThreadCount(val);
-        backgroundThreadPool->setMaxThreadCount(val);
-        saveGlobalConfig();
-    });
-    // 树状态恢复
-    connect(ui->chkRestoreTreeState, &QCheckBox::toggled, this, [this](bool checked){
-        optRestoreTreeState = checked;
-        saveGlobalConfig();
-    });
-    // 换行符开关
-    connect(ui->chkSplitOnNewline, &QCheckBox::toggled, this, [this](bool checked){
-        optSplitOnNewline = checked;
-        saveGlobalConfig();
-    });
-    // 过滤词输入框
-    connect(ui->editFilterTags, &QLineEdit::editingFinished, this, [this](){
-        QString text = ui->editFilterTags->text();
-        optFilterTags = text.split(',', Qt::SkipEmptyParts);
-        for(QString &s : optFilterTags) s = s.trimmed();
-        saveGlobalConfig();
-    });
-    // 重置按钮
-    connect(ui->btnResetFilterTags, &QPushButton::clicked, this, [this](){
-        // 弹出确认对话框
-        QMessageBox::StandardButton reply;
-        reply = QMessageBox::question(this,
-                                      "确认重置 / Confirm Reset",
-                                      "确定要将过滤提示词重置为默认值吗？\n此操作将覆盖当前的自定义设置。\n\n"
-                                      "Are you sure you want to reset filter tags to default?",
-                                      QMessageBox::Yes | QMessageBox::No);
-        if (reply == QMessageBox::Yes) {
-            // 用户点击了 Yes，执行重置逻辑
-            ui->editFilterTags->setText(DEFAULT_FILTER_TAGS);
-            // 解析并保存
-            optFilterTags = DEFAULT_FILTER_TAGS.split(',', Qt::SkipEmptyParts);
-            for(QString &s : optFilterTags) s = s.trimmed();
-            saveGlobalConfig();
-            ui->statusbar->showMessage("过滤词已重置", 2000);
-        }
-    });
-    // 显示空收藏夹开关
-    connect(ui->chkShowEmptyCollections, &QCheckBox::toggled, this, [this](bool checked){
-        optShowEmptyCollections = checked;
-        saveGlobalConfig();
-        // 修改此设置后，必须立刻刷新树状图才能看到效果
-        refreshCollectionTreeView();
-    });
-    connect(ui->chkCollectionFolderTopLevel, &QCheckBox::toggled, this, [this](bool checked){
-        optCollectionFolderTopLevel = checked;
-        if (checked && ui->chkCollectionFolderSecondLevel->isChecked()) {
-            QSignalBlocker blocker(ui->chkCollectionFolderSecondLevel);
-            ui->chkCollectionFolderSecondLevel->setChecked(false);
-            optCollectionFolderSecondLevel = false;
-        }
-        saveGlobalConfig();
-        refreshCollectionTreeView();
-    });
-    connect(ui->chkCollectionFolderSecondLevel, &QCheckBox::toggled, this, [this](bool checked){
-        optCollectionFolderSecondLevel = checked;
-        if (checked && ui->chkCollectionFolderTopLevel->isChecked()) {
-            QSignalBlocker blocker(ui->chkCollectionFolderTopLevel);
-            ui->chkCollectionFolderTopLevel->setChecked(false);
-            optCollectionFolderTopLevel = false;
-        }
-        saveGlobalConfig();
-        refreshCollectionTreeView();
-    });
-    connect(ui->chkModelListFolderGrouping, &QCheckBox::toggled, this, [this](bool checked){
-        optModelListFolderGrouping = checked;
-        saveGlobalConfig();
-        executeSort();
-        refreshHomeGallery();
-        refreshCollectionTreeView();
-    });
-    // 复选框切换：控制输入框可用性 + 立即切换 UA 策略 + 自动保存
-    connect(ui->chkUseCustomUserAgent, &QCheckBox::toggled, this, [this](bool checked){
-        ui->editUserAgent->setEnabled(checked);
-        if (checked) {
-            // 勾选瞬间：如果框里有字，就用框里的；没字就随机填一个
-            if (ui->editUserAgent->text().trimmed().isEmpty()) {
-                ui->editUserAgent->setText(getRandomUserAgent());
-                ui->editUserAgent->setEnabled(true);
-            }
-            currentUserAgent = ui->editUserAgent->text().trimmed();
-        } else {
-            // 取消勾选瞬间：立即切换回随机 UA，但保留输入框里的字
-            currentUserAgent = getRandomUserAgent();
-            ui->editUserAgent->setEnabled(false);
-        }
-        qDebug() << "UA Changed to:" << currentUserAgent;
-        saveGlobalConfig(); // 状态改变立即保存
-    });
-    // 勾选时更新当前 UA (编辑完成时保存，避免每打一个字都存硬盘)
-    connect(ui->editUserAgent, &QLineEdit::editingFinished, this, [this](){
-        if (ui->chkUseCustomUserAgent->isChecked()) {
-            currentUserAgent = ui->editUserAgent->text().trimmed();
-        }
-        saveGlobalConfig();
-    });
-    // 生成随机按钮：填入框 + (如果勾选)更新当前UA + 保存
-    connect(ui->btnResetUA, &QPushButton::clicked, this, [this](){
-        QString newUA = getRandomUserAgent();
-        ui->editUserAgent->setText(newUA);
+    connect(settingsPage, &SettingsPage::resetFilterTagsRequested, this, [this]() {
+        const QMessageBox::StandardButton reply = QMessageBox::question(
+            this,
+            "确认重置 / Confirm Reset",
+            "确定要将过滤提示词重置为默认值吗？\n此操作将覆盖当前的自定义设置。\n\n"
+            "Are you sure you want to reset filter tags to default?",
+            QMessageBox::Yes | QMessageBox::No);
+        if (reply != QMessageBox::Yes) return;
 
-        if (ui->chkUseCustomUserAgent->isChecked()) {
+        settingsPage->setFilterTagsText(DEFAULT_FILTER_TAGS);
+        optFilterTags = DEFAULT_FILTER_TAGS.split(',', Qt::SkipEmptyParts);
+        for (QString &s : optFilterTags) s = s.trimmed();
+        saveGlobalConfig();
+        ui->statusbar->showMessage("过滤词已重置", 2000);
+    });
+    connect(settingsPage, &SettingsPage::randomUserAgentRequested, this, [this]() {
+        const QString newUA = getRandomUserAgent();
+        settingsPage->setUserAgentText(newUA);
+        optUseArrangedUA = settingsPage->state().useCustomUserAgent;
+        optSavedUAString = newUA;
+        if (optUseArrangedUA) {
             currentUserAgent = newUA;
         }
         saveGlobalConfig();
     });
-    // 刷新文字
-    connect(ui->chkUseCivitaiName, &QCheckBox::toggled, this, [this](bool checked){
-        optUseCivitaiName = checked;
-        updateModelListNames(); // 切换时立即刷新列表文字
-        executeSort();          // 刷新文字后可能需要重新排序
+    connect(settingsPage, &SettingsPage::stateChanged, this, [this](SettingsState state) {
+        if (state.modelUpdateDownloadPolicy < 0 || state.modelUpdateDownloadPolicy > 2) state.modelUpdateDownloadPolicy = 0;
+        if (state.userGalleryMatchMode < 0 || state.userGalleryMatchMode > 2) state.userGalleryMatchMode = 0;
+
+        const bool recursiveChanged = optLoraRecursive != state.loraRecursive || optGalleryRecursive != state.galleryRecursive;
+        const bool renderThreadsChanged = optRenderThreadCount != state.renderThreadCount;
+        const bool collectionTreeChanged = optShowEmptyCollections != state.showEmptyCollections
+            || optCollectionFolderTopLevel != state.collectionFolderTopLevel
+            || optCollectionFolderSecondLevel != state.collectionFolderSecondLevel;
+        const bool modelGroupingChanged = optModelListFolderGrouping != state.modelListFolderGrouping;
+        const bool civitaiNameChanged = optUseCivitaiName != state.useCivitaiName;
+        const bool galleryMatchChanged = optUserGalleryMatchMode != state.userGalleryMatchMode;
+        const bool uiScaleChanged = !qFuzzyCompare(optUiScale, state.uiScale);
+        const bool customUaModeChanged = optUseArrangedUA != state.useCustomUserAgent;
+
+        optLoraRecursive = state.loraRecursive;
+        optGalleryRecursive = state.galleryRecursive;
+        optBlurRadius = state.blurRadius;
+        optDownscaleBlur = state.downscaleBlur;
+        optBlurProcessWidth = state.blurProcessWidth;
+        optFilterNSFW = state.filterNSFW;
+        optNSFWMode = state.nsfwMode;
+        optNSFWLevel = state.nsfwLevel;
+        optRenderThreadCount = qMax(1, state.renderThreadCount);
+        optRestoreTreeState = state.restoreTreeState;
+        optSplitOnNewline = state.splitOnNewline;
+        optFilterTags = state.filterTagsText.split(',', Qt::SkipEmptyParts);
+        for (QString &s : optFilterTags) s = s.trimmed();
+        optShowEmptyCollections = state.showEmptyCollections;
+        optCollectionFolderTopLevel = state.collectionFolderTopLevel;
+        optCollectionFolderSecondLevel = state.collectionFolderSecondLevel;
+        optModelListFolderGrouping = state.modelListFolderGrouping;
+        optUseArrangedUA = state.useCustomUserAgent;
+        optSavedUAString = state.customUserAgent;
+        optCivitaiApiKey = state.civitaiApiKey;
+        optModelUpdateDownloadPolicy = state.modelUpdateDownloadPolicy;
+        optAutoCheckUpdatesOnStartup = state.autoCheckUpdatesOnStartup;
+        optUseCivitaiName = state.useCivitaiName;
+        optSuppressLocalWarnings = state.suppressLocalWarnings;
+        optUserGalleryMatchMode = state.userGalleryMatchMode;
+        optUiScale = state.uiScale;
+
+        if (renderThreadsChanged) {
+            threadPool->setMaxThreadCount(optRenderThreadCount);
+            backgroundThreadPool->setMaxThreadCount(optRenderThreadCount);
+        }
+        if (customUaModeChanged) {
+            currentUserAgent = optUseArrangedUA && !optSavedUAString.isEmpty() ? optSavedUAString : getRandomUserAgent();
+            qDebug() << "UA Changed to:" << currentUserAgent;
+        } else if (optUseArrangedUA) {
+            currentUserAgent = optSavedUAString;
+        }
+
         saveGlobalConfig();
-    });
-    connect(ui->chkSuppressLocalWarnings, &QCheckBox::toggled, this, [this](bool checked){
-        optSuppressLocalWarnings = checked;
-        saveGlobalConfig();
-    });
-    connect(ui->chkAutoCheckUpdatesOnStartup, &QCheckBox::toggled, this, [this](bool checked){
-        optAutoCheckUpdatesOnStartup = checked;
-        saveGlobalConfig();
-    });
-    connect(ui->editCivitaiApiKey, &QLineEdit::editingFinished, this, [this](){
-        optCivitaiApiKey = ui->editCivitaiApiKey->text().trimmed();
-        ui->lblCivitaiApiStatus->setText(optCivitaiApiKey.isEmpty() ? "API Key 未配置" : "API Key 未测试");
-        saveGlobalConfig();
-    });
-    connect(ui->btnToggleCivitaiApiKey, &QPushButton::clicked, this, [this](){
-        const bool showing = ui->editCivitaiApiKey->echoMode() == QLineEdit::Normal;
-        ui->editCivitaiApiKey->setEchoMode(showing ? QLineEdit::Password : QLineEdit::Normal);
-        ui->btnToggleCivitaiApiKey->setText(showing ? "显示" : "隐藏");
-    });
-    connect(ui->btnTestCivitaiApiKey, &QPushButton::clicked, this, &MainWindow::onTestCivitaiApiKeyClicked);
-    connect(ui->comboModelUpdateDownloadPolicy, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index){
-        if (index < 0 || index > 2) index = 0;
-        optModelUpdateDownloadPolicy = index;
-        saveGlobalConfig();
-    });
-    connect(ui->comboUserGalleryMatchMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index){
-        if (index < 0 || index > 2) index = 0;
-        optUserGalleryMatchMode = index;
-        saveGlobalConfig();
-        refreshModelUsageStatsAsync();
+
+        if (recursiveChanged) {
+            // 递归扫描设置在下一次扫描时生效。
+        }
+        if (collectionTreeChanged) refreshCollectionTreeView();
+        if (modelGroupingChanged) {
+            executeSort();
+            refreshHomeGallery();
+            refreshCollectionTreeView();
+        }
+        if (civitaiNameChanged) {
+            updateModelListNames();
+            executeSort();
+        }
+        if (galleryMatchChanged) refreshModelUsageStatsAsync();
+        if (uiScaleChanged) {
+            ui->statusbar->showMessage(QString("缩放比例已设置为 %1x，重启后生效").arg(optUiScale), 3000);
+        }
     });
 }
 
@@ -8824,6 +8732,7 @@ void MainWindow::saveGlobalConfig() {
         root = QJsonDocument::fromJson(readFile.readAll()).object();
         readFile.close();
     }
+    const SettingsState settings = settingsPage ? settingsPage->state() : SettingsState{};
 
     QJsonArray loraArr;
     for (const QString &path : loraPaths) loraArr.append(path);
@@ -8858,14 +8767,14 @@ void MainWindow::saveGlobalConfig() {
     root["render_thread_count"]         = optRenderThreadCount;
     root["restore_tree_state"]          = optRestoreTreeState;
     root["split_on_newline"]            = optSplitOnNewline;
-    root["filter_tags_string"]          = ui->editFilterTags->text();
+    root["filter_tags_string"]          = settingsPage ? settings.filterTagsText : optFilterTags.join(", ");
     root["show_empty_collections"]      = optShowEmptyCollections;
     root["collection_folder_top_level"] = optCollectionFolderTopLevel;
     root["collection_folder_second_level"] = optCollectionFolderSecondLevel;
     root["model_list_folder_grouping"]  = optModelListFolderGrouping;
-    root["use_custom_ua"]               = ui->chkUseCustomUserAgent->isChecked();
-    root["custom_user_agent"]           = ui->editUserAgent->text();
-    root["civitai_api_key"]             = ui->editCivitaiApiKey->text().trimmed();
+    root["use_custom_ua"]               = settingsPage ? settings.useCustomUserAgent : optUseArrangedUA;
+    root["custom_user_agent"]           = settingsPage ? settings.customUserAgent : optSavedUAString;
+    root["civitai_api_key"]             = settingsPage ? settings.civitaiApiKey : optCivitaiApiKey;
     root["use_civitai_name"]            = optUseCivitaiName;
     root["suppress_local_model_warnings"] = optSuppressLocalWarnings;
     root["user_gallery_match_mode"]     = optUserGalleryMatchMode;
@@ -9015,9 +8924,12 @@ void MainWindow::applyPathListsToUi()
     sdOutputFolder = activeGalleryPaths.value(0);
     translationCsvPath = activeTranslationPaths.value(0);
 
-    if (ui->editLoraPath) ui->editLoraPath->setText(formatPathListForEdit(activeLoraPaths));
-    if (ui->editGalleryPath) ui->editGalleryPath->setText(formatPathListForEdit(activeGalleryPaths));
-    if (ui->editTransPath) ui->editTransPath->setText(formatPathListForEdit(activeTranslationPaths));
+    if (settingsPage) {
+        settingsPage->setPathSummaries(
+            formatPathListForEdit(activeLoraPaths),
+            formatPathListForEdit(activeGalleryPaths),
+            formatPathListForEdit(activeTranslationPaths));
+    }
     if (tagBrowserWidget) {
         tagBrowserWidget->setCsvPath(translationCsvPath);
         tagBrowserWidget->setMergedTranslationMap(&translationMap);
@@ -9107,9 +9019,11 @@ void MainWindow::onBrowseGalleryPath() {
 }
 
 void MainWindow::onSettingsChanged() {
-    // 从 UI 更新变量
-    optLoraRecursive = ui->chkRecursiveLora->isChecked();
-    optGalleryRecursive = ui->chkRecursiveGallery->isChecked();
+    if (settingsPage) {
+        const SettingsState state = settingsPage->state();
+        optLoraRecursive = state.loraRecursive;
+        optGalleryRecursive = state.galleryRecursive;
+    }
 
     // 保存
     saveGlobalConfig();
@@ -9117,7 +9031,7 @@ void MainWindow::onSettingsChanged() {
 
 void MainWindow::onBlurSliderChanged(int value) {
     optBlurRadius = value;
-    ui->lblBlurValue->setText(QString::number(value) + "px");
+    if (settingsPage) settingsPage->setBlurValue(value);
 
     // 实时更新当前背景 (如果有)
     updateBackgroundImage();

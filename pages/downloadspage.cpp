@@ -1,4 +1,5 @@
 #include "downloadspage.h"
+#include "ui_downloadspage.h"
 
 #include <QColor>
 #include <QComboBox>
@@ -21,43 +22,48 @@
 #include <QStyle>
 #include <QTabWidget>
 #include <QVBoxLayout>
-#include <QWidget>
 #include <algorithm>
 
-DownloadsPage::DownloadsPage(QWidget *root, QObject *parent)
-    : QObject(parent)
-    , m_root(root)
+DownloadsPage::DownloadsPage(QWidget *parent)
+    : QWidget(parent)
+    , ui(new Ui::DownloadsPage)
 {
-    m_statusLabel = child<QLabel>("lblDownloadsStatus");
-    m_selectedLabel = child<QLabel>("lblDownloadsSelected");
-    m_filterLabel = child<QLabel>("lblDownloadsFilter");
-    m_filterCombo = child<QComboBox>("comboDownloadsFilter");
-    m_statusTabs = child<QTabWidget>("tabDownloadsStatus");
+    ui->setupUi(this);
+    m_statusLabel = ui->lblDownloadsStatus;
+    m_selectedLabel = ui->lblDownloadsSelected;
+    m_filterLabel = ui->lblDownloadsFilter;
+    m_filterCombo = ui->comboDownloadsFilter;
+    m_statusTabs = ui->tabDownloadsStatus;
 
-    m_checkCurrentButton = child<QPushButton>("btnDownloadsCheckCurrent");
-    m_checkSelectedButton = child<QPushButton>("btnDownloadsCheckSelected");
-    m_checkAllButton = child<QPushButton>("btnDownloadsCheckAll");
-    m_downloadSelectedButton = child<QPushButton>("btnDownloadsDownloadSelected");
-    m_cancelButton = child<QPushButton>("btnDownloadsCancel");
-    m_retryButton = child<QPushButton>("btnDownloadsRetry");
-    m_openFolderButton = child<QPushButton>("btnDownloadsOpenFolder");
-    m_clearCompletedButton = child<QPushButton>("btnDownloadsClearCompleted");
-    m_toggleCurrentTabButton = child<QPushButton>("btnDownloadsToggleCurrentTab");
+    m_checkCurrentButton = ui->btnDownloadsCheckCurrent;
+    m_checkSelectedButton = ui->btnDownloadsCheckSelected;
+    m_checkAllButton = ui->btnDownloadsCheckAll;
+    m_downloadSelectedButton = ui->btnDownloadsDownloadSelected;
+    m_cancelButton = ui->btnDownloadsCancel;
+    m_retryButton = ui->btnDownloadsRetry;
+    m_openFolderButton = ui->btnDownloadsOpenFolder;
+    m_clearCompletedButton = ui->btnDownloadsClearCompleted;
+    m_toggleCurrentTabButton = ui->btnDownloadsToggleCurrentTab;
 
-    m_defaultCardsContainer = child<QWidget>("downloadCardsContainer");
-    m_scrollUpdates = child<QScrollArea>("scrollDownloadsCards");
-    m_scrollCoexisting = child<QScrollArea>("scrollDownloadsCoexisting");
-    m_scrollIgnored = child<QScrollArea>("scrollDownloadsIgnored");
-    m_scrollLatest = child<QScrollArea>("scrollDownloadsLatest");
-    m_scrollErrors = child<QScrollArea>("scrollDownloadsErrors");
-    m_scrollLocal = child<QScrollArea>("scrollDownloadsLocal");
+    m_defaultCardsContainer = ui->downloadCardsContainer;
+    m_scrollUpdates = ui->scrollDownloadsCards;
+    m_scrollCoexisting = ui->scrollDownloadsCoexisting;
+    m_scrollIgnored = ui->scrollDownloadsIgnored;
+    m_scrollLatest = ui->scrollDownloadsLatest;
+    m_scrollErrors = ui->scrollDownloadsErrors;
+    m_scrollLocal = ui->scrollDownloadsLocal;
 
-    m_layoutUpdates = child<QVBoxLayout>("downloadCardsLayout");
-    m_layoutCoexisting = child<QVBoxLayout>("downloadCardsLayoutCoexisting");
-    m_layoutIgnored = child<QVBoxLayout>("downloadCardsLayoutIgnored");
-    m_layoutLatest = child<QVBoxLayout>("downloadCardsLayoutLatest");
-    m_layoutErrors = child<QVBoxLayout>("downloadCardsLayoutErrors");
-    m_layoutLocal = child<QVBoxLayout>("downloadCardsLayoutLocal");
+    m_layoutUpdates = ui->downloadCardsLayout;
+    m_layoutCoexisting = ui->downloadCardsLayoutCoexisting;
+    m_layoutIgnored = ui->downloadCardsLayoutIgnored;
+    m_layoutLatest = ui->downloadCardsLayoutLatest;
+    m_layoutErrors = ui->downloadCardsLayoutErrors;
+    m_layoutLocal = ui->downloadCardsLayoutLocal;
+}
+
+DownloadsPage::~DownloadsPage()
+{
+    delete ui;
 }
 
 QVBoxLayout *DownloadsPage::cardsLayout(const QString &category) const
@@ -556,12 +562,6 @@ void DownloadsPage::initializeAppearance()
         pal.setColor(QPalette::Window, downloadBg);
         vp->setPalette(pal);
     }
-}
-
-template <typename T>
-T *DownloadsPage::child(const char *objectName) const
-{
-    return m_root ? m_root->findChild<T*>(QString::fromLatin1(objectName)) : nullptr;
 }
 
 QString DownloadsPage::categoryForStatus(const QString &status) const

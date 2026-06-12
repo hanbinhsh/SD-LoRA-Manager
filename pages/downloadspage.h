@@ -1,10 +1,10 @@
-#ifndef DOWNLOADSPAGE_H
-#define DOWNLOADSPAGE_H
+#ifndef DOWNLOADSPAGE_WIDGET_H
+#define DOWNLOADSPAGE_WIDGET_H
 
-#include <QObject>
 #include <QHash>
 #include <QString>
 #include <QStringList>
+#include <QWidget>
 
 #include "downloadmodels.h"
 
@@ -15,16 +15,18 @@ class QPushButton;
 class QScrollArea;
 class QTabWidget;
 class QVBoxLayout;
-class QWidget;
 
-class DownloadsPage : public QObject
+namespace Ui {
+class DownloadsPage;
+}
+
+class DownloadsPage : public QWidget
 {
     Q_OBJECT
 
 public:
-    explicit DownloadsPage(QWidget *root, QObject *parent = nullptr);
-
-    QWidget *widget() const { return m_root; }
+    explicit DownloadsPage(QWidget *parent = nullptr);
+    ~DownloadsPage() override;
 
     QLabel *statusLabel() const { return m_statusLabel; }
     QLabel *selectedLabel() const { return m_selectedLabel; }
@@ -80,11 +82,9 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
-    template <typename T>
-    T *child(const char *objectName) const;
     void updateSelectionSummary(int selectedCurrent, int currentTotal, int selectedTotal);
 
-    QWidget *m_root = nullptr;
+    Ui::DownloadsPage *ui = nullptr;
     QLabel *m_statusLabel = nullptr;
     QLabel *m_selectedLabel = nullptr;
     QLabel *m_filterLabel = nullptr;
@@ -118,4 +118,4 @@ private:
     QHash<QString, DownloadCardWidgets> m_cards;
 };
 
-#endif // DOWNLOADSPAGE_H
+#endif // DOWNLOADSPAGE_WIDGET_H

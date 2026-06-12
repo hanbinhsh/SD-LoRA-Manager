@@ -1,0 +1,381 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>DownloadsPage</class>
+ <widget class="QWidget" name="DownloadsPage">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>980</width>
+    <height>720</height>
+   </rect>
+  </property>
+  <layout class="QHBoxLayout" name="horizontalLayout_DownloadsRoot">
+   <property name="spacing">
+    <number>14</number>
+   </property>
+   <property name="leftMargin">
+    <number>24</number>
+   </property>
+   <property name="topMargin">
+    <number>24</number>
+   </property>
+   <property name="rightMargin">
+    <number>24</number>
+   </property>
+   <property name="bottomMargin">
+    <number>24</number>
+   </property>
+   <item>
+    <widget class="QGroupBox" name="groupDownloadsActions">
+     <property name="minimumSize">
+      <size>
+       <width>260</width>
+       <height>0</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>320</width>
+       <height>16777215</height>
+      </size>
+     </property>
+     <property name="title">
+      <string>下载管理 / Downloads</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout_DownloadActions">
+      <property name="spacing">
+       <number>10</number>
+      </property>
+      <item>
+       <widget class="QPushButton" name="btnDownloadsCheckAll">
+        <property name="text">
+         <string>检查全部模型更新</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnDownloadsClearCompleted">
+        <property name="text">
+         <string>清空已完成</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnDownloadsToggleCurrentTab">
+        <property name="text">
+         <string>全选当前 Tab</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="Line" name="line_7">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnDownloadsDownloadSelected">
+        <property name="text">
+         <string>下载选中更新</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnDownloadsCancel">
+        <property name="text">
+         <string>取消选中任务</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnDownloadsRetry">
+        <property name="text">
+         <string>重试失败任务</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="Line" name="line_5">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnDownloadsCheckCurrent">
+        <property name="text">
+         <string>检查当前模型更新</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnDownloadsCheckSelected">
+        <property name="text">
+         <string>检查选中模型更新</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="Line" name="line_6">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnDownloadsOpenFolder">
+        <property name="text">
+         <string>打开文件位置</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="lblDownloadsSelected">
+        <property name="text">
+         <string>已选择 0 个模型</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="lblDownloadsFilter">
+        <property name="text">
+         <string>显示范围:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QComboBox" name="comboDownloadsFilter">
+        <item>
+         <property name="text">
+          <string>全部任务</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>有更新</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>下载中</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>失败</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item>
+       <spacer name="verticalSpacer_DownloadActions">
+        <property name="orientation">
+         <enum>Qt::Orientation::Vertical</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>20</width>
+          <height>40</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QLabel" name="lblDownloadsStatus">
+        <property name="text">
+         <string>等待检查更新。</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTabWidget" name="tabDownloadsStatus">
+     <property name="currentIndex">
+      <number>0</number>
+     </property>
+     <widget class="QWidget" name="pageDownloadsUpdates">
+      <attribute name="title">
+       <string>有新版本</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_DownloadsUpdates">
+       <property name="leftMargin"><number>10</number></property>
+       <property name="topMargin"><number>10</number></property>
+       <property name="rightMargin"><number>10</number></property>
+       <property name="bottomMargin"><number>10</number></property>
+       <item>
+        <widget class="QScrollArea" name="scrollDownloadsCards">
+         <property name="horizontalScrollBarPolicy">
+          <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>
+         </property>
+         <property name="widgetResizable">
+          <bool>true</bool>
+         </property>
+         <widget class="QWidget" name="downloadCardsContainer">
+          <property name="geometry">
+           <rect><x>0</x><y>0</y><width>120</width><height>60</height></rect>
+          </property>
+          <layout class="QVBoxLayout" name="downloadCardsLayout">
+           <property name="spacing"><number>12</number></property>
+           <property name="leftMargin"><number>0</number></property>
+           <property name="topMargin"><number>0</number></property>
+           <property name="rightMargin"><number>0</number></property>
+           <property name="bottomMargin"><number>0</number></property>
+           <item>
+            <spacer name="verticalSpacer_DownloadCards">
+             <property name="orientation"><enum>Qt::Orientation::Vertical</enum></property>
+             <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
+            </spacer>
+           </item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="pageDownloadsCoexisting">
+      <attribute name="title"><string>旧版共存</string></attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_DownloadsCoexisting">
+       <property name="leftMargin"><number>10</number></property>
+       <property name="topMargin"><number>10</number></property>
+       <property name="rightMargin"><number>10</number></property>
+       <property name="bottomMargin"><number>10</number></property>
+       <item>
+        <widget class="QScrollArea" name="scrollDownloadsCoexisting">
+         <property name="horizontalScrollBarPolicy"><enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum></property>
+         <property name="widgetResizable"><bool>true</bool></property>
+         <widget class="QWidget" name="downloadCardsContainerCoexisting">
+          <property name="geometry"><rect><x>0</x><y>0</y><width>120</width><height>60</height></rect></property>
+          <layout class="QVBoxLayout" name="downloadCardsLayoutCoexisting">
+           <property name="spacing"><number>12</number></property>
+           <property name="leftMargin"><number>0</number></property>
+           <property name="topMargin"><number>0</number></property>
+           <property name="rightMargin"><number>0</number></property>
+           <property name="bottomMargin"><number>0</number></property>
+           <item><spacer name="verticalSpacer_DownloadCardsCoexisting"><property name="orientation"><enum>Qt::Orientation::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="pageDownloadsIgnored">
+      <attribute name="title"><string>已忽略</string></attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_DownloadsIgnored">
+       <property name="leftMargin"><number>10</number></property>
+       <property name="topMargin"><number>10</number></property>
+       <property name="rightMargin"><number>10</number></property>
+       <property name="bottomMargin"><number>10</number></property>
+       <item>
+        <widget class="QScrollArea" name="scrollDownloadsIgnored">
+         <property name="horizontalScrollBarPolicy"><enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum></property>
+         <property name="widgetResizable"><bool>true</bool></property>
+         <widget class="QWidget" name="downloadCardsContainerIgnored">
+          <property name="geometry"><rect><x>0</x><y>0</y><width>120</width><height>60</height></rect></property>
+          <layout class="QVBoxLayout" name="downloadCardsLayoutIgnored">
+           <property name="spacing"><number>12</number></property>
+           <property name="leftMargin"><number>0</number></property>
+           <property name="topMargin"><number>0</number></property>
+           <property name="rightMargin"><number>0</number></property>
+           <property name="bottomMargin"><number>0</number></property>
+           <item><spacer name="verticalSpacer_DownloadCardsIgnored"><property name="orientation"><enum>Qt::Orientation::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="pageDownloadsLatest">
+      <attribute name="title"><string>已是最新</string></attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_DownloadsLatest">
+       <property name="leftMargin"><number>10</number></property>
+       <property name="topMargin"><number>10</number></property>
+       <property name="rightMargin"><number>10</number></property>
+       <property name="bottomMargin"><number>10</number></property>
+       <item>
+        <widget class="QScrollArea" name="scrollDownloadsLatest">
+         <property name="horizontalScrollBarPolicy"><enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum></property>
+         <property name="widgetResizable"><bool>true</bool></property>
+         <widget class="QWidget" name="downloadCardsContainerLatest">
+          <property name="geometry"><rect><x>0</x><y>0</y><width>120</width><height>60</height></rect></property>
+          <layout class="QVBoxLayout" name="downloadCardsLayoutLatest">
+           <property name="spacing"><number>12</number></property>
+           <property name="leftMargin"><number>0</number></property>
+           <property name="topMargin"><number>0</number></property>
+           <property name="rightMargin"><number>0</number></property>
+           <property name="bottomMargin"><number>0</number></property>
+           <item><spacer name="verticalSpacer_DownloadCardsLatest"><property name="orientation"><enum>Qt::Orientation::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="pageDownloadsErrors">
+      <attribute name="title"><string>出错</string></attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_DownloadsErrors">
+       <property name="leftMargin"><number>10</number></property>
+       <property name="topMargin"><number>10</number></property>
+       <property name="rightMargin"><number>10</number></property>
+       <property name="bottomMargin"><number>10</number></property>
+       <item>
+        <widget class="QScrollArea" name="scrollDownloadsErrors">
+         <property name="horizontalScrollBarPolicy"><enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum></property>
+         <property name="widgetResizable"><bool>true</bool></property>
+         <widget class="QWidget" name="downloadCardsContainerErrors">
+          <property name="geometry"><rect><x>0</x><y>0</y><width>120</width><height>60</height></rect></property>
+          <layout class="QVBoxLayout" name="downloadCardsLayoutErrors">
+           <property name="spacing"><number>12</number></property>
+           <property name="leftMargin"><number>0</number></property>
+           <property name="topMargin"><number>0</number></property>
+           <property name="rightMargin"><number>0</number></property>
+           <property name="bottomMargin"><number>0</number></property>
+           <item><spacer name="verticalSpacer_DownloadCardsErrors"><property name="orientation"><enum>Qt::Orientation::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="pageDownloadsLocal">
+      <attribute name="title"><string>本地/跳过</string></attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_DownloadsLocal">
+       <property name="leftMargin"><number>10</number></property>
+       <property name="topMargin"><number>10</number></property>
+       <property name="rightMargin"><number>10</number></property>
+       <property name="bottomMargin"><number>10</number></property>
+       <item>
+        <widget class="QScrollArea" name="scrollDownloadsLocal">
+         <property name="horizontalScrollBarPolicy"><enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum></property>
+         <property name="widgetResizable"><bool>true</bool></property>
+         <widget class="QWidget" name="downloadCardsContainerLocal">
+          <property name="geometry"><rect><x>0</x><y>0</y><width>120</width><height>60</height></rect></property>
+          <layout class="QVBoxLayout" name="downloadCardsLayoutLocal">
+           <property name="spacing"><number>12</number></property>
+           <property name="leftMargin"><number>0</number></property>
+           <property name="topMargin"><number>0</number></property>
+           <property name="rightMargin"><number>0</number></property>
+           <property name="bottomMargin"><number>0</number></property>
+           <item><spacer name="verticalSpacer_DownloadCardsLocal"><property name="orientation"><enum>Qt::Orientation::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
