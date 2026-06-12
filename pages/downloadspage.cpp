@@ -29,36 +29,6 @@ DownloadsPage::DownloadsPage(QWidget *parent)
     , ui(new Ui::DownloadsPage)
 {
     ui->setupUi(this);
-    m_statusLabel = ui->lblDownloadsStatus;
-    m_selectedLabel = ui->lblDownloadsSelected;
-    m_filterLabel = ui->lblDownloadsFilter;
-    m_filterCombo = ui->comboDownloadsFilter;
-    m_statusTabs = ui->tabDownloadsStatus;
-
-    m_checkCurrentButton = ui->btnDownloadsCheckCurrent;
-    m_checkSelectedButton = ui->btnDownloadsCheckSelected;
-    m_checkAllButton = ui->btnDownloadsCheckAll;
-    m_downloadSelectedButton = ui->btnDownloadsDownloadSelected;
-    m_cancelButton = ui->btnDownloadsCancel;
-    m_retryButton = ui->btnDownloadsRetry;
-    m_openFolderButton = ui->btnDownloadsOpenFolder;
-    m_clearCompletedButton = ui->btnDownloadsClearCompleted;
-    m_toggleCurrentTabButton = ui->btnDownloadsToggleCurrentTab;
-
-    m_defaultCardsContainer = ui->downloadCardsContainer;
-    m_scrollUpdates = ui->scrollDownloadsCards;
-    m_scrollCoexisting = ui->scrollDownloadsCoexisting;
-    m_scrollIgnored = ui->scrollDownloadsIgnored;
-    m_scrollLatest = ui->scrollDownloadsLatest;
-    m_scrollErrors = ui->scrollDownloadsErrors;
-    m_scrollLocal = ui->scrollDownloadsLocal;
-
-    m_layoutUpdates = ui->downloadCardsLayout;
-    m_layoutCoexisting = ui->downloadCardsLayoutCoexisting;
-    m_layoutIgnored = ui->downloadCardsLayoutIgnored;
-    m_layoutLatest = ui->downloadCardsLayoutLatest;
-    m_layoutErrors = ui->downloadCardsLayoutErrors;
-    m_layoutLocal = ui->downloadCardsLayoutLocal;
 }
 
 DownloadsPage::~DownloadsPage()
@@ -66,20 +36,32 @@ DownloadsPage::~DownloadsPage()
     delete ui;
 }
 
+QComboBox *DownloadsPage::filterCombo() const { return ui->comboDownloadsFilter; }
+QTabWidget *DownloadsPage::statusTabs() const { return ui->tabDownloadsStatus; }
+
+QPushButton *DownloadsPage::checkCurrentButton() const { return ui->btnDownloadsCheckCurrent; }
+QPushButton *DownloadsPage::checkSelectedButton() const { return ui->btnDownloadsCheckSelected; }
+QPushButton *DownloadsPage::checkAllButton() const { return ui->btnDownloadsCheckAll; }
+QPushButton *DownloadsPage::downloadSelectedButton() const { return ui->btnDownloadsDownloadSelected; }
+QPushButton *DownloadsPage::cancelButton() const { return ui->btnDownloadsCancel; }
+QPushButton *DownloadsPage::retryButton() const { return ui->btnDownloadsRetry; }
+QPushButton *DownloadsPage::openFolderButton() const { return ui->btnDownloadsOpenFolder; }
+QPushButton *DownloadsPage::clearCompletedButton() const { return ui->btnDownloadsClearCompleted; }
+QPushButton *DownloadsPage::toggleCurrentTabButton() const { return ui->btnDownloadsToggleCurrentTab; }
+
 QVBoxLayout *DownloadsPage::cardsLayout(const QString &category) const
 {
-    if (category == "coexisting") return m_layoutCoexisting;
-    if (category == "ignored") return m_layoutIgnored;
-    if (category == "latest") return m_layoutLatest;
-    if (category == "errors") return m_layoutErrors;
-    if (category == "local") return m_layoutLocal;
-    return m_layoutUpdates;
+    if (category == "coexisting") return ui->downloadCardsLayoutCoexisting;
+    if (category == "ignored") return ui->downloadCardsLayoutIgnored;
+    if (category == "latest") return ui->downloadCardsLayoutLatest;
+    if (category == "errors") return ui->downloadCardsLayoutErrors;
+    if (category == "local") return ui->downloadCardsLayoutLocal;
+    return ui->downloadCardsLayout;
 }
 
 QString DownloadsPage::currentCategory() const
 {
-    if (!m_statusTabs) return "updates";
-    switch (m_statusTabs->currentIndex()) {
+    switch (ui->tabDownloadsStatus->currentIndex()) {
     case 1: return "coexisting";
     case 2: return "ignored";
     case 3: return "latest";
@@ -91,30 +73,26 @@ QString DownloadsPage::currentCategory() const
 
 void DownloadsPage::setStatusText(const QString &text)
 {
-    if (m_statusLabel) m_statusLabel->setText(text);
+    ui->lblDownloadsStatus->setText(text);
 }
 
 void DownloadsPage::setUpdateCheckButtonsEnabled(bool enabled)
 {
-    if (m_checkCurrentButton) m_checkCurrentButton->setEnabled(enabled);
-    if (m_checkSelectedButton) m_checkSelectedButton->setEnabled(enabled);
-    if (m_checkAllButton) m_checkAllButton->setEnabled(enabled);
+    ui->btnDownloadsCheckCurrent->setEnabled(enabled);
+    ui->btnDownloadsCheckSelected->setEnabled(enabled);
+    ui->btnDownloadsCheckAll->setEnabled(enabled);
 }
 
 void DownloadsPage::updateSelectionSummary(int selectedCurrent, int currentTotal, int selectedTotal)
 {
-    if (m_selectedLabel) {
-        m_selectedLabel->setText(QString("当前 Tab 已选择 %1/%2 个模型\n全部已选择 %3 个模型")
-                                     .arg(selectedCurrent)
-                                     .arg(currentTotal)
-                                     .arg(selectedTotal));
-    }
+    ui->lblDownloadsSelected->setText(QString("当前 Tab 已选择 %1/%2 个模型\n全部已选择 %3 个模型")
+                                          .arg(selectedCurrent)
+                                          .arg(currentTotal)
+                                          .arg(selectedTotal));
 
     const bool allChecked = currentTotal > 0 && selectedCurrent == currentTotal;
-    if (m_toggleCurrentTabButton) {
-        m_toggleCurrentTabButton->setText(allChecked ? "取消全选当前 Tab" : "全选当前 Tab");
-        m_toggleCurrentTabButton->setEnabled(currentTotal > 0);
-    }
+    ui->btnDownloadsToggleCurrentTab->setText(allChecked ? "取消全选当前 Tab" : "全选当前 Tab");
+    ui->btnDownloadsToggleCurrentTab->setEnabled(currentTotal > 0);
 }
 
 QStringList DownloadsPage::selectedFilePaths() const
@@ -191,7 +169,7 @@ void DownloadsPage::addOrUpdateCard(const ModelUpdateInfo &info, const QString &
     }
 
     if (!card.card) {
-        auto *frame = new QFrame(m_defaultCardsContainer);
+        auto *frame = new QFrame(ui->downloadCardsContainer);
         frame->setProperty("class", "downloadCard");
         frame->setProperty("selected", false);
         frame->setProperty("downloadFilePath", info.filePath);
@@ -541,17 +519,17 @@ void DownloadsPage::removeCard(const QString &filePath)
 
 void DownloadsPage::initializeAppearance()
 {
-    if (m_filterLabel) m_filterLabel->hide();
-    if (m_filterCombo) m_filterCombo->hide();
+    ui->lblDownloadsFilter->hide();
+    ui->comboDownloadsFilter->hide();
 
     const QColor downloadBg("#131922");
     const QList<QScrollArea*> areas = {
-        m_scrollUpdates,
-        m_scrollCoexisting,
-        m_scrollIgnored,
-        m_scrollLatest,
-        m_scrollErrors,
-        m_scrollLocal,
+        ui->scrollDownloadsCards,
+        ui->scrollDownloadsCoexisting,
+        ui->scrollDownloadsIgnored,
+        ui->scrollDownloadsLatest,
+        ui->scrollDownloadsErrors,
+        ui->scrollDownloadsLocal,
     };
     for (QScrollArea *area : areas) {
         if (!area) continue;

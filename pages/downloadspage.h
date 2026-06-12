@@ -8,11 +8,9 @@
 
 #include "downloadmodels.h"
 
-class QLabel;
 class QComboBox;
 class QPixmap;
 class QPushButton;
-class QScrollArea;
 class QTabWidget;
 class QVBoxLayout;
 
@@ -28,22 +26,19 @@ public:
     explicit DownloadsPage(QWidget *parent = nullptr);
     ~DownloadsPage() override;
 
-    QLabel *statusLabel() const { return m_statusLabel; }
-    QLabel *selectedLabel() const { return m_selectedLabel; }
-    QComboBox *filterCombo() const { return m_filterCombo; }
-    QTabWidget *statusTabs() const { return m_statusTabs; }
+    QComboBox *filterCombo() const;
+    QTabWidget *statusTabs() const;
 
-    QPushButton *checkCurrentButton() const { return m_checkCurrentButton; }
-    QPushButton *checkSelectedButton() const { return m_checkSelectedButton; }
-    QPushButton *checkAllButton() const { return m_checkAllButton; }
-    QPushButton *downloadSelectedButton() const { return m_downloadSelectedButton; }
-    QPushButton *cancelButton() const { return m_cancelButton; }
-    QPushButton *retryButton() const { return m_retryButton; }
-    QPushButton *openFolderButton() const { return m_openFolderButton; }
-    QPushButton *clearCompletedButton() const { return m_clearCompletedButton; }
-    QPushButton *toggleCurrentTabButton() const { return m_toggleCurrentTabButton; }
+    QPushButton *checkCurrentButton() const;
+    QPushButton *checkSelectedButton() const;
+    QPushButton *checkAllButton() const;
+    QPushButton *downloadSelectedButton() const;
+    QPushButton *cancelButton() const;
+    QPushButton *retryButton() const;
+    QPushButton *openFolderButton() const;
+    QPushButton *clearCompletedButton() const;
+    QPushButton *toggleCurrentTabButton() const;
 
-    QWidget *defaultCardsContainer() const { return m_defaultCardsContainer; }
     QVBoxLayout *cardsLayout(const QString &category) const;
 
     QString currentCategory() const;
@@ -85,36 +80,6 @@ private:
     void updateSelectionSummary(int selectedCurrent, int currentTotal, int selectedTotal);
 
     Ui::DownloadsPage *ui = nullptr;
-    QLabel *m_statusLabel = nullptr;
-    QLabel *m_selectedLabel = nullptr;
-    QLabel *m_filterLabel = nullptr;
-    QComboBox *m_filterCombo = nullptr;
-    QTabWidget *m_statusTabs = nullptr;
-
-    QPushButton *m_checkCurrentButton = nullptr;
-    QPushButton *m_checkSelectedButton = nullptr;
-    QPushButton *m_checkAllButton = nullptr;
-    QPushButton *m_downloadSelectedButton = nullptr;
-    QPushButton *m_cancelButton = nullptr;
-    QPushButton *m_retryButton = nullptr;
-    QPushButton *m_openFolderButton = nullptr;
-    QPushButton *m_clearCompletedButton = nullptr;
-    QPushButton *m_toggleCurrentTabButton = nullptr;
-
-    QWidget *m_defaultCardsContainer = nullptr;
-    QScrollArea *m_scrollUpdates = nullptr;
-    QScrollArea *m_scrollCoexisting = nullptr;
-    QScrollArea *m_scrollIgnored = nullptr;
-    QScrollArea *m_scrollLatest = nullptr;
-    QScrollArea *m_scrollErrors = nullptr;
-    QScrollArea *m_scrollLocal = nullptr;
-
-    QVBoxLayout *m_layoutUpdates = nullptr;
-    QVBoxLayout *m_layoutCoexisting = nullptr;
-    QVBoxLayout *m_layoutIgnored = nullptr;
-    QVBoxLayout *m_layoutLatest = nullptr;
-    QVBoxLayout *m_layoutErrors = nullptr;
-    QVBoxLayout *m_layoutLocal = nullptr;
     QHash<QString, DownloadCardWidgets> m_cards;
 };
 

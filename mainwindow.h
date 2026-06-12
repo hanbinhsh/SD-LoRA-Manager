@@ -106,6 +106,7 @@ class LlmPromptWidget;
 class UsageAnalysisWidget;
 class PromptTemplateLibraryWidget;
 class DownloadsPage;
+class DownloadManager;
 
 struct DownloadTask {
     QString url;
@@ -133,24 +134,9 @@ struct UpdateCheckSnapshot {
     bool localEdited = false;
 };
 
-struct ModelFileDownloadTask {
-    ModelUpdateInfo info;
-    QString targetPath;
-    QString tempPath;
-    QString filePath;
-    bool overwrite = false;
-};
-
 struct ImageLoadResult {
     QString path;
     QImage originalImg; // 只存原图，模糊交给主线程做
-    bool valid = false;
-};
-
-struct DownloadPreviewLoadResult {
-    QString filePath;
-    QString previewPath;
-    QImage image;
     bool valid = false;
 };
 
@@ -235,7 +221,6 @@ private slots:
     void onApiMetadataReceived(QNetworkReply *reply);
     void onImageDownloaded(QNetworkReply *reply);
     void onGalleryImageClicked(int index);
-    void onDownloadPreviewLoaded();
     void onHomeButtonClicked(); // 切换到主页
     void onHomeGalleryClicked(QListWidgetItem *item); // 主页大图点击跳转
     void onSidebarContextMenu(const QPoint &pos); // 侧边栏右键
@@ -435,10 +420,9 @@ private:
     QStringList selectedDownloadFilePaths() const;
     void startDownloadsForSelectedCards();
     void enqueueModelFileDownload(const ModelUpdateInfo &info);
-    void processNextModelDownload();
     QString chooseModelDownloadTarget(const ModelUpdateInfo &info, bool *overwrite);
     QString uniqueFilePath(const QString &dirPath, const QString &fileName) const;
-    void finishModelDownload(const ModelFileDownloadTask &task, const QByteArray &data);
+    void finishModelDownload(const ModelFileDownloadTask &task);
     void filterDownloadCards();
     void sortAllDownloadCards();
     QString currentDownloadCategory() const;
@@ -451,8 +435,6 @@ private:
     QString resolveDownloadPreviewPath(const ModelUpdateInfo &info) const;
     void setDownloadCardPreview(const QString &filePath, const QString &previewPath);
     void scheduleDownloadPreviewLoad(const QString &filePath);
-    void processDownloadPreviewLoadBatch();
-    static DownloadPreviewLoadResult processDownloadPreviewTask(const QString &filePath, const QString &previewPath);
     void beginGalleryBuild(const ModelMeta &meta);
     void buildGalleryBatch();
     void addGalleryThumbButton(const ModelMeta &meta, int index, const QString &modelDir, const QString &baseName);
@@ -489,23 +471,8 @@ private:
 
     QQueue<DownloadTask> downloadQueue; // 任务队列
     bool isDownloading = false;         // 当前是否有任务在运行
-    QQueue<ModelFileDownloadTask> modelDownloadQueue;
-    QSet<QString> canceledModelDownloadPaths;
-    QPointer<QNetworkReply> activeModelDownloadReply;
-    ModelFileDownloadTask activeModelDownloadTask;
-    QFile *activeModelDownloadFile = nullptr;
-    qint64 activeModelDownloadedBytes = 0;
-    bool isModelDownloading = false;
-    QElapsedTimer modelDownloadTimer;
-    QHash<QString, ModelUpdateInfo> modelUpdateInfos;
-    bool downloadCardsCacheLoaded = false;
-    bool restoringDownloadCardsCache = false;
+    DownloadManager *downloadManager = nullptr;
     bool isShuttingDown = false;
-    QQueue<QString> pendingDownloadPreviewLoads;
-    QSet<QString> queuedDownloadPreviewLoads;
-    QSet<QString> activeDownloadPreviewLoads;
-    QList<QPointer<QFutureWatcher<DownloadPreviewLoadResult>>> activeDownloadPreviewWatchers;
-    QTimer *downloadPreviewLoadTimer = nullptr;
     QQueue<UpdateCheckSnapshot> pendingUpdateChecksQueue;
     QQueue<UpdateCheckSnapshot> pendingUpdateHashChecks;
     int activeUpdateNetworkChecks = 0;

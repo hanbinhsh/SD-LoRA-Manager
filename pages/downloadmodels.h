@@ -2,6 +2,7 @@
 #define DOWNLOADMODELS_H
 
 #include <QJsonObject>
+#include <QImage>
 #include <QPointer>
 #include <QString>
 
@@ -49,6 +50,21 @@ struct DownloadCardWidgets {
     QString displayName;
     bool selected = false;
     bool hasUpdate = false;
+};
+
+struct ModelFileDownloadTask {
+    ModelUpdateInfo info;
+    QString targetPath;
+    QString tempPath;
+    QString filePath;
+    bool overwrite = false;
+};
+
+struct DownloadPreviewLoadResult {
+    QString filePath;
+    QString previewPath;
+    QImage image;
+    bool valid = false;
 };
 
 #endif // DOWNLOADMODELS_H
