@@ -140,6 +140,11 @@ struct ImageLoadResult {
     bool valid = false;
 };
 
+struct MetadataSyncJob {
+    UpdateCheckSnapshot snapshot;
+    bool updateExisting = false;
+};
+
 struct ImageInfo {
     QString url;
     QString hash;
@@ -290,6 +295,21 @@ private:
     QString currentHomeAuthorFilter;
     QSet<QString> currentHomeTagFilters;
     bool homeFilterExpanded = false;
+    bool homeFilterTagsSortByCount = true;
+
+    struct HomeFilterTagInfo {
+        QString tag;
+        int count = 0;
+        bool fromModel = false;
+        bool fromUser = false;
+
+        QString sourceName() const
+        {
+            if (fromModel && fromUser) return QStringLiteral("mixed");
+            if (fromUser) return QStringLiteral("user");
+            return QStringLiteral("model");
+        }
+    };
 
     // 收藏夹 JSON 读写
     void loadCollections();
@@ -311,7 +331,7 @@ private:
     void refreshModelUserNotePanel(const QString &filePath = QString());
     void refreshModelAttributionPanel(const ModelMeta &meta);
     void refreshHomeFilterChips();
-    QStringList collectAvailableHomeFilterTags() const;
+    QList<HomeFilterTagInfo> collectAvailableHomeFilterTags() const;
     void setHomeAuthorFilter(const QString &author);
     void addHomeTagFilter(const QString &tag);
     void clearHomeFilters();
@@ -421,6 +441,16 @@ private:
     void updateDownloadSelectionSummary();
     void jumpToDownloadSource(const QString &filePath);
     void openDownloadCivitaiPage(const QString &filePath);
+    QVector<MetadataScanItem> collectMetadataScanSeeds() const;
+    void startMetadataScan();
+    void runMetadataHealthCheck();
+    void startMetadataSyncForPaths(const QStringList &filePaths, bool updateExisting);
+    void processNextMetadataSyncJob();
+    void fetchMetadataForSyncJob(const MetadataSyncJob &job);
+    void handleMetadataSyncModelReply(QNetworkReply *reply);
+    void handleMetadataSyncHashReply(QNetworkReply *reply);
+    bool saveMetadataFromModelRoot(const MetadataSyncJob &job, const QJsonObject &modelRoot, const QJsonObject &versionHint = QJsonObject());
+    UpdateCheckSnapshot snapshotForModelItem(QListWidgetItem *item) const;
     QListWidgetItem *findModelItemByFilePath(const QString &filePath) const;
     QString resolveDownloadPreviewPath(const ModelUpdateInfo &info) const;
     void applySettingsState(SettingsState state);
@@ -447,6 +477,12 @@ private:
     bool m_skipPreviewSync = false;
 
     QFutureWatcher<QString> *hashWatcher = nullptr;
+    QFutureWatcher<QVector<MetadataScanItem>> *metadataScanWatcher = nullptr;
+    QFutureWatcher<QVector<MetadataHealthIssue>> *metadataHealthWatcher = nullptr;
+    QQueue<MetadataSyncJob> pendingMetadataSyncJobs;
+    int metadataSyncTotal = 0;
+    int metadataSyncDone = 0;
+    bool metadataSyncRunning = false;
     QString currentProcessingPath;
 
     QThreadPool *threadPool = nullptr;           //用于详情页、大图 (可被 cancel)
@@ -555,6 +591,7 @@ private:
     bool          optUseCivitaiName                           = false;            // 使用json中的模型名称
     bool          optSuppressLocalWarnings                    = false;            // 隐藏本地模型总量提醒
     int           optUserGalleryMatchMode                     = 0;                // 0: 当前逻辑匹配, 1: 摘要值匹配(可回退), 2: 严格摘要值匹配(不回退)
+    bool          optRecalculateKnownMetadataHash             = false;            // 元信息同步时是否重新计算已有 Hash
     int           optModelUpdateDownloadPolicy                = 0;                // 0: 每次询问, 1: 保留旧版, 2: 覆盖当前文件
     bool          optAutoCheckUpdatesOnStartup                = true;             // 启动时自动检查软件更新
     double        optUiScale                                  = 1.0;              // 缩放比率

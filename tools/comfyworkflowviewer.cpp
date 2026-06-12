@@ -1,6 +1,7 @@
 #include "comfyworkflowviewer.h"
 
 #include "imagemetadataparser.h"
+#include "styleconstants.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -72,13 +73,7 @@ QStringList detailLinesForNode(const QString &type, const QJsonObject &inputs)
 
 QColor nodeColor(const ComfyWorkflowNode &node)
 {
-    const QString type = node.type.toLower();
-    if (node.highlighted) return QColor("#315f89");
-    if (type.contains("ksampler")) return QColor("#324b63");
-    if (type.contains("cliptextencode") || type.contains("text")) return QColor("#3d4f3a");
-    if (type.contains("loraloader")) return QColor("#5a4634");
-    if (type.contains("checkpointloader")) return QColor("#4f3b5f");
-    return QColor("#253446");
+    return AppStyle::workflowNodeColor(node.type, node.highlighted);
 }
 
 QString shortText(QString text, int maxLen)
@@ -195,7 +190,7 @@ void ComfyWorkflowViewerDialog::buildUi()
     view->setRenderHint(QPainter::TextAntialiasing);
     view->setDragMode(QGraphicsView::ScrollHandDrag);
     view->setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
-    view->setBackgroundBrush(QColor("#101824"));
+    view->setBackgroundBrush(QColor(AppStyle::WorkflowBackground));
     splitter->addWidget(view);
     connect(scene, &QGraphicsScene::selectionChanged, this, &ComfyWorkflowViewerDialog::onSceneSelectionChanged);
 
@@ -444,19 +439,19 @@ QGraphicsRectItem *ComfyWorkflowViewerDialog::createNodeItem(const ComfyWorkflow
     const qreal subtitleHeight = node.subtitle.isEmpty() ? 0 : qMin<qreal>(60, 18 + node.subtitle.size() / 4);
     const qreal height = NodeMinHeight + subtitleHeight;
     auto *rect = scene->addRect(QRectF(QPointF(0, 0), QSizeF(NodeWidth, height)),
-                                QPen(node.highlighted && highlightCheck->isChecked() ? QColor("#8fc7ff") : QColor("#6b7b8f"), 1.2),
+                                QPen(node.highlighted && highlightCheck->isChecked() ? QColor(AppStyle::WorkflowEdgeHighlight) : QColor(AppStyle::WorkflowNodeBorder), 1.2),
                                 QBrush(nodeColor(node)));
     rect->setPos(node.position);
     rect->setFlag(QGraphicsItem::ItemIsSelectable, true);
     rect->setData(0, node.id);
     rect->setToolTip(nodeDisplayText(node));
 
-    addNodeText(rect, node.title.isEmpty() ? node.type : node.title, QColor("#f1f6ff"),
+    addNodeText(rect, node.title.isEmpty() ? node.type : node.title, QColor(AppStyle::WorkflowTitleText),
                 QPointF(12, 6), contentWidth, 1, true);
-    addNodeText(rect, node.type, QColor("#a8bdd3"), QPointF(12, 30), contentWidth, 1);
+    addNodeText(rect, node.type, QColor(AppStyle::WorkflowTypeText), QPointF(12, 30), contentWidth, 1);
 
     if (!node.subtitle.isEmpty()) {
-        addNodeText(rect, node.subtitle, QColor("#d8e1ea"), QPointF(12, 54), contentWidth, 3);
+        addNodeText(rect, node.subtitle, QColor(AppStyle::WorkflowSubtitleText), QPointF(12, 54), contentWidth, 3);
     }
 
     return rect;
@@ -476,7 +471,7 @@ void ComfyWorkflowViewerDialog::addEdgeItem(const ComfyWorkflowEdge &edge)
 
     QPainterPath path(start);
     path.cubicTo(start + QPointF(dx, 0), end - QPointF(dx, 0), end);
-    auto *item = scene->addPath(path, QPen(edge.highlighted && highlightCheck->isChecked() ? QColor("#8fc7ff") : QColor("#50667d"),
+    auto *item = scene->addPath(path, QPen(edge.highlighted && highlightCheck->isChecked() ? QColor(AppStyle::WorkflowEdgeHighlight) : QColor(AppStyle::WorkflowEdge),
                                            edge.highlighted && highlightCheck->isChecked() ? 2.4 : 1.3));
     item->setZValue(1);
 }

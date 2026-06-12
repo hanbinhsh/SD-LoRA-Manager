@@ -657,6 +657,16 @@ New</string>
                     </property>
                    </widget>
                   </item>
+                  <item>
+                   <widget class="QPushButton" name="btnHomeTagSortMode">
+                    <property name="toolTip">
+                     <string>切换 Tag 列表排序方式</string>
+                    </property>
+                    <property name="text">
+                     <string>按次数</string>
+                    </property>
+                   </widget>
+                  </item>
                  </layout>
                 </item>
                 <item>

@@ -70,8 +70,14 @@
 #include "pages/downloadspage.h"
 #include "pages/settingspage.h"
 #include "modelnotedialog.h"
+#include "styleconstants.h"
 
 namespace {
+QString normalizedHomeTagKey(const QString &tag)
+{
+    return tag.trimmed().toCaseFolded();
+}
+
 QString loadQssResource(const QString &path)
 {
     QFile file(path);
@@ -140,6 +146,118 @@ ThemeBundle loadThemeBundle(const QString &themeId, const QString &customPath)
         bundle.ok = true;
     }
     return bundle;
+}
+
+QString metadataIsoTimeForDisplay(const QString &iso)
+{
+    QDateTime dt = QDateTime::fromString(iso, Qt::ISODate);
+    if (!dt.isValid()) return iso;
+    return dt.toLocalTime().toString("yyyy-MM-dd HH:mm");
+}
+
+QString metadataShaFromRoot(const QJsonObject &root)
+{
+    for (const QJsonValue &fileVal : root.value("files").toArray()) {
+        const QString sha = fileVal.toObject().value("hashes").toObject().value("SHA256").toString().trimmed();
+        if (!sha.isEmpty()) return sha;
+    }
+    return QString();
+}
+
+QVector<MetadataScanItem> scanMetadataItemsWorker(QVector<MetadataScanItem> items)
+{
+    for (MetadataScanItem &item : items) {
+        if (!QFileInfo::exists(item.filePath)) {
+            item.category = "invalid";
+            item.status = "模型文件不存在";
+            continue;
+        }
+
+        QFileInfo jsonInfo(item.jsonPath);
+        if (!jsonInfo.exists()) {
+            item.category = "missing";
+            item.status = "缺少 metadata JSON";
+            continue;
+        }
+
+        QFile file(item.jsonPath);
+        if (!file.open(QIODevice::ReadOnly)) {
+            item.category = "invalid";
+            item.status = "无法读取 metadata JSON";
+            continue;
+        }
+
+        QJsonParseError err;
+        const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &err);
+        if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+            item.category = "invalid";
+            item.status = "metadata JSON 解析失败: " + err.errorString();
+            continue;
+        }
+
+        const QJsonObject root = doc.object();
+        const int modelId = root.value("modelId").toInt(root.value("model").toObject().value("id").toInt());
+        const int versionId = root.value("id").toInt();
+        const QString sha = metadataShaFromRoot(root);
+        if (item.modelIdText.isEmpty() && modelId > 0) item.modelIdText = QString::number(modelId);
+        if (item.versionIdText.isEmpty() && versionId > 0) item.versionIdText = QString::number(versionId);
+        if (item.sha256.isEmpty()) item.sha256 = sha;
+        item.localEdited = root.value("localEdited").toBool(false) || root.value("localOnly").toBool(false);
+
+        const QString syncedAt = root.value("syncedAt").toString().trimmed();
+        if (!syncedAt.isEmpty()) {
+            item.lastSyncedAt = metadataIsoTimeForDisplay(syncedAt);
+            item.lastSyncedSource = "同步时间";
+        } else {
+            item.lastSyncedAt = jsonInfo.lastModified().toString("yyyy-MM-dd HH:mm");
+            item.lastSyncedSource = "文件时间";
+        }
+
+        if (item.localEdited) {
+            item.category = "local";
+            item.status = "本地/已编辑 metadata";
+        } else if (!item.syncFailure.isEmpty()) {
+            item.category = "failed";
+            item.status = "存在同步失败缓存: " + item.syncFailure;
+        } else if (modelId <= 0 && versionId <= 0 && item.sha256.isEmpty()) {
+            item.category = "no_ids";
+            item.status = "缺少 modelId/versionId/SHA256";
+        } else {
+            item.category = "existing";
+            item.status = "metadata 可用";
+        }
+    }
+    return items;
+}
+
+QVector<MetadataHealthIssue> metadataHealthCheckWorker(QVector<MetadataScanItem> items)
+{
+    QVector<MetadataHealthIssue> issues;
+    const QVector<MetadataScanItem> scanned = scanMetadataItemsWorker(std::move(items));
+    for (const MetadataScanItem &item : scanned) {
+        if (!QFileInfo::exists(item.filePath)) {
+            issues.append({"错误", item.displayName, "模型文件不存在", "检查模型路径或从列表移除失效项", item.filePath});
+            continue;
+        }
+        if (item.category == "missing") {
+            issues.append({"警告", item.displayName, "缺少 metadata JSON", "可在下载页元信息扫描中同步", item.filePath});
+        } else if (item.category == "invalid") {
+            issues.append({"错误", item.displayName, item.status, "检查 JSON 文件或重新同步 metadata", item.filePath});
+        }
+        if (!item.syncFailure.isEmpty()) {
+            issues.append({"警告", item.displayName, "存在同步失败缓存", item.syncFailure, item.filePath});
+        }
+        if (item.category == "no_ids") {
+            issues.append({"警告", item.displayName, "缺少 Civitai 识别字段", "缺少 modelId/versionId/sha256，更新检测可能无法判断", item.filePath});
+        }
+        if (item.previewPath.isEmpty() || !QFileInfo::exists(item.previewPath)) {
+            issues.append({"信息", item.displayName, "缺少本地封面预览图", "可在详情页或元信息同步后重新同步预览图", item.filePath});
+        }
+        if (item.localEdited) {
+            issues.append({"信息", item.displayName, "本地/已编辑模型", "同步或更新前会按本地保护逻辑确认", item.filePath});
+        }
+    }
+    return issues;
 }
 
 class FlowLayout : public QLayout
@@ -491,6 +609,10 @@ MainWindow::MainWindow(QWidget *parent)
     });
     connect(ui->btnHomeAddTagFilter, &QPushButton::clicked, this, [this]() {
         addHomeTagFilter(ui->editHomeTagFilter->text());
+    });
+    connect(ui->btnHomeTagSortMode, &QPushButton::clicked, this, [this]() {
+        homeFilterTagsSortByCount = !homeFilterTagsSortByCount;
+        refreshHomeFilterChips();
     });
     connect(ui->btnHomeClearFilters, &QPushButton::clicked, this, &MainWindow::clearHomeFilters);
     connect(ui->btnHomeFilterToggle, &QPushButton::clicked, this, [this](bool checked) {
@@ -1324,6 +1446,8 @@ MainWindow::~MainWindow()
     downloadQueue.clear();
     if (downloadManager) downloadManager->shutdown();
     if (hashWatcher && hashWatcher->isRunning()) hashWatcher->waitForFinished();
+    if (metadataScanWatcher && metadataScanWatcher->isRunning()) metadataScanWatcher->waitForFinished();
+    if (metadataHealthWatcher && metadataHealthWatcher->isRunning()) metadataHealthWatcher->waitForFinished();
     if (imageLoadWatcher && imageLoadWatcher->isRunning()) imageLoadWatcher->waitForFinished();
     saveGlobalConfig();
     cancelPendingTasks();
@@ -1785,11 +1909,30 @@ void MainWindow::refreshHomeFilterChips()
         appendSummaryWidth(width);
     };
 
+    const QList<HomeFilterTagInfo> availableTagInfos = collectAvailableHomeFilterTags();
+    QHash<QString, HomeFilterTagInfo> availableTagInfoByKey;
+    for (const HomeFilterTagInfo &info : availableTagInfos) {
+        availableTagInfoByKey.insert(normalizedHomeTagKey(info.tag), info);
+    }
+
+    auto tagSourceFor = [&availableTagInfoByKey](const QString &tag) {
+        const HomeFilterTagInfo info = availableTagInfoByKey.value(normalizedHomeTagKey(tag));
+        return info.sourceName();
+    };
+
+    auto displayTagWithCount = [&availableTagInfoByKey](const QString &tag) {
+        const HomeFilterTagInfo info = availableTagInfoByKey.value(normalizedHomeTagKey(tag));
+        if (info.count > 0) return QString("%1(%2)").arg(tag).arg(info.count);
+        return tag;
+    };
+
     auto addSummaryChip = [this, &fixSummaryWidgetSize](const QString &text,
                                                         const QString &tooltip,
+                                                        const QString &source,
                                                         const std::function<void()> &removeFn) {
         QPushButton *chip = new QPushButton(text);
         chip->setProperty("class", "filterChip");
+        if (!source.isEmpty()) chip->setProperty("tagSource", source);
         chip->setCursor(Qt::PointingHandCursor);
         chip->setToolTip(tooltip);
         chip->setCheckable(false);
@@ -1810,14 +1953,16 @@ void MainWindow::refreshHomeFilterChips()
     if (!currentHomeAuthorFilter.isEmpty()) {
         addSummaryChip("作者: " + currentHomeAuthorFilter + " ×",
                        "点击移除作者筛选",
+                       QString(),
                        [this]() {
                            setHomeAuthorFilter(QString());
                        });
     }
 
     for (const QString &tag : selectedTags) {
-        addSummaryChip(tag + " ×",
+        addSummaryChip(displayTagWithCount(tag) + " ×",
                        "点击移除此 Tag 筛选",
+                       tagSourceFor(tag),
                        [this, tag]() {
                            currentHomeTagFilters.remove(tag);
                            refreshHomeFilterChips();
@@ -1827,7 +1972,7 @@ void MainWindow::refreshHomeFilterChips()
 
     if (currentHomeAuthorFilter.isEmpty() && currentHomeTagFilters.isEmpty()) {
         QLabel *emptySummary = new QLabel("未启用主页作者/Tag 筛选");
-        emptySummary->setStyleSheet("color:#8c96a0;background:transparent;font-weight:bold;");
+        emptySummary->setStyleSheet(AppStyle::MutedBoldLabelStyle);
         emptySummary->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
         fixSummaryWidgetSize(emptySummary);
@@ -1912,9 +2057,15 @@ void MainWindow::refreshHomeFilterChips()
 
     FlowLayout *availableTagsLayout = new FlowLayout(availableTagsWidget, 0, 6, 6);
 
-    const QStringList availableTags = collectAvailableHomeFilterTags();
+    if (ui->btnHomeTagSortMode) {
+        ui->btnHomeTagSortMode->setText(homeFilterTagsSortByCount ? "按次数" : "按字母");
+        ui->btnHomeTagSortMode->setToolTip(homeFilterTagsSortByCount
+            ? "当前按出现次数排序，点击切换为字母序"
+            : "当前按字母序排序，点击切换为出现次数");
+    }
 
-    for (const QString &tag : availableTags) {
+    for (const HomeFilterTagInfo &info : availableTagInfos) {
+        const QString tag = info.tag;
         bool tagSelected = false;
 
         for (const QString &selected : currentHomeTagFilters) {
@@ -1924,12 +2075,18 @@ void MainWindow::refreshHomeFilterChips()
             }
         }
 
-        QPushButton *tagButton = new QPushButton(forceWrap(tag));
+        QPushButton *tagButton = new QPushButton(forceWrap(QString("%1(%2)").arg(tag).arg(info.count)));
         tagButton->setProperty("class", "filterChip");
+        tagButton->setProperty("tagSource", info.sourceName());
         tagButton->setCheckable(true);
         tagButton->setChecked(tagSelected);
         tagButton->setCursor(Qt::PointingHandCursor);
-        tagButton->setToolTip("点击添加/移除此 Tag 筛选");
+        const QString sourceText = info.fromModel && info.fromUser
+            ? "模型 Tag + 用户 Tag"
+            : (info.fromUser ? "用户 Tag" : "模型 Tag");
+        tagButton->setToolTip(QString("%1，出现于 %2 个模型。点击添加/移除此 Tag 筛选。")
+                                  .arg(sourceText)
+                                  .arg(info.count));
         tagButton->setMaximumWidth(180);
         tagButton->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
 
@@ -1956,9 +2113,9 @@ void MainWindow::refreshHomeFilterChips()
         availableTagsLayout->addWidget(tagButton);
     }
 
-    if (availableTags.isEmpty()) {
+    if (availableTagInfos.isEmpty()) {
         QLabel *emptyTags = new QLabel("当前模型库没有可用模型 Tag");
-        emptyTags->setStyleSheet("color:#8c96a0;background:transparent;");
+        emptyTags->setStyleSheet(AppStyle::MutedLabelStyle);
         emptyTags->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         availableTagsLayout->addWidget(emptyTags);
     }
@@ -1994,26 +2151,44 @@ void MainWindow::refreshHomeFilterChips()
     }
 }
 
-QStringList MainWindow::collectAvailableHomeFilterTags() const
+QList<MainWindow::HomeFilterTagInfo> MainWindow::collectAvailableHomeFilterTags() const
 {
-    QStringList tags;
-    QSet<QString> seen;
+    QHash<QString, HomeFilterTagInfo> tagInfoByKey;
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *item = ui->modelList->item(i);
         if (!isModelListItem(item)) continue;
-        const QStringList itemTags = item->data(ROLE_MODEL_TAGS).toStringList()
-                                   + item->data(ROLE_USER_TAGS).toStringList();
-        for (const QString &raw : itemTags) {
-            const QString tag = raw.trimmed();
-            if (tag.isEmpty()) continue;
-            const QString key = tag.toCaseFolded();
-            if (seen.contains(key)) continue;
-            seen.insert(key);
-            tags.append(tag);
+
+        QSet<QString> itemTagKeys;
+        auto registerTags = [&](const QStringList &tags, bool fromModel) {
+            for (const QString &raw : tags) {
+                const QString tag = raw.trimmed();
+                if (tag.isEmpty()) continue;
+                const QString key = normalizedHomeTagKey(tag);
+                if (key.isEmpty()) continue;
+
+                HomeFilterTagInfo &info = tagInfoByKey[key];
+                if (info.tag.isEmpty()) info.tag = tag;
+                if (fromModel) {
+                    info.fromModel = true;
+                } else {
+                    info.fromUser = true;
+                }
+                itemTagKeys.insert(key);
+            }
+        };
+
+        registerTags(item->data(ROLE_MODEL_TAGS).toStringList(), true);
+        registerTags(item->data(ROLE_USER_TAGS).toStringList(), false);
+
+        for (const QString &key : itemTagKeys) {
+            tagInfoByKey[key].count += 1;
         }
     }
-    std::sort(tags.begin(), tags.end(), [](const QString &a, const QString &b) {
-        return QString::localeAwareCompare(a, b) < 0;
+
+    QList<HomeFilterTagInfo> tags = tagInfoByKey.values();
+    std::sort(tags.begin(), tags.end(), [this](const HomeFilterTagInfo &a, const HomeFilterTagInfo &b) {
+        if (homeFilterTagsSortByCount && a.count != b.count) return a.count > b.count;
+        return QString::localeAwareCompare(a.tag, b.tag) < 0;
     });
     return tags;
 }
@@ -2154,16 +2329,16 @@ QIcon MainWindow::getRoundedSquareIcon(const QString &path, int size, int radius
     // === 情况 A: 没有图片 (绘制占位符) ===
     if (srcPix.isNull()) {
         // 填充背景色 (深灰)
-        painter.fillRect(QRect(0, 0, size, size), QColor("#25282f"));
+        painter.fillRect(QRect(0, 0, size, size), QColor(AppStyle::PanelDark));
 
         // 画边框 (可选，增加质感)
-        QPen pen(QColor("#3d4450"));
+        QPen pen{QColor(AppStyle::PanelBorder)};
         pen.setWidth(2);
         painter.setPen(pen);
         painter.drawRoundedRect(1, 1, size-2, size-2, radius, radius);
 
         // 画文字 "No Image"
-        painter.setPen(QColor("#5a6f8a"));
+        painter.setPen(QColor(AppStyle::PlaceholderText));
         QFont f = painter.font();
         f.setPixelSize(size / 5); // 动态字体大小
         f.setBold(true);
@@ -2187,7 +2362,7 @@ QIcon MainWindow::getRoundedSquareIcon(const QString &path, int size, int radius
         painter.drawPixmap(0, 0, scaled);
 
         // (可选) 可以在图片上画一圈细边框，防止图片和背景融为一体
-        QPen pen(QColor(255,255,255, 30));
+        QPen pen(AppStyle::translucentWhite(30));
         pen.setWidth(2);
         painter.setPen(pen);
         painter.setBrush(Qt::NoBrush);
@@ -2859,10 +3034,10 @@ void MainWindow::refreshTriggerWordsPanel(const ModelMeta &meta)
     }
 
     for (const QString &words : meta.trainedWordsGroups) {
-        addTriggerGroup(words, "Civitai / Metadata", "#66c0f4");
+        addTriggerGroup(words, "Civitai / Metadata", AppStyle::AccentBlue);
     }
     for (const QString &words : customTriggerGroups) {
-        addTriggerGroup(words, "Custom / 用户自定义", "#5fd38d");
+        addTriggerGroup(words, "Custom / 用户自定义", AppStyle::CustomTriggerGreen);
     }
 }
 
@@ -2895,14 +3070,7 @@ void MainWindow::clearDetailView()
     editImagesNeedRefresh = false;
     ui->lblModelName->setText("请选择一个模型 / Select a Model");
     setModelTitleNormal();
-    ui->lblModelName->setStyleSheet(
-        "color: #fff;"
-        "background-color: rgba(0,0,0,120);"
-        "padding: 15px;"
-        "border-left: 5px solid #66c0f4;" // 恢复蓝色条
-        "font-size: 24px;"
-        "font-weight: bold;"
-    );
+    ui->lblModelName->setStyleSheet(AppStyle::modelTitleNormalStyle());
     ui->textDescription->clear();
     ui->textDescription->setPlaceholderText("暂无简介 / No description.");
     ui->lblFileInfo->setText("Filename: --\nSize: --\nHash: --");
@@ -2963,26 +3131,13 @@ void MainWindow::clearDetailView()
 
 void MainWindow::setModelTitleNormal()
 {
-    ui->lblModelName->setStyleSheet(
-        "color: #fff;"
-        "background-color: rgba(0,0,0,120);"
-        "padding: 15px;"
-        "border-left: 5px solid #66c0f4;"
-        "font-size: 24px;"
-        "font-weight: bold;"
-    );
+    ui->lblModelName->setStyleSheet(AppStyle::modelTitleNormalStyle());
 }
 
 void MainWindow::setModelTitleError(const QString &message)
 {
     ui->lblModelName->setText(QString("连接失败 / Error: %1").arg(message));
-    ui->lblModelName->setStyleSheet(
-        "color: #ff4c4c;"
-        "background-color: rgba(45, 20, 20, 0.8);"
-        "border-left: 5px solid #ff0000;"
-        "padding: 15px;"
-        "font-size: 15px;"
-    );
+    ui->lblModelName->setStyleSheet(AppStyle::modelTitleErrorStyle());
 }
 
 void MainWindow::showPendingLocalModelDetail(const ModelMeta &meta, const QString &message)
@@ -3048,16 +3203,16 @@ void MainWindow::updateLocalEditorFromMeta(const ModelMeta &meta)
 void MainWindow::setLocalMetaStatus(const ModelMeta &meta)
 {
     QString status;
-    QString color = "#8c96a0";
+    QString color = AppStyle::MutedText;
     if (meta.isLocalOnly && meta.isLocalEdited) {
         status = "状态: 本地模型 (已编辑)";
-        color = "#ffcc00";
+        color = AppStyle::WarningYellow;
     } else if (meta.isLocalEdited) {
         status = "状态: 已编辑 (本地元数据)";
-        color = "#ffcc00";
+        color = AppStyle::WarningYellow;
     } else if (meta.isLocalOnly) {
         status = "状态: 本地模型";
-        color = "#66c0f4";
+        color = AppStyle::AccentBlue;
     } else {
         status = "状态: Civitai 元数据";
     }
@@ -3096,7 +3251,7 @@ void MainWindow::setLocalMetaStatus(const ModelMeta &meta)
     if (!filePath.isEmpty() && modelSyncFailures.contains(filePath)) {
         const QString error = modelSyncFailures.value(filePath)["error"].toString();
         details << (error.isEmpty() ? "同步失败缓存: 已记录" : QString("同步失败缓存: %1").arg(error));
-        color = "#ff6b6b";
+        color = AppStyle::SoftErrorRed;
     } else if (!jsonPath.isEmpty() && !QFileInfo::exists(jsonPath)) {
         details << "提示: 点击刷新模型详情可同步元数据";
     }
@@ -3608,13 +3763,13 @@ void MainWindow::refreshModelUserNotePanel(const QString &filePath)
     clearLayout(ui->layoutUserTags);
     if (note.tags.isEmpty()) {
         QLabel *empty = new QLabel("无用户标签");
-        empty->setStyleSheet("color:#8c96a0;background:transparent;");
+        empty->setStyleSheet(AppStyle::MutedLabelStyle);
         ui->layoutUserTags->addWidget(empty);
     } else {
         for (const QString &tag : note.tags) {
             QLabel *label = new QLabel(tag);
             label->setProperty("class", "tag");
-            label->setStyleSheet("padding: 2px 8px; border-radius: 8px; background: rgba(102,192,244,48); color: #dfefff;");
+            label->setStyleSheet(AppStyle::UserTagChipInlineStyle);
             ui->layoutUserTags->addWidget(label);
         }
     }
@@ -3630,7 +3785,7 @@ void MainWindow::refreshModelAttributionPanel(const ModelMeta &meta)
 
     if (meta.creatorName.trimmed().isEmpty()) {
         QLabel *empty = new QLabel("暂无作者信息");
-        empty->setStyleSheet("color:#8c96a0;background:transparent;");
+        empty->setStyleSheet(AppStyle::MutedLabelStyle);
         ui->layoutModelAuthor->addWidget(empty);
     } else {
         QPushButton *author = new QPushButton(forceWrap(meta.creatorName));
@@ -3651,7 +3806,7 @@ void MainWindow::refreshModelAttributionPanel(const ModelMeta &meta)
 
     if (meta.modelTags.isEmpty()) {
         QLabel *empty = new QLabel("暂无模型标签");
-        empty->setStyleSheet("color:#8c96a0;background:transparent;");
+        empty->setStyleSheet(AppStyle::MutedLabelStyle);
         ui->layoutModelTags->addWidget(empty);
     } else {
         QWidget *tagFlowWidget = new QWidget();
@@ -4777,6 +4932,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
 
     clearModelSyncFailure(filePath);
     setModelTitleNormal();
+    root["syncedAt"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     ModelMeta meta;
 
     // 1. 基础信息
@@ -5515,7 +5671,7 @@ void MainWindow::updateBackgroundImage()
     } else {
         ui->backgroundLabel->clear();
         QPixmap empty(targetSize);
-        empty.fill(QColor("#1b2838"));
+        empty.fill(QColor(AppStyle::MainBackground));
         ui->backgroundLabel->setPixmap(empty);
     }
 }
@@ -6141,8 +6297,8 @@ QListWidgetItem *MainWindow::createModelFolderHeader(const QString &folderName, 
     QFont font = header->font();
     font.setBold(true);
     header->setFont(font);
-    header->setForeground(QColor("#66c0f4"));
-    header->setBackground(QColor("#212831"));
+    header->setForeground(QColor(AppStyle::AccentBlue));
+    header->setBackground(QColor(AppStyle::HeaderBackground));
     return header;
 }
 
@@ -6400,7 +6556,7 @@ QPixmap MainWindow::applyBlurToImage(const QImage &srcImg, const QSize &bgSize, 
 
     // 3. 合成最终背景
     QPixmap finalBg(bgSize);
-    finalBg.fill(QColor("#1b2838")); // 填充底色
+    finalBg.fill(QColor(AppStyle::MainBackground)); // 填充底色
     QPainter painter(&finalBg);
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
     painter.setRenderHint(QPainter::Antialiasing);
@@ -6430,15 +6586,15 @@ QPixmap MainWindow::applyBlurToImage(const QImage &srcImg, const QSize &bgSize, 
     // Keep fade positions in content coordinates. This avoids a visible jump
     // when trigger words change the total detail-page height.
     QLinearGradient gradient(0, 0, 0, bgSize.height());
-    gradient.setColorAt(0.0, QColor(27, 40, 56, 120)); // 顶部半透
+    gradient.setColorAt(0.0, AppStyle::steamBackground(120)); // 顶部半透
 
     const double bgH = qMax(1, bgSize.height());
     const double imgBottomY = offsetY + newH;
     const double fadeStartY = qMax(0.0, imgBottomY - qMax(120.0, heroH * 0.25));
     const double fadeEndY = qMax(fadeStartY + 1.0, imgBottomY);
-    gradient.setColorAt(qBound(0.0, fadeStartY / bgH, 1.0), QColor(27, 40, 56, 210));
-    gradient.setColorAt(qBound(0.0, fadeEndY / bgH, 1.0), QColor(27, 40, 56, 255));
-    gradient.setColorAt(1.0, QColor(27, 40, 56, 255));
+    gradient.setColorAt(qBound(0.0, fadeStartY / bgH, 1.0), AppStyle::steamBackground(210));
+    gradient.setColorAt(qBound(0.0, fadeEndY / bgH, 1.0), AppStyle::steamBackground());
+    gradient.setColorAt(1.0, AppStyle::steamBackground());
 
     painter.fillRect(finalBg.rect(), gradient);
     painter.end();
@@ -6453,7 +6609,7 @@ void MainWindow::updateBackgroundDuringTransition()
     if (bgSize.isEmpty()) return;
 
     QPixmap canvas(bgSize);
-    canvas.fill(QColor("#1b2838")); // 纯色打底，防止交叉淡化时露出底色
+    canvas.fill(QColor(AppStyle::MainBackground)); // 纯色打底，防止交叉淡化时露出底色
 
     QPainter painter(&canvas);
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
@@ -7191,14 +7347,16 @@ void MainWindow::onUserImageClicked(QListWidgetItem *item) {
                        "<style>"
                        "  .content { white-space: pre-wrap; }" // 定义一个样式类
                        "</style>"
-                       "<p><b><span style='color:#66c0f4'>Positive:</span></b><br>"
+                       "<p><b><span style='color:%4'>Positive:</span></b><br>"
                        "<span class='content'>%1</span></p>"
-                       "<p><b><span style='color:#ff6666'>Negative:</span></b><br>"
+                       "<p><b><span style='color:%5'>Negative:</span></b><br>"
                        "<span class='content'>%2</span></p>"
                        "<hr style='background-color:#444; height:1px; border:none;'>"
-                       "<p><b><span style='color:#aaaaaa'>Parameters:</span></b><br>"
-                       "<span class='content' style='color:#888888; font-size:11px; font-family:Consolas, monospace;'>%3</span></p>"
-                       ).arg(safePrompt).arg(safeNeg).arg(safeParams);
+                       "<p><b><span style='color:%6'>Parameters:</span></b><br>"
+                       "<span class='content' style='color:%7; font-size:11px; font-family:Consolas, monospace;'>%3</span></p>"
+                       ).arg(safePrompt, safeNeg, safeParams,
+                             AppStyle::AccentBlue, AppStyle::HtmlNegative,
+                             AppStyle::HtmlSubtle, AppStyle::HtmlDim);
 
     ui->textUserPrompt->setHtml(html);
 
@@ -7267,14 +7425,7 @@ void MainWindow::onGalleryButtonClicked()
 
     // 自定义标题
     ui->lblModelName->setText("Global User Gallery / 所有用户返图");
-    ui->lblModelName->setStyleSheet(
-        "color: #fff;"
-        "background-color: rgba(0,0,0,120);"
-        "padding: 15px;"
-        "border-left: 5px solid #ffcc00;" // 换个颜色，比如黄色，区分一下
-        "font-size: 24px;"
-        "font-weight: bold;"
-    );
+    ui->lblModelName->setStyleSheet(AppStyle::globalGalleryTitleStyle());
 
     // 隐藏/禁用一些不相关的按钮
     ui->btnForceUpdate->setVisible(false);
@@ -7339,7 +7490,7 @@ void MainWindow::initMenuBar() {
             QVBoxLayout *layout = new QVBoxLayout(page);
             QLabel *label = new QLabel(text, page);
             label->setAlignment(Qt::AlignCenter);
-            label->setStyleSheet("color:#8c96a0;background:transparent;");
+            label->setStyleSheet(AppStyle::MutedLabelStyle);
             layout->addWidget(label);
             return page;
         };
@@ -7354,7 +7505,7 @@ void MainWindow::initMenuBar() {
 
         toolsTabWidget->setAutoFillBackground(true);
         QPalette pal = toolsTabWidget->palette();
-        pal.setColor(QPalette::Window, QColor("#1a1f29"));
+        pal.setColor(QPalette::Window, QColor(AppStyle::SidebarDark));
         toolsTabWidget->setPalette(pal);
 
         // 核心动作：加入堆栈
@@ -7611,6 +7762,26 @@ void MainWindow::initDownloadsPage()
     });
     connect(downloadsPage, &DownloadsPage::ignoreToggled, this, [this](const QString &filePath) {
         if (downloadManager) downloadManager->toggleIgnore(filePath);
+    });
+    connect(downloadsPage, &DownloadsPage::metadataScanRequested,
+            this, &MainWindow::startMetadataScan);
+    connect(downloadsPage, &DownloadsPage::metadataSyncRequested,
+            this, [this](const QStringList &paths) { startMetadataSyncForPaths(paths, false); });
+    connect(downloadsPage, &DownloadsPage::metadataUpdateRequested,
+            this, [this](const QStringList &paths) { startMetadataSyncForPaths(paths, true); });
+    connect(downloadsPage, &DownloadsPage::metadataOpenModelRequested,
+            this, &MainWindow::jumpToDownloadSource);
+    connect(downloadsPage, &DownloadsPage::metadataOpenFolderRequested, this, [this](const QString &filePath) {
+        if (filePath.isEmpty()) return;
+        QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(filePath).absolutePath()));
+    });
+    connect(downloadsPage, &DownloadsPage::healthCheckRequested,
+            this, &MainWindow::runMetadataHealthCheck);
+    connect(downloadsPage, &DownloadsPage::healthOpenModelRequested,
+            this, &MainWindow::jumpToDownloadSource);
+    connect(downloadsPage, &DownloadsPage::healthOpenFolderRequested, this, [this](const QString &filePath) {
+        if (filePath.isEmpty()) return;
+        QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(filePath).absolutePath()));
     });
     updateDownloadSelectionSummary();
 }
@@ -8019,6 +8190,362 @@ QString MainWindow::resolveDownloadPreviewPath(const ModelUpdateInfo &info) cons
     return QString();
 }
 
+UpdateCheckSnapshot MainWindow::snapshotForModelItem(QListWidgetItem *item) const
+{
+    UpdateCheckSnapshot snapshot;
+    if (!isModelListItem(item)) return snapshot;
+    snapshot.filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+    snapshot.baseName = item->data(ROLE_MODEL_NAME).toString();
+    snapshot.modelDir = QFileInfo(snapshot.filePath).absolutePath();
+    snapshot.modelId = item->data(ROLE_CIVITAI_MODEL_ID).toInt();
+    snapshot.displayName = item->text();
+    snapshot.currentVersionId = item->data(ROLE_CIVITAI_VERSION_ID).toInt();
+    snapshot.currentSha256 = item->data(ROLE_CIVITAI_SHA256).toString();
+    snapshot.localEdited = item->data(ROLE_LOCAL_EDITED).toBool();
+    return snapshot;
+}
+
+QVector<MetadataScanItem> MainWindow::collectMetadataScanSeeds() const
+{
+    QVector<MetadataScanItem> items;
+    items.reserve(ui->modelList->count());
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *modelItem = ui->modelList->item(i);
+        if (!isModelListItem(modelItem)) continue;
+        const UpdateCheckSnapshot snapshot = snapshotForModelItem(modelItem);
+        if (snapshot.filePath.isEmpty()) continue;
+
+        MetadataScanItem item;
+        item.filePath = snapshot.filePath;
+        item.displayName = snapshot.displayName;
+        item.jsonPath = QDir(snapshot.modelDir).filePath(snapshot.baseName + ".json");
+        item.previewPath = modelItem->data(ROLE_PREVIEW_PATH).toString();
+        item.modelIdText = snapshot.modelId > 0 ? QString::number(snapshot.modelId) : QString();
+        item.versionIdText = snapshot.currentVersionId > 0 ? QString::number(snapshot.currentVersionId) : QString();
+        item.sha256 = snapshot.currentSha256;
+        item.localEdited = snapshot.localEdited;
+        item.syncFailure = modelSyncFailureMessage(snapshot.filePath);
+        items.append(item);
+    }
+    return items;
+}
+
+void MainWindow::startMetadataScan()
+{
+    if (!downloadsPage) return;
+    if (!metadataScanWatcher) metadataScanWatcher = new QFutureWatcher<QVector<MetadataScanItem>>(this);
+    if (metadataScanWatcher->isRunning()) return;
+
+    const QVector<MetadataScanItem> seeds = collectMetadataScanSeeds();
+    downloadsPage->setMetadataScanRunning(true);
+    disconnect(metadataScanWatcher, nullptr, this, nullptr);
+    connect(metadataScanWatcher, &QFutureWatcherBase::finished, this, [this]() {
+        const QVector<MetadataScanItem> items = metadataScanWatcher->result();
+        downloadsPage->setMetadataScanItems(items);
+        downloadsPage->setMetadataScanRunning(false);
+        downloadsPage->setStatusText(QString("元信息扫描完成，共 %1 个模型。").arg(items.size()));
+    });
+    metadataScanWatcher->setFuture(QtConcurrent::run(backgroundThreadPool, [seeds]() {
+        return scanMetadataItemsWorker(seeds);
+    }));
+}
+
+void MainWindow::runMetadataHealthCheck()
+{
+    if (!downloadsPage) return;
+    if (!metadataHealthWatcher) metadataHealthWatcher = new QFutureWatcher<QVector<MetadataHealthIssue>>(this);
+    if (metadataHealthWatcher->isRunning()) return;
+
+    const QVector<MetadataScanItem> seeds = collectMetadataScanSeeds();
+    downloadsPage->setHealthCheckRunning(true);
+    disconnect(metadataHealthWatcher, nullptr, this, nullptr);
+    connect(metadataHealthWatcher, &QFutureWatcherBase::finished, this, [this]() {
+        const QVector<MetadataHealthIssue> issues = metadataHealthWatcher->result();
+        downloadsPage->setHealthIssues(issues);
+        downloadsPage->setHealthCheckRunning(false);
+        downloadsPage->setStatusText(QString("元数据健康检查完成，共 %1 条问题/提示。").arg(issues.size()));
+    });
+    metadataHealthWatcher->setFuture(QtConcurrent::run(backgroundThreadPool, [seeds]() {
+        return metadataHealthCheckWorker(seeds);
+    }));
+}
+
+void MainWindow::startMetadataSyncForPaths(const QStringList &filePaths, bool updateExisting)
+{
+    if (!downloadsPage || filePaths.isEmpty()) {
+        if (downloadsPage) downloadsPage->setStatusText("请先勾选要处理的模型。");
+        return;
+    }
+    if (metadataSyncRunning) {
+        downloadsPage->setStatusText("已有元信息同步任务正在运行。");
+        return;
+    }
+
+    bool hasLocalEdited = false;
+    for (const QString &path : filePaths) {
+        if (QListWidgetItem *item = findModelItemByFilePath(path)) {
+            if (item->data(ROLE_LOCAL_EDITED).toBool()) {
+                hasLocalEdited = true;
+                break;
+            }
+        }
+    }
+    if (hasLocalEdited) {
+        const auto ret = QMessageBox::warning(this,
+                                              "覆盖本地元信息",
+                                              "选中的模型包含本地/已编辑 metadata。\n继续同步会覆盖 Civitai 元信息，但会保留本地保护字段和用户私有数据。\n是否继续？",
+                                              QMessageBox::Yes | QMessageBox::Cancel,
+                                              QMessageBox::Cancel);
+        if (ret != QMessageBox::Yes) return;
+    }
+
+    pendingMetadataSyncJobs.clear();
+    for (const QString &path : filePaths) {
+        QListWidgetItem *item = findModelItemByFilePath(path);
+        if (!item) continue;
+        MetadataSyncJob job;
+        job.snapshot = snapshotForModelItem(item);
+        job.updateExisting = updateExisting;
+        if (!job.snapshot.filePath.isEmpty()) pendingMetadataSyncJobs.enqueue(job);
+    }
+    metadataSyncTotal = pendingMetadataSyncJobs.size();
+    metadataSyncDone = 0;
+    metadataSyncRunning = metadataSyncTotal > 0;
+    if (!metadataSyncRunning) {
+        downloadsPage->setStatusText("没有可同步的模型。");
+        return;
+    }
+    downloadsPage->setStatusText(QString("正在同步元信息... 0/%1").arg(metadataSyncTotal));
+    processNextMetadataSyncJob();
+}
+
+void MainWindow::processNextMetadataSyncJob()
+{
+    if (!metadataSyncRunning) return;
+    if (pendingMetadataSyncJobs.isEmpty()) {
+        metadataSyncRunning = false;
+        downloadsPage->setStatusText(QString("元信息同步完成，共处理 %1 个模型。").arg(metadataSyncTotal));
+        startMetadataScan();
+        refreshUsageAnalysisWidget();
+        return;
+    }
+    const MetadataSyncJob job = pendingMetadataSyncJobs.dequeue();
+    downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "同步中...", QString());
+    fetchMetadataForSyncJob(job);
+}
+
+void MainWindow::fetchMetadataForSyncJob(const MetadataSyncJob &job)
+{
+    if (job.snapshot.modelId > 0) {
+        QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/models/%1").arg(job.snapshot.modelId))));
+        reply->setProperty("filePath", job.snapshot.filePath);
+        reply->setProperty("baseName", job.snapshot.baseName);
+        reply->setProperty("modelDir", job.snapshot.modelDir);
+        reply->setProperty("displayName", job.snapshot.displayName);
+        reply->setProperty("currentVersionId", job.snapshot.currentVersionId);
+        reply->setProperty("currentSha256", job.snapshot.currentSha256);
+        reply->setProperty("updateExisting", job.updateExisting);
+        connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleMetadataSyncModelReply(reply); });
+        return;
+    }
+
+    const QString cachedHash = job.snapshot.currentSha256.trimmed();
+    if (!optRecalculateKnownMetadataHash && !cachedHash.isEmpty()) {
+        downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "使用缓存 Hash 同步中...", QString());
+        QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/model-versions/by-hash/%1").arg(cachedHash))));
+        reply->setProperty("filePath", job.snapshot.filePath);
+        reply->setProperty("baseName", job.snapshot.baseName);
+        reply->setProperty("modelDir", job.snapshot.modelDir);
+        reply->setProperty("displayName", job.snapshot.displayName);
+        reply->setProperty("currentSha256", cachedHash);
+        reply->setProperty("updateExisting", job.updateExisting);
+        connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleMetadataSyncHashReply(reply); });
+        return;
+    }
+
+    downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "正在计算 Hash...", QString());
+    auto *watcher = new QFutureWatcher<QString>(this);
+    watcher->setProperty("filePath", job.snapshot.filePath);
+    watcher->setProperty("baseName", job.snapshot.baseName);
+    watcher->setProperty("modelDir", job.snapshot.modelDir);
+    watcher->setProperty("displayName", job.snapshot.displayName);
+    watcher->setProperty("updateExisting", job.updateExisting);
+    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher]() {
+        MetadataSyncJob job;
+        job.snapshot.filePath = watcher->property("filePath").toString();
+        job.snapshot.baseName = watcher->property("baseName").toString();
+        job.snapshot.modelDir = watcher->property("modelDir").toString();
+        job.snapshot.displayName = watcher->property("displayName").toString();
+        job.updateExisting = watcher->property("updateExisting").toBool();
+        const QString hash = watcher->result();
+        watcher->deleteLater();
+        if (hash.isEmpty()) {
+            downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "无法计算 Hash，无法同步", "no_ids");
+            ++metadataSyncDone;
+            processNextMetadataSyncJob();
+            return;
+        }
+        QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/model-versions/by-hash/%1").arg(hash))));
+        reply->setProperty("filePath", job.snapshot.filePath);
+        reply->setProperty("baseName", job.snapshot.baseName);
+        reply->setProperty("modelDir", job.snapshot.modelDir);
+        reply->setProperty("displayName", job.snapshot.displayName);
+        reply->setProperty("currentSha256", hash);
+        reply->setProperty("updateExisting", job.updateExisting);
+        connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleMetadataSyncHashReply(reply); });
+    });
+    watcher->setFuture(QtConcurrent::run(backgroundThreadPool, [filePath = job.snapshot.filePath]() {
+        return calculateFileHashWorker(filePath);
+    }));
+}
+
+void MainWindow::handleMetadataSyncHashReply(QNetworkReply *reply)
+{
+    MetadataSyncJob job;
+    job.snapshot.filePath = reply->property("filePath").toString();
+    job.snapshot.baseName = reply->property("baseName").toString();
+    job.snapshot.modelDir = reply->property("modelDir").toString();
+    job.snapshot.displayName = reply->property("displayName").toString();
+    job.snapshot.currentSha256 = reply->property("currentSha256").toString();
+    job.updateExisting = reply->property("updateExisting").toBool();
+    reply->deleteLater();
+
+    if (reply->error() != QNetworkReply::NoError) {
+        downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "Hash 匹配失败: " + civitaiNetworkErrorMessage(reply), "failed");
+        ++metadataSyncDone;
+        processNextMetadataSyncJob();
+        return;
+    }
+
+    const QJsonObject versionRoot = QJsonDocument::fromJson(reply->readAll()).object();
+    const int modelId = versionRoot.value("modelId").toInt();
+    job.snapshot.currentVersionId = versionRoot.value("id").toInt();
+    if (modelId <= 0) {
+        downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "无法从 Hash 匹配 Civitai 模型", "failed");
+        ++metadataSyncDone;
+        processNextMetadataSyncJob();
+        return;
+    }
+
+    QNetworkReply *detailReply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/models/%1").arg(modelId))));
+    detailReply->setProperty("filePath", job.snapshot.filePath);
+    detailReply->setProperty("baseName", job.snapshot.baseName);
+    detailReply->setProperty("modelDir", job.snapshot.modelDir);
+    detailReply->setProperty("displayName", job.snapshot.displayName);
+    detailReply->setProperty("currentVersionId", job.snapshot.currentVersionId);
+    detailReply->setProperty("currentSha256", job.snapshot.currentSha256);
+    detailReply->setProperty("updateExisting", job.updateExisting);
+    detailReply->setProperty("versionHint", QJsonDocument(versionRoot).toJson(QJsonDocument::Compact));
+    connect(detailReply, &QNetworkReply::finished, this, [this, detailReply]() { handleMetadataSyncModelReply(detailReply); });
+}
+
+void MainWindow::handleMetadataSyncModelReply(QNetworkReply *reply)
+{
+    MetadataSyncJob job;
+    job.snapshot.filePath = reply->property("filePath").toString();
+    job.snapshot.baseName = reply->property("baseName").toString();
+    job.snapshot.modelDir = reply->property("modelDir").toString();
+    job.snapshot.displayName = reply->property("displayName").toString();
+    job.snapshot.currentVersionId = reply->property("currentVersionId").toInt();
+    job.snapshot.currentSha256 = reply->property("currentSha256").toString();
+    job.updateExisting = reply->property("updateExisting").toBool();
+    const QJsonObject versionHint = QJsonDocument::fromJson(reply->property("versionHint").toByteArray()).object();
+    reply->deleteLater();
+
+    if (reply->error() != QNetworkReply::NoError) {
+        downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "同步失败: " + civitaiNetworkErrorMessage(reply), "failed");
+        ++metadataSyncDone;
+        processNextMetadataSyncJob();
+        return;
+    }
+
+    const QJsonObject modelRoot = QJsonDocument::fromJson(reply->readAll()).object();
+    const bool ok = saveMetadataFromModelRoot(job, modelRoot, versionHint);
+    const QString nowText = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm");
+    downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath,
+                                                ok ? "metadata 已同步" : "同步失败: 未找到可保存的版本",
+                                                ok ? "existing" : "failed",
+                                                ok ? nowText : QString(),
+                                                ok ? "同步时间" : QString());
+    ++metadataSyncDone;
+    downloadsPage->setStatusText(QString("正在同步元信息... %1/%2").arg(metadataSyncDone).arg(metadataSyncTotal));
+    processNextMetadataSyncJob();
+}
+
+bool MainWindow::saveMetadataFromModelRoot(const MetadataSyncJob &job, const QJsonObject &modelRoot, const QJsonObject &versionHint)
+{
+    if (modelRoot.isEmpty()) return false;
+    QJsonObject selectedVersion = versionHint;
+    const QJsonArray versions = modelRoot.value("modelVersions").toArray();
+    if (selectedVersion.isEmpty()) {
+        QDateTime latestTime;
+        for (const QJsonValue &val : versions) {
+            const QJsonObject version = val.toObject();
+            bool match = false;
+            if (job.snapshot.currentVersionId > 0 && version.value("id").toInt() == job.snapshot.currentVersionId) {
+                match = true;
+            }
+            if (!match && !job.snapshot.currentSha256.isEmpty()) {
+                for (const QJsonValue &fileVal : version.value("files").toArray()) {
+                    const QString sha = fileVal.toObject().value("hashes").toObject().value("SHA256").toString();
+                    if (!sha.isEmpty() && sha.compare(job.snapshot.currentSha256, Qt::CaseInsensitive) == 0) {
+                        match = true;
+                        break;
+                    }
+                }
+            }
+            if (match) {
+                selectedVersion = version;
+                break;
+            }
+            if (!job.updateExisting) continue;
+            QDateTime t = QDateTime::fromString(version.value("publishedAt").toString(), Qt::ISODate);
+            if (!t.isValid()) t = QDateTime::fromString(version.value("createdAt").toString(), Qt::ISODate);
+            if (selectedVersion.isEmpty() || (t.isValid() && (!latestTime.isValid() || t > latestTime))) {
+                selectedVersion = version;
+                latestTime = t;
+            }
+        }
+    }
+    if (selectedVersion.isEmpty() && !versions.isEmpty()) selectedVersion = versions.first().toObject();
+    if (selectedVersion.isEmpty()) return false;
+
+    QJsonObject root = mergeCivitaiModelIntoVersion(selectedVersion, modelRoot);
+    root["syncedAt"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    QFile existing(QDir(job.snapshot.modelDir).filePath(job.snapshot.baseName + ".json"));
+    if (existing.exists() && existing.open(QIODevice::ReadOnly)) {
+        const QJsonObject oldRoot = QJsonDocument::fromJson(existing.readAll()).object();
+        const QStringList localKeys = {"localEdited", "localEditedAt", "localOnly", "modelUrl"};
+        for (const QString &key : localKeys) {
+            if (oldRoot.contains(key)) root[key] = oldRoot.value(key);
+        }
+    } else {
+        root["localOnly"] = false;
+    }
+    saveLocalMetadata(job.snapshot.modelDir, job.snapshot.baseName, root);
+
+    if (QListWidgetItem *item = findModelItemByFilePath(job.snapshot.filePath)) {
+        preloadItemMetadata(item, QDir(job.snapshot.modelDir).filePath(job.snapshot.baseName + ".json"));
+        if (optUseCivitaiName) {
+            const QString civitaiName = item->data(ROLE_CIVITAI_NAME).toString();
+            if (!civitaiName.isEmpty()) item->setText(civitaiName);
+        }
+        applyModelUserNoteData(item);
+        applyModelHighlightColor(item);
+    }
+    clearModelSyncFailure(job.snapshot.filePath);
+    if (QListWidgetItem *current = ui->modelList->currentItem()) {
+        if (current && QFileInfo(current->data(ROLE_FILE_PATH).toString()).absoluteFilePath() == job.snapshot.filePath) {
+            ModelMeta meta;
+            meta.filePath = job.snapshot.filePath;
+            if (readLocalJson(job.snapshot.modelDir, job.snapshot.baseName, meta)) updateDetailView(meta);
+        }
+    }
+    refreshHomeGallery();
+    refreshCollectionTreeView();
+    return true;
+}
+
 void MainWindow::enqueueModelFileDownload(const ModelUpdateInfo &info)
 {
     if (downloadManager) downloadManager->enqueueModelDownload(info);
@@ -8071,6 +8598,7 @@ void MainWindow::finishModelDownload(const ModelFileDownloadTask &task)
     QString baseName = QFileInfo(task.targetPath).completeBaseName();
     QJsonObject versionJson = task.info.latestVersionJson;
     if (!versionJson.isEmpty()) {
+        versionJson["syncedAt"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
         saveLocalMetadata(QFileInfo(task.targetPath).absolutePath(), baseName, versionJson);
         const QJsonArray images = versionJson["images"].toArray();
         for (const QJsonValue &val : images) {
@@ -8125,6 +8653,7 @@ void MainWindow::loadGlobalConfig() {
         optUseCivitaiName = settings.useCivitaiName;
         optSuppressLocalWarnings = settings.suppressLocalWarnings;
         optUserGalleryMatchMode = settings.userGalleryMatchMode;
+        optRecalculateKnownMetadataHash = settings.recalculateKnownMetadataHash;
         optModelUpdateDownloadPolicy = settings.modelUpdateDownloadPolicy;
         optAutoCheckUpdatesOnStartup = settings.autoCheckUpdatesOnStartup;
         optThemeId = settings.themeId;
@@ -8290,6 +8819,7 @@ void MainWindow::applySettingsState(SettingsState state)
     optUseCivitaiName = state.useCivitaiName;
     optSuppressLocalWarnings = state.suppressLocalWarnings;
     optUserGalleryMatchMode = state.userGalleryMatchMode;
+    optRecalculateKnownMetadataHash = state.recalculateKnownMetadataHash;
     optUiScale = state.uiScale;
     optThemeId = state.themeId;
     optCustomThemePath = state.customThemePath;
@@ -8430,6 +8960,7 @@ void MainWindow::saveGlobalConfig() {
         settings.useCivitaiName = optUseCivitaiName;
         settings.suppressLocalWarnings = optSuppressLocalWarnings;
         settings.userGalleryMatchMode = optUserGalleryMatchMode;
+        settings.recalculateKnownMetadataHash = optRecalculateKnownMetadataHash;
         settings.uiScale = optUiScale;
         settings.themeId = optThemeId;
         settings.customThemePath = optCustomThemePath;
@@ -8718,12 +9249,12 @@ QIcon MainWindow::generatePlaceholderIcon()
     QRect contentRect(padding, padding, contentSize, contentSize);
 
     // 绘制深色背景框 (圆角加大一点)
-    painter.setBrush(QColor("#25282f"));
+    painter.setBrush(QColor(AppStyle::PanelDark));
     painter.setPen(Qt::NoPen);
     painter.drawRoundedRect(contentRect, 12, 12);
 
     // 绘制“×”符号
-    QPen pen(QColor("#3d4450")); // 线条颜色稍微调深一点，更有质感
+    QPen pen{QColor(AppStyle::PanelBorder)}; // 线条颜色稍微调深一点，更有质感
     pen.setWidth(5); // 线条加粗，适应大尺寸
     pen.setCapStyle(Qt::RoundCap); // 线条端点圆润
     painter.setPen(pen);

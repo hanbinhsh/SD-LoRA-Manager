@@ -2,7 +2,6 @@
 #include "tableviewstylehelper.h"
 #include "ui_usageanalysiswidget.h"
 
-#include <QtConcurrent/QtConcurrent>
 #include <QApplication>
 #include <QClipboard>
 #include <QFile>
@@ -63,7 +62,6 @@ UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
         table->setFocusPolicy(Qt::NoFocus);
     };
     setupTable(ui->tableModels, true);
-    setupTable(ui->tableHealth, true);
     setupTable(ui->tableTopUsed, true);
     setupTable(ui->tableTopTags, true);
     setupTable(ui->tableBaseModels, true);
@@ -71,19 +69,11 @@ UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
     connect(ui->btnRefreshAnalysis, &QPushButton::clicked, this, &UsageAnalysisWidget::requestRefresh);
     connect(ui->editSearchModels, &QLineEdit::textChanged, this, &UsageAnalysisWidget::onSearchTextChanged);
     connect(ui->btnExportAnalysisCsv, &QPushButton::clicked, this, &UsageAnalysisWidget::onExportAnalysisCsvClicked);
-    connect(ui->btnRunHealthCheck, &QPushButton::clicked, this, &UsageAnalysisWidget::onRunHealthCheckClicked);
-    connect(ui->btnCopyHealth, &QPushButton::clicked, this, &UsageAnalysisWidget::onCopyHealthClicked);
-    connect(ui->btnOpenHealthModel, &QPushButton::clicked, this, &UsageAnalysisWidget::onOpenSelectedHealthModelClicked);
-
     setStatus("等待模型库数据。");
 }
 
 UsageAnalysisWidget::~UsageAnalysisWidget()
 {
-    if (healthWatcher) {
-        healthWatcher->cancel();
-        healthWatcher->waitForFinished();
-    }
     delete ui;
 }
 
@@ -222,111 +212,6 @@ bool UsageAnalysisWidget::modelMatchesSearch(const UsageAnalysisModel &model, co
 void UsageAnalysisWidget::onSearchTextChanged(const QString &)
 {
     refreshModelTable();
-}
-
-void UsageAnalysisWidget::onRunHealthCheckClicked()
-{
-    if (healthWatcher && healthWatcher->isRunning()) return;
-    ui->btnRunHealthCheck->setEnabled(false);
-    ui->lblHealthStatus->setText("正在后台检查元数据...");
-
-    if (!healthWatcher) healthWatcher = new QFutureWatcher<QVector<MetadataHealthIssue>>(this);
-    disconnect(healthWatcher, nullptr, this, nullptr);
-    connect(healthWatcher, &QFutureWatcherBase::finished, this, [this]() {
-        const QVector<MetadataHealthIssue> issues = healthWatcher->result();
-        ui->btnRunHealthCheck->setEnabled(true);
-        refreshHealthTable(issues);
-        ui->lblHealthStatus->setText(QString("检查完成，共发现 %1 条问题/提示。").arg(issues.size()));
-    });
-    const QVector<UsageAnalysisModel> models = analysisData.models;
-    healthWatcher->setFuture(QtConcurrent::run([models]() {
-        return UsageAnalysisWidget::runHealthCheckWorker(models);
-    }));
-}
-
-QVector<MetadataHealthIssue> UsageAnalysisWidget::runHealthCheckWorker(QVector<UsageAnalysisModel> models)
-{
-    QVector<MetadataHealthIssue> issues;
-    for (const UsageAnalysisModel &model : models) {
-        QFileInfo modelFile(model.filePath);
-        if (!modelFile.exists()) {
-            issues.append({"错误", model.displayName, "模型文件不存在", "检查模型路径或从列表移除失效项", model.filePath});
-            continue;
-        }
-
-        if (!model.jsonPath.isEmpty() && QFileInfo(model.jsonPath).exists()) {
-            QFile jsonFile(model.jsonPath);
-            if (!jsonFile.open(QIODevice::ReadOnly)) {
-                issues.append({"错误", model.displayName, "无法读取 metadata JSON", "检查文件权限", model.filePath});
-            } else {
-                QJsonParseError err;
-                QJsonDocument doc = QJsonDocument::fromJson(jsonFile.readAll(), &err);
-                if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-                    issues.append({"错误", model.displayName, "metadata JSON 解析失败", err.errorString(), model.filePath});
-                }
-            }
-        } else {
-            issues.append({"警告", model.displayName, "缺少 metadata JSON", "点击模型详情刷新以同步 Civitai 元数据", model.filePath});
-        }
-
-        if (!model.syncFailure.isEmpty()) {
-            issues.append({"警告", model.displayName, "存在同步失败缓存", model.syncFailure, model.filePath});
-        }
-        if (model.modelId <= 0 && model.versionId <= 0 && !model.hasSha256) {
-            issues.append({"警告", model.displayName, "缺少 Civitai 识别字段", "缺少 modelId/versionId/sha256，更新检测可能无法判断", model.filePath});
-        }
-        if (model.previewPath.isEmpty() || !QFileInfo::exists(model.previewPath)) {
-            issues.append({"信息", model.displayName, "缺少本地封面预览图", "可在详情页重新同步预览图", model.filePath});
-        }
-        if (model.localEdited) {
-            issues.append({"信息", model.displayName, "本地/已编辑模型", "同步或更新前会按本地保护逻辑处理", model.filePath});
-        }
-    }
-    return issues;
-}
-
-void UsageAnalysisWidget::refreshHealthTable(const QVector<MetadataHealthIssue> &issues)
-{
-    ui->tableHealth->setSortingEnabled(false);
-    ui->tableHealth->setRowCount(issues.size());
-    for (int row = 0; row < issues.size(); ++row) {
-        const MetadataHealthIssue &issue = issues[row];
-        auto *severityItem = new QTableWidgetItem(issue.severity);
-        severityItem->setData(Qt::UserRole, issue.filePath);
-        ui->tableHealth->setItem(row, 0, severityItem);
-        ui->tableHealth->setItem(row, 1, new QTableWidgetItem(issue.modelName));
-        ui->tableHealth->setItem(row, 2, new QTableWidgetItem(issue.issue));
-        ui->tableHealth->setItem(row, 3, new QTableWidgetItem(issue.suggestion));
-        ui->tableHealth->setItem(row, 4, new QTableWidgetItem(issue.filePath));
-    }
-    ui->tableHealth->setSortingEnabled(true);
-}
-
-void UsageAnalysisWidget::onCopyHealthClicked()
-{
-    QStringList lines;
-    const auto ranges = ui->tableHealth->selectedRanges();
-    if (ranges.isEmpty()) return;
-    for (const QTableWidgetSelectionRange &range : ranges) {
-        for (int row = range.topRow(); row <= range.bottomRow(); ++row) {
-            QStringList cols;
-            for (int col = 0; col < ui->tableHealth->columnCount(); ++col) {
-                if (QTableWidgetItem *item = ui->tableHealth->item(row, col)) cols << item->text();
-            }
-            lines << cols.join('\t');
-        }
-    }
-    QApplication::clipboard()->setText(lines.join('\n'));
-}
-
-void UsageAnalysisWidget::onOpenSelectedHealthModelClicked()
-{
-    const int row = ui->tableHealth->currentRow();
-    if (row < 0) return;
-    QTableWidgetItem *item = ui->tableHealth->item(row, 0);
-    if (!item) return;
-    const QString filePath = item->data(Qt::UserRole).toString();
-    if (!filePath.isEmpty()) emit requestOpenModel(filePath);
 }
 
 void UsageAnalysisWidget::onExportAnalysisCsvClicked()

@@ -1,5 +1,6 @@
 #include "llmpromptwidget.h"
 #include "ui_llmpromptwidget.h"
+#include "styleconstants.h"
 
 #include <QAbstractItemView>
 #include <QAction>
@@ -866,9 +867,9 @@ void LlmPromptWidget::updateChatView(bool scrollToBottom)
 
     auto appendBubbleRow = [&](const ChatMessage &message, bool pending) {
         const bool isUser = (message.role == "user");
-        const QString bubbleBg = isUser ? "#27425f" : "#1f2834";
-        const QString bubbleBorder = isUser ? "#3f6b95" : "#3a4654";
-        const QString bubbleText = isUser ? "#eaf4ff" : "#dcdedf";
+        const QString bubbleBg = isUser ? AppStyle::ChatUserBubbleBg : AppStyle::ChatAssistantBubbleBg;
+        const QString bubbleBorder = isUser ? AppStyle::ChatUserBubbleBorder : AppStyle::ChatAssistantBubbleBorder;
+        const QString bubbleText = isUser ? AppStyle::ChatUserText : AppStyle::BodyText;
         const QString content = message.content.trimmed();
         const QString bodyHtml = markdownToHtml(escapeAnglePromptSyntax(content));
         const QString thinkingText = message.thinking.trimmed();
@@ -926,12 +927,7 @@ void LlmPromptWidget::updateChatView(bool scrollToBottom)
             bodyView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
             bodyView->setFocusPolicy(Qt::WheelFocus);
             bodyView->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-            bodyView->setStyleSheet(QString(
-                "QTextBrowser{border:none;background:transparent;color:%1;font-size:13px;padding:0px;}"
-                "QScrollBar:vertical{background:transparent;width:4px;margin:0px;}"
-                "QScrollBar::handle:vertical{background:#5f6f80;min-height:20px;border-radius:2px;}"
-                "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0px;}"
-                "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}").arg(bubbleText));
+            bodyView->setStyleSheet(AppStyle::chatBodyBrowserStyle(bubbleText));
             bodyView->document()->setDocumentMargin(0);
             bodyView->viewport()->setAutoFillBackground(false);
             bodyView->viewport()->installEventFilter(this);
@@ -961,7 +957,7 @@ void LlmPromptWidget::updateChatView(bool scrollToBottom)
                 thumb->setFixedSize(82, 82);
                 thumb->setToolTip(path);
                 thumb->setText(QFileInfo::exists(path) ? QString() : "图片\n缺失");
-                thumb->setStyleSheet("QPushButton{background:#11161c;border:1px solid #3a4654;border-radius:6px;color:#8c96a0;padding:2px;}");
+                thumb->setStyleSheet(AppStyle::chatThumbStyle());
                 if (QFileInfo::exists(path)) {
                     QImageReader reader(path);
                     reader.setAutoTransform(true);
@@ -990,9 +986,7 @@ void LlmPromptWidget::updateChatView(bool scrollToBottom)
             btnToggleThinking->setCursor(Qt::PointingHandCursor);
             btnToggleThinking->setFocusPolicy(Qt::NoFocus);
             btnToggleThinking->setProperty("thinkingToggleButton", true);
-            btnToggleThinking->setStyleSheet(QString(
-                "QPushButton{background:#223041;border:1px solid #3a4b60;border-radius:4px;padding:2px 8px;color:%1;}"
-                "QPushButton:hover{background:#2d3f56;color:#ffffff;}").arg(bubbleText));
+            btnToggleThinking->setStyleSheet(AppStyle::chatActionButtonStyle(bubbleText));
             const bool expanded = pending ? m_pendingChatThinkingExpanded : m_expandedThinkingMessageIds.contains(message.id);
             btnToggleThinking->setText(expanded ? "隐藏思考" : "显示思考");
             bubbleLayout->addWidget(btnToggleThinking, 0, Qt::AlignLeft);
@@ -1004,12 +998,7 @@ void LlmPromptWidget::updateChatView(bool scrollToBottom)
             thinkingView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
             thinkingView->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
             thinkingView->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-            thinkingView->setStyleSheet(
-                "QTextBrowser{border:1px solid #2e3742;border-radius:6px;background:#11161c;color:#dcdedf;padding:6px;}"
-                "QScrollBar:vertical{background:transparent;width:4px;margin:0px;}"
-                "QScrollBar::handle:vertical{background:#5f6f80;min-height:20px;border-radius:2px;}"
-                "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0px;}"
-                "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}");
+            thinkingView->setStyleSheet(AppStyle::chatThinkingBrowserStyle());
             thinkingView->viewport()->installEventFilter(this);
             thinkingView->setHtml(thinkingHtml);
             thinkingView->document()->setTextWidth(bubbleWidth - 28);
@@ -1051,7 +1040,7 @@ void LlmPromptWidget::updateChatView(bool scrollToBottom)
         actionLayout->setSpacing(6);
 
         QLabel *timeLabel = new QLabel(timestampText, bubble);
-        timeLabel->setStyleSheet("font-size:11px; color:#8c96a0;");
+        timeLabel->setStyleSheet(QString("font-size:11px; color:%1;").arg(AppStyle::MutedText));
         actionLayout->addWidget(timeLabel);
         actionLayout->addStretch(1);
 
@@ -1061,10 +1050,7 @@ void LlmPromptWidget::updateChatView(bool scrollToBottom)
             button->setFocusPolicy(Qt::NoFocus);
             button->setFixedHeight(24);
             button->setToolTip(tooltip);
-            button->setStyleSheet(
-                "QPushButton{background:#18212b;border:1px solid #344254;border-radius:4px;color:#b9c4d0;padding:2px 7px;font-size:11px;}"
-                "QPushButton:hover{background:#263447;color:#ffffff;}"
-                "QPushButton:disabled{background:#171b20;border-color:#2a3038;color:#66707c;}");
+            button->setStyleSheet(AppStyle::chatFooterButtonStyle());
             return button;
         };
 
@@ -1175,7 +1161,7 @@ void LlmPromptWidget::updateChatImageInfoLabel()
 void LlmPromptWidget::updateChatStatus(const QString &text, bool isError)
 {
     ui->lblChatStatus->setText(text);
-    ui->lblChatStatus->setStyleSheet(isError ? "color:#ff7b7b;" : "color:#8c96a0;");
+    ui->lblChatStatus->setStyleSheet(AppStyle::chatStatusStyle(isError));
 }
 
 QJsonArray LlmPromptWidget::buildOllamaMessagesPayload(const ChatSession &session) const
@@ -2962,7 +2948,7 @@ QString LlmPromptWidget::postProcessGenerationResult(const QString &text) const
 void LlmPromptWidget::updateStatus(const QString &text, bool isError)
 {
     ui->lblGenerateStatus->setText(text);
-    ui->lblGenerateStatus->setStyleSheet(isError ? "color:#ff7b7b;" : "color:#8c96a0;");
+    ui->lblGenerateStatus->setStyleSheet(AppStyle::chatStatusStyle(isError));
 }
 
 void LlmPromptWidget::populateModels(const QStringList &models)

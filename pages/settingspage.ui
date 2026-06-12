@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1508</width>
+    <width>1331</width>
     <height>647</height>
    </rect>
   </property>
@@ -315,6 +315,9 @@
       <layout class="QVBoxLayout" name="verticalLayout_AppearanceTab">
        <item>
         <widget class="QGroupBox" name="groupTheme">
+         <property name="visible">
+          <bool>false</bool>
+         </property>
          <property name="title">
           <string>主题 / Theme</string>
          </property>
@@ -421,13 +424,6 @@
             </property>
            </widget>
           </item>
-          <item row="3" column="0" colspan="4">
-           <widget class="Line" name="line_2">
-            <property name="orientation">
-             <enum>Qt::Orientation::Horizontal</enum>
-            </property>
-           </widget>
-          </item>
           <item row="4" column="2">
            <widget class="QCheckBox" name="chkUseCivitaiName">
             <property name="toolTip">
@@ -438,33 +434,7 @@
             </property>
            </widget>
           </item>
-          <item row="2" column="2">
-           <widget class="QSpinBox" name="spinBlurWidth">
-            <property name="suffix">
-             <string> px</string>
-            </property>
-            <property name="minimum">
-             <number>64</number>
-            </property>
-            <property name="maximum">
-             <number>2048</number>
-            </property>
-            <property name="value">
-             <number>500</number>
-            </property>
-           </widget>
-          </item>
-          <item row="6" column="2">
-           <widget class="QCheckBox" name="chkCollectionFolderSecondLevel">
-            <property name="toolTip">
-             <string>勾选后，Collections 侧边栏先显示收藏夹，再在收藏夹下按 LoRA 根目录分组。</string>
-            </property>
-            <property name="text">
-             <string>将文件夹作为收藏夹二级分类 / Folder as Second Collection Level</string>
-            </property>
-           </widget>
-          </item>
-          <item row="7" column="0">
+          <item row="8" column="0">
            <widget class="QCheckBox" name="chkModelListFolderGrouping">
             <property name="toolTip">
              <string>勾选后，Models 列表会按已启用的 LoRA 根目录分组显示。</string>
@@ -474,40 +444,17 @@
             </property>
            </widget>
           </item>
-          <item row="5" column="0" colspan="4">
+          <item row="0" column="0">
+           <widget class="QLabel" name="label">
+            <property name="text">
+             <string>软件缩放 (重启后生效) / UI Scale (Need Restart)</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="0" colspan="4">
            <widget class="Line" name="line">
             <property name="orientation">
              <enum>Qt::Orientation::Horizontal</enum>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="3">
-           <widget class="QCheckBox" name="chkRestoreTreeState">
-            <property name="toolTip">
-             <string>下次启动时，保持当前收藏夹的展开状态和滚动条位置。</string>
-            </property>
-            <property name="text">
-             <string>启动时恢复菜单 / Restore Menu on Startup</string>
-            </property>
-            <property name="checked">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="6" column="0">
-           <widget class="QCheckBox" name="chkShowEmptyCollections">
-            <property name="toolTip">
-             <string>如果取消勾选，不包含任何模型（或被搜索过滤后为空）的收藏夹将不会显示在侧边栏中。</string>
-            </property>
-            <property name="text">
-             <string>显示空的收藏夹 / Show Empty Collections</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="lblBlur">
-            <property name="text">
-             <string>背景模糊半径 / Blur Radius:</string>
             </property>
            </widget>
           </item>
@@ -521,7 +468,17 @@
             </property>
            </widget>
           </item>
-          <item row="6" column="3">
+          <item row="7" column="2">
+           <widget class="QCheckBox" name="chkCollectionFolderSecondLevel">
+            <property name="toolTip">
+             <string>勾选后，Collections 侧边栏先显示收藏夹，再在收藏夹下按 LoRA 根目录分组。</string>
+            </property>
+            <property name="text">
+             <string>将文件夹作为收藏夹二级分类 / Folder as Second Collection Level</string>
+            </property>
+           </widget>
+          </item>
+          <item row="8" column="2">
            <widget class="QCheckBox" name="chkCollectionFolderTopLevel">
             <property name="toolTip">
              <string>勾选后，Collections 侧边栏先按 LoRA 根目录分组，再在每个文件夹下显示收藏夹。</string>
@@ -531,20 +488,10 @@
             </property>
            </widget>
           </item>
-          <item row="4" column="0">
-           <widget class="QCheckBox" name="chkSuppressLocalWarnings">
-            <property name="toolTip">
-             <string>勾选后，不再弹出“检测到 X 个本地/已编辑模型”的总量提醒；单个模型的覆盖确认仍会保留。</string>
-            </property>
-            <property name="text">
-             <string>不显示本地模型总量警告 / Hide Local Model Count Warning</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="0">
-           <widget class="QLabel" name="label">
-            <property name="text">
-             <string>软件缩放 (重启后生效) / UI Scale (Need Restart)</string>
+          <item row="3" column="0" colspan="4">
+           <widget class="Line" name="line_2">
+            <property name="orientation">
+             <enum>Qt::Orientation::Horizontal</enum>
             </property>
            </widget>
           </item>
@@ -581,6 +528,62 @@
             </item>
            </layout>
           </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="lblBlur">
+            <property name="text">
+             <string>背景模糊半径 / Blur Radius:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QCheckBox" name="chkSuppressLocalWarnings">
+            <property name="toolTip">
+             <string>勾选后，不再弹出“检测到 X 个本地/已编辑模型”的总量提醒；单个模型的覆盖确认仍会保留。</string>
+            </property>
+            <property name="text">
+             <string>不显示本地模型总量警告 / Hide Local Model Count Warning</string>
+            </property>
+           </widget>
+          </item>
+          <item row="7" column="0">
+           <widget class="QCheckBox" name="chkShowEmptyCollections">
+            <property name="toolTip">
+             <string>如果取消勾选，不包含任何模型（或被搜索过滤后为空）的收藏夹将不会显示在侧边栏中。</string>
+            </property>
+            <property name="text">
+             <string>显示空的收藏夹 / Show Empty Collections</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="2">
+           <widget class="QSpinBox" name="spinBlurWidth">
+            <property name="suffix">
+             <string> px</string>
+            </property>
+            <property name="minimum">
+             <number>64</number>
+            </property>
+            <property name="maximum">
+             <number>2048</number>
+            </property>
+            <property name="value">
+             <number>500</number>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0">
+           <widget class="QCheckBox" name="chkRestoreTreeState">
+            <property name="toolTip">
+             <string>下次启动时，保持当前收藏夹的展开状态和滚动条位置。</string>
+            </property>
+            <property name="text">
+             <string>启动时恢复菜单 / Restore Menu on Startup</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>
@@ -605,38 +608,114 @@
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_ScanParsingTab">
        <item>
-        <layout class="QHBoxLayout" name="horizontalLayout_ScanTop">
+        <layout class="QHBoxLayout" name="horizontalLayout_2">
          <item>
-          <widget class="QGroupBox" name="groupPerformance">
-           <property name="title">
-            <string>性能 / Performance</string>
-           </property>
-           <layout class="QGridLayout" name="gridLayout_Perf">
-            <item row="0" column="0">
-             <widget class="QLabel" name="lblThreads">
-              <property name="text">
-               <string>图片渲染线程数 / Render Threads:</string>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="1">
-             <widget class="QSpinBox" name="spinRenderThreads">
-              <property name="toolTip">
-               <string>同时加载图片的数量。默认 4。设置过高可能会卡顿。</string>
-              </property>
-              <property name="minimum">
-               <number>1</number>
-              </property>
-              <property name="maximum">
-               <number>32</number>
-              </property>
-              <property name="value">
-               <number>4</number>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
+          <layout class="QVBoxLayout" name="verticalLayout_2">
+           <item>
+            <widget class="QGroupBox" name="groupPerformance">
+             <property name="title">
+              <string>性能 / Performance</string>
+             </property>
+             <layout class="QGridLayout" name="gridLayout_Perf">
+              <item row="0" column="0">
+               <widget class="QLabel" name="lblThreads">
+                <property name="text">
+                 <string>图片渲染线程数 / Render Threads:</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QSpinBox" name="spinRenderThreads">
+                <property name="toolTip">
+                 <string>同时加载图片的数量。默认 4。设置过高可能会卡顿。</string>
+                </property>
+                <property name="minimum">
+                 <number>1</number>
+                </property>
+                <property name="maximum">
+                 <number>32</number>
+                </property>
+                <property name="value">
+                 <number>4</number>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QGroupBox" name="groupNSFW">
+             <property name="title">
+              <string>内容过滤 / NSFW Filter</string>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayout_NSFW">
+              <item>
+               <widget class="QCheckBox" name="chkFilterNSFW">
+                <property name="text">
+                 <string>开启 NSFW 内容过滤 / Enable NSFW Filter</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_NSFWMode">
+                <item>
+                 <widget class="QLabel" name="lblNSFWMode">
+                  <property name="text">
+                   <string>过滤模式 / Filter Mode:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QRadioButton" name="radioNSFW_Hide">
+                  <property name="text">
+                   <string>隐藏 / Hide</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QRadioButton" name="radioNSFW_Blur">
+                  <property name="text">
+                   <string>模糊 / Blur</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_NSFWLevel">
+                <item>
+                 <widget class="QLabel" name="lblNSFWLevel">
+                  <property name="text">
+                   <string>过滤等级阈值 (Level &gt; X):</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QSpinBox" name="spinNSFWLevel">
+                  <property name="minimum">
+                   <number>1</number>
+                  </property>
+                  <property name="maximum">
+                   <number>100</number>
+                  </property>
+                  <property name="value">
+                   <number>1</number>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLabel" name="lblNSFWHint">
+                  <property name="text">
+                   <string>(Civitai 标准: 1=正常, &gt;1 包含不同程度成人内容)</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+             </layout>
+            </widget>
+           </item>
+          </layout>
          </item>
          <item>
           <widget class="QGroupBox" name="groupScan">
@@ -694,77 +773,15 @@
               </item>
              </layout>
             </item>
-           </layout>
-          </widget>
-         </item>
-         <item>
-          <widget class="QGroupBox" name="groupNSFW">
-           <property name="title">
-            <string>内容过滤 / NSFW Filter</string>
-           </property>
-           <layout class="QVBoxLayout" name="verticalLayout_NSFW">
             <item>
-             <widget class="QCheckBox" name="chkFilterNSFW">
+             <widget class="QCheckBox" name="chkRecalculateKnownMetadataHash">
+              <property name="toolTip">
+               <string>默认关闭。关闭时如果模型已有 SHA256 缓存，元信息同步会直接复用该 Hash，避免重新读取大模型文件。</string>
+              </property>
               <property name="text">
-               <string>开启 NSFW 内容过滤 / Enable NSFW Filter</string>
+               <string>同步元数据时重新计算已有 Hash / Recalculate cached Hash when syncing metadata</string>
               </property>
              </widget>
-            </item>
-            <item>
-             <layout class="QHBoxLayout" name="horizontalLayout_NSFWMode">
-              <item>
-               <widget class="QLabel" name="lblNSFWMode">
-                <property name="text">
-                 <string>过滤模式 / Filter Mode:</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QRadioButton" name="radioNSFW_Hide">
-                <property name="text">
-                 <string>隐藏 / Hide</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QRadioButton" name="radioNSFW_Blur">
-                <property name="text">
-                 <string>模糊 / Blur</string>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </item>
-            <item>
-             <layout class="QHBoxLayout" name="horizontalLayout_NSFWLevel">
-              <item>
-               <widget class="QLabel" name="lblNSFWLevel">
-                <property name="text">
-                 <string>过滤等级阈值 (Level &gt; X):</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QSpinBox" name="spinNSFWLevel">
-                <property name="minimum">
-                 <number>1</number>
-                </property>
-                <property name="maximum">
-                 <number>100</number>
-                </property>
-                <property name="value">
-                 <number>1</number>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QLabel" name="lblNSFWHint">
-                <property name="text">
-                 <string>(Civitai 标准: 1=正常, &gt;1 包含不同程度成人内容)</string>
-                </property>
-               </widget>
-              </item>
-             </layout>
             </item>
            </layout>
           </widget>

@@ -97,6 +97,92 @@ QScrollArea { border: none; background-color: #1b2838; }
     padding: 10px;
 }
 
+/* Downloads metadata tables */
+QWidget#DownloadsPage QTableWidget#tableMetadataScan,
+QWidget#DownloadsPage QTableWidget#tableHealth {
+    background-color: #16191e;
+    border: 1px solid #31363d;
+    color: #dcdedf;
+    border-radius: 3px;
+    padding: 4px;
+    gridline-color: #31363d;
+    selection-background-color: #3d5677;
+    selection-color: #ffffff;
+    outline: none;
+    show-decoration-selected: 1;
+}
+QWidget#DownloadsPage QTableWidget#tableMetadataScan::item,
+QWidget#DownloadsPage QTableWidget#tableHealth::item {
+    border: none;
+    padding: 4px 6px;
+}
+QWidget#DownloadsPage QTableWidget#tableMetadataScan::item:focus,
+QWidget#DownloadsPage QTableWidget#tableMetadataScan::item:selected,
+QWidget#DownloadsPage QTableWidget#tableHealth::item:focus,
+QWidget#DownloadsPage QTableWidget#tableHealth::item:selected {
+    border: none;
+    outline: none;
+}
+QWidget#DownloadsPage QTableWidget#tableMetadataScan QHeaderView::section,
+QWidget#DownloadsPage QTableWidget#tableHealth QHeaderView::section {
+    background-color: #212831;
+    color: #dcdedf;
+    padding: 6px;
+    border: none;
+    border-right: 1px solid #31363d;
+}
+QWidget#DownloadsPage QTableWidget#tableMetadataScan QScrollBar:vertical,
+QWidget#DownloadsPage QTableWidget#tableHealth QScrollBar:vertical,
+QWidget#DownloadsPage QTableWidget#tableMetadataScan QScrollBar:horizontal,
+QWidget#DownloadsPage QTableWidget#tableHealth QScrollBar:horizontal {
+    background: #12161c;
+    border-radius: 2px;
+}
+QWidget#DownloadsPage QTableWidget#tableMetadataScan QScrollBar:vertical,
+QWidget#DownloadsPage QTableWidget#tableHealth QScrollBar:vertical {
+    width: 4px;
+    margin: 2px 0 2px 0;
+}
+QWidget#DownloadsPage QTableWidget#tableMetadataScan QScrollBar:horizontal,
+QWidget#DownloadsPage QTableWidget#tableHealth QScrollBar:horizontal {
+    height: 4px;
+    margin: 0 2px 0 2px;
+}
+QWidget#DownloadsPage QTableWidget#tableMetadataScan QScrollBar::handle:vertical,
+QWidget#DownloadsPage QTableWidget#tableMetadataScan QScrollBar::handle:horizontal,
+QWidget#DownloadsPage QTableWidget#tableHealth QScrollBar::handle:vertical,
+QWidget#DownloadsPage QTableWidget#tableHealth QScrollBar::handle:horizontal {
+    background: #3a4654;
+    border-radius: 2px;
+}
+QWidget#DownloadsPage QTableWidget#tableMetadataScan QScrollBar::handle:vertical,
+QWidget#DownloadsPage QTableWidget#tableHealth QScrollBar::handle:vertical {
+    min-height: 24px;
+}
+QWidget#DownloadsPage QTableWidget#tableMetadataScan QScrollBar::handle:horizontal,
+QWidget#DownloadsPage QTableWidget#tableHealth QScrollBar::handle:horizontal {
+    min-width: 24px;
+}
+QWidget#DownloadsPage QTableWidget#tableMetadataScan QScrollBar::handle:vertical:hover,
+QWidget#DownloadsPage QTableWidget#tableMetadataScan QScrollBar::handle:horizontal:hover,
+QWidget#DownloadsPage QTableWidget#tableHealth QScrollBar::handle:vertical:hover,
+QWidget#DownloadsPage QTableWidget#tableHealth QScrollBar::handle:horizontal:hover {
+    background: #4b5a6b;
+}
+QWidget#DownloadsPage QTableWidget#tableMetadataScan QScrollBar::add-line,
+QWidget#DownloadsPage QTableWidget#tableMetadataScan QScrollBar::sub-line,
+QWidget#DownloadsPage QTableWidget#tableHealth QScrollBar::add-line,
+QWidget#DownloadsPage QTableWidget#tableHealth QScrollBar::sub-line {
+    width: 0px;
+    height: 0px;
+}
+QWidget#DownloadsPage QTableWidget#tableMetadataScan QScrollBar::add-page,
+QWidget#DownloadsPage QTableWidget#tableMetadataScan QScrollBar::sub-page,
+QWidget#DownloadsPage QTableWidget#tableHealth QScrollBar::add-page,
+QWidget#DownloadsPage QTableWidget#tableHealth QScrollBar::sub-page {
+    background: transparent;
+}
+
 #textUserPrompt, #textImgPrompt, #textImgNegPrompt {
     background-color: rgba(0,0,0,30);
     border: 1px solid #3d4d5d;
@@ -137,7 +223,7 @@ QScrollArea { border: none; background-color: #1b2838; }
     background-color: transparent;
     border: none;
 }
-#btnHomeAddTagFilter, #btnHomeClearFilters, #btnHomeFilterToggle, QPushButton[class="filterChip"] {
+#btnHomeAddTagFilter, #btnHomeClearFilters, #btnHomeFilterToggle, #btnHomeTagSortMode, QPushButton[class="filterChip"] {
     background-color: rgba(255,255,255,20);
     color: #ffffff;
     border: 1px solid rgba(255,255,255,28);
@@ -145,7 +231,7 @@ QScrollArea { border: none; background-color: #1b2838; }
     padding: 4px 9px;
     font-weight: bold;
 }
-#btnHomeAddTagFilter:hover, #btnHomeClearFilters:hover, #btnHomeFilterToggle:hover, QPushButton[class="filterChip"]:hover {
+#btnHomeAddTagFilter:hover, #btnHomeClearFilters:hover, #btnHomeFilterToggle:hover, #btnHomeTagSortMode:hover, QPushButton[class="filterChip"]:hover {
     background-color: rgba(102,192,244,72);
     border-color: rgba(102,192,244,160);
 }
@@ -153,8 +239,40 @@ QScrollArea { border: none; background-color: #1b2838; }
     background-color: rgba(102,192,244,92);
     border-color: rgba(102,192,244,190);
 }
+QPushButton[class="filterChip"][tagSource="user"] {
+    background-color: rgba(95,211,141,36);
+    border-color: rgba(95,211,141,64);
+    color: #e4ffe9;
+}
+QPushButton[class="filterChip"][tagSource="mixed"] {
+    background-color: rgba(255,204,102,38);
+    border-color: rgba(255,204,102,145);
+    color: #fff1c7;
+}
+QPushButton[class="filterChip"][tagSource="model"]:hover {
+    background-color: rgba(102,192,244,72);
+}
+QPushButton[class="filterChip"][tagSource="user"]:hover {
+    background-color: rgba(95,211,141,72);
+}
+QPushButton[class="filterChip"][tagSource="mixed"]:hover {
+    background-color: rgba(255,204,102,76);
+}
+QPushButton[class="filterChip"][tagSource="model"]:checked {
+    background-color: rgba(102,192,244,98);
+    border-color: rgba(102,192,244,205);
+}
+QPushButton[class="filterChip"][tagSource="user"]:checked {
+    background-color: rgba(95,211,141,98);
+    border-color: rgba(95,211,141,210);
+}
+QPushButton[class="filterChip"][tagSource="mixed"]:checked {
+    background-color: rgba(255,204,102,100);
+    border-color: rgba(255,204,102,215);
+}
 #homeFilterFrame #btnHomeClearFilters,
 #homeFilterFrame #btnHomeFilterToggle,
+#homeFilterFrame #btnHomeTagSortMode,
 #homeFilterFrame QPushButton[class="filterChip"] {
     padding: 2px 8px;
     min-height: 18px;
@@ -525,14 +643,18 @@ QWidget#pageDownloads QProgressBar::chunk { background-color: #66c0f4; border-ra
 
 /* Shared card tabs: Settings + Downloads */
 QTabWidget#tabSettings::pane,
-QTabWidget#tabDownloadsStatus::pane {
+QTabWidget#tabDownloadsStatus::pane,
+QTabWidget#tabDownloadsMain::pane,
+QTabWidget#tabMetadataScanStatus::pane {
     border: 1px solid #313d49;
     background-color: #131922;
     top: -1px;
 }
 
 QTabWidget#tabSettings QTabBar::tab,
-QTabWidget#tabDownloadsStatus QTabBar::tab {
+QTabWidget#tabDownloadsStatus QTabBar::tab,
+QTabWidget#tabDownloadsMain QTabBar::tab,
+QTabWidget#tabMetadataScanStatus QTabBar::tab {
     background: #16191e;
     color: #aeb7c2;
     padding: 8px 16px;
@@ -544,7 +666,9 @@ QTabWidget#tabDownloadsStatus QTabBar::tab {
 }
 
 QTabWidget#tabSettings QTabBar::tab:selected,
-QTabWidget#tabDownloadsStatus QTabBar::tab:selected {
+QTabWidget#tabDownloadsStatus QTabBar::tab:selected,
+QTabWidget#tabDownloadsMain QTabBar::tab:selected,
+QTabWidget#tabMetadataScanStatus QTabBar::tab:selected {
     background: #243447;
     color: #ffffff;
     border-color: #4b637a;

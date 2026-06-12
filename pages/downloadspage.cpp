@@ -1,14 +1,21 @@
 #include "downloadspage.h"
 #include "ui_downloadspage.h"
+#include "styleconstants.h"
+#include "tableviewstylehelper.h"
 
+#include <QApplication>
+#include <QClipboard>
 #include <QColor>
 #include <QComboBox>
 #include <QCollator>
+#include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QHeaderView>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
@@ -17,18 +24,186 @@
 #include <QProgressBar>
 #include <QPixmap>
 #include <QPushButton>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QScrollArea>
+#include <QSaveFile>
 #include <QSizePolicy>
+#include <QSignalBlocker>
 #include <QStyle>
 #include <QTabWidget>
+#include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QVBoxLayout>
 #include <algorithm>
+
+namespace {
+QString metadataCategoryDisplayName(const QString &category)
+{
+    if (category == "missing") return QStringLiteral("缺失元信息");
+    if (category == "existing") return QStringLiteral("已有元信息");
+    if (category == "local") return QStringLiteral("本地/已编辑");
+    if (category == "failed") return QStringLiteral("同步失败");
+    if (category == "invalid") return QStringLiteral("JSON 异常");
+    if (category == "no_ids") return QStringLiteral("缺少识别字段");
+    return QStringLiteral("全部");
+}
+
+QJsonObject metadataScanItemToJson(const MetadataScanItem &item)
+{
+    QJsonObject obj;
+    obj["filePath"] = item.filePath;
+    obj["displayName"] = item.displayName;
+    obj["jsonPath"] = item.jsonPath;
+    obj["previewPath"] = item.previewPath;
+    obj["modelIdText"] = item.modelIdText;
+    obj["versionIdText"] = item.versionIdText;
+    obj["sha256"] = item.sha256;
+    obj["status"] = item.status;
+    obj["category"] = item.category;
+    obj["lastSyncedAt"] = item.lastSyncedAt;
+    obj["lastSyncedSource"] = item.lastSyncedSource;
+    obj["syncFailure"] = item.syncFailure;
+    obj["errorText"] = item.errorText;
+    obj["localEdited"] = item.localEdited;
+    obj["checked"] = item.checked;
+    return obj;
+}
+
+MetadataScanItem metadataScanItemFromJson(const QJsonObject &obj)
+{
+    MetadataScanItem item;
+    item.filePath = obj.value("filePath").toString();
+    item.displayName = obj.value("displayName").toString(QFileInfo(item.filePath).completeBaseName());
+    item.jsonPath = obj.value("jsonPath").toString();
+    item.previewPath = obj.value("previewPath").toString();
+    item.modelIdText = obj.value("modelIdText").toString();
+    item.versionIdText = obj.value("versionIdText").toString();
+    item.sha256 = obj.value("sha256").toString();
+    item.status = obj.value("status").toString();
+    item.category = obj.value("category").toString("all");
+    item.lastSyncedAt = obj.value("lastSyncedAt").toString();
+    item.lastSyncedSource = obj.value("lastSyncedSource").toString();
+    item.syncFailure = obj.value("syncFailure").toString();
+    item.errorText = obj.value("errorText").toString();
+    item.localEdited = obj.value("localEdited").toBool(false);
+    item.checked = obj.value("checked").toBool(false);
+    return item;
+}
+
+QJsonObject metadataHealthIssueToJson(const MetadataHealthIssue &issue)
+{
+    QJsonObject obj;
+    obj["severity"] = issue.severity;
+    obj["modelName"] = issue.modelName;
+    obj["issue"] = issue.issue;
+    obj["suggestion"] = issue.suggestion;
+    obj["filePath"] = issue.filePath;
+    return obj;
+}
+
+MetadataHealthIssue metadataHealthIssueFromJson(const QJsonObject &obj)
+{
+    MetadataHealthIssue issue;
+    issue.severity = obj.value("severity").toString();
+    issue.modelName = obj.value("modelName").toString();
+    issue.issue = obj.value("issue").toString();
+    issue.suggestion = obj.value("suggestion").toString();
+    issue.filePath = obj.value("filePath").toString();
+    return issue;
+}
+}
 
 DownloadsPage::DownloadsPage(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::DownloadsPage)
 {
     ui->setupUi(this);
+    applyUnifiedTableRowStyle(ui->tableMetadataScan);
+    applyUnifiedTableRowStyle(ui->tableHealth);
+    for (QTableWidget *table : {ui->tableMetadataScan, ui->tableHealth}) {
+        table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+        table->horizontalHeader()->setStretchLastSection(true);
+        table->horizontalHeader()->setSectionsClickable(true);
+        table->setSortingEnabled(true);
+        table->setAlternatingRowColors(false);
+        table->setShowGrid(false);
+        table->setFocusPolicy(Qt::NoFocus);
+        table->verticalHeader()->setVisible(false);
+    }
+    ui->tableMetadataScan->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+
+    connect(ui->btnMetadataScan, &QPushButton::clicked, this, &DownloadsPage::metadataScanRequested);
+    connect(ui->btnMetadataSyncSelected, &QPushButton::clicked, this, [this]() {
+        emit metadataSyncRequested(checkedMetadataScanFilePaths());
+    });
+    connect(ui->btnMetadataUpdateSelected, &QPushButton::clicked, this, [this]() {
+        emit metadataUpdateRequested(checkedMetadataScanFilePaths());
+    });
+    connect(ui->btnMetadataToggleCurrent, &QPushButton::clicked, this, [this]() {
+        const QString category = currentMetadataCategory();
+        bool allChecked = true;
+        bool hasRow = false;
+        for (const MetadataScanItem &item : std::as_const(m_metadataScanItems)) {
+            if (category != "all" && item.category != category) continue;
+            hasRow = true;
+            if (!item.checked) {
+                allChecked = false;
+                break;
+            }
+        }
+        if (hasRow) setCurrentMetadataCategoryChecked(!allChecked);
+    });
+    connect(ui->btnMetadataOpenModel, &QPushButton::clicked, this, [this]() {
+        const int row = ui->tableMetadataScan->currentRow();
+        if (row < 0) return;
+        QTableWidgetItem *item = ui->tableMetadataScan->item(row, 1);
+        if (!item) return;
+        emit metadataOpenModelRequested(item->data(Qt::UserRole).toString());
+    });
+    connect(ui->btnMetadataOpenFolder, &QPushButton::clicked, this, [this]() {
+        const int row = ui->tableMetadataScan->currentRow();
+        if (row < 0) return;
+        QTableWidgetItem *item = ui->tableMetadataScan->item(row, 1);
+        if (!item) return;
+        emit metadataOpenFolderRequested(item->data(Qt::UserRole).toString());
+    });
+    connect(ui->tabMetadataScanStatus, &QTabWidget::currentChanged, this, [this]() {
+        refreshMetadataScanTable();
+    });
+    connect(ui->tableMetadataScan, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *item) {
+        if (!item || item->column() != 0) return;
+        const QString filePath = item->data(Qt::UserRole).toString();
+        for (MetadataScanItem &scanItem : m_metadataScanItems) {
+            if (scanItem.filePath == filePath) {
+                scanItem.checked = item->checkState() == Qt::Checked;
+                break;
+            }
+        }
+        updateMetadataSelectionSummary();
+        saveMetadataResultCache();
+        emit metadataSelectionChanged();
+    });
+
+    connect(ui->btnRunHealthCheck, &QPushButton::clicked, this, &DownloadsPage::healthCheckRequested);
+    connect(ui->btnCopyHealth, &QPushButton::clicked, this, &DownloadsPage::copySelectedHealthIssues);
+    connect(ui->btnOpenHealthModel, &QPushButton::clicked, this, [this]() {
+        const int row = ui->tableHealth->currentRow();
+        if (row < 0) return;
+        QTableWidgetItem *item = ui->tableHealth->item(row, 0);
+        if (!item) return;
+        emit healthOpenModelRequested(item->data(Qt::UserRole).toString());
+    });
+    connect(ui->btnOpenHealthFolder, &QPushButton::clicked, this, [this]() {
+        const int row = ui->tableHealth->currentRow();
+        if (row < 0) return;
+        QTableWidgetItem *item = ui->tableHealth->item(row, 0);
+        if (!item) return;
+        emit healthOpenFolderRequested(item->data(Qt::UserRole).toString());
+    });
+
+    loadMetadataResultCache();
 }
 
 DownloadsPage::~DownloadsPage()
@@ -522,7 +697,7 @@ void DownloadsPage::initializeAppearance()
     ui->lblDownloadsFilter->hide();
     ui->comboDownloadsFilter->hide();
 
-    const QColor downloadBg("#131922");
+    const QColor downloadBg(AppStyle::DownloadCardBackground);
     const QList<QScrollArea*> areas = {
         ui->scrollDownloadsCards,
         ui->scrollDownloadsCoexisting,
@@ -540,6 +715,251 @@ void DownloadsPage::initializeAppearance()
         pal.setColor(QPalette::Window, downloadBg);
         vp->setPalette(pal);
     }
+}
+
+QString DownloadsPage::currentMetadataCategory() const
+{
+    switch (ui->tabMetadataScanStatus->currentIndex()) {
+    case 1: return "missing";
+    case 2: return "existing";
+    case 3: return "local";
+    case 4: return "failed";
+    case 5: return "invalid";
+    case 6: return "no_ids";
+    default: return "all";
+    }
+}
+
+bool DownloadsPage::metadataItemMatchesCurrentCategory(const MetadataScanItem &item) const
+{
+    const QString category = currentMetadataCategory();
+    return category == "all" || item.category == category;
+}
+
+void DownloadsPage::setMetadataScanRunning(bool running)
+{
+    ui->btnMetadataScan->setEnabled(!running);
+    ui->btnMetadataSyncSelected->setEnabled(!running);
+    ui->btnMetadataUpdateSelected->setEnabled(!running);
+    ui->lblMetadataScanStatus->setText(running ? "正在后台扫描模型元信息..." : "元信息扫描完成。");
+}
+
+void DownloadsPage::setMetadataScanItems(const QVector<MetadataScanItem> &items)
+{
+    m_metadataScanItems = items;
+    refreshMetadataScanTable();
+    saveMetadataResultCache();
+}
+
+void DownloadsPage::refreshMetadataScanTable()
+{
+    if (QWidget *currentPage = ui->tabMetadataScanStatus->currentWidget()) {
+        if (QLayout *oldLayout = ui->tableMetadataScan->parentWidget() ? ui->tableMetadataScan->parentWidget()->layout() : nullptr) {
+            oldLayout->removeWidget(ui->tableMetadataScan);
+        }
+        if (QLayout *newLayout = currentPage->layout()) {
+            newLayout->addWidget(ui->tableMetadataScan);
+        }
+    }
+
+    QSignalBlocker blocker(ui->tableMetadataScan);
+    ui->tableMetadataScan->setSortingEnabled(false);
+    ui->tableMetadataScan->setRowCount(0);
+
+    int row = 0;
+    for (const MetadataScanItem &item : std::as_const(m_metadataScanItems)) {
+        if (!metadataItemMatchesCurrentCategory(item)) continue;
+        ui->tableMetadataScan->insertRow(row);
+
+        auto *checkItem = new QTableWidgetItem();
+        checkItem->setFlags((checkItem->flags() | Qt::ItemIsUserCheckable) & ~Qt::ItemIsEditable);
+        checkItem->setCheckState(item.checked ? Qt::Checked : Qt::Unchecked);
+        checkItem->setData(Qt::UserRole, item.filePath);
+        ui->tableMetadataScan->setItem(row, 0, checkItem);
+
+        auto *nameItem = new QTableWidgetItem(item.displayName);
+        nameItem->setData(Qt::UserRole, item.filePath);
+        nameItem->setToolTip(item.filePath);
+        ui->tableMetadataScan->setItem(row, 1, nameItem);
+        ui->tableMetadataScan->setItem(row, 2, new QTableWidgetItem(metadataCategoryDisplayName(item.category)));
+        ui->tableMetadataScan->setItem(row, 3, new QTableWidgetItem(item.status));
+        ui->tableMetadataScan->setItem(row, 4, new QTableWidgetItem(item.modelIdText));
+        ui->tableMetadataScan->setItem(row, 5, new QTableWidgetItem(item.versionIdText));
+        ui->tableMetadataScan->setItem(row, 6, new QTableWidgetItem(item.sha256.left(12)));
+        ui->tableMetadataScan->item(row, 6)->setToolTip(item.sha256);
+        const QString syncedText = item.lastSyncedAt.isEmpty()
+            ? QStringLiteral("-")
+            : QString("%1 (%2)").arg(item.lastSyncedAt, item.lastSyncedSource);
+        ui->tableMetadataScan->setItem(row, 7, new QTableWidgetItem(syncedText));
+        ++row;
+    }
+
+    ui->tableMetadataScan->setSortingEnabled(true);
+    updateMetadataSelectionSummary();
+}
+
+QStringList DownloadsPage::checkedMetadataScanFilePaths() const
+{
+    QStringList paths;
+    for (const MetadataScanItem &item : m_metadataScanItems) {
+        if (item.checked) paths << item.filePath;
+    }
+    return paths;
+}
+
+void DownloadsPage::setCurrentMetadataCategoryChecked(bool checked)
+{
+    const QString category = currentMetadataCategory();
+    for (MetadataScanItem &item : m_metadataScanItems) {
+        if (category == "all" || item.category == category) item.checked = checked;
+    }
+    refreshMetadataScanTable();
+    saveMetadataResultCache();
+    emit metadataSelectionChanged();
+}
+
+void DownloadsPage::updateMetadataSelectionSummary()
+{
+    const QString category = currentMetadataCategory();
+    int currentTotal = 0;
+    int currentChecked = 0;
+    int allChecked = 0;
+    for (const MetadataScanItem &item : std::as_const(m_metadataScanItems)) {
+        if (item.checked) ++allChecked;
+        if (category == "all" || item.category == category) {
+            ++currentTotal;
+            if (item.checked) ++currentChecked;
+        }
+    }
+    const bool allCurrentChecked = currentTotal > 0 && currentChecked == currentTotal;
+    ui->btnMetadataToggleCurrent->setText(allCurrentChecked ? "取消全选当前分类" : "全选当前分类");
+    ui->btnMetadataToggleCurrent->setEnabled(currentTotal > 0);
+    ui->lblMetadataScanStatus->setText(QString("当前分类 %1/%2，全部已选择 %3 个模型。")
+                                           .arg(currentChecked)
+                                           .arg(currentTotal)
+                                           .arg(allChecked));
+}
+
+void DownloadsPage::updateMetadataScanItemStatus(const QString &filePath, const QString &status, const QString &category, const QString &lastSyncedAt, const QString &lastSyncedSource)
+{
+    for (MetadataScanItem &item : m_metadataScanItems) {
+        if (item.filePath != filePath) continue;
+        item.status = status;
+        if (!category.isEmpty()) item.category = category;
+        if (!lastSyncedAt.isEmpty()) item.lastSyncedAt = lastSyncedAt;
+        if (!lastSyncedSource.isEmpty()) item.lastSyncedSource = lastSyncedSource;
+        break;
+    }
+    refreshMetadataScanTable();
+    saveMetadataResultCache();
+}
+
+void DownloadsPage::setHealthCheckRunning(bool running)
+{
+    ui->btnRunHealthCheck->setEnabled(!running);
+    ui->lblHealthStatus->setText(running ? "正在后台检查元数据..." : "元数据健康检查完成。");
+}
+
+void DownloadsPage::setHealthIssues(const QVector<MetadataHealthIssue> &issues)
+{
+    m_healthIssues = issues;
+    ui->tableHealth->setSortingEnabled(false);
+    ui->tableHealth->setRowCount(issues.size());
+    for (int row = 0; row < issues.size(); ++row) {
+        const MetadataHealthIssue &issue = issues[row];
+        auto *severityItem = new QTableWidgetItem(issue.severity);
+        severityItem->setData(Qt::UserRole, issue.filePath);
+        ui->tableHealth->setItem(row, 0, severityItem);
+        ui->tableHealth->setItem(row, 1, new QTableWidgetItem(issue.modelName));
+        ui->tableHealth->setItem(row, 2, new QTableWidgetItem(issue.issue));
+        ui->tableHealth->setItem(row, 3, new QTableWidgetItem(issue.suggestion));
+    }
+    ui->tableHealth->setSortingEnabled(true);
+    ui->lblHealthStatus->setText(QString("检查完成，共发现 %1 条问题/提示。").arg(issues.size()));
+    saveMetadataResultCache();
+}
+
+void DownloadsPage::copySelectedHealthIssues() const
+{
+    QStringList lines;
+    const auto ranges = ui->tableHealth->selectedRanges();
+    for (const QTableWidgetSelectionRange &range : ranges) {
+        for (int row = range.topRow(); row <= range.bottomRow(); ++row) {
+            QStringList cols;
+            for (int col = 0; col < ui->tableHealth->columnCount(); ++col) {
+                if (QTableWidgetItem *item = ui->tableHealth->item(row, col)) cols << item->text();
+            }
+            lines << cols.join('\t');
+        }
+    }
+    if (!lines.isEmpty()) QApplication::clipboard()->setText(lines.join('\n'));
+}
+
+QString DownloadsPage::metadataResultCachePath() const
+{
+    return qApp->applicationDirPath() + "/config/metadata_scan_cache.json";
+}
+
+void DownloadsPage::loadMetadataResultCache()
+{
+    QFile file(metadataResultCachePath());
+    if (!file.open(QIODevice::ReadOnly)) return;
+
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    if (!doc.isObject()) return;
+    const QJsonObject root = doc.object();
+
+    QVector<MetadataScanItem> scanItems;
+    const QJsonArray scanArray = root.value("metadataScanItems").toArray();
+    scanItems.reserve(scanArray.size());
+    for (const QJsonValue &value : scanArray) {
+        const MetadataScanItem item = metadataScanItemFromJson(value.toObject());
+        if (!item.filePath.isEmpty()) scanItems.append(item);
+    }
+
+    QVector<MetadataHealthIssue> healthIssues;
+    const QJsonArray healthArray = root.value("healthIssues").toArray();
+    healthIssues.reserve(healthArray.size());
+    for (const QJsonValue &value : healthArray) {
+        const MetadataHealthIssue issue = metadataHealthIssueFromJson(value.toObject());
+        if (!issue.filePath.isEmpty() || !issue.issue.isEmpty()) healthIssues.append(issue);
+    }
+
+    if (!scanItems.isEmpty()) {
+        m_metadataScanItems = scanItems;
+        refreshMetadataScanTable();
+        ui->lblMetadataScanStatus->setText(QString("已恢复上次元信息扫描结果，共 %1 个模型。").arg(scanItems.size()));
+    }
+    if (!healthIssues.isEmpty()) {
+        setHealthIssues(healthIssues);
+        ui->lblHealthStatus->setText(QString("已恢复上次健康检查结果，共 %1 条问题/提示。").arg(healthIssues.size()));
+    }
+}
+
+void DownloadsPage::saveMetadataResultCache() const
+{
+    const QString configDir = qApp->applicationDirPath() + "/config";
+    QDir().mkpath(configDir);
+
+    QJsonArray scanArray;
+    for (const MetadataScanItem &item : m_metadataScanItems) {
+        if (!item.filePath.isEmpty()) scanArray.append(metadataScanItemToJson(item));
+    }
+
+    QJsonArray healthArray;
+    for (const MetadataHealthIssue &issue : m_healthIssues) {
+        healthArray.append(metadataHealthIssueToJson(issue));
+    }
+
+    QSaveFile file(metadataResultCachePath());
+    if (!file.open(QIODevice::WriteOnly)) return;
+    QJsonObject root;
+    root["version"] = 1;
+    root["savedAt"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    root["metadataScanItems"] = scanArray;
+    root["healthIssues"] = healthArray;
+    file.write(QJsonDocument(root).toJson());
+    file.commit();
 }
 
 QString DownloadsPage::categoryForStatus(const QString &status) const

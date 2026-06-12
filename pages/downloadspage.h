@@ -12,6 +12,7 @@ class QComboBox;
 class QPixmap;
 class QPushButton;
 class QTabWidget;
+class QTableWidgetItem;
 class QVBoxLayout;
 
 namespace Ui {
@@ -66,21 +67,48 @@ public:
     void sortAllCards();
     void removeCard(const QString &filePath);
 
+    void setMetadataScanRunning(bool running);
+    void setMetadataScanItems(const QVector<MetadataScanItem> &items);
+    QStringList checkedMetadataScanFilePaths() const;
+    void updateMetadataScanItemStatus(const QString &filePath, const QString &status, const QString &category, const QString &lastSyncedAt = QString(), const QString &lastSyncedSource = QString());
+    void setHealthCheckRunning(bool running);
+    void setHealthIssues(const QVector<MetadataHealthIssue> &issues);
+    void loadMetadataResultCache();
+    void saveMetadataResultCache() const;
+
 signals:
     void cardSelectionChanged();
     void sourceRequested(const QString &filePath);
     void civitaiRequested(const QString &filePath);
     void downloadRequested(const QString &filePath);
     void ignoreToggled(const QString &filePath);
+    void metadataScanRequested();
+    void metadataSyncRequested(const QStringList &filePaths);
+    void metadataUpdateRequested(const QStringList &filePaths);
+    void metadataOpenModelRequested(const QString &filePath);
+    void metadataOpenFolderRequested(const QString &filePath);
+    void metadataSelectionChanged();
+    void healthCheckRequested();
+    void healthOpenModelRequested(const QString &filePath);
+    void healthOpenFolderRequested(const QString &filePath);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
     void updateSelectionSummary(int selectedCurrent, int currentTotal, int selectedTotal);
+    QString currentMetadataCategory() const;
+    bool metadataItemMatchesCurrentCategory(const MetadataScanItem &item) const;
+    void refreshMetadataScanTable();
+    void updateMetadataSelectionSummary();
+    void setCurrentMetadataCategoryChecked(bool checked);
+    void copySelectedHealthIssues() const;
+    QString metadataResultCachePath() const;
 
     Ui::DownloadsPage *ui = nullptr;
     QHash<QString, DownloadCardWidgets> m_cards;
+    QVector<MetadataScanItem> m_metadataScanItems;
+    QVector<MetadataHealthIssue> m_healthIssues;
 };
 
 #endif // DOWNLOADSPAGE_WIDGET_H

@@ -1,4 +1,5 @@
 #include "tableviewstylehelper.h"
+#include "styleconstants.h"
 
 #include <QAbstractItemView>
 #include <QEvent>
@@ -67,8 +68,8 @@ public:
         opt.state &= ~QStyle::State_MouseOver;
         opt.backgroundBrush = Qt::NoBrush;
         if (selected) {
-            opt.palette.setColor(QPalette::Text, QColor("#ffffff"));
-            opt.palette.setColor(QPalette::HighlightedText, QColor("#ffffff"));
+            opt.palette.setColor(QPalette::Text, QColor(AppStyle::WhiteText));
+            opt.palette.setColor(QPalette::HighlightedText, QColor(AppStyle::WhiteText));
         }
 
         QStyledItemDelegate::paint(painter, opt, index);
@@ -108,7 +109,7 @@ private:
 
         painter->save();
         painter->setPen(Qt::NoPen);
-        painter->fillRect(rect, selected ? QColor("#3d5677") : QColor(255, 255, 255, 18));
+        painter->fillRect(rect, selected ? QColor(AppStyle::TableSelected) : AppStyle::translucentWhite(18));
         painter->restore();
     }
 

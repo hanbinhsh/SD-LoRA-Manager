@@ -1,5 +1,6 @@
 #include "syncwidget.h"
 #include "ui_syncwidget.h"
+#include "styleconstants.h"
 #include <QFileDialog>
 #include <QDirIterator>
 #include <QJsonDocument>
@@ -151,7 +152,8 @@ void SyncWidget::on_btnStart_clicked() {
         if (tcpServer->listen(QHostAddress::Any, port)) {
             startDiscoveryResponder(port);
             ui->btnStart->setText("停止服务 / Stop");
-            ui->btnStart->setStyleSheet("background-color: #aa3333; color: white; font-weight: bold;");
+            ui->btnStart->setStyleSheet(QString("background-color: %1; color: %2; font-weight: bold;")
+                                             .arg(AppStyle::SyncStopRed, AppStyle::WhiteText));
             logMsg(QString("服务已启动，监听端口: %1").arg(port));
         } else {
             QMessageBox::critical(this, "错误", "端口被占用或启动失败");
@@ -617,13 +619,12 @@ void SyncWidget::addFolderItem(const QString &path) {
 
     QLabel *lblPath = new QLabel(path);
     lblPath->setToolTip(path);
-    lblPath->setStyleSheet("color: #acb2b8; background-color: transparent;");
+    lblPath->setStyleSheet(QString("color: %1; background-color: transparent;").arg(AppStyle::MutedText));
     lblPath->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
     QPushButton *btnRemove = new QPushButton("X");
     btnRemove->setCursor(Qt::PointingHandCursor);
-    btnRemove->setStyleSheet("QPushButton { background-color: #3c1919; color: #ff4c4c; border: none; padding: 4px 8px; border-radius: 2px; }"
-                             "QPushButton:hover { background-color: #ff4c4c; color: #fff; }");
+    btnRemove->setStyleSheet(AppStyle::dangerButtonStyle());
 
     layout->addWidget(lblPath, 1);
     layout->addWidget(btnRemove, 0);
@@ -655,13 +656,12 @@ void SyncWidget::addPendingDeviceItem(const QString &deviceId, const QString &di
 
     QLabel *lblName = new QLabel(displayName);
     lblName->setToolTip(displayName);
-    lblName->setStyleSheet("color: #ffcc00; font-weight: bold; background-color: transparent;");
+    lblName->setStyleSheet(QString("color: %1; font-weight: bold; background-color: transparent;").arg(AppStyle::WarningYellow));
     lblName->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
     QPushButton *btnAllow = new QPushButton("允许");
     btnAllow->setCursor(Qt::PointingHandCursor);
-    btnAllow->setStyleSheet("QPushButton { background-color: #1b4b2a; color: #8fbc8f; border: none; padding: 4px 8px; border-radius: 2px; }"
-                            "QPushButton:hover { background-color: #2e8b57; color: #fff; }");
+    btnAllow->setStyleSheet(AppStyle::allowButtonStyle());
 
     layout->addWidget(lblName, 1);
     layout->addWidget(btnAllow, 0);
@@ -689,13 +689,12 @@ void SyncWidget::addWhitelistItem(const QString &deviceId) {
 
     QLabel *lblId = new QLabel(deviceId);
     lblId->setToolTip(deviceId);
-    lblId->setStyleSheet("color: #acb2b8; background-color: transparent;");
+    lblId->setStyleSheet(QString("color: %1; background-color: transparent;").arg(AppStyle::MutedText));
     lblId->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
     QPushButton *btnRemove = new QPushButton("X");
     btnRemove->setCursor(Qt::PointingHandCursor);
-    btnRemove->setStyleSheet("QPushButton { background-color: #3c1919; color: #ff4c4c; border: none; padding: 4px 8px; border-radius: 2px; }"
-                             "QPushButton:hover { background-color: #ff4c4c; color: #fff; }");
+    btnRemove->setStyleSheet(AppStyle::dangerButtonStyle());
 
     layout->addWidget(lblId, 1);
     layout->addWidget(btnRemove, 0);
@@ -723,13 +722,12 @@ void SyncWidget::addActiveClientItem(QTcpSocket *client, const QString &displayN
 
     QLabel *lblName = new QLabel(displayName);
     lblName->setToolTip(displayName);
-    lblName->setStyleSheet("color: #66c0f4; font-weight: bold; background-color: transparent;");
+    lblName->setStyleSheet(QString("color: %1; font-weight: bold; background-color: transparent;").arg(AppStyle::AccentBlue));
     lblName->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
     QPushButton *btnKick = new QPushButton("断开");
     btnKick->setCursor(Qt::PointingHandCursor);
-    btnKick->setStyleSheet("QPushButton { background-color: #3c1919; color: #ff4c4c; border: none; padding: 4px 8px; border-radius: 2px; }"
-                           "QPushButton:hover { background-color: #ff4c4c; color: #fff; }");
+    btnKick->setStyleSheet(AppStyle::dangerButtonStyle());
 
     layout->addWidget(lblName, 1);
     layout->addWidget(btnKick, 0);

@@ -2,6 +2,7 @@
 #include "ui_promptparserwidget.h"
 #include "imagemetadataparser.h"
 #include "tableviewstylehelper.h"
+#include "styleconstants.h"
 
 #include <QAbstractItemView>
 #include <QAction>
@@ -564,8 +565,8 @@ void PromptParserWidget::fillCompareParams()
         auto *itemA = new QTableWidgetItem(valueA.isEmpty() ? "-" : valueA);
         auto *itemB = new QTableWidgetItem(valueB.isEmpty() ? "-" : valueB);
         if (QString::compare(valueA, valueB, Qt::CaseInsensitive) != 0) {
-            itemA->setBackground(QColor(122, 74, 42, 120));
-            itemB->setBackground(QColor(47, 106, 79, 120));
+            itemA->setBackground(AppStyle::imageCompareOnlyA());
+            itemB->setBackground(AppStyle::imageCompareOnlyB());
         }
         ui->tableCompareParams->setItem(row, 0, keyItem);
         ui->tableCompareParams->setItem(row, 1, itemA);

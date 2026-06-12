@@ -2,7 +2,6 @@
 #define USAGEANALYSISWIDGET_H
 
 #include <QDateTime>
-#include <QFutureWatcher>
 #include <QMap>
 #include <QString>
 #include <QVector>
@@ -40,15 +39,6 @@ struct UsageAnalysisData
     QDateTime generatedAt;
 };
 
-struct MetadataHealthIssue
-{
-    QString severity;
-    QString modelName;
-    QString issue;
-    QString suggestion;
-    QString filePath;
-};
-
 class UsageAnalysisWidget : public QWidget
 {
     Q_OBJECT
@@ -65,24 +55,18 @@ signals:
 
 private slots:
     void onSearchTextChanged(const QString &text);
-    void onRunHealthCheckClicked();
-    void onCopyHealthClicked();
     void onExportAnalysisCsvClicked();
-    void onOpenSelectedHealthModelClicked();
 
 private:
     Ui::UsageAnalysisWidget *ui;
     UsageAnalysisData analysisData;
-    QFutureWatcher<QVector<MetadataHealthIssue>> *healthWatcher = nullptr;
 
     void refreshSummary();
     void refreshModelTable();
     void refreshCharts();
-    void refreshHealthTable(const QVector<MetadataHealthIssue> &issues);
     void setStatus(const QString &text);
     bool modelMatchesSearch(const UsageAnalysisModel &model, const QString &query) const;
     void fillTopTable(QTableWidget *table, const QVector<QPair<QString, int>> &rows, const QString &nameHeader);
-    static QVector<MetadataHealthIssue> runHealthCheckWorker(QVector<UsageAnalysisModel> models);
     static QString formatTime(qint64 msecs);
 };
 

@@ -18,6 +18,10 @@
 #include <QSet>
 #include <QWidget>
 
+namespace {
+constexpr bool kThemeSettingsEnabled = false;
+}
+
 SettingsState SettingsState::fromJson(const QJsonObject &root, const QString &defaultFilterTags)
 {
     SettingsState state;
@@ -44,10 +48,11 @@ SettingsState SettingsState::fromJson(const QJsonObject &root, const QString &de
     state.useCivitaiName = root["use_civitai_name"].toBool(false);
     state.suppressLocalWarnings = root["suppress_local_model_warnings"].toBool(false);
     state.userGalleryMatchMode = root["user_gallery_match_mode"].toInt(0);
+    state.recalculateKnownMetadataHash = root["recalculate_known_metadata_hash"].toBool(false);
     state.modelUpdateDownloadPolicy = root["model_update_download_policy"].toInt(0);
     state.autoCheckUpdatesOnStartup = root["auto_check_update_on_startup"].toBool(true);
-    state.themeId = root["theme_id"].toString("steam_dark");
-    state.customThemePath = root["custom_theme_path"].toString();
+    state.themeId = kThemeSettingsEnabled ? root["theme_id"].toString("steam_dark") : QStringLiteral("steam_dark");
+    state.customThemePath = kThemeSettingsEnabled ? root["custom_theme_path"].toString() : QString();
     state.normalize();
     return state;
 }
@@ -80,6 +85,7 @@ void SettingsState::writeToJson(QJsonObject &root) const
     root["use_civitai_name"] = normalized.useCivitaiName;
     root["suppress_local_model_warnings"] = normalized.suppressLocalWarnings;
     root["user_gallery_match_mode"] = normalized.userGalleryMatchMode;
+    root["recalculate_known_metadata_hash"] = normalized.recalculateKnownMetadataHash;
     root["model_update_download_policy"] = normalized.modelUpdateDownloadPolicy;
     root["auto_check_update_on_startup"] = normalized.autoCheckUpdatesOnStartup;
     root["theme_id"] = normalized.themeId;
@@ -94,6 +100,12 @@ void SettingsState::normalize()
     if (modelUpdateDownloadPolicy < 0 || modelUpdateDownloadPolicy > 2) modelUpdateDownloadPolicy = 0;
     if (userGalleryMatchMode < 0 || userGalleryMatchMode > 2) userGalleryMatchMode = 0;
     if (collectionFolderTopLevel && collectionFolderSecondLevel) collectionFolderSecondLevel = false;
+    if (!kThemeSettingsEnabled) {
+        themeId = QStringLiteral("steam_dark");
+        customThemePath.clear();
+        return;
+    }
+
     static const QSet<QString> validThemes = {
         "steam_dark",
         "midnight_blue",
@@ -119,6 +131,7 @@ SettingsPage::SettingsPage(QWidget *parent)
 {
     ui->setupUi(this);
     initThemeComboData();
+    if (ui->groupTheme) ui->groupTheme->setVisible(kThemeSettingsEnabled);
 
     if (ui->btnBrowseLora) connect(ui->btnBrowseLora, &QPushButton::clicked, this, &SettingsPage::loraPathsEditRequested);
     if (ui->btnBrowseGallery) connect(ui->btnBrowseGallery, &QPushButton::clicked, this, &SettingsPage::galleryPathsEditRequested);
@@ -187,6 +200,7 @@ SettingsPage::SettingsPage(QWidget *parent)
     if (ui->chkUseCivitaiName) connect(ui->chkUseCivitaiName, &QCheckBox::toggled, this, &SettingsPage::emitStateChanged);
     if (ui->chkSuppressLocalWarnings) connect(ui->chkSuppressLocalWarnings, &QCheckBox::toggled, this, &SettingsPage::emitStateChanged);
     if (ui->chkAutoCheckUpdatesOnStartup) connect(ui->chkAutoCheckUpdatesOnStartup, &QCheckBox::toggled, this, &SettingsPage::emitStateChanged);
+    if (ui->chkRecalculateKnownMetadataHash) connect(ui->chkRecalculateKnownMetadataHash, &QCheckBox::toggled, this, &SettingsPage::emitStateChanged);
     if (ui->editCivitaiApiKey) connect(ui->editCivitaiApiKey, &QLineEdit::editingFinished, this, [this]() {
         setCivitaiApiStatus(ui->editCivitaiApiKey && ui->editCivitaiApiKey->text().trimmed().isEmpty() ? "API Key 未配置" : "API Key 未测试");
         emitStateChanged();
@@ -257,6 +271,7 @@ SettingsState SettingsPage::state() const
     s.useCivitaiName = ui->chkUseCivitaiName && ui->chkUseCivitaiName->isChecked();
     s.suppressLocalWarnings = ui->chkSuppressLocalWarnings && ui->chkSuppressLocalWarnings->isChecked();
     s.userGalleryMatchMode = ui->comboUserGalleryMatchMode ? ui->comboUserGalleryMatchMode->currentIndex() : 0;
+    s.recalculateKnownMetadataHash = ui->chkRecalculateKnownMetadataHash && ui->chkRecalculateKnownMetadataHash->isChecked();
     s.uiScale = ui->spinUiScale ? ui->spinUiScale->value() : 1.0;
     s.themeId = currentThemeId();
     s.customThemePath = ui->editCustomThemePath ? ui->editCustomThemePath->text().trimmed() : QString();
@@ -297,6 +312,7 @@ void SettingsPage::setState(const SettingsState &state)
     if (ui->chkUseCivitaiName) ui->chkUseCivitaiName->setChecked(state.useCivitaiName);
     if (ui->chkSuppressLocalWarnings) ui->chkSuppressLocalWarnings->setChecked(state.suppressLocalWarnings);
     if (ui->comboUserGalleryMatchMode) ui->comboUserGalleryMatchMode->setCurrentIndex(qBound(0, state.userGalleryMatchMode, 2));
+    if (ui->chkRecalculateKnownMetadataHash) ui->chkRecalculateKnownMetadataHash->setChecked(state.recalculateKnownMetadataHash);
     if (ui->spinUiScale) ui->spinUiScale->setValue(state.uiScale);
     if (ui->comboTheme) {
         const int themeIndex = themeIndexForId(state.themeId);
