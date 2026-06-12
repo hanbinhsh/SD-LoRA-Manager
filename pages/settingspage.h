@@ -37,6 +37,8 @@ struct SettingsState {
     bool suppressLocalWarnings = false;
     int userGalleryMatchMode = 0;
     double uiScale = 1.0;
+    QString themeId = "steam_dark";
+    QString customThemePath;
 
     static SettingsState fromJson(const QJsonObject &root, const QString &defaultFilterTags);
     void writeToJson(QJsonObject &root) const;
@@ -62,6 +64,7 @@ public:
     void setBlurValue(int value);
     void setFilterTagsText(const QString &text);
     void setUserAgentText(const QString &text);
+    void setThemeStatus(const QString &text);
     void focusTranslationPath();
 
 signals:
@@ -78,6 +81,9 @@ signals:
 private:
     void emitStateChanged();
     void updateDependentControls();
+    void initThemeComboData();
+    QString currentThemeId() const;
+    int themeIndexForId(const QString &themeId) const;
 
     Ui::SettingsPage *ui = nullptr;
     bool m_updating = false;

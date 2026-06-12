@@ -426,6 +426,9 @@ private:
     void applySettingsState(SettingsState state);
     void resetFilterTagsToDefault();
     void applyRandomUserAgent();
+    void applyApplicationTheme(const QString &themeId, const QString &customPath, bool updateStatus);
+    void applyToolPageTheme(QWidget *page);
+    void refreshLoadedToolPageThemes();
     void beginGalleryBuild(const ModelMeta &meta);
     void buildGalleryBatch();
     void addGalleryThumbButton(const ModelMeta &meta, int index, const QString &modelDir, const QString &baseName);
@@ -555,6 +558,9 @@ private:
     int           optModelUpdateDownloadPolicy                = 0;                // 0: 每次询问, 1: 保留旧版, 2: 覆盖当前文件
     bool          optAutoCheckUpdatesOnStartup                = true;             // 启动时自动检查软件更新
     double        optUiScale                                  = 1.0;              // 缩放比率
+    QString       optThemeId                                  = "steam_dark";    // 当前程序主题
+    QString       optCustomThemePath                          = "";              // 外部 QSS 主题路径
+    QString       currentToolPageQss;                                             // 当前工具页样式
     // 保存与加载
     void loadGlobalConfig();        // 加载配置
     void saveGlobalConfig();        // 保存配置

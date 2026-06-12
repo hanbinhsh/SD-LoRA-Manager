@@ -4,6 +4,8 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
@@ -13,6 +15,7 @@
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QSpinBox>
+#include <QSet>
 #include <QWidget>
 
 SettingsState SettingsState::fromJson(const QJsonObject &root, const QString &defaultFilterTags)
@@ -43,6 +46,8 @@ SettingsState SettingsState::fromJson(const QJsonObject &root, const QString &de
     state.userGalleryMatchMode = root["user_gallery_match_mode"].toInt(0);
     state.modelUpdateDownloadPolicy = root["model_update_download_policy"].toInt(0);
     state.autoCheckUpdatesOnStartup = root["auto_check_update_on_startup"].toBool(true);
+    state.themeId = root["theme_id"].toString("steam_dark");
+    state.customThemePath = root["custom_theme_path"].toString();
     state.normalize();
     return state;
 }
@@ -77,6 +82,8 @@ void SettingsState::writeToJson(QJsonObject &root) const
     root["user_gallery_match_mode"] = normalized.userGalleryMatchMode;
     root["model_update_download_policy"] = normalized.modelUpdateDownloadPolicy;
     root["auto_check_update_on_startup"] = normalized.autoCheckUpdatesOnStartup;
+    root["theme_id"] = normalized.themeId;
+    root["custom_theme_path"] = normalized.customThemePath;
 }
 
 void SettingsState::normalize()
@@ -87,6 +94,16 @@ void SettingsState::normalize()
     if (modelUpdateDownloadPolicy < 0 || modelUpdateDownloadPolicy > 2) modelUpdateDownloadPolicy = 0;
     if (userGalleryMatchMode < 0 || userGalleryMatchMode > 2) userGalleryMatchMode = 0;
     if (collectionFolderTopLevel && collectionFolderSecondLevel) collectionFolderSecondLevel = false;
+    static const QSet<QString> validThemes = {
+        "steam_dark",
+        "midnight_blue",
+        "light",
+        "high_contrast",
+        "custom_qss"
+    };
+    themeId = themeId.trimmed();
+    if (!validThemes.contains(themeId)) themeId = "steam_dark";
+    customThemePath = customThemePath.trimmed();
 }
 
 QStringList SettingsState::filterTags() const
@@ -101,6 +118,7 @@ SettingsPage::SettingsPage(QWidget *parent)
     , ui(new Ui::SettingsPage)
 {
     ui->setupUi(this);
+    initThemeComboData();
 
     if (ui->btnBrowseLora) connect(ui->btnBrowseLora, &QPushButton::clicked, this, &SettingsPage::loraPathsEditRequested);
     if (ui->btnBrowseGallery) connect(ui->btnBrowseGallery, &QPushButton::clicked, this, &SettingsPage::galleryPathsEditRequested);
@@ -185,6 +203,26 @@ SettingsPage::SettingsPage(QWidget *parent)
     if (ui->comboModelUpdateDownloadPolicy) connect(ui->comboModelUpdateDownloadPolicy, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &SettingsPage::emitStateChanged);
     if (ui->comboUserGalleryMatchMode) connect(ui->comboUserGalleryMatchMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &SettingsPage::emitStateChanged);
     if (ui->spinUiScale) connect(ui->spinUiScale, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &SettingsPage::emitStateChanged);
+    if (ui->comboTheme) connect(ui->comboTheme, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
+        updateDependentControls();
+        emitStateChanged();
+    });
+    if (ui->editCustomThemePath) connect(ui->editCustomThemePath, &QLineEdit::editingFinished, this, &SettingsPage::emitStateChanged);
+    if (ui->btnBrowseCustomTheme) connect(ui->btnBrowseCustomTheme, &QPushButton::clicked, this, [this]() {
+        const QString startDir = ui->editCustomThemePath && !ui->editCustomThemePath->text().trimmed().isEmpty()
+            ? QFileInfo(ui->editCustomThemePath->text().trimmed()).absolutePath()
+            : QString();
+        const QString path = QFileDialog::getOpenFileName(this, tr("选择 QSS 主题文件"), startDir, tr("QSS Files (*.qss);;All Files (*.*)"));
+        if (path.isEmpty()) return;
+        if (ui->comboTheme) {
+            const int customIndex = themeIndexForId("custom_qss");
+            if (customIndex >= 0) ui->comboTheme->setCurrentIndex(customIndex);
+        }
+        if (ui->editCustomThemePath) ui->editCustomThemePath->setText(QFileInfo(path).absoluteFilePath());
+        emitStateChanged();
+    });
+    if (ui->btnReloadTheme) connect(ui->btnReloadTheme, &QPushButton::clicked, this, &SettingsPage::emitStateChanged);
+    updateDependentControls();
 }
 
 SettingsPage::~SettingsPage()
@@ -220,6 +258,8 @@ SettingsState SettingsPage::state() const
     s.suppressLocalWarnings = ui->chkSuppressLocalWarnings && ui->chkSuppressLocalWarnings->isChecked();
     s.userGalleryMatchMode = ui->comboUserGalleryMatchMode ? ui->comboUserGalleryMatchMode->currentIndex() : 0;
     s.uiScale = ui->spinUiScale ? ui->spinUiScale->value() : 1.0;
+    s.themeId = currentThemeId();
+    s.customThemePath = ui->editCustomThemePath ? ui->editCustomThemePath->text().trimmed() : QString();
     return s;
 }
 
@@ -258,6 +298,11 @@ void SettingsPage::setState(const SettingsState &state)
     if (ui->chkSuppressLocalWarnings) ui->chkSuppressLocalWarnings->setChecked(state.suppressLocalWarnings);
     if (ui->comboUserGalleryMatchMode) ui->comboUserGalleryMatchMode->setCurrentIndex(qBound(0, state.userGalleryMatchMode, 2));
     if (ui->spinUiScale) ui->spinUiScale->setValue(state.uiScale);
+    if (ui->comboTheme) {
+        const int themeIndex = themeIndexForId(state.themeId);
+        ui->comboTheme->setCurrentIndex(themeIndex >= 0 ? themeIndex : 0);
+    }
+    if (ui->editCustomThemePath) ui->editCustomThemePath->setText(state.customThemePath);
 }
 
 void SettingsPage::setPathSummaries(const QString &lora, const QString &gallery, const QString &translation)
@@ -296,6 +341,11 @@ void SettingsPage::setUserAgentText(const QString &text)
     ui->editUserAgent->setText(text);
 }
 
+void SettingsPage::setThemeStatus(const QString &text)
+{
+    if (ui->lblThemeStatus) ui->lblThemeStatus->setText(text);
+}
+
 void SettingsPage::focusTranslationPath()
 {
     if (ui->editTransPath) ui->editTransPath->setFocus();
@@ -319,4 +369,45 @@ void SettingsPage::updateDependentControls()
 
     const bool customUa = ui->chkUseCustomUserAgent && ui->chkUseCustomUserAgent->isChecked();
     if (ui->editUserAgent) ui->editUserAgent->setEnabled(customUa);
+
+    const bool customTheme = currentThemeId() == "custom_qss";
+    if (ui->editCustomThemePath) ui->editCustomThemePath->setEnabled(customTheme);
+    if (ui->btnBrowseCustomTheme) ui->btnBrowseCustomTheme->setEnabled(customTheme);
+}
+
+void SettingsPage::initThemeComboData()
+{
+    if (!ui->comboTheme) return;
+    static const QStringList ids = {
+        "steam_dark",
+        "midnight_blue",
+        "light",
+        "high_contrast",
+        "custom_qss"
+    };
+    for (int i = 0; i < ui->comboTheme->count() && i < ids.size(); ++i) {
+        ui->comboTheme->setItemData(i, ids.at(i));
+    }
+}
+
+QString SettingsPage::currentThemeId() const
+{
+    if (!ui->comboTheme) return "steam_dark";
+    const QString id = ui->comboTheme->currentData().toString();
+    return id.isEmpty() ? QStringLiteral("steam_dark") : id;
+}
+
+int SettingsPage::themeIndexForId(const QString &themeId) const
+{
+    if (!ui->comboTheme) return -1;
+    const int byData = ui->comboTheme->findData(themeId);
+    if (byData >= 0) return byData;
+    static const QStringList ids = {
+        "steam_dark",
+        "midnight_blue",
+        "light",
+        "high_contrast",
+        "custom_qss"
+    };
+    return ids.indexOf(themeId);
 }

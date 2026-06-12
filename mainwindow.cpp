@@ -81,6 +81,67 @@ QString loadQssResource(const QString &path)
     return QString::fromUtf8(file.readAll());
 }
 
+struct ThemeBundle {
+    QString mainQss;
+    QString toolQss;
+    QString status;
+    bool ok = true;
+};
+
+QString themeDisplayName(const QString &themeId)
+{
+    if (themeId == "midnight_blue") return "Midnight Blue";
+    if (themeId == "light") return "Light";
+    if (themeId == "high_contrast") return "High Contrast";
+    if (themeId == "custom_qss") return "Custom QSS";
+    return "Steam Dark";
+}
+
+ThemeBundle loadThemeBundle(const QString &themeId, const QString &customPath)
+{
+    ThemeBundle bundle;
+    const QString baseMain = loadQssResource(":/styles/mainwindow.qss");
+    const QString baseTool = loadQssResource(":/styles/toolpage.qss");
+
+    auto withOverrides = [&](const QString &mainOverride, const QString &toolOverride, const QString &name) {
+        bundle.mainQss = baseMain + "\n" + loadQssResource(mainOverride);
+        bundle.toolQss = baseTool + "\n" + loadQssResource(toolOverride);
+        bundle.status = QString("当前主题：%1").arg(name);
+        bundle.ok = true;
+    };
+
+    if (themeId == "custom_qss") {
+        QFile file(customPath);
+        if (!customPath.trimmed().isEmpty() && file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            const QString customQss = QString::fromUtf8(file.readAll());
+            bundle.mainQss = baseMain + "\n" + customQss;
+            bundle.toolQss = baseTool + "\n" + customQss;
+            bundle.status = QString("当前主题：Custom QSS (%1)").arg(QFileInfo(customPath).fileName());
+            bundle.ok = true;
+            return bundle;
+        }
+        bundle.mainQss = baseMain;
+        bundle.toolQss = baseTool;
+        bundle.status = "自定义 QSS 读取失败，已保留 Steam Dark。";
+        bundle.ok = false;
+        return bundle;
+    }
+
+    if (themeId == "midnight_blue") {
+        withOverrides(":/styles/themes/midnight_blue_main.qss", ":/styles/themes/midnight_blue_tool.qss", "Midnight Blue");
+    } else if (themeId == "light") {
+        withOverrides(":/styles/themes/light_main.qss", ":/styles/themes/light_tool.qss", "Light");
+    } else if (themeId == "high_contrast") {
+        withOverrides(":/styles/themes/high_contrast_main.qss", ":/styles/themes/high_contrast_tool.qss", "High Contrast");
+    } else {
+        bundle.mainQss = baseMain;
+        bundle.toolQss = baseTool;
+        bundle.status = "当前主题：Steam Dark";
+        bundle.ok = true;
+    }
+    return bundle;
+}
+
 class FlowLayout : public QLayout
 {
 public:
@@ -221,7 +282,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
-    setStyleSheet(loadQssResource(":/styles/mainwindow.qss"));
+    applyApplicationTheme(optThemeId, optCustomThemePath, false);
     downloadsPage = new DownloadsPage(ui->pageDownloads);
     if (ui->pageDownloads && ui->pageDownloads->layout()) {
         ui->pageDownloads->layout()->addWidget(downloadsPage);
@@ -7387,6 +7448,7 @@ void MainWindow::ensureToolTabLoaded(int index)
         }
 
         if (!newPage) return;
+        applyToolPageTheme(newPage);
         const QString label = toolsTabWidget->tabText(index);
         QSignalBlocker blocker(toolsTabWidget);
         toolsTabWidget->removeTab(index);
@@ -8065,6 +8127,8 @@ void MainWindow::loadGlobalConfig() {
         optUserGalleryMatchMode = settings.userGalleryMatchMode;
         optModelUpdateDownloadPolicy = settings.modelUpdateDownloadPolicy;
         optAutoCheckUpdatesOnStartup = settings.autoCheckUpdatesOnStartup;
+        optThemeId = settings.themeId;
+        optCustomThemePath = settings.customThemePath;
 
         qDebug() << "Loaded User-Agent:" << currentUserAgent;
 
@@ -8158,6 +8222,7 @@ void MainWindow::loadGlobalConfig() {
 
     settingsPage->setState(settings);
     settingsPage->setCivitaiApiStatus(optCivitaiApiKey.isEmpty() ? "API Key 未配置" : "API Key 未测试");
+    applyApplicationTheme(optThemeId, optCustomThemePath, true);
     initSettingsPage();
 }
 
@@ -8199,6 +8264,7 @@ void MainWindow::applySettingsState(SettingsState state)
     const bool galleryMatchChanged = optUserGalleryMatchMode != state.userGalleryMatchMode;
     const bool uiScaleChanged = !qFuzzyCompare(optUiScale, state.uiScale);
     const bool customUaModeChanged = optUseArrangedUA != state.useCustomUserAgent;
+    const bool themeChanged = optThemeId != state.themeId || optCustomThemePath != state.customThemePath;
 
     optLoraRecursive = state.loraRecursive;
     optGalleryRecursive = state.galleryRecursive;
@@ -8225,6 +8291,8 @@ void MainWindow::applySettingsState(SettingsState state)
     optSuppressLocalWarnings = state.suppressLocalWarnings;
     optUserGalleryMatchMode = state.userGalleryMatchMode;
     optUiScale = state.uiScale;
+    optThemeId = state.themeId;
+    optCustomThemePath = state.customThemePath;
 
     if (renderThreadsChanged) {
         threadPool->setMaxThreadCount(optRenderThreadCount);
@@ -8256,6 +8324,9 @@ void MainWindow::applySettingsState(SettingsState state)
     if (uiScaleChanged) {
         ui->statusbar->showMessage(QString("缩放比例已设置为 %1x，重启后生效").arg(optUiScale), 3000);
     }
+    if (themeChanged) {
+        applyApplicationTheme(optThemeId, optCustomThemePath, true);
+    }
 }
 
 void MainWindow::resetFilterTagsToDefault()
@@ -8285,6 +8356,41 @@ void MainWindow::applyRandomUserAgent()
         currentUserAgent = newUA;
     }
     saveGlobalConfig();
+}
+
+void MainWindow::applyApplicationTheme(const QString &themeId, const QString &customPath, bool updateStatus)
+{
+    const ThemeBundle bundle = loadThemeBundle(themeId, customPath);
+    setStyleSheet(bundle.mainQss);
+    currentToolPageQss = bundle.toolQss;
+    refreshLoadedToolPageThemes();
+    if (settingsPage && updateStatus) {
+        settingsPage->setThemeStatus(bundle.status);
+    }
+    if (updateStatus && ui && ui->statusbar) {
+        ui->statusbar->showMessage(bundle.ok ? QString("已应用主题：%1").arg(themeDisplayName(themeId)) : bundle.status, 2500);
+    }
+}
+
+void MainWindow::applyToolPageTheme(QWidget *page)
+{
+    if (!page) return;
+    page->setStyleSheet(currentToolPageQss.isEmpty() ? loadQssResource(":/styles/toolpage.qss") : currentToolPageQss);
+}
+
+void MainWindow::refreshLoadedToolPageThemes()
+{
+    applyToolPageTheme(tagBrowserWidget);
+    applyToolPageTheme(llmPromptWidget);
+    applyToolPageTheme(parserWidget);
+    applyToolPageTheme(usageAnalysisWidget);
+    applyToolPageTheme(promptTemplateLibraryWidget);
+    if (toolsTabWidget) {
+        for (int i = 0; i < toolsTabWidget->count(); ++i) {
+            QWidget *page = toolsTabWidget->widget(i);
+            if (page && page->objectName() != "toolPlaceholder") applyToolPageTheme(page);
+        }
+    }
 }
 
 void MainWindow::saveGlobalConfig() {
@@ -8325,6 +8431,8 @@ void MainWindow::saveGlobalConfig() {
         settings.suppressLocalWarnings = optSuppressLocalWarnings;
         settings.userGalleryMatchMode = optUserGalleryMatchMode;
         settings.uiScale = optUiScale;
+        settings.themeId = optThemeId;
+        settings.customThemePath = optCustomThemePath;
     }
 
     QJsonArray loraArr;
