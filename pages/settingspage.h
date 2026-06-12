@@ -1,19 +1,12 @@
-#ifndef SETTINGSPAGE_H
-#define SETTINGSPAGE_H
+#ifndef SETTINGSPAGE_WIDGET_H
+#define SETTINGSPAGE_WIDGET_H
 
-#include <QObject>
 #include <QString>
+#include <QWidget>
 
-class QCheckBox;
-class QComboBox;
-class QDoubleSpinBox;
-class QLabel;
-class QLineEdit;
-class QPushButton;
-class QRadioButton;
-class QSlider;
-class QSpinBox;
-class QWidget;
+namespace Ui {
+class SettingsPage;
+}
 
 struct SettingsState {
     bool loraRecursive = false;
@@ -43,14 +36,15 @@ struct SettingsState {
     double uiScale = 1.0;
 };
 
-class SettingsPage : public QObject
+class SettingsPage : public QWidget
 {
     Q_OBJECT
 
 public:
-    explicit SettingsPage(QWidget *root, QObject *parent = nullptr);
+    explicit SettingsPage(QWidget *parent = nullptr);
+    ~SettingsPage() override;
 
-    QWidget *widget() const { return m_root; }
+    QWidget *widget() { return this; }
 
     SettingsState state() const;
     void setState(const SettingsState &state);
@@ -74,55 +68,11 @@ signals:
     void randomUserAgentRequested();
 
 private:
-    template <typename T>
-    T *child(const char *objectName) const;
-
     void emitStateChanged();
     void updateDependentControls();
 
-    QWidget *m_root = nullptr;
+    Ui::SettingsPage *ui = nullptr;
     bool m_updating = false;
-
-    QLineEdit *m_editLoraPath = nullptr;
-    QLineEdit *m_editGalleryPath = nullptr;
-    QLineEdit *m_editTransPath = nullptr;
-    QPushButton *m_btnBrowseLora = nullptr;
-    QPushButton *m_btnBrowseGallery = nullptr;
-    QPushButton *m_btnBrowseTrans = nullptr;
-    QPushButton *m_btnClearGalleryCache = nullptr;
-
-    QCheckBox *m_chkRecursiveLora = nullptr;
-    QCheckBox *m_chkRecursiveGallery = nullptr;
-    QSlider *m_sliderBlur = nullptr;
-    QLabel *m_lblBlurValue = nullptr;
-    QCheckBox *m_chkDownscaleBlur = nullptr;
-    QSpinBox *m_spinBlurWidth = nullptr;
-    QCheckBox *m_chkFilterNSFW = nullptr;
-    QRadioButton *m_radioNSFWHide = nullptr;
-    QRadioButton *m_radioNSFWBlur = nullptr;
-    QSpinBox *m_spinNSFWLevel = nullptr;
-    QSpinBox *m_spinRenderThreads = nullptr;
-    QCheckBox *m_chkRestoreTreeState = nullptr;
-    QCheckBox *m_chkSplitOnNewline = nullptr;
-    QLineEdit *m_editFilterTags = nullptr;
-    QPushButton *m_btnResetFilterTags = nullptr;
-    QCheckBox *m_chkShowEmptyCollections = nullptr;
-    QCheckBox *m_chkCollectionFolderTopLevel = nullptr;
-    QCheckBox *m_chkCollectionFolderSecondLevel = nullptr;
-    QCheckBox *m_chkModelListFolderGrouping = nullptr;
-    QCheckBox *m_chkUseCustomUserAgent = nullptr;
-    QLineEdit *m_editUserAgent = nullptr;
-    QPushButton *m_btnResetUA = nullptr;
-    QCheckBox *m_chkUseCivitaiName = nullptr;
-    QCheckBox *m_chkSuppressLocalWarnings = nullptr;
-    QCheckBox *m_chkAutoCheckUpdatesOnStartup = nullptr;
-    QLineEdit *m_editCivitaiApiKey = nullptr;
-    QPushButton *m_btnToggleCivitaiApiKey = nullptr;
-    QPushButton *m_btnTestCivitaiApiKey = nullptr;
-    QLabel *m_lblCivitaiApiStatus = nullptr;
-    QComboBox *m_comboModelUpdateDownloadPolicy = nullptr;
-    QComboBox *m_comboUserGalleryMatchMode = nullptr;
-    QDoubleSpinBox *m_spinUiScale = nullptr;
 };
 
-#endif // SETTINGSPAGE_H
+#endif // SETTINGSPAGE_WIDGET_H

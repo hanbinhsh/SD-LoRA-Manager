@@ -226,7 +226,10 @@ MainWindow::MainWindow(QWidget *parent)
     if (ui->pageDownloads && ui->pageDownloads->layout()) {
         ui->pageDownloads->layout()->addWidget(downloadsPage);
     }
-    settingsPage = new SettingsPage(ui->pageSettings, this);
+    settingsPage = new SettingsPage(ui->pageSettings);
+    if (ui->pageSettings && ui->pageSettings->layout()) {
+        ui->pageSettings->layout()->addWidget(settingsPage);
+    }
 
     currentUserAgent = getRandomUserAgent();
 

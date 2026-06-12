@@ -24,6 +24,7 @@ qt_add_executable(SD_LoRA_Manager
     pages/downloadmanager.cpp
     pages/settingspage.h
     pages/settingspage.cpp
+    pages/settingspage.ui
     imagemetadataparser.h
     imagemetadataparser.cpp
     tools/comfyworkflowviewer.h

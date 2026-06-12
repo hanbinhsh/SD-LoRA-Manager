@@ -1,0 +1,746 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SettingsPage</class>
+ <widget class="QWidget" name="SettingsPage">
+       <layout class="QVBoxLayout" name="verticalLayout_Settings">
+        <property name="spacing">
+         <number>20</number>
+        </property>
+        <property name="leftMargin">
+         <number>50</number>
+        </property>
+        <property name="topMargin">
+         <number>30</number>
+        </property>
+        <property name="rightMargin">
+         <number>50</number>
+        </property>
+        <property name="bottomMargin">
+         <number>30</number>
+        </property>
+        <item>
+         <widget class="QGroupBox" name="groupPaths">
+          <property name="title">
+           <string>路径设置 / Paths</string>
+          </property>
+          <layout class="QGridLayout" name="gridLayout_Paths">
+           <item row="0" column="4">
+            <widget class="QLineEdit" name="editGalleryPath">
+             <property name="readOnly">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="3">
+            <widget class="QLabel" name="lblSetTrans_2">
+             <property name="text">
+              <string>清除缓存:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="0">
+            <widget class="QLabel" name="lblSetLora">
+             <property name="text">
+              <string>模型文件夹 / Model:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QLineEdit" name="editLoraPath">
+             <property name="readOnly">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="5">
+            <widget class="QPushButton" name="btnBrowseGallery">
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
+             <property name="text">
+              <string>浏览...</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="2">
+            <widget class="QPushButton" name="btnBrowseTrans">
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
+             <property name="text">
+              <string>浏览...</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="lblSetTrans">
+             <property name="text">
+              <string>Tag 翻译表 (CSV，可多选):</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QLineEdit" name="editTransPath">
+             <property name="readOnly">
+              <bool>true</bool>
+             </property>
+             <property name="placeholderText">
+              <string>可选：管理多个 csv 文件，上方优先覆盖</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="3">
+            <widget class="QLabel" name="lblSetGallery">
+             <property name="text">
+              <string>图库文件夹 / Gallery:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="2">
+            <widget class="QPushButton" name="btnBrowseLora">
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
+             <property name="text">
+              <string>浏览...</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="4">
+            <widget class="QLabel" name="lblGalleryCacheHint">
+             <property name="text">
+              <string>清除 `user_gallery_cache.json`，下次扫描会重新解析本地图库提示词。</string>
+             </property>
+             <property name="wordWrap">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="5">
+            <widget class="QPushButton" name="btnClearGalleryCache">
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
+             <property name="text">
+              <string>清除</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="groupUserAgent">
+          <property name="title">
+           <string>网络请求设置 / Network &amp; User Agent</string>
+          </property>
+          <layout class="QGridLayout" name="gridLayout_Network">
+           <property name="spacing">
+            <number>10</number>
+           </property>
+           <item row="1" column="4">
+            <widget class="QLineEdit" name="editCivitaiApiKey">
+             <property name="echoMode">
+              <enum>QLineEdit::EchoMode::Password</enum>
+             </property>
+             <property name="placeholderText">
+              <string>可选：用于认证下载和访问收藏资源</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="5">
+            <widget class="QPushButton" name="btnResetUA">
+             <property name="toolTip">
+              <string>生成一个随机的现代浏览器 UA 填入框中</string>
+             </property>
+             <property name="text">
+              <string>随机 / Random</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="0">
+            <widget class="QCheckBox" name="chkUseCustomUserAgent">
+             <property name="toolTip">
+              <string>勾选后使用右侧文本框的内容作为 UA；未勾选则每次启动随机生成。</string>
+             </property>
+             <property name="text">
+              <string>自定义 UA / Custom User-Agent:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="4">
+            <widget class="QLineEdit" name="editUserAgent">
+             <property name="enabled">
+              <bool>false</bool>
+             </property>
+             <property name="placeholderText">
+              <string>Mozilla/5.0 ... (留空则使用随机生成的 UA)</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="lblCivitaiApiKey">
+             <property name="text">
+              <string>Civitai API Key:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="lblModelUpdateDownloadPolicy">
+             <property name="text">
+              <string>模型更新下载策略:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="5">
+            <layout class="QHBoxLayout" name="horizontalLayout_CivitaiApiButtons">
+             <item>
+              <widget class="QPushButton" name="btnToggleCivitaiApiKey">
+               <property name="text">
+                <string>显示</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="btnTestCivitaiApiKey">
+               <property name="text">
+                <string>测试</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item row="2" column="5">
+            <widget class="QLabel" name="lblCivitaiApiStatus">
+             <property name="text">
+              <string>API Key 未测试</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="4">
+            <layout class="QHBoxLayout" name="horizontalLayout_4">
+             <item>
+              <widget class="QComboBox" name="comboModelUpdateDownloadPolicy">
+               <item>
+                <property name="text">
+                 <string>每次询问</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>保留旧版</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>覆盖当前文件</string>
+                </property>
+               </item>
+              </widget>
+             </item>
+             <item>
+              <widget class="QCheckBox" name="chkAutoCheckUpdatesOnStartup">
+               <property name="toolTip">
+                <string>启动软件后自动检查 GitHub Release。只有发现新版本时弹窗提醒。</string>
+               </property>
+               <property name="text">
+                <string>启动时自动检查更新 / Auto check updates on startup</string>
+               </property>
+               <property name="checked">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout" stretch="0,0">
+          <item>
+           <widget class="QGroupBox" name="groupAppearance">
+            <property name="title">
+             <string>外观 / Appearance</string>
+            </property>
+            <layout class="QGridLayout" name="gridLayout">
+             <item row="12" column="0" colspan="3">
+              <widget class="QCheckBox" name="chkCollectionFolderTopLevel">
+               <property name="toolTip">
+                <string>勾选后，Collections 侧边栏先按 LoRA 根目录分组，再在每个文件夹下显示收藏夹。</string>
+               </property>
+               <property name="text">
+                <string>将文件夹作为收藏夹顶层分类 / Folder as Top Collection Level</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="lblBlur">
+               <property name="text">
+                <string>背景模糊半径 / Blur Radius:</string>
+               </property>
+              </widget>
+             </item>
+             <item row="5" column="0">
+              <widget class="QCheckBox" name="chkRestoreTreeState">
+               <property name="toolTip">
+                <string>下次启动时，保持当前收藏夹的展开状态和滚动条位置。</string>
+               </property>
+               <property name="text">
+                <string>启动时恢复菜单 / Restore Menu on Startup</string>
+               </property>
+               <property name="checked">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item row="7" column="0">
+              <widget class="QCheckBox" name="chkUseCivitaiName">
+               <property name="toolTip">
+                <string>勾选后，如果本地存在 JSON 元数据，将显示模型的真实名称（如 'ChilloutMix [Pruned]'）而非文件名。</string>
+               </property>
+               <property name="text">
+                <string>使用 Civitai 模型名称 / Use Civitai Name</string>
+               </property>
+              </widget>
+             </item>
+             <item row="9" column="0">
+              <widget class="Line" name="line_4">
+               <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
+               </property>
+              </widget>
+             </item>
+             <item row="10" column="0">
+              <widget class="QCheckBox" name="chkShowEmptyCollections">
+               <property name="toolTip">
+                <string>如果取消勾选，不包含任何模型（或被搜索过滤后为空）的收藏夹将不会显示在侧边栏中。</string>
+               </property>
+               <property name="text">
+                <string>显示空的收藏夹 / Show Empty Collections</string>
+               </property>
+               <property name="checked">
+                <bool>false</bool>
+               </property>
+              </widget>
+             </item>
+             <item row="4" column="0">
+              <widget class="Line" name="line_8">
+               <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QSlider" name="sliderBlur">
+               <property name="minimum">
+                <number>0</number>
+               </property>
+               <property name="maximum">
+                <number>100</number>
+               </property>
+               <property name="value">
+                <number>30</number>
+               </property>
+               <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
+               </property>
+              </widget>
+             </item>
+             <item row="13" column="0" colspan="3">
+              <widget class="QCheckBox" name="chkCollectionFolderSecondLevel">
+               <property name="toolTip">
+                <string>勾选后，Collections 侧边栏先显示收藏夹，再在收藏夹下按 LoRA 根目录分组。</string>
+               </property>
+               <property name="text">
+                <string>将文件夹作为收藏夹二级分类 / Folder as Second Collection Level</string>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="0">
+              <widget class="QCheckBox" name="chkDownscaleBlur">
+               <property name="toolTip">
+                <string>开启后会先将原图缩小再模糊，能极大提高大图背景的生成速度。</string>
+               </property>
+               <property name="text">
+                <string>模糊前缩放图片 / Scale before blur</string>
+               </property>
+              </widget>
+             </item>
+             <item row="8" column="0">
+              <widget class="QCheckBox" name="chkSuppressLocalWarnings">
+               <property name="toolTip">
+                <string>勾选后，不再弹出“检测到 X 个本地/已编辑模型”的总量提醒；单个模型的覆盖确认仍会保留。</string>
+               </property>
+               <property name="text">
+                <string>不显示本地模型总量警告 / Hide Local Model Count Warning</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="2">
+              <widget class="QLabel" name="lblBlurValue">
+               <property name="minimumSize">
+                <size>
+                 <width>40</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="text">
+                <string>30px</string>
+               </property>
+              </widget>
+             </item>
+             <item row="14" column="0" colspan="3">
+              <widget class="QCheckBox" name="chkModelListFolderGrouping">
+               <property name="toolTip">
+                <string>勾选后，Models 列表会按已启用的 LoRA 根目录分组显示。</string>
+               </property>
+               <property name="text">
+                <string>Models 列表按文件夹分类 / Group Models by Folder</string>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="1" colspan="2">
+              <widget class="QSpinBox" name="spinBlurWidth">
+               <property name="suffix">
+                <string> px</string>
+               </property>
+               <property name="minimum">
+                <number>64</number>
+               </property>
+               <property name="maximum">
+                <number>2048</number>
+               </property>
+               <property name="value">
+                <number>500</number>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="0">
+              <widget class="QLabel" name="label">
+               <property name="text">
+                <string>软件缩放 (重启后生效) / UI Scale (Need Restart)</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1" colspan="2">
+              <widget class="QDoubleSpinBox" name="spinUiScale">
+               <property name="minimum">
+                <double>0.250000000000000</double>
+               </property>
+               <property name="maximum">
+                <double>3.000000000000000</double>
+               </property>
+               <property name="singleStep">
+                <double>0.100000000000000</double>
+               </property>
+               <property name="value">
+                <double>1.000000000000000</double>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <layout class="QVBoxLayout" name="verticalLayout_4">
+            <item>
+             <widget class="QGroupBox" name="groupPerformance">
+              <property name="title">
+               <string>性能 / Performance</string>
+              </property>
+              <layout class="QGridLayout" name="gridLayout_Perf">
+               <item row="0" column="0">
+                <widget class="QLabel" name="lblThreads">
+                 <property name="text">
+                  <string>图片渲染线程数 / Render Threads:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="1">
+                <widget class="QSpinBox" name="spinRenderThreads">
+                 <property name="toolTip">
+                  <string>同时加载图片的数量。默认 4。设置过高可能会卡顿。</string>
+                 </property>
+                 <property name="minimum">
+                  <number>1</number>
+                 </property>
+                 <property name="maximum">
+                  <number>32</number>
+                 </property>
+                 <property name="value">
+                  <number>4</number>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="2">
+                <spacer name="horizontalSpacer_Perf">
+                 <property name="orientation">
+                  <enum>Qt::Orientation::Horizontal</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>40</width>
+                   <height>20</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <widget class="QGroupBox" name="groupScan">
+              <property name="title">
+               <string>扫描选项 / Scanning Options</string>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_ScanOpts">
+               <item>
+                <widget class="QCheckBox" name="chkRecursiveLora">
+                 <property name="toolTip">
+                  <string>勾选后将搜索子目录下的模型文件。</string>
+                 </property>
+                 <property name="text">
+                  <string>递归扫描 LoRA 子文件夹 / Recursive Scan for LoRA</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QCheckBox" name="chkRecursiveGallery">
+                 <property name="toolTip">
+                  <string>勾选后将搜索子目录下的图片文件。默认关闭以提高性能。</string>
+                 </property>
+                 <property name="text">
+                  <string>递归扫描图库子文件夹 / Recursive Scan for Gallery</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="horizontalLayout_UserGalleryMatchMode">
+                 <item>
+                  <widget class="QLabel" name="lblUserGalleryMatchMode">
+                   <property name="text">
+                    <string>本地返图模型匹配逻辑 / Match Mode:</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QComboBox" name="comboUserGalleryMatchMode">
+                   <item>
+                    <property name="text">
+                     <string>名称匹配</string>
+                    </property>
+                   </item>
+                   <item>
+                    <property name="text">
+                     <string>摘要/名称匹配</string>
+                    </property>
+                   </item>
+                   <item>
+                    <property name="text">
+                     <string>严格摘要匹配</string>
+                    </property>
+                   </item>
+                  </widget>
+                 </item>
+                 <item>
+                  <spacer name="horizontalSpacer_UserGalleryMatchMode">
+                   <property name="orientation">
+                    <enum>Qt::Orientation::Horizontal</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>40</width>
+                     <height>20</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                </layout>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <widget class="QGroupBox" name="groupNSFW">
+              <property name="title">
+               <string>内容过滤 / NSFW Filter</string>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_NSFW">
+               <item>
+                <widget class="QCheckBox" name="chkFilterNSFW">
+                 <property name="text">
+                  <string>开启 NSFW 内容过滤 / Enable NSFW Filter</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="horizontalLayout_NSFWMode">
+                 <item>
+                  <widget class="QLabel" name="lblNSFWMode">
+                   <property name="text">
+                    <string>过滤模式 / Filter Mode:</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QRadioButton" name="radioNSFW_Hide">
+                   <property name="text">
+                    <string>隐藏 / Hide</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QRadioButton" name="radioNSFW_Blur">
+                   <property name="text">
+                    <string>模糊 / Blur</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <spacer name="horizontalSpacer_NSFW">
+                   <property name="orientation">
+                    <enum>Qt::Orientation::Horizontal</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>0</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="horizontalLayout_NSFWLevel">
+                 <item>
+                  <widget class="QLabel" name="lblNSFWLevel">
+                   <property name="text">
+                    <string>过滤等级阈值 (Level &gt; X):</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QSpinBox" name="spinNSFWLevel">
+                   <property name="minimum">
+                    <number>1</number>
+                   </property>
+                   <property name="maximum">
+                    <number>100</number>
+                   </property>
+                   <property name="value">
+                    <number>1</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="lblNSFWHint">
+                   <property name="text">
+                    <string>(Civitai 标准: 1=正常, &gt;1 包含不同程度成人内容)</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <spacer name="horizontalSpacer_NSFW2">
+                   <property name="orientation">
+                    <enum>Qt::Orientation::Horizontal</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>0</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                </layout>
+               </item>
+              </layout>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="groupParsing">
+          <property name="title">
+           <string>提示词解析 / Prompt Parsing</string>
+          </property>
+          <layout class="QGridLayout" name="gridLayout_Parsing">
+           <item row="0" column="0" colspan="3">
+            <widget class="QCheckBox" name="chkSplitOnNewline">
+             <property name="toolTip">
+              <string>默认开启。如果提示词之间使用了换行符而没有逗号，开启此项可正确识别为两个独立的 Tag。</string>
+             </property>
+             <property name="text">
+              <string>使用换行符作为分隔符 / Treat Newlines as Separators</string>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="lblFilterTags">
+             <property name="text">
+              <string>过滤关键词 / Filter Tags:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QLineEdit" name="editFilterTags">
+             <property name="toolTip">
+              <string>用英文逗号分隔。这些词在统计 Tag 时会被自动忽略。</string>
+             </property>
+             <property name="placeholderText">
+              <string>例如: BREAK, ADDCOMM, ADDBASE...</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="2">
+            <widget class="QPushButton" name="btnResetFilterTags">
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
+             <property name="toolTip">
+              <string>重置为默认值</string>
+             </property>
+             <property name="text">
+              <string>↺</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <spacer name="verticalSpacer_Settings">
+          <property name="orientation">
+           <enum>Qt::Orientation::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QLabel" name="lblStatusSettings">
+          <property name="text">
+           <string>设置已自动保存，部分设置需重新扫描生效。</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+ <resources/>
+ <connections/>
+</ui>
+
