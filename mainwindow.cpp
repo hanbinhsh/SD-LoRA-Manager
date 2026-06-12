@@ -615,7 +615,7 @@ static QString calculateFileHashWorker(const QString &filePath)
     return hash.result().toHex().toUpper();
 }
 
-static constexpr int USER_GALLERY_PARSER_VERSION = 3;
+static constexpr int USER_GALLERY_PARSER_VERSION = 4;
 
 static QString extractPngParametersWorker(const QString &filePath)
 {
@@ -712,6 +712,32 @@ static QString normalizeLoraNameForMatch(QString name)
     return name.trimmed().toCaseFolded();
 }
 
+static QString normalizeModelNameForMatch(const QString &name)
+{
+    return normalizeLoraNameForMatch(name);
+}
+
+static bool isCheckpointModelType(const QString &type, const QString &filePath)
+{
+    if (type.contains("checkpoint", Qt::CaseInsensitive)) return true;
+    return filePath.endsWith(".ckpt", Qt::CaseInsensitive);
+}
+
+static QStringList splitCivitaiFullNameForMatch(const QString &name)
+{
+    QStringList out;
+    const QString trimmed = name.trimmed();
+    if (trimmed.isEmpty()) return out;
+    out << trimmed;
+
+    static QRegularExpression versionSuffix("\\s*\\[[^\\]]+\\]\\s*$");
+    QString withoutVersion = trimmed;
+    withoutVersion.remove(versionSuffix);
+    withoutVersion = withoutVersion.trimmed();
+    if (!withoutVersion.isEmpty() && withoutVersion != trimmed) out << withoutVersion;
+    return out;
+}
+
 static QStringList extractLoraNamesFromPromptWorker(const QString &prompt)
 {
     QStringList names;
@@ -771,6 +797,8 @@ static QStringList extractLoraNamesFromMetadataWorker(const QString &metadata)
     return names;
 }
 
+static QStringList extractCheckpointNamesFromParametersWorker(const QString &parameters);
+
 static bool promptUsesLoraWorker(const QString &prompt, const QString &parameters, const QSet<QString> &normalizedLoraNames)
 {
     if (normalizedLoraNames.isEmpty()) return false;
@@ -779,6 +807,19 @@ static bool promptUsesLoraWorker(const QString &prompt, const QString &parameter
     usedLoras.append(extractLoraNamesFromMetadataWorker(parameters));
     for (const QString &usedLora : usedLoras) {
         if (normalizedLoraNames.contains(normalizeLoraNameForMatch(usedLora))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool parametersUseCheckpointWorker(const QString &parameters, const QSet<QString> &normalizedCheckpointNames)
+{
+    if (normalizedCheckpointNames.isEmpty()) return false;
+
+    const QStringList usedCheckpoints = extractCheckpointNamesFromParametersWorker(parameters);
+    for (const QString &usedCheckpoint : usedCheckpoints) {
+        if (normalizedCheckpointNames.contains(normalizeModelNameForMatch(usedCheckpoint))) {
             return true;
         }
     }
@@ -854,6 +895,30 @@ static QSet<QString> collectLoraSummaryHashesFromJsonFileWorker(const QString &p
     return out;
 }
 
+static QSet<QString> collectCheckpointHashesFromJsonFileWorker(const QString &path)
+{
+    QSet<QString> out;
+    QFile file(path);
+    if (!file.exists() || !file.open(QIODevice::ReadOnly)) return out;
+
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    if (!doc.isObject()) return out;
+
+    const QJsonObject root = doc.object();
+    const QJsonArray files = root.value("files").toArray();
+    for (const QJsonValue &value : files) {
+        const QJsonObject fileObj = value.toObject();
+        const QJsonObject hashes = fileObj.value("hashes").toObject();
+        const QStringList keys = {"SHA256", "AutoV3", "AutoV2", "BLAKE3"};
+        for (const QString &key : keys) {
+            const QString normalized = normalizeSummaryHashForMatch(hashes.value(key).toString());
+            if (!normalized.isEmpty()) out.insert(normalized);
+        }
+    }
+
+    return out;
+}
+
 static QSet<QString> extractLoraHashValuesFromParametersWorker(const QString &parameters)
 {
     QSet<QString> hashes;
@@ -899,6 +964,45 @@ static QSet<QString> extractLoraHashValuesFromParametersWorker(const QString &pa
     return hashes;
 }
 
+static QStringList extractCheckpointNamesFromParametersWorker(const QString &parameters)
+{
+    QStringList names;
+    if (parameters.isEmpty()) return names;
+
+    static QRegularExpression modelRegex("(?:^|[,\\n\\r])\\s*Model\\s*:\\s*([^,\\n\\r]+)",
+                                         QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatchIterator modelIt = modelRegex.globalMatch(parameters);
+    while (modelIt.hasNext()) {
+        const QString name = modelIt.next().captured(1).trimmed();
+        if (!name.isEmpty()) names.append(name);
+    }
+
+    static QRegularExpression checkpointRegex("(?:^|[,\\n\\r])\\s*Checkpoint\\s*:\\s*([^,\\n\\r]+)",
+                                              QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatchIterator checkpointIt = checkpointRegex.globalMatch(parameters);
+    while (checkpointIt.hasNext()) {
+        const QString name = checkpointIt.next().captured(1).trimmed();
+        if (!name.isEmpty()) names.append(name);
+    }
+
+    return names;
+}
+
+static QSet<QString> extractCheckpointHashValuesFromParametersWorker(const QString &parameters)
+{
+    QSet<QString> hashes;
+    if (parameters.isEmpty()) return hashes;
+
+    static QRegularExpression modelHashRegex("(?:^|[,\\n\\r])\\s*Model\\s+hash\\s*:\\s*([A-Fa-f0-9]{6,128})",
+                                             QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatchIterator it = modelHashRegex.globalMatch(parameters);
+    while (it.hasNext()) {
+        const QString normalized = normalizeSummaryHashForMatch(it.next().captured(1));
+        if (!normalized.isEmpty()) hashes.insert(normalized);
+    }
+    return hashes;
+}
+
 static bool hashSetsMatchByPrefixWorker(const QSet<QString> &imageHashes, const QSet<QString> &targetHashes)
 {
     if (imageHashes.isEmpty() || targetHashes.isEmpty()) return false;
@@ -918,14 +1022,27 @@ static bool hashSetsMatchByPrefixWorker(const QSet<QString> &imageHashes, const 
 struct CachedImageUsageInfo {
     QSet<QString> usedLoraNames;
     QSet<QString> loraHashes;
+    QSet<QString> usedCheckpointNames;
+    QSet<QString> checkpointHashes;
     qint64 lastModified = 0;
+};
+
+struct ModelUsageInput {
+    QString filePath;
+    QString baseName;
+    QString type;
+    QString civitaiName;
+    QString sha256;
 };
 
 struct ModelUsageCandidate {
     QString filePath;
     QString baseName;
+    bool isCheckpoint = false;
     QSet<QString> normalizedLoraNames;
     QSet<QString> summaryHashes;
+    QSet<QString> normalizedCheckpointNames;
+    QSet<QString> checkpointHashes;
 };
 
 struct ModelUsageStatResult {
@@ -967,42 +1084,62 @@ static void addLoraNameVariantsWorker(const QString &name, QSet<QString> &out)
     }
 }
 
-static ModelUsageCandidate buildModelUsageCandidateWorker(const QString &filePath, const QString &baseName)
+static void addModelNameVariantsWorker(const QString &name, QSet<QString> &out)
+{
+    addLoraNameVariantsWorker(name, out);
+}
+
+static ModelUsageCandidate buildModelUsageCandidateWorker(const ModelUsageInput &model)
 {
     ModelUsageCandidate candidate;
-    candidate.filePath = filePath;
-    candidate.baseName = baseName;
+    candidate.filePath = model.filePath;
+    candidate.baseName = model.baseName;
+    candidate.isCheckpoint = isCheckpointModelType(model.type, model.filePath);
 
-    const QString internalName = getSafetensorsInternalNameWorker(filePath);
+    const QString internalName = getSafetensorsInternalNameWorker(model.filePath);
     if (!internalName.isEmpty()) {
         addLoraNameVariantsWorker(internalName, candidate.normalizedLoraNames);
     }
     if (candidate.normalizedLoraNames.isEmpty()) {
-        addLoraNameVariantsWorker(baseName, candidate.normalizedLoraNames);
+        addLoraNameVariantsWorker(model.baseName, candidate.normalizedLoraNames);
     }
 
-    const QFileInfo fi(filePath);
+    addModelNameVariantsWorker(model.baseName, candidate.normalizedCheckpointNames);
+    for (const QString &name : splitCivitaiFullNameForMatch(model.civitaiName)) {
+        addModelNameVariantsWorker(name, candidate.normalizedCheckpointNames);
+    }
+    if (!internalName.isEmpty()) {
+        addModelNameVariantsWorker(internalName, candidate.normalizedCheckpointNames);
+    }
+
+    const QFileInfo fi(model.filePath);
     const QString modelDir = fi.absolutePath();
-    const QString modelBaseName = baseName.isEmpty() ? fi.completeBaseName() : baseName;
+    const QString modelBaseName = model.baseName.isEmpty() ? fi.completeBaseName() : model.baseName;
     QStringList hashJsonPaths;
     if (!modelDir.isEmpty() && !modelBaseName.isEmpty()) {
         hashJsonPaths.append(QDir(modelDir).filePath(modelBaseName + ".json"));
         hashJsonPaths.append(QDir(modelDir).filePath(modelBaseName + ".metadata.json"));
     }
-    if (!filePath.isEmpty()) {
-        hashJsonPaths.append(filePath + ".metadata.json");
+    if (!model.filePath.isEmpty()) {
+        hashJsonPaths.append(model.filePath + ".metadata.json");
     }
 
     for (const QString &path : hashJsonPaths) {
         const QSet<QString> hashes = collectLoraSummaryHashesFromJsonFileWorker(path);
         for (const QString &hash : hashes) candidate.summaryHashes.insert(hash);
+        const QSet<QString> checkpointHashes = collectCheckpointHashesFromJsonFileWorker(path);
+        for (const QString &hash : checkpointHashes) candidate.checkpointHashes.insert(hash);
+    }
+    if (!model.sha256.trimmed().isEmpty()) {
+        const QString normalized = normalizeSummaryHashForMatch(model.sha256);
+        if (!normalized.isEmpty()) candidate.checkpointHashes.insert(normalized);
     }
 
     return candidate;
 }
 
 static QList<ModelUsageStatResult> calculateModelUsageStatsWorker(
-    const QList<QPair<QString, QString>> &models,
+    const QList<ModelUsageInput> &models,
     const QMap<QString, UserImageInfo> &imageCache,
     int matchMode)
 {
@@ -1019,9 +1156,16 @@ static QList<ModelUsageStatResult> calculateModelUsageStatsWorker(
             if (!normalized.isEmpty()) cached.usedLoraNames.insert(normalized);
         }
         cached.loraHashes = extractLoraHashValuesFromParametersWorker(info.parameters);
+        const QStringList checkpointNames = extractCheckpointNamesFromParametersWorker(info.parameters);
+        for (const QString &checkpointName : checkpointNames) {
+            const QString normalized = normalizeModelNameForMatch(checkpointName);
+            if (!normalized.isEmpty()) cached.usedCheckpointNames.insert(normalized);
+        }
+        cached.checkpointHashes = extractCheckpointHashValuesFromParametersWorker(info.parameters);
         cached.lastModified = info.lastModified;
 
-        if (!cached.usedLoraNames.isEmpty() || !cached.loraHashes.isEmpty()) {
+        if (!cached.usedLoraNames.isEmpty() || !cached.loraHashes.isEmpty()
+            || !cached.usedCheckpointNames.isEmpty() || !cached.checkpointHashes.isEmpty()) {
             imageInfos.append(cached);
         }
     }
@@ -1029,11 +1173,12 @@ static QList<ModelUsageStatResult> calculateModelUsageStatsWorker(
     QList<ModelUsageStatResult> results;
     results.reserve(models.size());
 
-    for (const auto &model : models) {
-        const ModelUsageCandidate candidate = buildModelUsageCandidateWorker(model.first, model.second);
+    for (const ModelUsageInput &model : models) {
+        const ModelUsageCandidate candidate = buildModelUsageCandidateWorker(model);
         const bool strictSummary = (matchMode == 2);
         bool useSummary = (matchMode == 1 || matchMode == 2);
-        if (useSummary && candidate.summaryHashes.isEmpty()) {
+        const QSet<QString> targetHashes = candidate.isCheckpoint ? candidate.checkpointHashes : candidate.summaryHashes;
+        if (useSummary && targetHashes.isEmpty()) {
             if (strictSummary) {
                 ModelUsageStatResult empty;
                 empty.filePath = candidate.filePath;
@@ -1049,10 +1194,18 @@ static QList<ModelUsageStatResult> calculateModelUsageStatsWorker(
         for (const CachedImageUsageInfo &image : imageInfos) {
             bool matched = false;
             if (useSummary) {
-                matched = hashSetsMatchByPrefixWorker(image.loraHashes, candidate.summaryHashes);
+                matched = candidate.isCheckpoint
+                              ? hashSetsMatchByPrefixWorker(image.checkpointHashes, targetHashes)
+                              : hashSetsMatchByPrefixWorker(image.loraHashes, targetHashes);
             } else {
-                for (const QString &name : candidate.normalizedLoraNames) {
-                    if (image.usedLoraNames.contains(name)) {
+                const QSet<QString> &targetNames = candidate.isCheckpoint
+                                                       ? candidate.normalizedCheckpointNames
+                                                       : candidate.normalizedLoraNames;
+                const QSet<QString> &imageNames = candidate.isCheckpoint
+                                                      ? image.usedCheckpointNames
+                                                      : image.usedLoraNames;
+                for (const QString &name : targetNames) {
+                    if (imageNames.contains(name)) {
                         matched = true;
                         break;
                     }
@@ -1153,15 +1306,6 @@ void MainWindow::onHomeButtonClicked()
     ui->modelList->clearSelection();   // 清除侧边栏选中
     ui->collectionTree->clearSelection();
     currentCollectionFilter = "";      // 重置过滤，显示全部
-    currentHomeAuthorFilter.clear();
-    currentHomeTagFilters.clear();
-    homeFilterExpanded = false;
-    if (ui->btnHomeFilterToggle) ui->btnHomeFilterToggle->setChecked(false);
-    {
-        QSignalBlocker blocker(ui->editHomeAuthorFilter);
-        ui->editHomeAuthorFilter->clear();
-    }
-    ui->editHomeTagFilter->clear();
     refreshHomeFilterChips();
     refreshHomeGallery();
     refreshHomeCollectionsUI();
@@ -1488,6 +1632,7 @@ void MainWindow::refreshHomeGallery()
         item->setData(ROLE_NSFW_LEVEL, nsfwLevel);
         item->setData(ROLE_MODEL_NAME, modelKey);
         item->setData(ROLE_CIVITAI_NAME, sideItem->data(ROLE_CIVITAI_NAME));
+        item->setData(ROLE_MODEL_TYPE, sideItem->data(ROLE_MODEL_TYPE));
         item->setData(ROLE_MODEL_CREATOR, sideItem->data(ROLE_MODEL_CREATOR));
         item->setData(ROLE_MODEL_TAGS, sideItem->data(ROLE_MODEL_TAGS));
         item->setData(ROLE_USER_RATING, sideItem->data(ROLE_USER_RATING));
@@ -2181,7 +2326,7 @@ void MainWindow::scanModels(const QStringList &paths)
 
     // 2. 准备文件名过滤器
     QStringList nameFilters;
-    nameFilters << "*.safetensors" << "*.pt";
+    nameFilters << "*.safetensors" << "*.ckpt" << "*.pt";
 
     // 3. 准备目录过滤器 (只看文件，不包含 . 和 ..)
     QDir::Filters dirFilters = QDir::Files | QDir::NoDotAndDotDot;
@@ -4629,6 +4774,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
             item->setData(ROLE_LOCAL_EDITED, false);
             item->setData(ROLE_CIVITAI_MODEL_ID, root["modelId"].toInt());
             item->setData(ROLE_CIVITAI_VERSION_ID, root["id"].toInt());
+            item->setData(ROLE_MODEL_TYPE, meta.type);
             applyCivitaiAttributionToItem(item, meta.creatorName, meta.modelTags);
 
             // 如果开启了选项，立即更新显示文本
@@ -5767,6 +5913,7 @@ void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonP
     item->setData(ROLE_CIVITAI_SHA256, QString());
     item->setData(ROLE_MODEL_CREATOR, QString());
     item->setData(ROLE_MODEL_TAGS, QStringList());
+    item->setData(ROLE_MODEL_TYPE, QString());
 
     // === 读取本地文件时间 (下载/添加时间) ===
     QString filePath = item->data(ROLE_FILE_PATH).toString();
@@ -5790,6 +5937,7 @@ void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonP
     QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
     QJsonObject root = doc.object();
     applyCivitaiAttributionToItem(item, readModelCreatorFromJson(root), readModelTagsFromJson(root));
+    item->setData(ROLE_MODEL_TYPE, root["model"].toObject()["type"].toString());
 
     // 读取模型真实名称
     QString modelName = root["model"].toObject()["name"].toString();
@@ -5863,7 +6011,7 @@ void MainWindow::refreshModelUsageStatsAsync()
 
     const int currentToken = ++modelUsageStatsToken;
 
-    QList<QPair<QString, QString>> models;
+    QList<ModelUsageInput> models;
     models.reserve(ui->modelList->count());
 
     for (int i = 0; i < ui->modelList->count(); ++i) {
@@ -5876,7 +6024,13 @@ void MainWindow::refreshModelUsageStatsAsync()
         const QString filePath = item->data(ROLE_FILE_PATH).toString();
         const QString baseName = item->data(ROLE_MODEL_NAME).toString();
         if (!filePath.isEmpty()) {
-            models.append(qMakePair(filePath, baseName));
+            ModelUsageInput input;
+            input.filePath = filePath;
+            input.baseName = baseName;
+            input.type = item->data(ROLE_MODEL_TYPE).toString();
+            input.civitaiName = item->data(ROLE_CIVITAI_NAME).toString();
+            input.sha256 = item->data(ROLE_CIVITAI_SHA256).toString();
+            models.append(input);
         }
     }
 
@@ -6613,6 +6767,33 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     const bool wantSummaryHashMatch = (!isGlobalMode && (optUserGalleryMatchMode == 1 || optUserGalleryMatchMode == 2));
     const bool strictSummaryHashMatch = (!isGlobalMode && optUserGalleryMatchMode == 2);
     bool useSummaryHashMatch = wantSummaryHashMatch;
+    QListWidgetItem *currentItem = ui->modelList->currentItem();
+    QString selectedFilePath;
+    QString selectedModelDir;
+    QString selectedBaseName;
+    QString selectedModelType;
+    QString selectedCivitaiName;
+    QString selectedSha256;
+    if (currentItem) {
+        selectedFilePath = currentItem->data(ROLE_FILE_PATH).toString();
+        selectedModelDir = QFileInfo(selectedFilePath).absolutePath();
+        selectedBaseName = currentItem->data(ROLE_MODEL_NAME).toString().trimmed();
+        selectedModelType = currentItem->data(ROLE_MODEL_TYPE).toString();
+        selectedCivitaiName = currentItem->data(ROLE_CIVITAI_NAME).toString();
+        selectedSha256 = currentItem->data(ROLE_CIVITAI_SHA256).toString();
+    }
+    if (selectedFilePath.isEmpty()) selectedFilePath = currentMeta.filePath;
+    if (selectedModelDir.isEmpty() && !currentMeta.filePath.isEmpty()) {
+        selectedModelDir = QFileInfo(currentMeta.filePath).absolutePath();
+    }
+    if (selectedBaseName.isEmpty() && !selectedFilePath.isEmpty()) {
+        selectedBaseName = QFileInfo(selectedFilePath).completeBaseName();
+    }
+    if (selectedBaseName.isEmpty()) selectedBaseName = loraBaseName;
+    if (selectedModelType.isEmpty()) selectedModelType = currentMeta.type;
+    if (selectedCivitaiName.isEmpty()) selectedCivitaiName = currentMeta.name;
+    if (selectedSha256.isEmpty()) selectedSha256 = currentMeta.sha256;
+    const bool selectedIsCheckpoint = !isGlobalMode && isCheckpointModelType(selectedModelType, selectedFilePath);
 
     QString scanPrefix;
     if (isGlobalMode) {
@@ -6637,29 +6818,11 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     if(!isGlobalMode){
         QSet<QString> uniqueKeys; // 使用 Set 自动去重
 
-        QListWidgetItem *currentItem = ui->modelList->currentItem();
-        QString selectedFilePath;
-        QString selectedModelDir;
-        QString selectedBaseName;
-        if (currentItem) {
-            selectedFilePath = currentItem->data(ROLE_FILE_PATH).toString();
-            selectedModelDir = QFileInfo(selectedFilePath).absolutePath();
-            selectedBaseName = currentItem->data(ROLE_MODEL_NAME).toString().trimmed();
-        }
-        if (selectedFilePath.isEmpty()) selectedFilePath = currentMeta.filePath;
-        if (selectedModelDir.isEmpty() && !currentMeta.filePath.isEmpty()) {
-            selectedModelDir = QFileInfo(currentMeta.filePath).absolutePath();
-        }
-        if (selectedBaseName.isEmpty() && !selectedFilePath.isEmpty()) {
-            selectedBaseName = QFileInfo(selectedFilePath).completeBaseName();
-        }
-        if (selectedBaseName.isEmpty()) selectedBaseName = loraBaseName;
-
         if (wantSummaryHashMatch) {
             QSet<QString> candidateHashes;
 
-            if (!currentMeta.sha256.isEmpty()) {
-                const QString normalized = normalizeSummaryHashForMatch(currentMeta.sha256);
+            if (!selectedSha256.isEmpty()) {
+                const QString normalized = normalizeSummaryHashForMatch(selectedSha256);
                 if (!normalized.isEmpty()) candidateHashes.insert(normalized);
             }
 
@@ -6673,26 +6836,34 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
             }
 
             for (const QString &path : hashJsonPaths) {
-                const QSet<QString> fromFile = collectLoraSummaryHashesFromJsonFileWorker(path);
+                const QSet<QString> fromFile = selectedIsCheckpoint
+                                                   ? collectCheckpointHashesFromJsonFileWorker(path)
+                                                   : collectLoraSummaryHashesFromJsonFileWorker(path);
                 for (const QString &hash : fromFile) candidateHashes.insert(hash);
             }
 
             targetSummaryHashes = candidateHashes;
             if (targetSummaryHashes.isEmpty()) {
                 if (strictSummaryHashMatch) {
-                    ui->statusbar->showMessage("未读取到 LoRA 摘要值，严格模式下不会回退，结果可能为空。", 5000);
+                    ui->statusbar->showMessage("未读取到模型摘要值，严格模式下不会回退，结果可能为空。", 5000);
                 } else {
                     useSummaryHashMatch = false;
-                    ui->statusbar->showMessage("未读取到 LoRA 摘要值，已回退到当前匹配逻辑。", 4000);
+                    ui->statusbar->showMessage("未读取到模型摘要值，已回退到当前匹配逻辑。", 4000);
                 }
             } else {
-                qDebug() << "LoRA summary hashes for match:" << targetSummaryHashes.values();
+                qDebug() << "Model summary hashes for match:" << targetSummaryHashes.values();
             }
         }
 
-        // === 获取 Safetensors 内部名称 ===
-        // 获取当前选中项的完整路径
-        if (currentItem) {
+        if (selectedIsCheckpoint) {
+            addModelNameVariantsWorker(selectedBaseName, uniqueKeys);
+            addModelNameVariantsWorker(loraBaseName, uniqueKeys);
+            for (const QString &name : splitCivitaiFullNameForMatch(selectedCivitaiName)) {
+                addModelNameVariantsWorker(name, uniqueKeys);
+            }
+        } else if (currentItem) {
+            // === 获取 Safetensors 内部名称 ===
+            // 获取当前选中项的完整路径
             QString fullPath = currentItem->data(ROLE_FILE_PATH).toString();
             QString internalName = getSafetensorsInternalName(fullPath);
 
@@ -6747,7 +6918,8 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
             const QString normalized = normalizeLoraNameForMatch(key);
             if (!normalized.isEmpty()) normalizedLoraNames.insert(normalized);
         }
-        qDebug() << "生成的 LoRA 匹配名:" << normalizedLoraNames.values();
+        qDebug() << (selectedIsCheckpoint ? "生成的 Checkpoint 匹配名:" : "生成的 LoRA 匹配名:")
+                 << normalizedLoraNames.values();
     }
 
 
@@ -6763,7 +6935,7 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     // 开启异步任务
     QFuture<QPair<QList<UserImageInfo>, QMap<QString, UserImageInfo>>> future = QtConcurrent::run(
         backgroundThreadPool,
-        [normalizedLoraNames, targetSummaryHashes, useSummaryHashMatch, isGlobalMode, recursive, splitOnNewline, filterTags, currentCacheCopy, validGalleryPaths, scannedCount, matchedCount]() {
+        [normalizedLoraNames, targetSummaryHashes, useSummaryHashMatch, isGlobalMode, selectedIsCheckpoint, recursive, splitOnNewline, filterTags, currentCacheCopy, validGalleryPaths, scannedCount, matchedCount]() {
 
             QList<UserImageInfo> results;
             QMap<QString, UserImageInfo> newCacheUpdates; // 用于收集需要更新到主缓存的数据
@@ -6813,8 +6985,12 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
                     if (isGlobalMode) {
                         matched = true;
                     } else if (useSummaryHashMatch) {
-                        const QSet<QString> imageHashes = extractLoraHashValuesFromParametersWorker(info.parameters);
+                        const QSet<QString> imageHashes = selectedIsCheckpoint
+                                                              ? extractCheckpointHashValuesFromParametersWorker(info.parameters)
+                                                              : extractLoraHashValuesFromParametersWorker(info.parameters);
                         matched = hashSetsMatchByPrefixWorker(imageHashes, targetSummaryHashes);
+                    } else if (selectedIsCheckpoint) {
+                        matched = parametersUseCheckpointWorker(info.parameters, normalizedLoraNames);
                     } else {
                         matched = promptUsesLoraWorker(info.prompt, info.parameters, normalizedLoraNames);
                     }
@@ -7726,6 +7902,7 @@ void MainWindow::handleModelUpdateReply(QNetworkReply *reply)
         if (sourceItem->data(ROLE_CIVITAI_VERSION_ID).toInt() <= 0 && currentVersionId > 0) {
             sourceItem->setData(ROLE_CIVITAI_VERSION_ID, currentVersionId);
         }
+        sourceItem->setData(ROLE_MODEL_TYPE, root["type"].toString());
         applyCivitaiAttributionToItem(sourceItem,
                                       readModelCreatorFromJson(root),
                                       readModelTagsFromJson(root));

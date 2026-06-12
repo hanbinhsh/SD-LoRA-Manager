@@ -3569,7 +3569,7 @@ Hash: ...</string>
                  <item>
                   <widget class="QLabel" name="lblUserGalleryMatchMode">
                    <property name="text">
-                    <string>本地返图 LoRA 匹配逻辑 / Match Mode:</string>
+                    <string>本地返图模型匹配逻辑 / Match Mode:</string>
                    </property>
                   </widget>
                  </item>
