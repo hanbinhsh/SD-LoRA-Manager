@@ -80,9 +80,9 @@
             <property name="leftMargin">
              <number>8</number>
             </property>
-              <property name="topMargin">
-               <number>4</number>
-              </property>
+            <property name="topMargin">
+             <number>4</number>
+            </property>
             <property name="rightMargin">
              <number>8</number>
             </property>
@@ -688,7 +688,7 @@ New</string>
                      <x>0</x>
                      <y>0</y>
                      <width>937</width>
-                     <height>104</height>
+                     <height>108</height>
                     </rect>
                    </property>
                    <layout class="QVBoxLayout" name="layoutHomeFilterChips">
@@ -786,7 +786,7 @@ New</string>
                  <rect>
                   <x>0</x>
                   <y>0</y>
-                  <width>930</width>
+                  <width>982</width>
                   <height>1469</height>
                  </rect>
                 </property>
@@ -1121,7 +1121,7 @@ New</string>
                               <rect>
                                <x>0</x>
                                <y>0</y>
-                               <width>98</width>
+                               <width>593</width>
                                <height>163</height>
                               </rect>
                              </property>
@@ -1292,248 +1292,305 @@ New</string>
                         <item>
                          <layout class="QVBoxLayout" name="layoutRightCol">
                           <property name="spacing">
-                           <number>4</number>
+                           <number>12</number>
                           </property>
                           <item>
-                           <widget class="QLabel" name="label_AuthorTitle">
-                            <property name="text">
-                             <string>AUTHOR / 作者</string>
+                           <widget class="QFrame" name="cardModelAttribution">
+                            <property name="frameShape">
+                             <enum>QFrame::Shape::NoFrame</enum>
                             </property>
-                            <property name="class" stdset="0">
-                             <string>sectionTitle</string>
-                            </property>
-                           </widget>
-                          </item>
-                          <item>
-                           <widget class="QWidget" name="modelAuthorContainer" native="true">
-                            <layout class="QHBoxLayout" name="layoutModelAuthor">
+                            <layout class="QVBoxLayout" name="layoutCardModelAttribution">
+                             <property name="spacing">
+                              <number>8</number>
+                             </property>
                              <property name="leftMargin">
-                              <number>0</number>
+                              <number>12</number>
                              </property>
                              <property name="topMargin">
-                              <number>0</number>
+                              <number>12</number>
                              </property>
                              <property name="rightMargin">
-                              <number>0</number>
+                              <number>12</number>
                              </property>
                              <property name="bottomMargin">
-                              <number>0</number>
+                              <number>12</number>
                              </property>
+                             <item>
+                              <widget class="QLabel" name="label_AuthorTitle">
+                               <property name="text">
+                                <string>AUTHOR / 作者</string>
+                               </property>
+                               <property name="class" stdset="0">
+                                <string>sectionTitle</string>
+                               </property>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QWidget" name="modelAuthorContainer" native="true">
+                               <layout class="QHBoxLayout" name="layoutModelAuthor">
+                                <property name="leftMargin">
+                                 <number>0</number>
+                                </property>
+                                <property name="topMargin">
+                                 <number>0</number>
+                                </property>
+                                <property name="rightMargin">
+                                 <number>0</number>
+                                </property>
+                                <property name="bottomMargin">
+                                 <number>0</number>
+                                </property>
+                               </layout>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QLabel" name="label_ModelTagsTitle">
+                               <property name="text">
+                                <string>MODEL TAGS / 模型标签</string>
+                               </property>
+                               <property name="class" stdset="0">
+                                <string>sectionTitle</string>
+                               </property>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QWidget" name="modelTagsContainer" native="true">
+                               <layout class="QVBoxLayout" name="layoutModelTags">
+                                <property name="leftMargin">
+                                 <number>0</number>
+                                </property>
+                                <property name="topMargin">
+                                 <number>0</number>
+                                </property>
+                                <property name="rightMargin">
+                                 <number>0</number>
+                                </property>
+                                <property name="bottomMargin">
+                                 <number>0</number>
+                                </property>
+                               </layout>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QLabel" name="label_DescTitle">
+                               <property name="minimumSize">
+                                <size>
+                                 <width>0</width>
+                                 <height>28</height>
+                                </size>
+                               </property>
+                               <property name="maximumSize">
+                                <size>
+                                 <width>16777215</width>
+                                 <height>28</height>
+                                </size>
+                               </property>
+                               <property name="text">
+                                <string>ABOUT / 简介</string>
+                               </property>
+                               <property name="class" stdset="0">
+                                <string>sectionTitle</string>
+                               </property>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QTextBrowser" name="textDescription">
+                               <property name="minimumSize">
+                                <size>
+                                 <width>0</width>
+                                 <height>170</height>
+                                </size>
+                               </property>
+                               <property name="maximumSize">
+                                <size>
+                                 <width>16777215</width>
+                                 <height>170</height>
+                                </size>
+                               </property>
+                               <property name="placeholderText">
+                                <string>No description.</string>
+                               </property>
+                              </widget>
+                             </item>
                             </layout>
                            </widget>
                           </item>
                           <item>
-                           <widget class="QLabel" name="label_ModelTagsTitle">
-                            <property name="text">
-                             <string>MODEL TAGS / 模型标签</string>
+                           <widget class="QFrame" name="cardUserNotes">
+                            <property name="frameShape">
+                             <enum>QFrame::Shape::NoFrame</enum>
                             </property>
-                            <property name="class" stdset="0">
-                             <string>sectionTitle</string>
-                            </property>
-                           </widget>
-                          </item>
-                          <item>
-                           <widget class="QWidget" name="modelTagsContainer" native="true">
-                            <layout class="QVBoxLayout" name="layoutModelTags">
+                            <layout class="QVBoxLayout" name="layoutCardUserNotes">
+                             <property name="spacing">
+                              <number>8</number>
+                             </property>
                              <property name="leftMargin">
-                              <number>0</number>
+                              <number>12</number>
                              </property>
                              <property name="topMargin">
-                              <number>0</number>
+                              <number>12</number>
                              </property>
                              <property name="rightMargin">
-                              <number>0</number>
+                              <number>12</number>
                              </property>
                              <property name="bottomMargin">
-                              <number>0</number>
+                              <number>12</number>
                              </property>
+                             <item>
+                              <widget class="QLabel" name="label_UserNotes">
+                               <property name="text">
+                                <string>USER NOTES / 用户备注</string>
+                               </property>
+                               <property name="class" stdset="0">
+                                <string>sectionTitle</string>
+                               </property>
+                              </widget>
+                             </item>
+                             <item>
+                              <layout class="QHBoxLayout" name="horizontalLayout_UserRating">
+                               <item>
+                                <widget class="QLabel" name="lblUserRating">
+                                 <property name="text">
+                                  <string>评分: 未评分</string>
+                                 </property>
+                                </widget>
+                               </item>
+                               <item>
+                                <spacer name="horizontalSpacer_UserNotes">
+                                 <property name="orientation">
+                                  <enum>Qt::Orientation::Horizontal</enum>
+                                 </property>
+                                 <property name="sizeHint" stdset="0">
+                                  <size>
+                                   <width>40</width>
+                                   <height>20</height>
+                                  </size>
+                                 </property>
+                                </spacer>
+                               </item>
+                               <item>
+                                <widget class="QPushButton" name="btnEditUserNote">
+                                 <property name="maximumSize">
+                                  <size>
+                                   <width>28</width>
+                                   <height>24</height>
+                                  </size>
+                                 </property>
+                                 <property name="text">
+                                  <string>✎</string>
+                                 </property>
+                                </widget>
+                               </item>
+                              </layout>
+                             </item>
+                             <item>
+                              <widget class="QWidget" name="userTagsContainer" native="true">
+                               <layout class="QHBoxLayout" name="layoutUserTags">
+                                <property name="leftMargin">
+                                 <number>0</number>
+                                </property>
+                                <property name="topMargin">
+                                 <number>0</number>
+                                </property>
+                                <property name="rightMargin">
+                                 <number>0</number>
+                                </property>
+                                <property name="bottomMargin">
+                                 <number>0</number>
+                                </property>
+                               </layout>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QTextBrowser" name="textUserNotePreview">
+                               <property name="minimumSize">
+                                <size>
+                                 <width>0</width>
+                                 <height>70</height>
+                                </size>
+                               </property>
+                               <property name="maximumSize">
+                                <size>
+                                 <width>16777215</width>
+                                 <height>90</height>
+                                </size>
+                               </property>
+                               <property name="placeholderText">
+                                <string>暂无备注 / No note.</string>
+                               </property>
+                              </widget>
+                             </item>
                             </layout>
                            </widget>
                           </item>
                           <item>
-                           <widget class="Line" name="line_ModelAttribution">
-                            <property name="orientation">
-                             <enum>Qt::Orientation::Horizontal</enum>
+                           <widget class="QFrame" name="cardFileInfo">
+                            <property name="frameShape">
+                             <enum>QFrame::Shape::NoFrame</enum>
                             </property>
-                           </widget>
-                          </item>
-                          <item>
-                           <widget class="QLabel" name="label_UserNotes">
-                            <property name="text">
-                             <string>USER NOTES / 用户备注</string>
-                            </property>
-                            <property name="class" stdset="0">
-                             <string>sectionTitle</string>
-                            </property>
-                           </widget>
-                          </item>
-                          <item>
-                           <layout class="QHBoxLayout" name="horizontalLayout_UserRating">
-                            <item>
-                             <widget class="QLabel" name="lblUserRating">
-                              <property name="text">
-                               <string>评分: 未评分</string>
-                              </property>
-                             </widget>
-                            </item>
-                            <item>
-                             <spacer name="horizontalSpacer_UserNotes">
-                              <property name="orientation">
-                               <enum>Qt::Orientation::Horizontal</enum>
-                              </property>
-                              <property name="sizeHint" stdset="0">
-                               <size>
-                                <width>40</width>
-                                <height>20</height>
-                               </size>
-                              </property>
-                             </spacer>
-                            </item>
-                            <item>
-                             <widget class="QPushButton" name="btnEditUserNote">
-                              <property name="text">
-                               <string>编辑信息</string>
-                              </property>
-                             </widget>
-                            </item>
-                           </layout>
-                          </item>
-                          <item>
-                           <widget class="QWidget" name="userTagsContainer" native="true">
-                            <layout class="QHBoxLayout" name="layoutUserTags">
+                            <layout class="QVBoxLayout" name="layoutCardFileInfo">
+                             <property name="spacing">
+                              <number>8</number>
+                             </property>
                              <property name="leftMargin">
-                              <number>0</number>
+                              <number>12</number>
                              </property>
                              <property name="topMargin">
-                              <number>0</number>
+                              <number>12</number>
                              </property>
                              <property name="rightMargin">
-                              <number>0</number>
+                              <number>12</number>
                              </property>
                              <property name="bottomMargin">
-                              <number>0</number>
+                              <number>12</number>
                              </property>
-                            </layout>
-                           </widget>
-                          </item>
-                          <item>
-                           <widget class="QTextBrowser" name="textUserNotePreview">
-                            <property name="minimumSize">
-                             <size>
-                              <width>0</width>
-                              <height>70</height>
-                             </size>
-                            </property>
-                            <property name="maximumSize">
-                             <size>
-                              <width>16777215</width>
-                              <height>90</height>
-                             </size>
-                            </property>
-                            <property name="placeholderText">
-                             <string>暂无备注 / No note.</string>
-                            </property>
-                           </widget>
-                          </item>
-                          <item>
-                           <widget class="Line" name="line_9">
-                            <property name="orientation">
-                             <enum>Qt::Orientation::Horizontal</enum>
-                            </property>
-                           </widget>
-                          </item>
-                          <item>
-                           <widget class="QLabel" name="label_DescTitle">
-                            <property name="minimumSize">
-                             <size>
-                              <width>0</width>
-                              <height>40</height>
-                             </size>
-                            </property>
-                            <property name="maximumSize">
-                             <size>
-                              <width>16777215</width>
-                              <height>40</height>
-                             </size>
-                            </property>
-                            <property name="text">
-                             <string>ABOUT / 简介</string>
-                            </property>
-                            <property name="class" stdset="0">
-                             <string>sectionTitle</string>
-                            </property>
-                           </widget>
-                          </item>
-                          <item>
-                           <widget class="QTextBrowser" name="textDescription">
-                            <property name="minimumSize">
-                             <size>
-                              <width>0</width>
-                              <height>170</height>
-                             </size>
-                            </property>
-                            <property name="maximumSize">
-                             <size>
-                              <width>16777215</width>
-                              <height>170</height>
-                             </size>
-                            </property>
-                            <property name="placeholderText">
-                             <string>No description.</string>
-                            </property>
-                           </widget>
-                          </item>
-                          <item>
-                           <widget class="Line" name="line_3">
-                            <property name="orientation">
-                             <enum>Qt::Orientation::Horizontal</enum>
-                            </property>
-                           </widget>
-                          </item>
-                          <item>
-                           <widget class="QLabel" name="label_FileTitle">
-                            <property name="minimumSize">
-                             <size>
-                              <width>0</width>
-                              <height>40</height>
-                             </size>
-                            </property>
-                            <property name="maximumSize">
-                             <size>
-                              <width>16777215</width>
-                              <height>40</height>
-                             </size>
-                            </property>
-                            <property name="text">
-                             <string>FILE INFO / 文件</string>
-                            </property>
-                            <property name="class" stdset="0">
-                             <string>sectionTitle</string>
-                            </property>
-                           </widget>
-                          </item>
-                          <item>
-                           <widget class="QLabel" name="lblFileInfo">
-                            <property name="minimumSize">
-                             <size>
-                              <width>0</width>
-                              <height>165</height>
-                             </size>
-                            </property>
-                            <property name="text">
-                             <string>Filename: ...
+                             <item>
+                              <widget class="QLabel" name="label_FileTitle">
+                               <property name="minimumSize">
+                                <size>
+                                 <width>0</width>
+                                 <height>28</height>
+                                </size>
+                               </property>
+                               <property name="maximumSize">
+                                <size>
+                                 <width>16777215</width>
+                                 <height>28</height>
+                                </size>
+                               </property>
+                               <property name="text">
+                                <string>FILE INFO / 文件</string>
+                               </property>
+                               <property name="class" stdset="0">
+                                <string>sectionTitle</string>
+                               </property>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QLabel" name="lblFileInfo">
+                               <property name="minimumSize">
+                                <size>
+                                 <width>0</width>
+                                 <height>140</height>
+                                </size>
+                               </property>
+                               <property name="text">
+                                <string>Filename: ...
 Size: ...
 Hash: ...</string>
-                            </property>
-                            <property name="alignment">
-                             <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
-                            </property>
-                            <property name="wordWrap">
-                             <bool>true</bool>
-                            </property>
-                            <property name="textInteractionFlags">
-                             <set>Qt::TextInteractionFlag::TextSelectableByMouse</set>
-                            </property>
+                               </property>
+                               <property name="alignment">
+                                <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+                               </property>
+                               <property name="wordWrap">
+                                <bool>true</bool>
+                               </property>
+                               <property name="textInteractionFlags">
+                                <set>Qt::TextInteractionFlag::TextSelectableByMouse</set>
+                               </property>
+                              </widget>
+                             </item>
+                            </layout>
                            </widget>
                           </item>
                           <item>
