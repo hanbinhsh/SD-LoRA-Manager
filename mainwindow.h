@@ -36,6 +36,7 @@
 #include <QProgressBar>
 #include <QVBoxLayout>
 
+#include "pages/downloadmodels.h"
 #include "tagflowwidget.h"
 
 // 模型列表相关
@@ -103,6 +104,7 @@ class TagBrowserWidget;
 class LlmPromptWidget;
 class UsageAnalysisWidget;
 class PromptTemplateLibraryWidget;
+class DownloadsPage;
 
 struct DownloadTask {
     QString url;
@@ -117,25 +119,6 @@ struct ModelUserNote {
     QStringList tags;
     QStringList customTriggers;
     QString updatedAt;
-};
-
-struct ModelUpdateInfo {
-    QString filePath;
-    QString modelDir;
-    QString baseName;
-    QString displayName;
-    QString currentVersion;
-    QString latestVersion;
-    QString downloadUrl;
-    QString downloadFileName;
-    QString sha256;
-    QJsonObject latestVersionJson;
-    int modelId = 0;
-    int currentVersionId = 0;
-    int latestVersionId = 0;
-    double sizeMB = 0.0;
-    bool hasUpdate = false;
-    bool latestFileExistsLocally = false;
 };
 
 struct UpdateCheckSnapshot {
@@ -155,26 +138,6 @@ struct ModelFileDownloadTask {
     QString tempPath;
     QString filePath;
     bool overwrite = false;
-};
-
-struct DownloadCardWidgets {
-    QPointer<QFrame> card;
-    QPointer<QLabel> previewLabel;
-    QPointer<QLabel> titleLabel;
-    QPointer<QLabel> versionLabel;
-    QPointer<QLabel> sizeLabel;
-    QPointer<QLabel> speedLabel;
-    QPointer<QLabel> statusLabel;
-    QPointer<QLabel> targetLabel;
-    QPointer<QProgressBar> progressBar;
-    QPointer<QPushButton> sourceButton;
-    QPointer<QPushButton> civitaiButton;
-    QPointer<QPushButton> downloadButton;
-    QPointer<QPushButton> ignoreButton;
-    QString statusText;
-    QString targetPath;
-    QString category;
-    bool selected = false;
 };
 
 struct ImageLoadResult {
@@ -326,6 +289,7 @@ private:
     LlmPromptWidget *llmPromptWidget = nullptr;
     UsageAnalysisWidget *usageAnalysisWidget = nullptr;
     PromptTemplateLibraryWidget *promptTemplateLibraryWidget = nullptr;
+    DownloadsPage *downloadsPage = nullptr;
     QSet<int> pendingToolTabLoads;
     QNetworkAccessManager *netManager = nullptr;
     QPixmap currentHeroPixmap;
@@ -474,17 +438,10 @@ private:
     QString uniqueFilePath(const QString &dirPath, const QString &fileName) const;
     void finishModelDownload(const ModelFileDownloadTask &task, const QByteArray &data);
     void filterDownloadCards();
-    QString downloadCategoryForStatus(const QString &status) const;
-    QVBoxLayout *downloadLayoutForCategory(const QString &category) const;
-    QStringList sortedDownloadFilePathsForCategory(const QString &category) const;
-    void sortDownloadCardsInCategory(const QString &category);
     void sortAllDownloadCards();
     QString currentDownloadCategory() const;
     QStringList downloadFilePathsForCategory(const QString &category) const;
     void updateDownloadSelectionSummary();
-    void setCurrentDownloadTabSelection(bool checked);
-    void setDownloadCardSelected(const QString &filePath, bool selected);
-    void placeDownloadCardInCategory(const QString &filePath, const QString &category);
     void removeDownloadCard(const QString &filePath);
     void jumpToDownloadSource(const QString &filePath);
     void openDownloadCivitaiPage(const QString &filePath);
@@ -539,7 +496,6 @@ private:
     bool isModelDownloading = false;
     QElapsedTimer modelDownloadTimer;
     QHash<QString, ModelUpdateInfo> modelUpdateInfos;
-    QHash<QString, DownloadCardWidgets> downloadCards;
     bool downloadCardsCacheLoaded = false;
     bool restoringDownloadCardsCache = false;
     bool isShuttingDown = false;

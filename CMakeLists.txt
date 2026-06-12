@@ -17,6 +17,8 @@ qt_add_executable(SD_LoRA_Manager
     mainwindow.cpp
     mainwindow.h
     mainwindow.ui
+    pages/downloadspage.h
+    pages/downloadspage.cpp
     imagemetadataparser.h
     imagemetadataparser.cpp
     tools/comfyworkflowviewer.h
