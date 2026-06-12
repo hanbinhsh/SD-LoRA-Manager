@@ -4,6 +4,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -13,6 +14,87 @@
 #include <QSlider>
 #include <QSpinBox>
 #include <QWidget>
+
+SettingsState SettingsState::fromJson(const QJsonObject &root, const QString &defaultFilterTags)
+{
+    SettingsState state;
+    state.uiScale = root["ui_scale"].toDouble(1.0);
+    state.filterNSFW = root["nsfw_filter"].toBool(false);
+    state.nsfwMode = root["nsfw_mode"].toInt(1);
+    state.nsfwLevel = root["nsfw_level_threshold"].toInt(1);
+    state.loraRecursive = root["lora_recursive"].toBool(false);
+    state.galleryRecursive = root["gallery_recursive"].toBool(false);
+    state.blurRadius = root["blur_radius"].toInt(30);
+    state.downscaleBlur = root["blur_downscale_enabled"].toBool(true);
+    state.blurProcessWidth = root["blur_process_width"].toInt(500);
+    state.renderThreadCount = root["render_thread_count"].toInt(4);
+    state.restoreTreeState = root["restore_tree_state"].toBool(true);
+    state.splitOnNewline = root["split_on_newline"].toBool(true);
+    state.filterTagsText = root["filter_tags_string"].toString(defaultFilterTags);
+    state.showEmptyCollections = root["show_empty_collections"].toBool(false);
+    state.collectionFolderTopLevel = root["collection_folder_top_level"].toBool(false);
+    state.collectionFolderSecondLevel = root["collection_folder_second_level"].toBool(false);
+    state.modelListFolderGrouping = root["model_list_folder_grouping"].toBool(false);
+    state.useCustomUserAgent = root["use_custom_ua"].toBool(false);
+    state.customUserAgent = root["custom_user_agent"].toString();
+    state.civitaiApiKey = root["civitai_api_key"].toString();
+    state.useCivitaiName = root["use_civitai_name"].toBool(false);
+    state.suppressLocalWarnings = root["suppress_local_model_warnings"].toBool(false);
+    state.userGalleryMatchMode = root["user_gallery_match_mode"].toInt(0);
+    state.modelUpdateDownloadPolicy = root["model_update_download_policy"].toInt(0);
+    state.autoCheckUpdatesOnStartup = root["auto_check_update_on_startup"].toBool(true);
+    state.normalize();
+    return state;
+}
+
+void SettingsState::writeToJson(QJsonObject &root) const
+{
+    SettingsState normalized = *this;
+    normalized.normalize();
+
+    root["ui_scale"] = normalized.uiScale;
+    root["lora_recursive"] = normalized.loraRecursive;
+    root["gallery_recursive"] = normalized.galleryRecursive;
+    root["blur_radius"] = normalized.blurRadius;
+    root["blur_downscale_enabled"] = normalized.downscaleBlur;
+    root["blur_process_width"] = normalized.blurProcessWidth;
+    root["nsfw_filter"] = normalized.filterNSFW;
+    root["nsfw_mode"] = normalized.nsfwMode;
+    root["nsfw_level_threshold"] = normalized.nsfwLevel;
+    root["render_thread_count"] = normalized.renderThreadCount;
+    root["restore_tree_state"] = normalized.restoreTreeState;
+    root["split_on_newline"] = normalized.splitOnNewline;
+    root["filter_tags_string"] = normalized.filterTagsText;
+    root["show_empty_collections"] = normalized.showEmptyCollections;
+    root["collection_folder_top_level"] = normalized.collectionFolderTopLevel;
+    root["collection_folder_second_level"] = normalized.collectionFolderSecondLevel;
+    root["model_list_folder_grouping"] = normalized.modelListFolderGrouping;
+    root["use_custom_ua"] = normalized.useCustomUserAgent;
+    root["custom_user_agent"] = normalized.customUserAgent;
+    root["civitai_api_key"] = normalized.civitaiApiKey;
+    root["use_civitai_name"] = normalized.useCivitaiName;
+    root["suppress_local_model_warnings"] = normalized.suppressLocalWarnings;
+    root["user_gallery_match_mode"] = normalized.userGalleryMatchMode;
+    root["model_update_download_policy"] = normalized.modelUpdateDownloadPolicy;
+    root["auto_check_update_on_startup"] = normalized.autoCheckUpdatesOnStartup;
+}
+
+void SettingsState::normalize()
+{
+    if (blurRadius < 0) blurRadius = 0;
+    if (blurRadius > 100) blurRadius = 100;
+    if (renderThreadCount < 1) renderThreadCount = 4;
+    if (modelUpdateDownloadPolicy < 0 || modelUpdateDownloadPolicy > 2) modelUpdateDownloadPolicy = 0;
+    if (userGalleryMatchMode < 0 || userGalleryMatchMode > 2) userGalleryMatchMode = 0;
+    if (collectionFolderTopLevel && collectionFolderSecondLevel) collectionFolderSecondLevel = false;
+}
+
+QStringList SettingsState::filterTags() const
+{
+    QStringList tags = filterTagsText.split(',', Qt::SkipEmptyParts);
+    for (QString &tag : tags) tag = tag.trimmed();
+    return tags;
+}
 
 SettingsPage::SettingsPage(QWidget *parent)
     : QWidget(parent)

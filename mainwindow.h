@@ -244,8 +244,6 @@ private slots:
     // === 设置页槽函数 ===
     void onBrowseLoraPath();
     void onBrowseGalleryPath();
-    void onSettingsChanged(); // 通用改变处理
-    void onBlurSliderChanged(int value);
     void onSetSdFolderClicked();
     void onClearUserGalleryCacheClicked();
 
@@ -402,6 +400,7 @@ private:
     void enqueueDownload(const QString &url, const QString &savePath, QPushButton *btn, const QString &localBaseName);
     void processNextDownload();
     void initDownloadsPage();
+    void initSettingsPage();
     void onMenuSwitchToDownloads();
     void checkUpdatesForItems(const QList<QListWidgetItem*> &items);
     void checkUpdateForItem(QListWidgetItem *item);
@@ -415,26 +414,18 @@ private:
     void addOrUpdateDownloadCard(const ModelUpdateInfo &info, const QString &status);
     void loadDownloadCardsCache();
     void saveDownloadCardsCache() const;
-    void updateDownloadStatus(const QString &filePath, const QString &status);
-    void updateDownloadProgress(const QString &filePath, int percent, const QString &speedText);
-    QStringList selectedDownloadFilePaths() const;
-    void startDownloadsForSelectedCards();
     void enqueueModelFileDownload(const ModelUpdateInfo &info);
     QString chooseModelDownloadTarget(const ModelUpdateInfo &info, bool *overwrite);
     QString uniqueFilePath(const QString &dirPath, const QString &fileName) const;
     void finishModelDownload(const ModelFileDownloadTask &task);
-    void filterDownloadCards();
-    void sortAllDownloadCards();
-    QString currentDownloadCategory() const;
-    QStringList downloadFilePathsForCategory(const QString &category) const;
     void updateDownloadSelectionSummary();
-    void removeDownloadCard(const QString &filePath);
     void jumpToDownloadSource(const QString &filePath);
     void openDownloadCivitaiPage(const QString &filePath);
     QListWidgetItem *findModelItemByFilePath(const QString &filePath) const;
     QString resolveDownloadPreviewPath(const ModelUpdateInfo &info) const;
-    void setDownloadCardPreview(const QString &filePath, const QString &previewPath);
-    void scheduleDownloadPreviewLoad(const QString &filePath);
+    void applySettingsState(SettingsState state);
+    void resetFilterTagsToDefault();
+    void applyRandomUserAgent();
     void beginGalleryBuild(const ModelMeta &meta);
     void buildGalleryBatch();
     void addGalleryThumbButton(const ModelMeta &meta, int index, const QString &modelDir, const QString &baseName);
@@ -473,6 +464,7 @@ private:
     bool isDownloading = false;         // 当前是否有任务在运行
     DownloadManager *downloadManager = nullptr;
     bool isShuttingDown = false;
+    bool settingsPageConnectionsInitialized = false;
     QQueue<UpdateCheckSnapshot> pendingUpdateChecksQueue;
     QQueue<UpdateCheckSnapshot> pendingUpdateHashChecks;
     int activeUpdateNetworkChecks = 0;

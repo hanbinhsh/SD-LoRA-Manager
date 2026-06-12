@@ -7502,7 +7502,9 @@ void MainWindow::initDownloadsPage()
         }
         checkUpdatesForItems(items);
     });
-    connect(downloadsPage->downloadSelectedButton(), &QPushButton::clicked, this, &MainWindow::startDownloadsForSelectedCards);
+    connect(downloadsPage->downloadSelectedButton(), &QPushButton::clicked, this, [this]() {
+        if (downloadManager) downloadManager->startSelectedDownloads();
+    });
     connect(downloadsPage->cancelButton(), &QPushButton::clicked, this, [this]() {
         if (downloadManager) downloadManager->cancelSelectedDownloads();
     });
@@ -7510,7 +7512,7 @@ void MainWindow::initDownloadsPage()
         if (downloadManager) downloadManager->retrySelectedFailedDownloads();
     });
     connect(downloadsPage->openFolderButton(), &QPushButton::clicked, this, [this]() {
-        const QStringList filePaths = selectedDownloadFilePaths();
+        const QStringList filePaths = downloadManager ? downloadManager->selectedFilePaths() : QStringList();
         if (filePaths.isEmpty()) return;
         const QString path = downloadsPage->cardTargetPath(filePaths.first());
         if (!path.isEmpty()) QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
@@ -7518,8 +7520,9 @@ void MainWindow::initDownloadsPage()
     connect(downloadsPage->clearCompletedButton(), &QPushButton::clicked, this, [this]() {
         if (downloadManager) downloadManager->clearCompleted();
     });
-    connect(downloadsPage->filterCombo(), QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &MainWindow::filterDownloadCards);
+    connect(downloadsPage->filterCombo(), QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
+        if (downloadManager) downloadManager->filterCards();
+    });
     connect(downloadsPage->statusTabs(), &QTabWidget::currentChanged, this, [this]() {
         updateDownloadSelectionSummary();
     });
@@ -7542,27 +7545,12 @@ void MainWindow::initDownloadsPage()
             downloadsPage->setStatusText("该模型当前没有可下载的新版本。");
             return;
         }
-        enqueueModelFileDownload(info);
+        if (downloadManager) downloadManager->enqueueModelDownload(info);
     });
     connect(downloadsPage, &DownloadsPage::ignoreToggled, this, [this](const QString &filePath) {
         if (downloadManager) downloadManager->toggleIgnore(filePath);
     });
     updateDownloadSelectionSummary();
-}
-
-QStringList MainWindow::selectedDownloadFilePaths() const
-{
-    return downloadManager ? downloadManager->selectedFilePaths() : QStringList();
-}
-
-QString MainWindow::currentDownloadCategory() const
-{
-    return downloadManager ? downloadManager->currentCategory() : QString();
-}
-
-QStringList MainWindow::downloadFilePathsForCategory(const QString &category) const
-{
-    return downloadManager ? downloadManager->filePathsForCategory(category) : QStringList();
 }
 
 void MainWindow::updateDownloadSelectionSummary()
@@ -7906,11 +7894,6 @@ void MainWindow::addOrUpdateDownloadCard(const ModelUpdateInfo &info, const QStr
     }
 }
 
-void MainWindow::updateDownloadStatus(const QString &filePath, const QString &status)
-{
-    if (downloadManager) downloadManager->updateStatus(filePath, status);
-}
-
 void MainWindow::loadDownloadCardsCache()
 {
     if (downloadManager) downloadManager->ensureCacheLoaded();
@@ -7919,31 +7902,6 @@ void MainWindow::loadDownloadCardsCache()
 void MainWindow::saveDownloadCardsCache() const
 {
     if (downloadManager) downloadManager->saveCache();
-}
-
-void MainWindow::updateDownloadProgress(const QString &filePath, int percent, const QString &speedText)
-{
-    if (downloadManager) downloadManager->updateProgress(filePath, percent, speedText);
-}
-
-void MainWindow::filterDownloadCards()
-{
-    if (downloadManager) downloadManager->filterCards();
-}
-
-void MainWindow::sortAllDownloadCards()
-{
-    if (downloadManager) downloadManager->sortCards();
-}
-
-void MainWindow::startDownloadsForSelectedCards()
-{
-    if (downloadManager) downloadManager->startSelectedDownloads();
-}
-
-void MainWindow::removeDownloadCard(const QString &filePath)
-{
-    if (downloadManager) downloadManager->removeCard(filePath);
 }
 
 QListWidgetItem *MainWindow::findModelItemByFilePath(const QString &filePath) const
@@ -7997,16 +7955,6 @@ QString MainWindow::resolveDownloadPreviewPath(const ModelUpdateInfo &info) cons
     const QString fallback = findLocalPreviewPath(info.modelDir, info.baseName, QString(), 0);
     if (!fallback.isEmpty() && QFile::exists(fallback)) return fallback;
     return QString();
-}
-
-void MainWindow::setDownloadCardPreview(const QString &filePath, const QString &previewPath)
-{
-    if (downloadManager) downloadManager->setPreview(filePath, previewPath);
-}
-
-void MainWindow::scheduleDownloadPreviewLoad(const QString &filePath)
-{
-    if (downloadManager) downloadManager->schedulePreviewLoad(filePath);
 }
 
 void MainWindow::enqueueModelFileDownload(const ModelUpdateInfo &info)
@@ -8086,45 +8034,37 @@ void MainWindow::finishModelDownload(const ModelFileDownloadTask &task)
 void MainWindow::loadGlobalConfig() {
     QString configPath = qApp->applicationDirPath() + "/config/settings.json";
     QFile file(configPath);
+    SettingsState settings;
     if (file.open(QIODevice::ReadOnly)) {
         QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
         QJsonObject root = doc.object();
 
-        // 1. 读取所有配置到成员变量
-        optUiScale                      = root["ui_scale"].toDouble(1.0);
-        optFilterNSFW                   = root["nsfw_filter"].toBool(false);
-        optNSFWMode                     = root["nsfw_mode"].toInt(1);
-        optNSFWLevel                    = root["nsfw_level_threshold"].toInt(1);
-        optLoraRecursive                = root["lora_recursive"].toBool(false);
-        optGalleryRecursive             = root["gallery_recursive"].toBool(false);
-        optBlurRadius                   = root["blur_radius"].toInt(30);
-        optDownscaleBlur                = root["blur_downscale_enabled"].toBool(true);
-        optBlurProcessWidth             = root["blur_process_width"].toInt(500);
-        optRenderThreadCount            = root["render_thread_count"].toInt(4);
-        optRestoreTreeState             = root["restore_tree_state"].toBool(true);
-        optSplitOnNewline               = root["split_on_newline"].toBool(true);
-        optShowEmptyCollections         = root["show_empty_collections"].toBool(false);
-        optCollectionFolderTopLevel     = root["collection_folder_top_level"].toBool(false);
-        optCollectionFolderSecondLevel  = root["collection_folder_second_level"].toBool(false);
-        if (optCollectionFolderTopLevel && optCollectionFolderSecondLevel) {
-            optCollectionFolderSecondLevel = false;
-        }
-        optModelListFolderGrouping      = root["model_list_folder_grouping"].toBool(false);
-        QString filterStr               = root["filter_tags_string"].toString(DEFAULT_FILTER_TAGS);
-        optUseArrangedUA                = root["use_custom_ua"].toBool(false);
-        optSavedUAString                = root["custom_user_agent"].toString();
-        optCivitaiApiKey                = root["civitai_api_key"].toString();
-        optUseCivitaiName               = root["use_civitai_name"].toBool(false);
-        optSuppressLocalWarnings        = root["suppress_local_model_warnings"].toBool(false);
-        optUserGalleryMatchMode         = root["user_gallery_match_mode"].toInt(0);
-        optModelUpdateDownloadPolicy    = root["model_update_download_policy"].toInt(0);
-        optAutoCheckUpdatesOnStartup    = root["auto_check_update_on_startup"].toBool(true);
-        if (optModelUpdateDownloadPolicy < 0 || optModelUpdateDownloadPolicy > 2) {
-            optModelUpdateDownloadPolicy = 0;
-        }
-        if (optUserGalleryMatchMode < 0 || optUserGalleryMatchMode > 2) {
-            optUserGalleryMatchMode = 0;
-        }
+        settings = SettingsState::fromJson(root, DEFAULT_FILTER_TAGS);
+        optUiScale = settings.uiScale;
+        optFilterNSFW = settings.filterNSFW;
+        optNSFWMode = settings.nsfwMode;
+        optNSFWLevel = settings.nsfwLevel;
+        optLoraRecursive = settings.loraRecursive;
+        optGalleryRecursive = settings.galleryRecursive;
+        optBlurRadius = settings.blurRadius;
+        optDownscaleBlur = settings.downscaleBlur;
+        optBlurProcessWidth = settings.blurProcessWidth;
+        optRenderThreadCount = settings.renderThreadCount;
+        optRestoreTreeState = settings.restoreTreeState;
+        optSplitOnNewline = settings.splitOnNewline;
+        optFilterTags = settings.filterTags();
+        optShowEmptyCollections = settings.showEmptyCollections;
+        optCollectionFolderTopLevel = settings.collectionFolderTopLevel;
+        optCollectionFolderSecondLevel = settings.collectionFolderSecondLevel;
+        optModelListFolderGrouping = settings.modelListFolderGrouping;
+        optUseArrangedUA = settings.useCustomUserAgent;
+        optSavedUAString = settings.customUserAgent;
+        optCivitaiApiKey = settings.civitaiApiKey;
+        optUseCivitaiName = settings.useCivitaiName;
+        optSuppressLocalWarnings = settings.suppressLocalWarnings;
+        optUserGalleryMatchMode = settings.userGalleryMatchMode;
+        optModelUpdateDownloadPolicy = settings.modelUpdateDownloadPolicy;
+        optAutoCheckUpdatesOnStartup = settings.autoCheckUpdatesOnStartup;
 
         qDebug() << "Loaded User-Agent:" << currentUserAgent;
 
@@ -8199,10 +8139,6 @@ void MainWindow::loadGlobalConfig() {
         }
         translationCsvPath = collectEnabledPaths(translationCsvPaths, disabledTranslationCsvPaths).value(0);
 
-        // 解析过滤词
-        optFilterTags = filterStr.split(',', Qt::SkipEmptyParts);
-        for(QString &s : optFilterTags) s = s.trimmed();
-
         // 读取树状菜单状态
         if (optRestoreTreeState && root.contains("tree_state")) {
             QJsonObject treeState = root["tree_state"].toObject();
@@ -8216,44 +8152,19 @@ void MainWindow::loadGlobalConfig() {
         // 设置UA
         if (optUseArrangedUA && !optSavedUAString.isEmpty())currentUserAgent = optSavedUAString;
         else currentUserAgent = getRandomUserAgent();
-
-        // 范围校验
-        if (optBlurRadius < 0) optBlurRadius = 0;
-        if (optBlurRadius > 100) optBlurRadius = 100;
-        if (optRenderThreadCount < 1) optRenderThreadCount = 4;
     }
 
     applyPathListsToUi();
 
-    SettingsState settings;
-    settings.loraRecursive = optLoraRecursive;
-    settings.galleryRecursive = optGalleryRecursive;
-    settings.blurRadius = optBlurRadius;
-    settings.downscaleBlur = optDownscaleBlur;
-    settings.blurProcessWidth = optBlurProcessWidth;
-    settings.filterNSFW = optFilterNSFW;
-    settings.nsfwMode = optNSFWMode;
-    settings.nsfwLevel = optNSFWLevel;
-    settings.renderThreadCount = optRenderThreadCount;
-    settings.restoreTreeState = optRestoreTreeState;
-    settings.splitOnNewline = optSplitOnNewline;
-    settings.filterTagsText = optFilterTags.join(", ");
-    settings.showEmptyCollections = optShowEmptyCollections;
-    settings.collectionFolderTopLevel = optCollectionFolderTopLevel;
-    settings.collectionFolderSecondLevel = optCollectionFolderSecondLevel;
-    settings.modelListFolderGrouping = optModelListFolderGrouping;
-    settings.useCustomUserAgent = optUseArrangedUA;
-    settings.customUserAgent = optSavedUAString;
-    settings.civitaiApiKey = optCivitaiApiKey;
-    settings.modelUpdateDownloadPolicy = optModelUpdateDownloadPolicy;
-    settings.autoCheckUpdatesOnStartup = optAutoCheckUpdatesOnStartup;
-    settings.useCivitaiName = optUseCivitaiName;
-    settings.suppressLocalWarnings = optSuppressLocalWarnings;
-    settings.userGalleryMatchMode = optUserGalleryMatchMode;
-    settings.uiScale = optUiScale;
     settingsPage->setState(settings);
     settingsPage->setCivitaiApiStatus(optCivitaiApiKey.isEmpty() ? "API Key 未配置" : "API Key 未测试");
+    initSettingsPage();
+}
 
+void MainWindow::initSettingsPage()
+{
+    if (!settingsPage || settingsPageConnectionsInitialized) return;
+    settingsPageConnectionsInitialized = true;
     connect(settingsPage, &SettingsPage::loraPathsEditRequested, this, &MainWindow::onBrowseLoraPath);
     connect(settingsPage, &SettingsPage::galleryPathsEditRequested, this, &MainWindow::onBrowseGalleryPath);
     connect(settingsPage, &SettingsPage::translationPathsEditRequested, this, &MainWindow::onBrowseTranslationPath);
@@ -8264,107 +8175,116 @@ void MainWindow::loadGlobalConfig() {
         onTestCivitaiApiKeyClicked();
     });
     connect(settingsPage, &SettingsPage::blurChanged, this, [this](int value, bool finalSave) {
-        onBlurSliderChanged(value);
+        optBlurRadius = value;
+        if (settingsPage) settingsPage->setBlurValue(value);
+        updateBackgroundImage();
         if (finalSave) saveGlobalConfig();
     });
-    connect(settingsPage, &SettingsPage::resetFilterTagsRequested, this, [this]() {
-        const QMessageBox::StandardButton reply = QMessageBox::question(
-            this,
-            "确认重置 / Confirm Reset",
-            "确定要将过滤提示词重置为默认值吗？\n此操作将覆盖当前的自定义设置。\n\n"
-            "Are you sure you want to reset filter tags to default?",
-            QMessageBox::Yes | QMessageBox::No);
-        if (reply != QMessageBox::Yes) return;
+    connect(settingsPage, &SettingsPage::resetFilterTagsRequested, this, &MainWindow::resetFilterTagsToDefault);
+    connect(settingsPage, &SettingsPage::randomUserAgentRequested, this, &MainWindow::applyRandomUserAgent);
+    connect(settingsPage, &SettingsPage::stateChanged, this, &MainWindow::applySettingsState);
+}
 
-        settingsPage->setFilterTagsText(DEFAULT_FILTER_TAGS);
-        optFilterTags = DEFAULT_FILTER_TAGS.split(',', Qt::SkipEmptyParts);
-        for (QString &s : optFilterTags) s = s.trimmed();
-        saveGlobalConfig();
-        ui->statusbar->showMessage("过滤词已重置", 2000);
-    });
-    connect(settingsPage, &SettingsPage::randomUserAgentRequested, this, [this]() {
-        const QString newUA = getRandomUserAgent();
-        settingsPage->setUserAgentText(newUA);
-        optUseArrangedUA = settingsPage->state().useCustomUserAgent;
-        optSavedUAString = newUA;
-        if (optUseArrangedUA) {
-            currentUserAgent = newUA;
-        }
-        saveGlobalConfig();
-    });
-    connect(settingsPage, &SettingsPage::stateChanged, this, [this](SettingsState state) {
-        if (state.modelUpdateDownloadPolicy < 0 || state.modelUpdateDownloadPolicy > 2) state.modelUpdateDownloadPolicy = 0;
-        if (state.userGalleryMatchMode < 0 || state.userGalleryMatchMode > 2) state.userGalleryMatchMode = 0;
+void MainWindow::applySettingsState(SettingsState state)
+{
+    state.normalize();
 
-        const bool recursiveChanged = optLoraRecursive != state.loraRecursive || optGalleryRecursive != state.galleryRecursive;
-        const bool renderThreadsChanged = optRenderThreadCount != state.renderThreadCount;
-        const bool collectionTreeChanged = optShowEmptyCollections != state.showEmptyCollections
-            || optCollectionFolderTopLevel != state.collectionFolderTopLevel
-            || optCollectionFolderSecondLevel != state.collectionFolderSecondLevel;
-        const bool modelGroupingChanged = optModelListFolderGrouping != state.modelListFolderGrouping;
-        const bool civitaiNameChanged = optUseCivitaiName != state.useCivitaiName;
-        const bool galleryMatchChanged = optUserGalleryMatchMode != state.userGalleryMatchMode;
-        const bool uiScaleChanged = !qFuzzyCompare(optUiScale, state.uiScale);
-        const bool customUaModeChanged = optUseArrangedUA != state.useCustomUserAgent;
+    const bool recursiveChanged = optLoraRecursive != state.loraRecursive || optGalleryRecursive != state.galleryRecursive;
+    const bool renderThreadsChanged = optRenderThreadCount != state.renderThreadCount;
+    const bool collectionTreeChanged = optShowEmptyCollections != state.showEmptyCollections
+        || optCollectionFolderTopLevel != state.collectionFolderTopLevel
+        || optCollectionFolderSecondLevel != state.collectionFolderSecondLevel;
+    const bool modelGroupingChanged = optModelListFolderGrouping != state.modelListFolderGrouping;
+    const bool civitaiNameChanged = optUseCivitaiName != state.useCivitaiName;
+    const bool galleryMatchChanged = optUserGalleryMatchMode != state.userGalleryMatchMode;
+    const bool uiScaleChanged = !qFuzzyCompare(optUiScale, state.uiScale);
+    const bool customUaModeChanged = optUseArrangedUA != state.useCustomUserAgent;
 
-        optLoraRecursive = state.loraRecursive;
-        optGalleryRecursive = state.galleryRecursive;
-        optBlurRadius = state.blurRadius;
-        optDownscaleBlur = state.downscaleBlur;
-        optBlurProcessWidth = state.blurProcessWidth;
-        optFilterNSFW = state.filterNSFW;
-        optNSFWMode = state.nsfwMode;
-        optNSFWLevel = state.nsfwLevel;
-        optRenderThreadCount = qMax(1, state.renderThreadCount);
-        optRestoreTreeState = state.restoreTreeState;
-        optSplitOnNewline = state.splitOnNewline;
-        optFilterTags = state.filterTagsText.split(',', Qt::SkipEmptyParts);
-        for (QString &s : optFilterTags) s = s.trimmed();
-        optShowEmptyCollections = state.showEmptyCollections;
-        optCollectionFolderTopLevel = state.collectionFolderTopLevel;
-        optCollectionFolderSecondLevel = state.collectionFolderSecondLevel;
-        optModelListFolderGrouping = state.modelListFolderGrouping;
-        optUseArrangedUA = state.useCustomUserAgent;
-        optSavedUAString = state.customUserAgent;
-        optCivitaiApiKey = state.civitaiApiKey;
-        optModelUpdateDownloadPolicy = state.modelUpdateDownloadPolicy;
-        optAutoCheckUpdatesOnStartup = state.autoCheckUpdatesOnStartup;
-        optUseCivitaiName = state.useCivitaiName;
-        optSuppressLocalWarnings = state.suppressLocalWarnings;
-        optUserGalleryMatchMode = state.userGalleryMatchMode;
-        optUiScale = state.uiScale;
+    optLoraRecursive = state.loraRecursive;
+    optGalleryRecursive = state.galleryRecursive;
+    optBlurRadius = state.blurRadius;
+    optDownscaleBlur = state.downscaleBlur;
+    optBlurProcessWidth = state.blurProcessWidth;
+    optFilterNSFW = state.filterNSFW;
+    optNSFWMode = state.nsfwMode;
+    optNSFWLevel = state.nsfwLevel;
+    optRenderThreadCount = qMax(1, state.renderThreadCount);
+    optRestoreTreeState = state.restoreTreeState;
+    optSplitOnNewline = state.splitOnNewline;
+    optFilterTags = state.filterTags();
+    optShowEmptyCollections = state.showEmptyCollections;
+    optCollectionFolderTopLevel = state.collectionFolderTopLevel;
+    optCollectionFolderSecondLevel = state.collectionFolderSecondLevel;
+    optModelListFolderGrouping = state.modelListFolderGrouping;
+    optUseArrangedUA = state.useCustomUserAgent;
+    optSavedUAString = state.customUserAgent;
+    optCivitaiApiKey = state.civitaiApiKey;
+    optModelUpdateDownloadPolicy = state.modelUpdateDownloadPolicy;
+    optAutoCheckUpdatesOnStartup = state.autoCheckUpdatesOnStartup;
+    optUseCivitaiName = state.useCivitaiName;
+    optSuppressLocalWarnings = state.suppressLocalWarnings;
+    optUserGalleryMatchMode = state.userGalleryMatchMode;
+    optUiScale = state.uiScale;
 
-        if (renderThreadsChanged) {
-            threadPool->setMaxThreadCount(optRenderThreadCount);
-            backgroundThreadPool->setMaxThreadCount(optRenderThreadCount);
-        }
-        if (customUaModeChanged) {
-            currentUserAgent = optUseArrangedUA && !optSavedUAString.isEmpty() ? optSavedUAString : getRandomUserAgent();
-            qDebug() << "UA Changed to:" << currentUserAgent;
-        } else if (optUseArrangedUA) {
-            currentUserAgent = optSavedUAString;
-        }
+    if (renderThreadsChanged) {
+        threadPool->setMaxThreadCount(optRenderThreadCount);
+        backgroundThreadPool->setMaxThreadCount(optRenderThreadCount);
+    }
+    if (customUaModeChanged) {
+        currentUserAgent = optUseArrangedUA && !optSavedUAString.isEmpty() ? optSavedUAString : getRandomUserAgent();
+        qDebug() << "UA Changed to:" << currentUserAgent;
+    } else if (optUseArrangedUA) {
+        currentUserAgent = optSavedUAString;
+    }
 
-        saveGlobalConfig();
+    saveGlobalConfig();
 
-        if (recursiveChanged) {
-            // 递归扫描设置在下一次扫描时生效。
-        }
-        if (collectionTreeChanged) refreshCollectionTreeView();
-        if (modelGroupingChanged) {
-            executeSort();
-            refreshHomeGallery();
-            refreshCollectionTreeView();
-        }
-        if (civitaiNameChanged) {
-            updateModelListNames();
-            executeSort();
-        }
-        if (galleryMatchChanged) refreshModelUsageStatsAsync();
-        if (uiScaleChanged) {
-            ui->statusbar->showMessage(QString("缩放比例已设置为 %1x，重启后生效").arg(optUiScale), 3000);
-        }
-    });
+    if (recursiveChanged) {
+        // 递归扫描设置在下一次扫描时生效。
+    }
+    if (collectionTreeChanged) refreshCollectionTreeView();
+    if (modelGroupingChanged) {
+        executeSort();
+        refreshHomeGallery();
+        refreshCollectionTreeView();
+    }
+    if (civitaiNameChanged) {
+        updateModelListNames();
+        executeSort();
+    }
+    if (galleryMatchChanged) refreshModelUsageStatsAsync();
+    if (uiScaleChanged) {
+        ui->statusbar->showMessage(QString("缩放比例已设置为 %1x，重启后生效").arg(optUiScale), 3000);
+    }
+}
+
+void MainWindow::resetFilterTagsToDefault()
+{
+    const QMessageBox::StandardButton reply = QMessageBox::question(
+        this,
+        "确认重置 / Confirm Reset",
+        "确定要将过滤提示词重置为默认值吗？\n此操作将覆盖当前的自定义设置。\n\n"
+        "Are you sure you want to reset filter tags to default?",
+        QMessageBox::Yes | QMessageBox::No);
+    if (reply != QMessageBox::Yes) return;
+
+    settingsPage->setFilterTagsText(DEFAULT_FILTER_TAGS);
+    optFilterTags = DEFAULT_FILTER_TAGS.split(',', Qt::SkipEmptyParts);
+    for (QString &s : optFilterTags) s = s.trimmed();
+    saveGlobalConfig();
+    ui->statusbar->showMessage("过滤词已重置", 2000);
+}
+
+void MainWindow::applyRandomUserAgent()
+{
+    const QString newUA = getRandomUserAgent();
+    settingsPage->setUserAgentText(newUA);
+    optUseArrangedUA = settingsPage->state().useCustomUserAgent;
+    optSavedUAString = newUA;
+    if (optUseArrangedUA) {
+        currentUserAgent = newUA;
+    }
+    saveGlobalConfig();
 }
 
 void MainWindow::saveGlobalConfig() {
@@ -8378,7 +8298,34 @@ void MainWindow::saveGlobalConfig() {
         root = QJsonDocument::fromJson(readFile.readAll()).object();
         readFile.close();
     }
-    const SettingsState settings = settingsPage ? settingsPage->state() : SettingsState{};
+    SettingsState settings = settingsPage ? settingsPage->state() : SettingsState{};
+    if (!settingsPage) {
+        settings.loraRecursive = optLoraRecursive;
+        settings.galleryRecursive = optGalleryRecursive;
+        settings.blurRadius = optBlurRadius;
+        settings.downscaleBlur = optDownscaleBlur;
+        settings.blurProcessWidth = optBlurProcessWidth;
+        settings.filterNSFW = optFilterNSFW;
+        settings.nsfwMode = optNSFWMode;
+        settings.nsfwLevel = optNSFWLevel;
+        settings.renderThreadCount = optRenderThreadCount;
+        settings.restoreTreeState = optRestoreTreeState;
+        settings.splitOnNewline = optSplitOnNewline;
+        settings.filterTagsText = optFilterTags.join(", ");
+        settings.showEmptyCollections = optShowEmptyCollections;
+        settings.collectionFolderTopLevel = optCollectionFolderTopLevel;
+        settings.collectionFolderSecondLevel = optCollectionFolderSecondLevel;
+        settings.modelListFolderGrouping = optModelListFolderGrouping;
+        settings.useCustomUserAgent = optUseArrangedUA;
+        settings.customUserAgent = optSavedUAString;
+        settings.civitaiApiKey = optCivitaiApiKey;
+        settings.modelUpdateDownloadPolicy = optModelUpdateDownloadPolicy;
+        settings.autoCheckUpdatesOnStartup = optAutoCheckUpdatesOnStartup;
+        settings.useCivitaiName = optUseCivitaiName;
+        settings.suppressLocalWarnings = optSuppressLocalWarnings;
+        settings.userGalleryMatchMode = optUserGalleryMatchMode;
+        settings.uiScale = optUiScale;
+    }
 
     QJsonArray loraArr;
     for (const QString &path : loraPaths) loraArr.append(path);
@@ -8402,34 +8349,8 @@ void MainWindow::saveGlobalConfig() {
     root["translation_paths_disabled"] = translationDisabledArr;
     root["model_list_collapsed_folders"] = collapsedModelFoldersArr;
     root["translation_path"]           = collectEnabledPaths(translationCsvPaths, disabledTranslationCsvPaths).value(0);
-    root["lora_recursive"]              = optLoraRecursive;
-    root["gallery_recursive"]           = optGalleryRecursive;
-    root["blur_radius"]                 = optBlurRadius;
-    root["blur_downscale_enabled"]      = optDownscaleBlur;
-    root["blur_process_width"]          = optBlurProcessWidth;
-    root["nsfw_filter"]                 = optFilterNSFW;
-    root["nsfw_mode"]                   = optNSFWMode;
-    root["nsfw_level_threshold"]        = optNSFWLevel;
-    root["render_thread_count"]         = optRenderThreadCount;
-    root["restore_tree_state"]          = optRestoreTreeState;
-    root["split_on_newline"]            = optSplitOnNewline;
-    root["filter_tags_string"]          = settingsPage ? settings.filterTagsText : optFilterTags.join(", ");
-    root["show_empty_collections"]      = optShowEmptyCollections;
-    root["collection_folder_top_level"] = optCollectionFolderTopLevel;
-    root["collection_folder_second_level"] = optCollectionFolderSecondLevel;
-    root["model_list_folder_grouping"]  = optModelListFolderGrouping;
-    root["use_custom_ua"]               = settingsPage ? settings.useCustomUserAgent : optUseArrangedUA;
-    root["custom_user_agent"]           = settingsPage ? settings.customUserAgent : optSavedUAString;
-    root["civitai_api_key"]             = settingsPage ? settings.civitaiApiKey : optCivitaiApiKey;
-    root["use_civitai_name"]            = optUseCivitaiName;
-    root["suppress_local_model_warnings"] = optSuppressLocalWarnings;
-    root["user_gallery_match_mode"]     = optUserGalleryMatchMode;
-    root["model_update_download_policy"] = optModelUpdateDownloadPolicy;
-    root["auto_check_update_on_startup"] = optAutoCheckUpdatesOnStartup;
+    settings.writeToJson(root);
     root.remove("model_switch_delay_ms");
-
-    // 记录当前 UI 的缩放比例
-    root["ui_scale"] = optUiScale;
 
     // 记录当前窗口的实际大小（这样用户拉伸窗口后，下次启动会记住大小）
     // 只有当窗口没有最大化/全屏时才记录
@@ -8662,25 +8583,6 @@ void MainWindow::onBrowseLoraPath() {
 
 void MainWindow::onBrowseGalleryPath() {
     editGalleryPaths(false);
-}
-
-void MainWindow::onSettingsChanged() {
-    if (settingsPage) {
-        const SettingsState state = settingsPage->state();
-        optLoraRecursive = state.loraRecursive;
-        optGalleryRecursive = state.galleryRecursive;
-    }
-
-    // 保存
-    saveGlobalConfig();
-}
-
-void MainWindow::onBlurSliderChanged(int value) {
-    optBlurRadius = value;
-    if (settingsPage) settingsPage->setBlurValue(value);
-
-    // 实时更新当前背景 (如果有)
-    updateBackgroundImage();
 }
 
 QIcon MainWindow::generatePlaceholderIcon()

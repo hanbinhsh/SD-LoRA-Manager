@@ -2,7 +2,10 @@
 #define SETTINGSPAGE_WIDGET_H
 
 #include <QString>
+#include <QStringList>
 #include <QWidget>
+
+class QJsonObject;
 
 namespace Ui {
 class SettingsPage;
@@ -34,6 +37,11 @@ struct SettingsState {
     bool suppressLocalWarnings = false;
     int userGalleryMatchMode = 0;
     double uiScale = 1.0;
+
+    static SettingsState fromJson(const QJsonObject &root, const QString &defaultFilterTags);
+    void writeToJson(QJsonObject &root) const;
+    void normalize();
+    QStringList filterTags() const;
 };
 
 class SettingsPage : public QWidget
