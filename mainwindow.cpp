@@ -58,14 +58,14 @@
 
 #include "imageloader.h"
 #include "imagemetadataparser.h"
-#include "comfyworkflowviewer.h"
-#include "llmpromptwidget.h"
+#include "tools/comfyworkflowviewer.h"
+#include "tools/llmpromptwidget.h"
 #include "pathlistdialog.h"
-#include "tagbrowserwidget.h"
-#include "syncwidget.h"
-#include "promptparserwidget.h"
-#include "usageanalysiswidget.h"
-#include "prompttemplatelibrarywidget.h"
+#include "tools/tagbrowserwidget.h"
+#include "tools/syncwidget.h"
+#include "tools/promptparserwidget.h"
+#include "tools/usageanalysiswidget.h"
+#include "tools/prompttemplatelibrarywidget.h"
 #include "modelnotedialog.h"
 
 namespace {

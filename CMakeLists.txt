@@ -19,34 +19,45 @@ qt_add_executable(SD_LoRA_Manager
     mainwindow.ui
     imagemetadataparser.h
     imagemetadataparser.cpp
-    comfyworkflowviewer.h
-    comfyworkflowviewer.cpp
+    tools/comfyworkflowviewer.h
+    tools/comfyworkflowviewer.cpp
     tableviewstylehelper.h
     tableviewstylehelper.cpp
     pathlistdialog.h
     pathlistdialog.cpp
     pathlistdialog.ui
-    tagbrowserwidget.h
-    tagbrowserwidget.cpp
-    tagbrowserwidget.ui
-    llmpromptwidget.h
-    llmpromptwidget.cpp
-    llmpromptwidget.ui
-    prompttemplatelibrarywidget.h
-    prompttemplatelibrarywidget.cpp
-    prompttemplatelibrarywidget.ui
+    tools/tagbrowserwidget.h
+    tools/tagbrowserwidget.cpp
+    tools/tagbrowserwidget.ui
+    tools/llmpromptwidget.h
+    tools/llmpromptwidget.cpp
+    tools/llmpromptwidget.ui
+    tools/prompttemplatelibrarywidget.h
+    tools/prompttemplatelibrarywidget.cpp
+    tools/prompttemplatelibrarywidget.ui
     modelnotedialog.h
     modelnotedialog.cpp
     modelnotedialog.ui
-    usageanalysiswidget.h
-    usageanalysiswidget.cpp
-    usageanalysiswidget.ui
+    tools/usageanalysiswidget.h
+    tools/usageanalysiswidget.cpp
+    tools/usageanalysiswidget.ui
     imageloader.h
     resources.qrc
     app.rc
     tagflowwidget.h
-    syncwidget.h syncwidget.cpp syncwidget.ui
-    promptparserwidget.h promptparserwidget.cpp promptparserwidget.ui
+    tools/syncwidget.h
+    tools/syncwidget.cpp
+    tools/syncwidget.ui
+    tools/promptparserwidget.h
+    tools/promptparserwidget.cpp
+    tools/promptparserwidget.ui
+)
+
+target_include_directories(SD_LoRA_Manager
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools
+        ${CMAKE_CURRENT_SOURCE_DIR}/pages
 )
 
 target_link_libraries(SD_LoRA_Manager
