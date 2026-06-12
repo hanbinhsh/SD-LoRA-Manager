@@ -153,6 +153,12 @@ QScrollArea { border: none; background-color: #1b2838; }
     background-color: rgba(102,192,244,92);
     border-color: rgba(102,192,244,190);
 }
+#homeFilterFrame #btnHomeClearFilters,
+#homeFilterFrame #btnHomeFilterToggle,
+#homeFilterFrame QPushButton[class="filterChip"] {
+    padding: 2px 8px;
+    min-height: 18px;
+}
 QTextBrowser { background-color: #16191e; border: 1px solid #31363d; color: #acb2b8; border-radius: 3px; padding: 8px; }
 #textDescription, #textUserNotePreview { background-color: transparent; border: none; color: #acb2b8; }
 #textLocalDescription, #textLocalTriggers, #textEditImgPrompt, #textEditImgNegPrompt {

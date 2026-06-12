@@ -1706,9 +1706,9 @@ void MainWindow::refreshHomeFilterChips()
 {
     if (!ui || !ui->layoutHomeFilterChips || !ui->layoutHomeFilterSummaryChips) return;
 
-    constexpr int kSummaryChipHeight = 28;
-    constexpr int kSummaryAreaHeight = 46;     // chip 高度 + 横向滚动条空间
-    constexpr int kSummarySpacing = 6;
+    constexpr int kSummaryChipHeight = 24;
+    constexpr int kSummaryAreaHeight = 36;     // chip 高度 + 横向滚动条空间
+    constexpr int kSummarySpacing = 5;
     constexpr int kTagsMaxHeight = 170;
 
     clearLayout(ui->layoutHomeFilterSummaryChips);
