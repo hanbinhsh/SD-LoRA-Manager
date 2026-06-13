@@ -197,23 +197,6 @@
             </item>
            </layout>
           </item>
-          <item row="0" column="0">
-           <widget class="QCheckBox" name="chkUseCustomUserAgent">
-            <property name="toolTip">
-             <string>勾选后使用右侧文本框的内容作为 UA；未勾选则每次启动随机生成。</string>
-            </property>
-            <property name="text">
-             <string>自定义 UA / Custom User-Agent:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="lblCivitaiApiKey">
-            <property name="text">
-             <string>Civitai API Key:</string>
-            </property>
-           </widget>
-          </item>
           <item row="0" column="3">
            <widget class="QPushButton" name="btnResetUA">
             <property name="toolTip">
@@ -224,20 +207,20 @@
             </property>
            </widget>
           </item>
-          <item row="2" column="3">
-           <widget class="QLabel" name="lblCivitaiApiStatus">
+          <item row="1" column="0">
+           <widget class="QLabel" name="lblCivitaiApiKey">
             <property name="text">
-             <string>API Key 未测试</string>
+             <string>Civitai API Key:</string>
             </property>
            </widget>
           </item>
-          <item row="1" column="2">
-           <widget class="QLineEdit" name="editCivitaiApiKey">
-            <property name="echoMode">
-             <enum>QLineEdit::EchoMode::Password</enum>
+          <item row="0" column="0">
+           <widget class="QCheckBox" name="chkUseCustomUserAgent">
+            <property name="toolTip">
+             <string>勾选后使用右侧文本框的内容作为 UA；未勾选则每次启动随机生成。</string>
             </property>
-            <property name="placeholderText">
-             <string>可选：用于认证下载和访问收藏资源</string>
+            <property name="text">
+             <string>自定义 UA / Custom User-Agent:</string>
             </property>
            </widget>
           </item>
@@ -248,7 +231,20 @@
             </property>
            </widget>
           </item>
-          <item row="0" column="2">
+          <item row="3" column="0" colspan="3">
+           <widget class="QCheckBox" name="chkAutoCheckUpdatesOnStartup">
+            <property name="toolTip">
+             <string>启动软件后自动检查 GitHub Release。只有发现新版本时弹窗提醒。</string>
+            </property>
+            <property name="text">
+             <string>启动时自动检查更新 / Auto check updates on startup</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
            <widget class="QLineEdit" name="editUserAgent">
             <property name="enabled">
              <bool>false</bool>
@@ -258,7 +254,28 @@
             </property>
            </widget>
           </item>
-          <item row="2" column="2">
+          <item row="1" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_3">
+            <item>
+             <widget class="QLineEdit" name="editCivitaiApiKey">
+              <property name="echoMode">
+               <enum>QLineEdit::EchoMode::Password</enum>
+              </property>
+              <property name="placeholderText">
+               <string>可选：用于认证下载和访问收藏资源</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblCivitaiApiStatus">
+              <property name="text">
+               <string>API Key 未测试</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="2" column="1">
            <widget class="QComboBox" name="comboModelUpdateDownloadPolicy">
             <item>
              <property name="text">
@@ -275,19 +292,6 @@
               <string>覆盖当前文件</string>
              </property>
             </item>
-           </widget>
-          </item>
-          <item row="3" column="0" colspan="3">
-           <widget class="QCheckBox" name="chkAutoCheckUpdatesOnStartup">
-            <property name="toolTip">
-             <string>启动软件后自动检查 GitHub Release。只有发现新版本时弹窗提醒。</string>
-            </property>
-            <property name="text">
-             <string>启动时自动检查更新 / Auto check updates on startup</string>
-            </property>
-            <property name="checked">
-             <bool>true</bool>
-            </property>
            </widget>
           </item>
          </layout>
@@ -403,189 +407,195 @@
         </widget>
        </item>
        <item>
-        <widget class="QGroupBox" name="groupAppearance">
-         <property name="title">
-          <string>外观 / Appearance</string>
-         </property>
-         <layout class="QGridLayout" name="gridLayout">
-          <item row="0" column="2">
-           <widget class="QDoubleSpinBox" name="spinUiScale">
-            <property name="minimum">
-             <double>0.250000000000000</double>
-            </property>
-            <property name="maximum">
-             <double>3.000000000000000</double>
-            </property>
-            <property name="singleStep">
-             <double>0.100000000000000</double>
-            </property>
-            <property name="value">
-             <double>1.000000000000000</double>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="2">
-           <widget class="QCheckBox" name="chkUseCivitaiName">
-            <property name="toolTip">
-             <string>勾选后，如果本地存在 JSON 元数据，将显示模型的真实名称（如 'ChilloutMix [Pruned]'）而非文件名。</string>
-            </property>
-            <property name="text">
-             <string>使用 Civitai 模型名称 / Use Civitai Name</string>
-            </property>
-           </widget>
-          </item>
-          <item row="8" column="0">
-           <widget class="QCheckBox" name="chkModelListFolderGrouping">
-            <property name="toolTip">
-             <string>勾选后，Models 列表会按已启用的 LoRA 根目录分组显示。</string>
-            </property>
-            <property name="text">
-             <string>Models 列表按文件夹分类 / Group Models by Folder</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="0">
-           <widget class="QLabel" name="label">
-            <property name="text">
-             <string>软件缩放 (重启后生效) / UI Scale (Need Restart)</string>
-            </property>
-           </widget>
-          </item>
-          <item row="6" column="0" colspan="4">
-           <widget class="Line" name="line">
-            <property name="orientation">
-             <enum>Qt::Orientation::Horizontal</enum>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="0">
-           <widget class="QCheckBox" name="chkDownscaleBlur">
-            <property name="toolTip">
-             <string>开启后会先将原图缩小再模糊，能极大提高大图背景的生成速度。</string>
-            </property>
-            <property name="text">
-             <string>模糊前缩放图片 / Scale before blur</string>
-            </property>
-           </widget>
-          </item>
-          <item row="7" column="2">
-           <widget class="QCheckBox" name="chkCollectionFolderSecondLevel">
-            <property name="toolTip">
-             <string>勾选后，Collections 侧边栏先显示收藏夹，再在收藏夹下按 LoRA 根目录分组。</string>
-            </property>
-            <property name="text">
-             <string>将文件夹作为收藏夹二级分类 / Folder as Second Collection Level</string>
-            </property>
-           </widget>
-          </item>
-          <item row="8" column="2">
-           <widget class="QCheckBox" name="chkCollectionFolderTopLevel">
-            <property name="toolTip">
-             <string>勾选后，Collections 侧边栏先按 LoRA 根目录分组，再在每个文件夹下显示收藏夹。</string>
-            </property>
-            <property name="text">
-             <string>将文件夹作为收藏夹顶层分类 / Folder as Top Collection Level</string>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="0" colspan="4">
-           <widget class="Line" name="line_2">
-            <property name="orientation">
-             <enum>Qt::Orientation::Horizontal</enum>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="2">
-           <layout class="QHBoxLayout" name="horizontalLayout">
-            <item>
-             <widget class="QSlider" name="sliderBlur">
+        <layout class="QHBoxLayout" name="horizontalLayout_4">
+         <item>
+          <widget class="QGroupBox" name="groupAppearance">
+           <property name="title">
+            <string>外观 / Appearance</string>
+           </property>
+           <layout class="QGridLayout" name="gridLayout">
+            <item row="0" column="1">
+             <widget class="QDoubleSpinBox" name="spinUiScale">
               <property name="minimum">
-               <number>0</number>
+               <double>0.250000000000000</double>
               </property>
               <property name="maximum">
-               <number>100</number>
+               <double>3.000000000000000</double>
+              </property>
+              <property name="singleStep">
+               <double>0.100000000000000</double>
               </property>
               <property name="value">
-               <number>30</number>
+               <double>1.000000000000000</double>
               </property>
+             </widget>
+            </item>
+            <item row="2" column="0">
+             <widget class="QCheckBox" name="chkDownscaleBlur">
+              <property name="toolTip">
+               <string>开启后会先将原图缩小再模糊，能极大提高大图背景的生成速度。</string>
+              </property>
+              <property name="text">
+               <string>模糊前缩放图片 / Scale before blur</string>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="0" colspan="3">
+             <widget class="Line" name="line_2">
               <property name="orientation">
                <enum>Qt::Orientation::Horizontal</enum>
               </property>
              </widget>
             </item>
-            <item>
-             <widget class="QLabel" name="lblBlurValue">
-              <property name="minimumSize">
-               <size>
-                <width>40</width>
-                <height>0</height>
-               </size>
+            <item row="1" column="1">
+             <layout class="QHBoxLayout" name="horizontalLayout">
+              <item>
+               <widget class="QSlider" name="sliderBlur">
+                <property name="minimum">
+                 <number>0</number>
+                </property>
+                <property name="maximum">
+                 <number>100</number>
+                </property>
+                <property name="value">
+                 <number>30</number>
+                </property>
+                <property name="orientation">
+                 <enum>Qt::Orientation::Horizontal</enum>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="lblBlurValue">
+                <property name="minimumSize">
+                 <size>
+                  <width>40</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string>30px</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item row="1" column="0">
+             <widget class="QLabel" name="lblBlur">
+              <property name="text">
+               <string>背景模糊半径 / Blur Radius:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="0">
+             <widget class="QLabel" name="label">
+              <property name="text">
+               <string>软件缩放 (重启后生效) / UI Scale (Need Restart)</string>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="1">
+             <widget class="QSpinBox" name="spinBlurWidth">
+              <property name="suffix">
+               <string> px</string>
+              </property>
+              <property name="minimum">
+               <number>64</number>
+              </property>
+              <property name="maximum">
+               <number>2048</number>
+              </property>
+              <property name="value">
+               <number>500</number>
+              </property>
+             </widget>
+            </item>
+            <item row="4" column="1">
+             <widget class="QCheckBox" name="chkUseCivitaiName">
+              <property name="toolTip">
+               <string>勾选后，如果本地存在 JSON 元数据，将显示模型的真实名称（如 'ChilloutMix [Pruned]'）而非文件名。</string>
               </property>
               <property name="text">
-               <string>30px</string>
+               <string>使用 Civitai 模型名称 / Use Civitai Name</string>
+              </property>
+             </widget>
+            </item>
+            <item row="4" column="0">
+             <widget class="QCheckBox" name="chkRestoreTreeState">
+              <property name="toolTip">
+               <string>下次启动时，保持当前收藏夹的展开状态和滚动条位置。</string>
+              </property>
+              <property name="text">
+               <string>启动时恢复菜单 / Restore Menu on Startup</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item row="6" column="0" colspan="2">
+             <widget class="QCheckBox" name="chkSuppressLocalWarnings">
+              <property name="toolTip">
+               <string>勾选后，不再弹出“检测到 X 个本地/已编辑模型”的总量提醒；单个模型的覆盖确认仍会保留。</string>
+              </property>
+              <property name="text">
+               <string>不显示本地模型总量警告 / Hide Local Model Count Warning</string>
               </property>
              </widget>
             </item>
            </layout>
-          </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="lblBlur">
-            <property name="text">
-             <string>背景模糊半径 / Blur Radius:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="0">
-           <widget class="QCheckBox" name="chkSuppressLocalWarnings">
-            <property name="toolTip">
-             <string>勾选后，不再弹出“检测到 X 个本地/已编辑模型”的总量提醒；单个模型的覆盖确认仍会保留。</string>
-            </property>
-            <property name="text">
-             <string>不显示本地模型总量警告 / Hide Local Model Count Warning</string>
-            </property>
-           </widget>
-          </item>
-          <item row="7" column="0">
-           <widget class="QCheckBox" name="chkShowEmptyCollections">
-            <property name="toolTip">
-             <string>如果取消勾选，不包含任何模型（或被搜索过滤后为空）的收藏夹将不会显示在侧边栏中。</string>
-            </property>
-            <property name="text">
-             <string>显示空的收藏夹 / Show Empty Collections</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="2">
-           <widget class="QSpinBox" name="spinBlurWidth">
-            <property name="suffix">
-             <string> px</string>
-            </property>
-            <property name="minimum">
-             <number>64</number>
-            </property>
-            <property name="maximum">
-             <number>2048</number>
-            </property>
-            <property name="value">
-             <number>500</number>
-            </property>
-           </widget>
-          </item>
-          <item row="5" column="0">
-           <widget class="QCheckBox" name="chkRestoreTreeState">
-            <property name="toolTip">
-             <string>下次启动时，保持当前收藏夹的展开状态和滚动条位置。</string>
-            </property>
-            <property name="text">
-             <string>启动时恢复菜单 / Restore Menu on Startup</string>
-            </property>
-            <property name="checked">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </widget>
+          </widget>
+         </item>
+         <item>
+          <widget class="QGroupBox" name="groupBox">
+           <property name="title">
+            <string>收藏夹 / Collections</string>
+           </property>
+           <layout class="QVBoxLayout" name="verticalLayout">
+            <item>
+             <widget class="QCheckBox" name="chkCollectionFolderSecondLevel">
+              <property name="toolTip">
+               <string>勾选后，Collections 侧边栏先显示收藏夹，再在收藏夹下按 LoRA 根目录分组。</string>
+              </property>
+              <property name="text">
+               <string>将文件夹作为收藏夹二级分类 / Folder as Second Collection Level</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="chkShowEmptyCollections">
+              <property name="toolTip">
+               <string>如果取消勾选，不包含任何模型（或被搜索过滤后为空）的收藏夹将不会显示在侧边栏中。</string>
+              </property>
+              <property name="text">
+               <string>显示空的收藏夹 / Show Empty Collections</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="chkCollectionFolderTopLevel">
+              <property name="toolTip">
+               <string>勾选后，Collections 侧边栏先按 LoRA 根目录分组，再在每个文件夹下显示收藏夹。</string>
+              </property>
+              <property name="text">
+               <string>将文件夹作为收藏夹顶层分类 / Folder as Top Collection Level</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="chkModelListFolderGrouping">
+              <property name="toolTip">
+               <string>勾选后，Models 列表会按已启用的 LoRA 根目录分组显示。</string>
+              </property>
+              <property name="text">
+               <string>Models 列表按文件夹分类 / Group Models by Folder</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+        </layout>
        </item>
        <item>
         <spacer name="verticalSpacer_Appearance">

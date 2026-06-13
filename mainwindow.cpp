@@ -3046,6 +3046,8 @@ void MainWindow::refreshTriggerWordsPanel(const ModelMeta &meta)
     for (const QString &words : customTriggerGroups) {
         addTriggerGroup(words, "Custom / 用户自定义", AppStyle::CustomTriggerGreen);
     }
+
+    ui->layoutTriggerStack->addStretch(1);
 }
 
 // 辅助函数

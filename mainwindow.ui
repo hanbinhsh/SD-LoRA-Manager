@@ -317,7 +317,7 @@
             <item>
              <widget class="QStackedWidget" name="sidebarStack">
               <property name="currentIndex">
-               <number>0</number>
+               <number>1</number>
               </property>
               <widget class="QWidget" name="pageModelsList">
                <layout class="QVBoxLayout" name="verticalLayout_modelListContainer">
@@ -379,7 +379,7 @@
           </widget>
           <widget class="QStackedWidget" name="mainStack">
            <property name="currentIndex">
-            <number>0</number>
+            <number>1</number>
            </property>
            <widget class="QWidget" name="pageHome">
             <layout class="QVBoxLayout" name="verticalLayout_Home">
@@ -776,12 +776,6 @@ New</string>
              </property>
              <item>
               <widget class="QScrollArea" name="scrollArea">
-               <property name="minimumSize">
-                <size>
-                 <width>0</width>
-                 <height>500</height>
-                </size>
-               </property>
                <property name="frameShape">
                 <enum>QFrame::Shape::NoFrame</enum>
                </property>
@@ -795,16 +789,10 @@ New</string>
                 <property name="geometry">
                  <rect>
                   <x>0</x>
-                  <y>0</y>
+                  <y>-649</y>
                   <width>982</width>
                   <height>1644</height>
                  </rect>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>0</width>
-                  <height>500</height>
-                 </size>
                 </property>
                 <layout class="QVBoxLayout" name="verticalLayout_ScrollContent">
                  <property name="spacing">
@@ -1035,12 +1023,6 @@ New</string>
                  </item>
                  <item>
                   <widget class="QWidget" name="contentAreaWidget" native="true">
-                   <property name="minimumSize">
-                    <size>
-                     <width>0</width>
-                     <height>500</height>
-                    </size>
-                   </property>
                    <layout class="QVBoxLayout" name="verticalLayout_ContentArea">
                     <property name="leftMargin">
                      <number>0</number>
@@ -1056,17 +1038,11 @@ New</string>
                     </property>
                     <item>
                      <widget class="QStackedWidget" name="detailContentStack">
-                      <property name="minimumSize">
-                       <size>
-                        <width>0</width>
-                        <height>500</height>
-                       </size>
-                      </property>
                       <property name="currentIndex">
                        <number>0</number>
                       </property>
                       <widget class="QWidget" name="pageModelInfo">
-                       <layout class="QHBoxLayout" name="horizontalLayout_Content" stretch="3,0,0">
+                       <layout class="QHBoxLayout" name="horizontalLayout_Content" stretch="0,0,0">
                         <property name="spacing">
                          <number>20</number>
                         </property>
@@ -1157,8 +1133,14 @@ New</string>
                           </item>
                           <item>
                            <layout class="QHBoxLayout" name="horizontalLayout_3">
+                            <property name="sizeConstraint">
+                             <enum>QLayout::SizeConstraint::SetMinimumSize</enum>
+                            </property>
                             <item>
                              <layout class="QVBoxLayout" name="verticalLayout">
+                              <property name="sizeConstraint">
+                               <enum>QLayout::SizeConstraint::SetMinimumSize</enum>
+                              </property>
                               <item>
                                <widget class="QLabel" name="lblPromptHeader">
                                 <property name="minimumSize">
@@ -1201,6 +1183,9 @@ New</string>
                             </item>
                             <item>
                              <layout class="QVBoxLayout" name="verticalLayout_5">
+                              <property name="sizeConstraint">
+                               <enum>QLayout::SizeConstraint::SetMinimumSize</enum>
+                              </property>
                               <item>
                                <widget class="QLabel" name="lblNegPromptHeader">
                                 <property name="minimumSize">
@@ -1261,7 +1246,7 @@ New</string>
                            </widget>
                           </item>
                           <item>
-                           <layout class="QVBoxLayout" name="verticalLayout_8">
+                           <layout class="QVBoxLayout" name="verticalLayout_8" stretch="0,0,0">
                             <item>
                              <widget class="QLabel" name="label_TriggerTitle">
                               <property name="minimumSize">
@@ -1285,7 +1270,11 @@ New</string>
                              </widget>
                             </item>
                             <item>
-                             <layout class="QVBoxLayout" name="layoutTriggerStack"/>
+                             <layout class="QVBoxLayout" name="layoutTriggerStack">
+                              <property name="sizeConstraint">
+                               <enum>QLayout::SizeConstraint::SetMinimumSize</enum>
+                              </property>
+                             </layout>
                             </item>
                             <item>
                              <spacer name="verticalSpacer_2">
@@ -2655,7 +2644,7 @@ Hash: ...</string>
                  <property name="minimumSize">
                   <size>
                    <width>0</width>
-                   <height>500</height>
+                   <height>0</height>
                   </size>
                  </property>
                  <property name="text">
