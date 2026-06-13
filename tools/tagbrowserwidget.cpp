@@ -659,32 +659,6 @@ void TagBrowserWidget::setLoadingState(bool loading, const QString &message)
     }
 }
 
-QStringList TagBrowserWidget::parseCsvLine(const QString &line) const
-{
-    QStringList parts;
-    QString current;
-    bool inQuotes = false;
-
-    for (int i = 0; i < line.size(); ++i) {
-        const QChar ch = line.at(i);
-        if (ch == '"') {
-            if (inQuotes && i + 1 < line.size() && line.at(i + 1) == '"') {
-                current += '"';
-                ++i;
-            } else {
-                inQuotes = !inQuotes;
-            }
-        } else if (ch == ',' && !inQuotes) {
-            parts.append(current.trimmed());
-            current.clear();
-        } else {
-            current += ch;
-        }
-    }
-    parts.append(current.trimmed());
-    return parts;
-}
-
 QString TagBrowserWidget::escapeCsvField(const QString &value) const
 {
     QString text = value;
@@ -839,32 +813,6 @@ void TagBrowserWidget::updateStatusLabel()
     bool empty = (m_model->rowCount() == 0);
     ui->lblEmptyState->setVisible(empty);
     ui->tableTags->setMinimumHeight(empty ? 220 : 0);
-}
-
-QHash<QString, QString> TagBrowserWidget::currentTranslationMap() const
-{
-    QHash<QString, QString> out;
-    const QHash<QString, TagTranslationInfo> infos = currentTranslationInfoMap();
-
-    for (auto it = infos.constBegin(); it != infos.constEnd(); ++it) {
-        const QString tag = it.key();
-        const TagTranslationInfo &info = it.value();
-
-        QString display;
-        if (!info.category.isEmpty() && !info.translation.isEmpty()) {
-            display = info.category + "-" + info.translation;
-        } else if (!info.translation.isEmpty()) {
-            display = info.translation;
-        } else if (!info.category.isEmpty()) {
-            display = info.category;
-        }
-
-        if (!display.isEmpty()) {
-            out.insert(tag, display);
-        }
-    }
-
-    return out;
 }
 
 TagTranslationInfo translatedInfoForTag(const QString &tag, const QHash<QString, TagTranslationInfo> &infos)

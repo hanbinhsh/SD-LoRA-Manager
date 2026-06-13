@@ -29,7 +29,6 @@ public:
     void setPathEntries(const QList<ManagedPathEntry> &entries);
     QList<ManagedPathEntry> pathEntries() const;
 
-    void setPaths(const QStringList &paths);
     QStringList paths() const;
     void setHintText(const QString &text);
     void setDialogTitle(const QString &title);

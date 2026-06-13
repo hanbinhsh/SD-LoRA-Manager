@@ -56,11 +56,11 @@
 #include <QElapsedTimer>
 #include <QSharedPointer>
 
-#include "imageloader.h"
-#include "imagemetadataparser.h"
+#include "utils/imageloader.h"
+#include "utils/imagemetadataparser.h"
 #include "tools/comfyworkflowviewer.h"
 #include "tools/llmpromptwidget.h"
-#include "pathlistdialog.h"
+#include "dialogs/pathlistdialog.h"
 #include "tools/tagbrowserwidget.h"
 #include "tools/syncwidget.h"
 #include "tools/promptparserwidget.h"
@@ -69,9 +69,9 @@
 #include "pages/downloadmanager.h"
 #include "pages/downloadspage.h"
 #include "pages/settingspage.h"
-#include "modelnotedialog.h"
-#include "styleconstants.h"
-#include "fileutils.h"
+#include "dialogs/modelnotedialog.h"
+#include "utils/styleconstants.h"
+#include "utils/fileutils.h"
 
 namespace {
 QString normalizedHomeTagKey(const QString &tag)

@@ -168,7 +168,6 @@ private:
     QString currentTaskKey() const;
     QString taskKeyForIndex(int index) const;
     QString taskLabelForKey(const QString &taskKey) const;
-    bool isReplacementTask(const QString &taskKey) const;
     void loadPromptTemplateForTask(const QString &taskKey);
     void persistCurrentPromptTemplate();
     void loadTaskPromptFieldsForTask(const QString &taskKey);
@@ -188,7 +187,6 @@ private:
     QString cleanTagText(QString text) const;
     QStringList parsePromptToTags(const QString &prompt) const;
     QStringList extractLorasFromPrompt(const QString &prompt) const;
-    QStringList extractLoraTagsWithWeights(const QString &prompt) const;
     QStringList splitPromptTokens(const QString &prompt) const;
     QString normalizeLooseText(const QString &text) const;
     QStringList parseReplaceInstruction(QString *oldTarget = nullptr, QString *newTarget = nullptr) const;
@@ -206,7 +204,6 @@ private:
     QString selectedLoraContext() const;
     QString selectedImageContext() const;
     QStringList selectedImagePayloads() const;
-    QString postProcessGenerationResult(const QString &text) const;
     void processStreamChunk(const QByteArray &chunk);
     void processStreamLine(const QByteArray &line);
     void finishStreaming(const QString &modelName, bool canceled);

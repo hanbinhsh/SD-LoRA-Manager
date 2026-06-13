@@ -123,7 +123,6 @@ private:
     int m_userTagLoadGeneration = 0;
     const QHash<QString, QString> *m_mergedTranslationMap = nullptr;
 
-    QStringList parseCsvLine(const QString &line) const;
     QString escapeCsvField(const QString &value) const;
     void ensureCsvLoadedForEditing();
     void setLoadingState(bool loading, const QString &message = QString());
@@ -134,7 +133,6 @@ private:
     void updateUserTagTranslations();
     void updateUserTagStatusLabel();
     QHash<QString, TagTranslationInfo> currentTranslationInfoMap() const;
-    QHash<QString, QString> currentTranslationMap() const;
     QString translatedTextForTag(const QString &tag, const QHash<QString, QString> &translations) const;
     QString escapeUserTagCsvField(const QString &value) const;
     QVector<UserTagUsageRow> selectedUserTagRows() const;

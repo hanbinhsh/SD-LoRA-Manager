@@ -115,7 +115,6 @@ private:
     QString typeToString(PlaceholderType type) const;
     PlaceholderType typeFromString(const QString &text) const;
     QString translatedTextForTag(const QString &tag) const;
-    QStringList splitOptions(const QString &text) const;
 
     QStringList currentPlaceholderOptionValues() const;
     void setPlaceholderOptionValues(const QStringList &options);
@@ -170,7 +169,6 @@ private slots:
     void onNewTemplateClicked();
     void onDuplicateTemplateClicked();
     void onDeleteTemplateClicked();
-    void onPlaceholderCellChanged(int row, int column);
     void onSavePlaceholderClicked();
     void onNewPlaceholderClicked();
     void onDeletePlaceholderClicked();

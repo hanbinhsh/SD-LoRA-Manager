@@ -38,7 +38,7 @@
 
 #include "pages/downloadmodels.h"
 #include "pages/settingspage.h"
-#include "tagflowwidget.h"
+#include "widgets/tagflowwidget.h"
 
 // 模型列表相关
 const int ROLE_MODEL_NAME             = Qt::UserRole;

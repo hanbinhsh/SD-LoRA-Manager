@@ -14,12 +14,12 @@ set(CMAKE_AUTORCC ON)
 qt_add_executable(SD_LoRA_Manager
     WIN32 MACOSX_BUNDLE
     main.cpp
-    mainwindow.cpp
-    mainwindow.h
-    mainwindow.ui
-    styleconstants.h
-    fileutils.h
-    fileutils.cpp
+    windows/mainwindow.cpp
+    windows/mainwindow.h
+    windows/mainwindow.ui
+    utils/styleconstants.h
+    utils/fileutils.h
+    utils/fileutils.cpp
     pages/downloadspage.h
     pages/downloadspage.cpp
     pages/downloadspage.ui
@@ -28,15 +28,15 @@ qt_add_executable(SD_LoRA_Manager
     pages/settingspage.h
     pages/settingspage.cpp
     pages/settingspage.ui
-    imagemetadataparser.h
-    imagemetadataparser.cpp
+    utils/imagemetadataparser.h
+    utils/imagemetadataparser.cpp
     tools/comfyworkflowviewer.h
     tools/comfyworkflowviewer.cpp
-    tableviewstylehelper.h
-    tableviewstylehelper.cpp
-    pathlistdialog.h
-    pathlistdialog.cpp
-    pathlistdialog.ui
+    utils/tableviewstylehelper.h
+    utils/tableviewstylehelper.cpp
+    dialogs/pathlistdialog.h
+    dialogs/pathlistdialog.cpp
+    dialogs/pathlistdialog.ui
     tools/tagbrowserwidget.h
     tools/tagbrowserwidget.cpp
     tools/tagbrowserwidget.ui
@@ -46,16 +46,16 @@ qt_add_executable(SD_LoRA_Manager
     tools/prompttemplatelibrarywidget.h
     tools/prompttemplatelibrarywidget.cpp
     tools/prompttemplatelibrarywidget.ui
-    modelnotedialog.h
-    modelnotedialog.cpp
-    modelnotedialog.ui
+    dialogs/modelnotedialog.h
+    dialogs/modelnotedialog.cpp
+    dialogs/modelnotedialog.ui
     tools/usageanalysiswidget.h
     tools/usageanalysiswidget.cpp
     tools/usageanalysiswidget.ui
-    imageloader.h
+    utils/imageloader.h
     resources.qrc
     app.rc
-    tagflowwidget.h
+    widgets/tagflowwidget.h
     tools/syncwidget.h
     tools/syncwidget.cpp
     tools/syncwidget.ui
@@ -67,8 +67,12 @@ qt_add_executable(SD_LoRA_Manager
 target_include_directories(SD_LoRA_Manager
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/windows
         ${CMAKE_CURRENT_SOURCE_DIR}/tools
         ${CMAKE_CURRENT_SOURCE_DIR}/pages
+        ${CMAKE_CURRENT_SOURCE_DIR}/dialogs
+        ${CMAKE_CURRENT_SOURCE_DIR}/utils
+        ${CMAKE_CURRENT_SOURCE_DIR}/widgets
 )
 
 target_link_libraries(SD_LoRA_Manager

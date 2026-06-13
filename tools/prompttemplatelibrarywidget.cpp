@@ -726,18 +726,6 @@ QString PromptTemplateLibraryWidget::translatedTextForTag(const QString &tag) co
     return translated;
 }
 
-QStringList PromptTemplateLibraryWidget::splitOptions(const QString &text) const
-{
-    QString normalized = text;
-    normalized.replace('\r', '\n');
-    QStringList out;
-    for (const QString &line : normalized.split('\n', Qt::SkipEmptyParts)) {
-        const QString value = line.trimmed();
-        if (!value.isEmpty()) out << value;
-    }
-    return out;
-}
-
 void PromptTemplateLibraryWidget::loadLibrary()
 {
     m_loadingUi = true;
@@ -1967,11 +1955,6 @@ void PromptTemplateLibraryWidget::onDeleteTemplateClicked()
     if (m_templates.isEmpty()) createDefaultLibrary();
     saveLibrary();
     refreshAllLists();
-}
-
-void PromptTemplateLibraryWidget::onPlaceholderCellChanged(int row, int)
-{
-    if (row >= 0) updatePlaceholderEditorFromSelection();
 }
 
 void PromptTemplateLibraryWidget::onSavePlaceholderClicked()

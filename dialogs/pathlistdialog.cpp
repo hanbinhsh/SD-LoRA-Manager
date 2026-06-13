@@ -71,18 +71,6 @@ QList<ManagedPathEntry> PathListDialog::pathEntries() const
     return result;
 }
 
-void PathListDialog::setPaths(const QStringList &paths)
-{
-    QList<ManagedPathEntry> entries;
-    entries.reserve(paths.size());
-    for (const QString &path : paths) {
-        if (!path.trimmed().isEmpty()) {
-            entries.append({path, true});
-        }
-    }
-    setPathEntries(entries);
-}
-
 QStringList PathListDialog::paths() const
 {
     QStringList result;

@@ -449,11 +449,6 @@ QString LlmPromptWidget::taskLabelForKey(const QString &taskKey) const
     return "人物替换";
 }
 
-bool LlmPromptWidget::isReplacementTask(const QString &taskKey) const
-{
-    return taskKey == kTaskCharacterReplace || taskKey == kTaskOutfitReplace;
-}
-
 void LlmPromptWidget::loadPromptTemplateForTask(const QString &taskKey)
 {
     m_syncingPromptTemplateEditor = true;
@@ -2238,20 +2233,6 @@ QStringList LlmPromptWidget::extractLorasFromPrompt(const QString &prompt) const
     return result;
 }
 
-QStringList LlmPromptWidget::extractLoraTagsWithWeights(const QString &prompt) const
-{
-    QStringList result;
-    QRegularExpression re("<lora:[^>]+>");
-    auto it = re.globalMatch(prompt);
-    while (it.hasNext()) {
-        QString tag = it.next().captured(0).trimmed();
-        if (!tag.isEmpty() && !result.contains(tag)) {
-            result.append(tag);
-        }
-    }
-    return result;
-}
-
 QStringList LlmPromptWidget::splitPromptTokens(const QString &prompt) const
 {
     QString normalized = prompt;
@@ -2810,139 +2791,6 @@ QJsonObject LlmPromptWidget::buildLmStudioGenerationPayload(const QString &model
         payload[it.key()] = it.value();
     }
     return payload;
-}
-
-QString LlmPromptWidget::postProcessGenerationResult(const QString &text) const
-{
-    QString result = text;
-    if (result.trimmed().isEmpty()) return result;
-
-    QString oldTarget;
-    QString newTarget;
-    parseReplaceInstruction(&oldTarget, &newTarget);
-    const QString oldNorm = normalizeLooseText(oldTarget);
-    const QString newNorm = normalizeLooseText(newTarget);
-
-    auto normalizedSectionName = [](const QString &line) {
-        QString trimmed = line.trimmed();
-        trimmed.remove(QRegularExpression("^#+\\s*"));
-        trimmed.remove(QRegularExpression("^[-*]+\\s*"));
-        trimmed.replace("**", "");
-        trimmed.replace("__", "");
-        trimmed.replace('`', "");
-        trimmed.replace("：", ":");
-        QString compact = trimmed;
-        compact.remove(' ');
-        if (compact.startsWith("推荐LoRA") || compact.startsWith("推荐Lora")) return QString("推荐LoRA");
-        if (compact.startsWith("正向提示词") || compact.startsWith("正面提示词")) return QString("正向提示词");
-        if (compact.startsWith("负向提示词") || compact.startsWith("负面提示词")) return QString("负向提示词");
-        if (compact.startsWith("关键修改说明") || compact.startsWith("修改说明") || compact.startsWith("说明") || compact.startsWith("为什么这样修改")) return QString("说明");
-        if (compact.startsWith("风格理由")) return QString("风格理由");
-        return QString();
-    };
-
-    auto extractBodyAfterHeading = [](const QString &line) {
-        QString normalized = line;
-        normalized.replace("：", ":");
-        int colon = normalized.indexOf(':');
-        return colon >= 0 ? normalized.mid(colon + 1).trimmed() : QString();
-    };
-
-    auto joinPromptSection = [](const QStringList &lines) {
-        QStringList cleaned;
-        for (QString line : lines) {
-            QString trimmed = line.trimmed();
-            if (trimmed.isEmpty()) continue;
-            cleaned.append(trimmed);
-        }
-        return cleaned.join(" ");
-    };
-
-    QStringList originalLines = result.split('\n');
-    QHash<QString, QStringList> sections;
-    QString currentSection;
-    for (const QString &line : originalLines) {
-        QString section = normalizedSectionName(line);
-        if (!section.isEmpty()) {
-            currentSection = section;
-            QString body = extractBodyAfterHeading(line);
-            if (!body.isEmpty()) sections[section].append(body);
-        } else if (!currentSection.isEmpty() && !line.trimmed().isEmpty()) {
-            sections[currentSection].append(line.trimmed());
-        }
-    }
-
-    QStringList selectedTags;
-    QStringList mandatoryPositiveTags;
-    for (int i = 0; i < ui->listLoraCandidates->count(); ++i) {
-        QListWidgetItem *item = ui->listLoraCandidates->item(i);
-        if (item->checkState() != Qt::Checked) continue;
-        QString baseName = QFileInfo(item->data(Qt::UserRole).toString()).completeBaseName();
-        QString baseNorm = normalizeLooseText(baseName);
-        if (!oldNorm.isEmpty() && baseNorm.contains(oldNorm)) continue;
-
-        QString tag = QString("<lora:%1:1>").arg(baseName);
-        selectedTags.append(tag);
-        if (!newNorm.isEmpty() && baseNorm.contains(newNorm)) {
-            mandatoryPositiveTags.append(tag);
-        }
-    }
-
-    if (sections.isEmpty()) {
-        return result.trimmed();
-    }
-
-    QString recoBody = sections.value("推荐LoRA").join("\n").trimmed();
-    QString posBody = joinPromptSection(sections.value("正向提示词")).trimmed();
-    QString negBody = joinPromptSection(sections.value("负向提示词")).trimmed();
-    QString explainBody = sections.value("说明").join("\n").trimmed();
-    if (explainBody.isEmpty()) explainBody = sections.value("风格理由").join("\n").trimmed();
-
-    if (recoBody.isEmpty() && !mandatoryPositiveTags.isEmpty()) {
-        recoBody = mandatoryPositiveTags.join(", ");
-    } else if (recoBody.isEmpty() && !selectedTags.isEmpty()) {
-        recoBody = selectedTags.join(", ");
-    }
-
-    if (!mandatoryPositiveTags.isEmpty()) {
-        for (const QString &tag : mandatoryPositiveTags) {
-            if (!posBody.contains(tag, Qt::CaseInsensitive)) {
-                posBody = posBody.isEmpty() ? tag : (tag + ", " + posBody);
-            }
-        }
-    }
-
-    if (isReplacementTask(currentTaskKey())) {
-        QString baseline = buildConservativeReplacementPrompt();
-        int baselineCount = splitPromptTokens(baseline).size();
-        int posCount = splitPromptTokens(posBody).size();
-        if (!baseline.isEmpty() && (posCount < qMax(6, baselineCount * 2 / 3))) {
-            posBody = baseline;
-        }
-    }
-
-    {
-        QStringList tokens = splitPromptTokens(negBody);
-        QStringList cleaned;
-        QSet<QString> seen;
-        for (QString token : tokens) {
-            QString trimmed = token.trimmed();
-            if (trimmed.contains("<lora:", Qt::CaseInsensitive)) continue;
-            if (QRegularExpression("^[^,<>]+:[0-9.]+$").match(trimmed).hasMatch()) continue;
-            QString lower = trimmed.toLower();
-            if (seen.contains(lower)) continue;
-            seen.insert(lower);
-            cleaned.append(trimmed);
-        }
-        negBody = cleaned.join(", ");
-    }
-
-    QStringList out;
-    out << ("推荐LoRA: " + recoBody);
-    out << ("正向提示词: " + posBody);
-    out << ("负向提示词: " + negBody);
-    out << ("说明: " + explainBody);
-    return out.join("\n");
 }
 
 void LlmPromptWidget::updateStatus(const QString &text, bool isError)
