@@ -39,6 +39,11 @@
 #include <algorithm>
 
 namespace {
+constexpr int RoleFilePath = Qt::UserRole;
+constexpr int RoleModelIdText = Qt::UserRole + 1;
+constexpr int RoleVersionIdText = Qt::UserRole + 2;
+constexpr int RoleSha256 = Qt::UserRole + 3;
+
 QString metadataCategoryDisplayName(const QString &category)
 {
     if (category == "missing") return QStringLiteral("缺失元信息");
@@ -124,7 +129,7 @@ DownloadsPage::DownloadsPage(QWidget *parent)
     applyUnifiedTableRowStyle(ui->tableHealth);
     for (QTableWidget *table : {ui->tableMetadataScan, ui->tableHealth}) {
         table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
-        table->horizontalHeader()->setStretchLastSection(true);
+        table->horizontalHeader()->setStretchLastSection(false);
         table->horizontalHeader()->setSectionsClickable(true);
         table->setSortingEnabled(true);
         table->setAlternatingRowColors(false);
@@ -132,7 +137,9 @@ DownloadsPage::DownloadsPage(QWidget *parent)
         table->setFocusPolicy(Qt::NoFocus);
         table->verticalHeader()->setVisible(false);
     }
-    ui->tableMetadataScan->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    applyMetadataTableColumnLayout();
+    applyHealthTableColumnLayout();
+    updateSelectedMetadataIdentityLabel();
 
     connect(ui->btnMetadataScan, &QPushButton::clicked, this, &DownloadsPage::metadataScanRequested);
     connect(ui->btnMetadataSyncSelected, &QPushButton::clicked, this, [this]() {
@@ -160,21 +167,21 @@ DownloadsPage::DownloadsPage(QWidget *parent)
         if (row < 0) return;
         QTableWidgetItem *item = ui->tableMetadataScan->item(row, 1);
         if (!item) return;
-        emit metadataOpenModelRequested(item->data(Qt::UserRole).toString());
+        emit metadataOpenModelRequested(item->data(RoleFilePath).toString());
     });
     connect(ui->btnMetadataOpenFolder, &QPushButton::clicked, this, [this]() {
         const int row = ui->tableMetadataScan->currentRow();
         if (row < 0) return;
         QTableWidgetItem *item = ui->tableMetadataScan->item(row, 1);
         if (!item) return;
-        emit metadataOpenFolderRequested(item->data(Qt::UserRole).toString());
+        emit metadataOpenFolderRequested(item->data(RoleFilePath).toString());
     });
     connect(ui->tabMetadataScanStatus, &QTabWidget::currentChanged, this, [this]() {
         refreshMetadataScanTable();
     });
     connect(ui->tableMetadataScan, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *item) {
         if (!item || item->column() != 0) return;
-        const QString filePath = item->data(Qt::UserRole).toString();
+        const QString filePath = item->data(RoleFilePath).toString();
         for (MetadataScanItem &scanItem : m_metadataScanItems) {
             if (scanItem.filePath == filePath) {
                 scanItem.checked = item->checkState() == Qt::Checked;
@@ -185,6 +192,9 @@ DownloadsPage::DownloadsPage(QWidget *parent)
         saveMetadataResultCache();
         emit metadataSelectionChanged();
     });
+    connect(ui->tableMetadataScan, &QTableWidget::itemSelectionChanged, this, [this]() {
+        updateSelectedMetadataIdentityLabel();
+    });
 
     connect(ui->btnRunHealthCheck, &QPushButton::clicked, this, &DownloadsPage::healthCheckRequested);
     connect(ui->btnCopyHealth, &QPushButton::clicked, this, &DownloadsPage::copySelectedHealthIssues);
@@ -193,14 +203,14 @@ DownloadsPage::DownloadsPage(QWidget *parent)
         if (row < 0) return;
         QTableWidgetItem *item = ui->tableHealth->item(row, 0);
         if (!item) return;
-        emit healthOpenModelRequested(item->data(Qt::UserRole).toString());
+        emit healthOpenModelRequested(item->data(RoleFilePath).toString());
     });
     connect(ui->btnOpenHealthFolder, &QPushButton::clicked, this, [this]() {
         const int row = ui->tableHealth->currentRow();
         if (row < 0) return;
         QTableWidgetItem *item = ui->tableHealth->item(row, 0);
         if (!item) return;
-        emit healthOpenFolderRequested(item->data(Qt::UserRole).toString());
+        emit healthOpenFolderRequested(item->data(RoleFilePath).toString());
     });
 
     loadMetadataResultCache();
@@ -736,6 +746,56 @@ bool DownloadsPage::metadataItemMatchesCurrentCategory(const MetadataScanItem &i
     return category == "all" || item.category == category;
 }
 
+void DownloadsPage::applyMetadataTableColumnLayout()
+{
+    QHeaderView *header = ui->tableMetadataScan->horizontalHeader();
+    header->setMinimumSectionSize(56);
+    header->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    header->setSectionResizeMode(1, QHeaderView::Stretch);
+    header->setSectionResizeMode(2, QHeaderView::Interactive);
+    header->setSectionResizeMode(3, QHeaderView::Interactive);
+    header->setSectionResizeMode(4, QHeaderView::Interactive);
+    header->resizeSection(2, 120);
+    header->resizeSection(3, 180);
+    header->resizeSection(4, 190);
+}
+
+void DownloadsPage::applyHealthTableColumnLayout()
+{
+    QHeaderView *header = ui->tableHealth->horizontalHeader();
+    header->setMinimumSectionSize(64);
+    header->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    header->setSectionResizeMode(1, QHeaderView::Interactive);
+    header->setSectionResizeMode(2, QHeaderView::Stretch);
+    header->setSectionResizeMode(3, QHeaderView::Stretch);
+    header->resizeSection(1, 260);
+}
+
+void DownloadsPage::updateSelectedMetadataIdentityLabel()
+{
+    const int row = ui->tableMetadataScan->currentRow();
+    QTableWidgetItem *item = row >= 0 ? ui->tableMetadataScan->item(row, 1) : nullptr;
+    if (!item) {
+        ui->lblMetadataSelectedIdentity->setText("未选择模型");
+        ui->lblMetadataSelectedIdentity->setToolTip(QString());
+        return;
+    }
+
+    const QString modelId = item->data(RoleModelIdText).toString().trimmed();
+    const QString versionId = item->data(RoleVersionIdText).toString().trimmed();
+    const QString sha256 = item->data(RoleSha256).toString().trimmed();
+    const QString shortSha = sha256.isEmpty() ? QStringLiteral("--") : sha256.left(12);
+    ui->lblMetadataSelectedIdentity->setText(QString("Model ID: %1 | Version ID: %2 | SHA256: %3")
+                                                 .arg(modelId.isEmpty() ? QStringLiteral("--") : modelId,
+                                                      versionId.isEmpty() ? QStringLiteral("--") : versionId,
+                                                      shortSha));
+    ui->lblMetadataSelectedIdentity->setToolTip(QString("模型路径: %1\nModel ID: %2\nVersion ID: %3\nSHA256: %4")
+                                                    .arg(item->data(RoleFilePath).toString(),
+                                                         modelId.isEmpty() ? QStringLiteral("--") : modelId,
+                                                         versionId.isEmpty() ? QStringLiteral("--") : versionId,
+                                                         sha256.isEmpty() ? QStringLiteral("--") : sha256));
+}
+
 void DownloadsPage::setMetadataScanRunning(bool running)
 {
     ui->btnMetadataScan->setEnabled(!running);
@@ -774,28 +834,32 @@ void DownloadsPage::refreshMetadataScanTable()
         auto *checkItem = new QTableWidgetItem();
         checkItem->setFlags((checkItem->flags() | Qt::ItemIsUserCheckable) & ~Qt::ItemIsEditable);
         checkItem->setCheckState(item.checked ? Qt::Checked : Qt::Unchecked);
-        checkItem->setData(Qt::UserRole, item.filePath);
+        checkItem->setData(RoleFilePath, item.filePath);
         ui->tableMetadataScan->setItem(row, 0, checkItem);
 
         auto *nameItem = new QTableWidgetItem(item.displayName);
-        nameItem->setData(Qt::UserRole, item.filePath);
-        nameItem->setToolTip(item.filePath);
+        nameItem->setData(RoleFilePath, item.filePath);
+        nameItem->setData(RoleModelIdText, item.modelIdText);
+        nameItem->setData(RoleVersionIdText, item.versionIdText);
+        nameItem->setData(RoleSha256, item.sha256);
+        nameItem->setToolTip(QString("路径: %1\nModel ID: %2\nVersion ID: %3\nSHA256: %4")
+                                 .arg(item.filePath,
+                                      item.modelIdText.isEmpty() ? QStringLiteral("--") : item.modelIdText,
+                                      item.versionIdText.isEmpty() ? QStringLiteral("--") : item.versionIdText,
+                                      item.sha256.isEmpty() ? QStringLiteral("--") : item.sha256));
         ui->tableMetadataScan->setItem(row, 1, nameItem);
         ui->tableMetadataScan->setItem(row, 2, new QTableWidgetItem(metadataCategoryDisplayName(item.category)));
         ui->tableMetadataScan->setItem(row, 3, new QTableWidgetItem(item.status));
-        ui->tableMetadataScan->setItem(row, 4, new QTableWidgetItem(item.modelIdText));
-        ui->tableMetadataScan->setItem(row, 5, new QTableWidgetItem(item.versionIdText));
-        ui->tableMetadataScan->setItem(row, 6, new QTableWidgetItem(item.sha256.left(12)));
-        ui->tableMetadataScan->item(row, 6)->setToolTip(item.sha256);
         const QString syncedText = item.lastSyncedAt.isEmpty()
             ? QStringLiteral("-")
             : QString("%1 (%2)").arg(item.lastSyncedAt, item.lastSyncedSource);
-        ui->tableMetadataScan->setItem(row, 7, new QTableWidgetItem(syncedText));
+        ui->tableMetadataScan->setItem(row, 4, new QTableWidgetItem(syncedText));
         ++row;
     }
 
     ui->tableMetadataScan->setSortingEnabled(true);
     updateMetadataSelectionSummary();
+    updateSelectedMetadataIdentityLabel();
 }
 
 QStringList DownloadsPage::checkedMetadataScanFilePaths() const
@@ -868,7 +932,7 @@ void DownloadsPage::setHealthIssues(const QVector<MetadataHealthIssue> &issues)
     for (int row = 0; row < issues.size(); ++row) {
         const MetadataHealthIssue &issue = issues[row];
         auto *severityItem = new QTableWidgetItem(issue.severity);
-        severityItem->setData(Qt::UserRole, issue.filePath);
+        severityItem->setData(RoleFilePath, issue.filePath);
         ui->tableHealth->setItem(row, 0, severityItem);
         ui->tableHealth->setItem(row, 1, new QTableWidgetItem(issue.modelName));
         ui->tableHealth->setItem(row, 2, new QTableWidgetItem(issue.issue));

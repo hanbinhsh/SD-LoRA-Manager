@@ -720,6 +720,22 @@
            </property>
           </spacer>
          </item>
+         <item>
+          <widget class="QLabel" name="lblMetadataSelectedIdentity">
+           <property name="minimumSize">
+            <size>
+             <width>260</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>未选择模型</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignVCenter</set>
+           </property>
+          </widget>
+         </item>
         </layout>
        </item>
        <item>
@@ -757,22 +773,7 @@
              </column>
              <column>
               <property name="text">
-               <string>状态</string>
-              </property>
-             </column>
-             <column>
-              <property name="text">
-               <string>Model ID</string>
-              </property>
-             </column>
-             <column>
-              <property name="text">
-               <string>Version ID</string>
-              </property>
-             </column>
-             <column>
-              <property name="text">
-               <string>SHA256</string>
+             <string>状态</string>
               </property>
              </column>
              <column>

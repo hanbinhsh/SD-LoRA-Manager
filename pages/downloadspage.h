@@ -101,6 +101,9 @@ private:
     bool metadataItemMatchesCurrentCategory(const MetadataScanItem &item) const;
     void refreshMetadataScanTable();
     void updateMetadataSelectionSummary();
+    void updateSelectedMetadataIdentityLabel();
+    void applyMetadataTableColumnLayout();
+    void applyHealthTableColumnLayout();
     void setCurrentMetadataCategoryChecked(bool checked);
     void copySelectedHealthIssues() const;
     QString metadataResultCachePath() const;
