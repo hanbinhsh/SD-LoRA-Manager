@@ -194,6 +194,7 @@ DownloadsPage::DownloadsPage(QWidget *parent)
     });
     connect(ui->tableMetadataScan, &QTableWidget::itemSelectionChanged, this, [this]() {
         updateSelectedMetadataIdentityLabel();
+        updateMetadataActionButtons();
     });
 
     connect(ui->btnRunHealthCheck, &QPushButton::clicked, this, &DownloadsPage::healthCheckRequested);
@@ -212,8 +213,14 @@ DownloadsPage::DownloadsPage(QWidget *parent)
         if (!item) return;
         emit healthOpenFolderRequested(item->data(RoleFilePath).toString());
     });
+    connect(ui->tableHealth, &QTableWidget::itemSelectionChanged, this, [this]() {
+        updateHealthActionButtons();
+    });
 
     loadMetadataResultCache();
+    updateVersionActionButtons();
+    updateMetadataActionButtons();
+    updateHealthActionButtons();
 }
 
 DownloadsPage::~DownloadsPage()
@@ -261,11 +268,29 @@ void DownloadsPage::setStatusText(const QString &text)
     ui->lblDownloadsStatus->setText(text);
 }
 
+void DownloadsPage::setModelSelectionAvailability(bool hasCurrentModel, bool hasSelectedModels)
+{
+    m_hasCurrentModel = hasCurrentModel;
+    m_hasSelectedModels = hasSelectedModels;
+    updateVersionActionButtons();
+}
+
 void DownloadsPage::setUpdateCheckButtonsEnabled(bool enabled)
 {
-    ui->btnDownloadsCheckCurrent->setEnabled(enabled);
-    ui->btnDownloadsCheckSelected->setEnabled(enabled);
-    ui->btnDownloadsCheckAll->setEnabled(enabled);
+    m_updateCheckBusy = !enabled;
+    updateVersionActionButtons();
+}
+
+void DownloadsPage::updateVersionActionButtons()
+{
+    const bool hasSelectedCards = !selectedFilePaths().isEmpty();
+    ui->btnDownloadsCheckCurrent->setEnabled(!m_updateCheckBusy && m_hasCurrentModel);
+    ui->btnDownloadsCheckSelected->setEnabled(!m_updateCheckBusy && m_hasSelectedModels);
+    ui->btnDownloadsCheckAll->setEnabled(!m_updateCheckBusy);
+    ui->btnDownloadsDownloadSelected->setEnabled(hasSelectedCards);
+    ui->btnDownloadsCancel->setEnabled(hasSelectedCards);
+    ui->btnDownloadsRetry->setEnabled(hasSelectedCards);
+    ui->btnDownloadsOpenFolder->setEnabled(hasSelectedCards);
 }
 
 void DownloadsPage::updateSelectionSummary(int selectedCurrent, int currentTotal, int selectedTotal)
@@ -278,6 +303,7 @@ void DownloadsPage::updateSelectionSummary(int selectedCurrent, int currentTotal
     const bool allChecked = currentTotal > 0 && selectedCurrent == currentTotal;
     ui->btnDownloadsToggleCurrentTab->setText(allChecked ? "取消全选当前 Tab" : "全选当前 Tab");
     ui->btnDownloadsToggleCurrentTab->setEnabled(currentTotal > 0);
+    updateVersionActionButtons();
 }
 
 QStringList DownloadsPage::selectedFilePaths() const
@@ -798,10 +824,10 @@ void DownloadsPage::updateSelectedMetadataIdentityLabel()
 
 void DownloadsPage::setMetadataScanRunning(bool running)
 {
+    m_metadataScanRunning = running;
     ui->btnMetadataScan->setEnabled(!running);
-    ui->btnMetadataSyncSelected->setEnabled(!running);
-    ui->btnMetadataUpdateSelected->setEnabled(!running);
     ui->lblMetadataScanStatus->setText(running ? "正在后台扫描模型元信息..." : "元信息扫描完成。");
+    updateMetadataActionButtons();
 }
 
 void DownloadsPage::setMetadataScanItems(const QVector<MetadataScanItem> &items)
@@ -860,6 +886,7 @@ void DownloadsPage::refreshMetadataScanTable()
     ui->tableMetadataScan->setSortingEnabled(true);
     updateMetadataSelectionSummary();
     updateSelectedMetadataIdentityLabel();
+    updateMetadataActionButtons();
 }
 
 QStringList DownloadsPage::checkedMetadataScanFilePaths() const
@@ -897,11 +924,23 @@ void DownloadsPage::updateMetadataSelectionSummary()
     }
     const bool allCurrentChecked = currentTotal > 0 && currentChecked == currentTotal;
     ui->btnMetadataToggleCurrent->setText(allCurrentChecked ? "取消全选当前分类" : "全选当前分类");
-    ui->btnMetadataToggleCurrent->setEnabled(currentTotal > 0);
+    ui->btnMetadataToggleCurrent->setEnabled(!m_metadataScanRunning && currentTotal > 0);
     ui->lblMetadataScanStatus->setText(QString("当前分类 %1/%2，全部已选择 %3 个模型。")
                                            .arg(currentChecked)
                                            .arg(currentTotal)
                                            .arg(allChecked));
+    updateMetadataActionButtons();
+}
+
+void DownloadsPage::updateMetadataActionButtons()
+{
+    const bool hasChecked = !checkedMetadataScanFilePaths().isEmpty();
+    const int row = ui->tableMetadataScan->currentRow();
+    const bool hasCurrentRow = row >= 0 && ui->tableMetadataScan->item(row, 1);
+    ui->btnMetadataSyncSelected->setEnabled(!m_metadataScanRunning && hasChecked);
+    ui->btnMetadataUpdateSelected->setEnabled(!m_metadataScanRunning && hasChecked);
+    ui->btnMetadataOpenModel->setEnabled(hasCurrentRow);
+    ui->btnMetadataOpenFolder->setEnabled(hasCurrentRow);
 }
 
 void DownloadsPage::updateMetadataScanItemStatus(const QString &filePath, const QString &status, const QString &category, const QString &lastSyncedAt, const QString &lastSyncedSource)
@@ -920,8 +959,10 @@ void DownloadsPage::updateMetadataScanItemStatus(const QString &filePath, const 
 
 void DownloadsPage::setHealthCheckRunning(bool running)
 {
+    m_healthCheckRunning = running;
     ui->btnRunHealthCheck->setEnabled(!running);
     ui->lblHealthStatus->setText(running ? "正在后台检查元数据..." : "元数据健康检查完成。");
+    updateHealthActionButtons();
 }
 
 void DownloadsPage::setHealthIssues(const QVector<MetadataHealthIssue> &issues)
@@ -941,6 +982,17 @@ void DownloadsPage::setHealthIssues(const QVector<MetadataHealthIssue> &issues)
     ui->tableHealth->setSortingEnabled(true);
     ui->lblHealthStatus->setText(QString("检查完成，共发现 %1 条问题/提示。").arg(issues.size()));
     saveMetadataResultCache();
+    updateHealthActionButtons();
+}
+
+void DownloadsPage::updateHealthActionButtons()
+{
+    const int row = ui->tableHealth->currentRow();
+    const bool hasCurrentRow = row >= 0 && ui->tableHealth->item(row, 0);
+    const bool hasSelection = !ui->tableHealth->selectedRanges().isEmpty();
+    ui->btnCopyHealth->setEnabled(!m_healthCheckRunning && hasSelection);
+    ui->btnOpenHealthModel->setEnabled(!m_healthCheckRunning && hasCurrentRow);
+    ui->btnOpenHealthFolder->setEnabled(!m_healthCheckRunning && hasCurrentRow);
 }
 
 void DownloadsPage::copySelectedHealthIssues() const

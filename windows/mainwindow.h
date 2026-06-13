@@ -463,6 +463,7 @@ private:
     QString uniqueFilePath(const QString &dirPath, const QString &fileName) const;
     void finishModelDownload(const ModelFileDownloadTask &task);
     void updateDownloadSelectionSummary();
+    void updateDownloadModelActionButtons();
     void jumpToDownloadSource(const QString &filePath);
     void openDownloadCivitaiPage(const QString &filePath);
     void showFileInFolder(const QString &filePath);

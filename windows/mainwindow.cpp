@@ -2972,12 +2972,18 @@ void MainWindow::onGalleryImageClicked(int index)
     const QString resolution = (width > 0 && height > 0)
         ? QString("%1 x %2").arg(width).arg(height)
         : "--";
-    QString params = QString("Resolution: <span style='color:white'>%1</span> | Sampler: <span style='color:white'>%2</span> | Steps: <span style='color:white'>%3</span> | CFG: <span style='color:white'>%4</span> | Seed: <span style='color:white'>%5</span>")
-                         .arg(resolution)
-                         .arg(img.sampler)
-                         .arg(img.steps)
-                         .arg(img.cfgScale)
-                         .arg(img.seed);
+    auto richValue = [](const QString &value) {
+        return value.trimmed().isEmpty() ? QStringLiteral("--") : value.toHtmlEscaped();
+    };
+    const QString sampler = img.sampler.trimmed().isEmpty()
+        ? QStringLiteral("--")
+        : forceWrap(img.sampler.trimmed()).toHtmlEscaped();
+    QString params = QString("Resolution: <span style='color:white'>%1</span> | Steps: <span style='color:white'>%2</span> | CFG: <span style='color:white'>%3</span><br/>Sampler: <span style='color:white'>%4</span> | Seed: <span style='color:white'>%5</span>")
+                         .arg(resolution.toHtmlEscaped())
+                         .arg(richValue(img.steps))
+                         .arg(richValue(img.cfgScale))
+                         .arg(sampler)
+                         .arg(richValue(img.seed));
     ui->lblImgParams->setText(params);
 
     // 3. 执行过渡
@@ -3088,7 +3094,7 @@ void MainWindow::clearDetailView()
 
     ui->textImgPrompt->clear();
     ui->textImgNegPrompt->clear();
-    ui->lblImgParams->setText("Resolution: -- | Sampler: -- | Steps: -- | CFG: -- | Seed: --");
+    ui->lblImgParams->setText("Resolution: -- | Steps: -- | CFG: --<br/>Sampler: -- | Seed: --");
 
     ui->btnOpenUrl->setVisible(false);
     ui->btnCopyLoraTag->setVisible(false);
@@ -7804,6 +7810,7 @@ void MainWindow::onMenuSwitchToSettings() {
 void MainWindow::onMenuSwitchToDownloads()
 {
     ui->rootStack->setCurrentWidget(ui->pageDownloads);
+    updateDownloadModelActionButtons();
     if (downloadManager && !downloadManager->cacheLoaded()) {
         downloadsPage->setStatusText("正在恢复上次下载列表...");
         QTimer::singleShot(0, this, [this]() {
@@ -7877,6 +7884,8 @@ void MainWindow::initDownloadsPage()
             downloadsPage, &DownloadsPage::setStatusText);
     connect(downloadManager, &DownloadManager::modelFileReady,
             this, &MainWindow::finishModelDownload);
+    connect(ui->modelList, &QListWidget::itemSelectionChanged,
+            this, &MainWindow::updateDownloadModelActionButtons);
 
     connect(downloadsPage->checkCurrentButton(), &QPushButton::clicked, this, [this]() {
         QList<QListWidgetItem*> items;
@@ -7965,11 +7974,28 @@ void MainWindow::initDownloadsPage()
         showFileInFolder(filePath);
     });
     updateDownloadSelectionSummary();
+    updateDownloadModelActionButtons();
 }
 
 void MainWindow::updateDownloadSelectionSummary()
 {
     if (downloadManager) downloadManager->updateSelectionSummary();
+    updateDownloadModelActionButtons();
+}
+
+void MainWindow::updateDownloadModelActionButtons()
+{
+    if (!downloadsPage || !ui || !ui->modelList) return;
+
+    const bool hasCurrentModel = isModelListItem(ui->modelList->currentItem());
+    bool hasSelectedModels = false;
+    for (QListWidgetItem *item : ui->modelList->selectedItems()) {
+        if (isModelListItem(item)) {
+            hasSelectedModels = true;
+            break;
+        }
+    }
+    downloadsPage->setModelSelectionAvailability(hasCurrentModel, hasSelectedModels);
 }
 
 void MainWindow::checkUpdatesForItems(const QList<QListWidgetItem*> &items)

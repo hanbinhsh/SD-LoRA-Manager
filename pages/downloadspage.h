@@ -51,6 +51,7 @@ public:
     QString cardTargetPath(const QString &filePath) const;
     bool containsCard(const QString &filePath) const;
     void setStatusText(const QString &text);
+    void setModelSelectionAvailability(bool hasCurrentModel, bool hasSelectedModels);
     void setUpdateCheckButtonsEnabled(bool enabled);
     void updateSelectionSummary();
     void initializeAppearance();
@@ -96,14 +97,17 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
+    void updateVersionActionButtons();
     void updateSelectionSummary(int selectedCurrent, int currentTotal, int selectedTotal);
     QString currentMetadataCategory() const;
     bool metadataItemMatchesCurrentCategory(const MetadataScanItem &item) const;
     void refreshMetadataScanTable();
+    void updateMetadataActionButtons();
     void updateMetadataSelectionSummary();
     void updateSelectedMetadataIdentityLabel();
     void applyMetadataTableColumnLayout();
     void applyHealthTableColumnLayout();
+    void updateHealthActionButtons();
     void setCurrentMetadataCategoryChecked(bool checked);
     void copySelectedHealthIssues() const;
     QString metadataResultCachePath() const;
@@ -112,6 +116,11 @@ private:
     QHash<QString, DownloadCardWidgets> m_cards;
     QVector<MetadataScanItem> m_metadataScanItems;
     QVector<MetadataHealthIssue> m_healthIssues;
+    bool m_hasCurrentModel = false;
+    bool m_hasSelectedModels = false;
+    bool m_updateCheckBusy = false;
+    bool m_metadataScanRunning = false;
+    bool m_healthCheckRunning = false;
 };
 
 #endif // DOWNLOADSPAGE_WIDGET_H
