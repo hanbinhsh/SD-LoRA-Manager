@@ -1,6 +1,7 @@
 #include "llmpromptwidget.h"
 #include "ui_llmpromptwidget.h"
 #include "styleconstants.h"
+#include "tagutils.h"
 
 #include <QAbstractItemView>
 #include <QAction>
@@ -2190,16 +2191,6 @@ void LlmPromptWidget::queueLoraCandidateThumbnailLoads()
     }
 }
 
-QString LlmPromptWidget::cleanTagText(QString text) const
-{
-    text = text.trimmed();
-    static QRegularExpression weightRegex(":[0-9.]+$");
-    static QRegularExpression bracketRegex("[\\{\\}\\[\\]\\(\\)]");
-    text.remove(weightRegex);
-    text.remove(bracketRegex);
-    return text.trimmed();
-}
-
 QStringList LlmPromptWidget::parsePromptToTags(const QString &prompt) const
 {
     QString normalized = prompt;
@@ -2209,7 +2200,7 @@ QStringList LlmPromptWidget::parsePromptToTags(const QString &prompt) const
     QStringList result;
     QSet<QString> seen;
     for (QString part : parts) {
-        part = cleanTagText(part);
+        part = TagUtils::cleanPromptTag(part, false);
         if (part.isEmpty()) continue;
         QString lower = part.toLower();
         if (seen.contains(lower)) continue;

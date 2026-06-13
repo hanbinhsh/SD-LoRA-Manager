@@ -69,9 +69,11 @@
 #include "pages/downloadmanager.h"
 #include "pages/downloadspage.h"
 #include "pages/settingspage.h"
+#include "pages/aboutpage.h"
 #include "dialogs/modelnotedialog.h"
 #include "utils/styleconstants.h"
 #include "utils/fileutils.h"
+#include "utils/tagutils.h"
 
 namespace {
 QString normalizedHomeTagKey(const QString &tag)
@@ -508,6 +510,12 @@ MainWindow::MainWindow(QWidget *parent)
     if (ui->pageSettings && ui->pageSettings->layout()) {
         ui->pageSettings->layout()->addWidget(settingsPage);
     }
+    aboutPage = new AboutPage(ui->pageAbout);
+    if (ui->pageAbout && ui->pageAbout->layout()) {
+        ui->pageAbout->layout()->addWidget(aboutPage);
+    }
+    aboutPage->setVersionText(CURRENT_VERSION);
+    connect(aboutPage, &AboutPage::checkUpdateRequested, this, &MainWindow::onCheckUpdateClicked);
 
     currentUserAgent = getRandomUserAgent();
 
@@ -646,11 +654,6 @@ MainWindow::MainWindow(QWidget *parent)
     ui->btnModelsTab->setAutoExclusive(true);
     ui->btnCollectionsTab->setAutoExclusive(true);
     ui->btnModelsTab->setChecked(true);
-
-    // 关于页版本号显示
-    ui->lblAboutVersion->setText("Version " + CURRENT_VERSION);
-    // 检查更新按钮
-    connect(ui->btnCheckUpdate, &QPushButton::clicked, this, &MainWindow::onCheckUpdateClicked);
 
     // === 主界面信号连接 ===
     connect(ui->modelList, &QListWidget::itemClicked, this, &MainWindow::onModelListClicked);
@@ -889,23 +892,6 @@ QString forceWrap(const QString &text) { // 强制加入零宽空格换行
 
 static constexpr int USER_GALLERY_PARSER_VERSION = 4;
 
-static QString cleanTagTextWorker(QString t)
-{
-    t = t.trimmed();
-    if (t.isEmpty()) return QString();
-
-    static const QSet<QString> emoticons = {":)", ":-)", ":(", ":-(", "^_^", "T_T", "o_o", "O_O"};
-    if (emoticons.contains(t)) return t;
-
-    static QRegularExpression weightRegex(":[0-9.]+$");
-    t.remove(weightRegex);
-
-    static QRegularExpression bracketRegex("[\\{\\}\\[\\]\\(\\)]");
-    t.remove(bracketRegex);
-
-    return t.trimmed();
-}
-
 static QStringList parsePromptsToTagsWorker(const QString &rawPrompt, bool splitOnNewline, const QStringList &filterTags)
 {
     QStringList result;
@@ -925,7 +911,7 @@ static QStringList parsePromptsToTagsWorker(const QString &rawPrompt, bool split
 
     const QStringList parts = processText.split(",", Qt::SkipEmptyParts);
     for (const QString &part : parts) {
-        const QString clean = cleanTagTextWorker(part);
+        const QString clean = TagUtils::cleanPromptTag(part);
         if (clean.isEmpty()) continue;
 
         bool isBlocked = false;
@@ -1913,6 +1899,9 @@ void MainWindow::refreshHomeFilterChips()
     constexpr int kSummaryAreaHeight = 36;     // chip 高度 + 横向滚动条空间
     constexpr int kSummarySpacing = 5;
     constexpr int kTagsMaxHeight = 170;
+    const int previousTagScrollValue = ui->scrollHomeFilterTags
+        ? ui->scrollHomeFilterTags->verticalScrollBar()->value()
+        : 0;
 
     clearLayout(ui->layoutHomeFilterSummaryChips);
     clearLayout(ui->layoutHomeFilterChips);
@@ -2226,7 +2215,13 @@ void MainWindow::refreshHomeFilterChips()
         );
 
         ui->scrollHomeFilterTags->verticalScrollBar()->setSingleStep(40);
-        ui->scrollHomeFilterTags->verticalScrollBar()->setValue(0);
+        QScrollBar *tagScrollBar = ui->scrollHomeFilterTags->verticalScrollBar();
+        tagScrollBar->setValue(qBound(0, previousTagScrollValue, tagScrollBar->maximum()));
+        QTimer::singleShot(0, this, [this, previousTagScrollValue]() {
+            if (!ui || !ui->scrollHomeFilterTags || !homeFilterExpanded) return;
+            QScrollBar *bar = ui->scrollHomeFilterTags->verticalScrollBar();
+            bar->setValue(qBound(0, previousTagScrollValue, bar->maximum()));
+        });
     }
 }
 
@@ -7649,10 +7644,6 @@ void MainWindow::onGalleryButtonClicked()
 }
 
 // 辅助函数：清洗单个 Tag
-QString MainWindow::cleanTagText(QString t) {
-    return cleanTagTextWorker(t);
-}
-
 // 辅助函数：将 Prompt 字符串解析为 Tag 列表
 QStringList MainWindow::parsePromptsToTags(const QString &rawPrompt) {
     return parsePromptsToTagsWorker(rawPrompt, optSplitOnNewline, optFilterTags);
@@ -7828,7 +7819,7 @@ void MainWindow::onMenuSwitchToDownloads()
     if (downloadManager && !downloadManager->cacheLoaded()) {
         downloadsPage->setStatusText("正在恢复上次下载列表...");
         QTimer::singleShot(0, this, [this]() {
-            loadDownloadCardsCache();
+            if (downloadManager) downloadManager->ensureCacheLoaded();
             updateDownloadSelectionSummary();
         });
         return;
@@ -8015,7 +8006,7 @@ void MainWindow::updateDownloadModelActionButtons()
 void MainWindow::checkUpdatesForItems(const QList<QListWidgetItem*> &items)
 {
     if (downloadManager && !downloadManager->cacheLoaded()) {
-        loadDownloadCardsCache();
+        downloadManager->ensureCacheLoaded();
     }
     if (items.isEmpty()) {
         downloadsPage->setStatusText("没有可检查的模型。请先选择模型，或使用检查全部。");
@@ -8177,7 +8168,7 @@ void MainWindow::markUpdateCheckFinished()
     if (completedUpdateChecks >= pendingUpdateChecks && activeUpdateHashChecks == 0 && pendingUpdateHashChecks.isEmpty()) {
         downloadsPage->setStatusText(QString("更新检查完成，共 %1 个模型。").arg(pendingUpdateChecks));
         downloadsPage->setUpdateCheckButtonsEnabled(true);
-        saveDownloadCardsCache();
+        if (downloadManager) downloadManager->saveCache();
         return;
     }
     QTimer::singleShot(0, this, &MainWindow::dispatchQueuedUpdateChecks);
@@ -8331,16 +8322,6 @@ void MainWindow::addOrUpdateDownloadCard(const ModelUpdateInfo &info, const QStr
                                          status,
                                          findModelItemByFilePath(info.filePath) != nullptr || QFile::exists(info.filePath));
     }
-}
-
-void MainWindow::loadDownloadCardsCache()
-{
-    if (downloadManager) downloadManager->ensureCacheLoaded();
-}
-
-void MainWindow::saveDownloadCardsCache() const
-{
-    if (downloadManager) downloadManager->saveCache();
 }
 
 QListWidgetItem *MainWindow::findModelItemByFilePath(const QString &filePath) const
@@ -8900,7 +8881,7 @@ void MainWindow::finishModelDownload(const ModelFileDownloadTask &task)
             break;
         }
     }
-    saveDownloadCardsCache();
+    if (downloadManager) downloadManager->saveCache();
     downloadsPage->setStatusText("模型下载完成: " + QFileInfo(task.targetPath).fileName());
 
     const QStringList activeLoraPaths = collectEnabledPaths(loraPaths, disabledLoraPaths);
@@ -10398,7 +10379,6 @@ void MainWindow::syncTreeSelection(const QString &filePath)
 
 void MainWindow::onMenuSwitchToAbout()
 {
-    // 切换到 rootStack 的最后一页 (即 pageAbout)
     ui->rootStack->setCurrentWidget(ui->pageAbout);
 }
 
@@ -10410,8 +10390,7 @@ void MainWindow::onCheckUpdateClicked()
 void MainWindow::startAppUpdateCheck(bool silentIfLatest)
 {
     ui->statusbar->showMessage("正在连接 GitHub 检查更新...", 3000);
-    ui->btnCheckUpdate->setText("⏳ Checking...");
-    ui->btnCheckUpdate->setEnabled(false);
+    if (aboutPage) aboutPage->setCheckingForUpdates(true);
 
     QNetworkRequest request((QUrl(GITHUB_REPO_API)));
     request.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
@@ -10426,8 +10405,7 @@ void MainWindow::startAppUpdateCheck(bool silentIfLatest)
 void MainWindow::onUpdateApiReceived(QNetworkReply *reply)
 {
     const bool silentIfLatest = reply->property("silentIfLatest").toBool();
-    ui->btnCheckUpdate->setText("🚀 检查更新 / Check for Updates");
-    ui->btnCheckUpdate->setEnabled(true);
+    if (aboutPage) aboutPage->setCheckingForUpdates(false);
     reply->deleteLater();
 
     if (reply->error() != QNetworkReply::NoError) {

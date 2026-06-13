@@ -38,6 +38,7 @@
 
 #include "pages/downloadmodels.h"
 #include "pages/settingspage.h"
+#include "pages/aboutpage.h"
 #include "widgets/tagflowwidget.h"
 
 // 模型列表相关
@@ -295,6 +296,7 @@ private:
     PromptTemplateLibraryWidget *promptTemplateLibraryWidget = nullptr;
     DownloadsPage *downloadsPage = nullptr;
     SettingsPage *settingsPage = nullptr;
+    AboutPage *aboutPage = nullptr;
     QSet<int> pendingToolTabLoads;
     QNetworkAccessManager *netManager = nullptr;
     QPixmap currentHeroPixmap;
@@ -458,8 +460,6 @@ private:
     void handleModelUpdateReply(QNetworkReply *reply);
     ModelUpdateInfo parseModelUpdateInfo(QListWidgetItem *item, const QJsonObject &modelRoot) const;
     void addOrUpdateDownloadCard(const ModelUpdateInfo &info, const QString &status);
-    void loadDownloadCardsCache();
-    void saveDownloadCardsCache() const;
     QString chooseModelDownloadTarget(const ModelUpdateInfo &info, bool *overwrite);
     QString uniqueFilePath(const QString &dirPath, const QString &fileName) const;
     void finishModelDownload(const ModelFileDownloadTask &task);
@@ -558,7 +558,6 @@ private:
     QString currentModelLoraTagName() const;
 
     QStringList parsePromptsToTags(const QString &rawPrompt);
-    QString cleanTagText(QString t);
 
     QIcon generatePlaceholderIcon();
 

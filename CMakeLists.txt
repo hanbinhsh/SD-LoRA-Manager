@@ -18,6 +18,8 @@ qt_add_executable(SD_LoRA_Manager
     windows/mainwindow.h
     windows/mainwindow.ui
     utils/styleconstants.h
+    utils/tagutils.h
+    utils/tagutils.cpp
     utils/fileutils.h
     utils/fileutils.cpp
     pages/downloadspage.h
@@ -28,6 +30,9 @@ qt_add_executable(SD_LoRA_Manager
     pages/settingspage.h
     pages/settingspage.cpp
     pages/settingspage.ui
+    pages/aboutpage.h
+    pages/aboutpage.cpp
+    pages/aboutpage.ui
     utils/imagemetadataparser.h
     utils/imagemetadataparser.cpp
     tools/comfyworkflowviewer.h

@@ -1,5 +1,6 @@
 #include "promptparserwidget.h"
 #include "ui_promptparserwidget.h"
+#include "tagutils.h"
 #include "imagemetadataparser.h"
 #include "tableviewstylehelper.h"
 #include "styleconstants.h"
@@ -408,21 +409,6 @@ void PromptParserWidget::updateWd14ImagePreview(const QString &filePath)
     updateImageLabelPreview(ui->lblWd14Image, filePath, "图片加载失败\nFailed to load image");
 }
 
-QString PromptParserWidget::cleanTagText(QString text) const
-{
-    text = text.trimmed();
-    if (text.isEmpty()) return "";
-
-    static const QSet<QString> emoticons = {":)", ":-)", ":(", ":-(", "^_^", "T_T", "o_o", "O_O"};
-    if (emoticons.contains(text)) return text;
-
-    static const QRegularExpression weightRegex(":[0-9.]+$");
-    text.remove(weightRegex);
-    static const QRegularExpression bracketRegex("[\\{\\}\\[\\]\\(\\)]");
-    text.remove(bracketRegex);
-    return text.trimmed();
-}
-
 QMap<QString, int> PromptParserWidget::parsePromptToMap(const QString &rawPrompt)
 {
     QMap<QString, int> result;
@@ -439,7 +425,7 @@ QMap<QString, int> PromptParserWidget::parsePromptToMap(const QString &rawPrompt
     processText.replace("\r", ",");
     const QStringList parts = processText.split(",", Qt::SkipEmptyParts);
     for (const QString &part : parts) {
-        const QString clean = cleanTagText(part);
+        const QString clean = TagUtils::cleanPromptTag(part);
         if (!clean.isEmpty()) result[clean]++;
     }
     return result;
@@ -484,7 +470,7 @@ void PromptParserWidget::processCompareImage(bool imageA, const QString &filePat
 
 QString PromptParserWidget::normalizeCompareTag(QString tag) const
 {
-    tag = cleanTagText(tag).toCaseFolded().trimmed();
+    tag = TagUtils::cleanPromptTag(tag).toCaseFolded().trimmed();
     tag.replace('_', ' ');
     static const QRegularExpression spaces("\\s+");
     tag.replace(spaces, " ");

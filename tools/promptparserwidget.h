@@ -112,7 +112,6 @@ private:
     QStringList splitWd14TagList(const QString &text) const;
 
     // 解析辅助函数
-    QString cleanTagText(QString t) const;
     QMap<QString, int> parsePromptToMap(const QString &rawPrompt);
     QString normalizeCompareTag(QString tag) const;
     void fillCompareList(QListWidget *list, const QStringList &tags);

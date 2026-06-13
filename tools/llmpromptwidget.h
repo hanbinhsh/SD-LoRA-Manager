@@ -184,7 +184,6 @@ private:
     QListWidgetItem *createLoraCandidateItem(const QString &path, const LoraMetadataInfo &meta, bool checked) const;
     void queueLoraCandidateThumbnailLoads();
     QString preferenceSummary() const;
-    QString cleanTagText(QString text) const;
     QStringList parsePromptToTags(const QString &prompt) const;
     QStringList extractLorasFromPrompt(const QString &prompt) const;
     QStringList splitPromptTokens(const QString &prompt) const;

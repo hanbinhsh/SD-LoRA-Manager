@@ -4,6 +4,7 @@
 
 #include "imagemetadataparser.h"
 #include "tagflowwidget.h"
+#include "tagutils.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -70,17 +71,6 @@ QString imagePathFromMimeData(const QMimeData *mimeData)
     return QString();
 }
 
-QString cleanPromptTag(QString tag)
-{
-    tag = tag.trimmed();
-    if (tag.isEmpty()) return QString();
-    static const QRegularExpression weightRegex(":[0-9.]+$");
-    tag.remove(weightRegex);
-    static const QRegularExpression bracketRegex("[\\{\\}\\[\\]\\(\\)]");
-    tag.remove(bracketRegex);
-    return tag.trimmed();
-}
-
 QStringList parsePromptTags(const QString &prompt)
 {
     QString normalized = prompt;
@@ -92,7 +82,7 @@ QStringList parsePromptTags(const QString &prompt)
     QSet<QString> seenInImage;
     static const QSet<QString> blockedTags = {"BREAK", "ADDCOMM", "ADDBASE", "ADDCOL", "ADDROW"};
     for (const QString &part : normalized.split(',', Qt::SkipEmptyParts)) {
-        const QString tag = cleanPromptTag(part);
+        const QString tag = TagUtils::cleanPromptTag(part, false);
         if (tag.isEmpty()) continue;
         bool blocked = false;
         for (const QString &blockedTag : blockedTags) {
@@ -110,7 +100,7 @@ QStringList parsePromptTags(const QString &prompt)
 
 QString tagDedupKey(const QString &tag)
 {
-    return normalizeTagSearch(cleanPromptTag(tag));
+    return normalizeTagSearch(TagUtils::cleanPromptTag(tag, false));
 }
 
 QStringList newPromptTagsOnly(const QString &currentPrompt, const QStringList &tags)
@@ -124,7 +114,7 @@ QStringList newPromptTagsOnly(const QString &currentPrompt, const QStringList &t
     QStringList out;
     QSet<QString> seenNew;
     for (const QString &rawTag : tags) {
-        const QString tag = cleanPromptTag(rawTag);
+        const QString tag = TagUtils::cleanPromptTag(rawTag, false);
         const QString key = tagDedupKey(tag);
         if (tag.isEmpty() || key.isEmpty()) continue;
         if (existing.contains(key) || seenNew.contains(key)) continue;
@@ -326,7 +316,7 @@ QString removeLeadingTagFromDisplayText(const QString &tag, QString display)
     };
 
     addCandidate(tag);
-    addCandidate(cleanPromptTag(tag));
+    addCandidate(TagUtils::cleanPromptTag(tag, false));
 
     // 兼容 display 自身开头就是英文 tag 的情况：
     // long_hair 发型-长发
