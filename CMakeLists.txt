@@ -18,6 +18,8 @@ qt_add_executable(SD_LoRA_Manager
     mainwindow.h
     mainwindow.ui
     styleconstants.h
+    fileutils.h
+    fileutils.cpp
     pages/downloadspage.h
     pages/downloadspage.cpp
     pages/downloadspage.ui

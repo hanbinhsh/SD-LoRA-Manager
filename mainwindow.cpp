@@ -32,7 +32,6 @@
 #include <QRegularExpression>
 #include <QImage>
 #include <QDirIterator>
-#include <QProcess>
 #include <QtEndian>
 #include <QTabWidget>
 #include <QVBoxLayout>
@@ -72,6 +71,7 @@
 #include "pages/settingspage.h"
 #include "modelnotedialog.h"
 #include "styleconstants.h"
+#include "fileutils.h"
 
 namespace {
 QString normalizedHomeTagKey(const QString &tag)
@@ -887,28 +887,7 @@ QString forceWrap(const QString &text) { // 强制加入零宽空格换行
     return result;
 }
 
-static QString calculateFileHashWorker(const QString &filePath)
-{
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly)) return QString();
-
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    constexpr int bufferSize = 65536;
-    char buffer[bufferSize];
-    while (!file.atEnd()) {
-        const qint64 size = file.read(buffer, bufferSize);
-        if (size <= 0) break;
-        hash.addData(buffer, size);
-    }
-    return hash.result().toHex().toUpper();
-}
-
 static constexpr int USER_GALLERY_PARSER_VERSION = 4;
-
-static QString extractPngParametersWorker(const QString &filePath)
-{
-    return extractPngParametersText(filePath);
-}
 
 static QString cleanTagTextWorker(QString t)
 {
@@ -2406,72 +2385,6 @@ void MainWindow::onHomeGalleryContextMenu(const QPoint &pos)
     showCollectionMenu(items, ui->homeGalleryList->mapToGlobal(pos));
 }
 
-// 生成竖版封面图标 (2:3)
-QIcon MainWindow::getRoundedSquareIcon(const QString &path, int size, int radius)
-{
-    // 1. 创建高分屏画布 (size x size)
-    QPixmap finalPix(size, size);
-    finalPix.fill(Qt::transparent); // 必须透明底，否则四个角是黑/白的
-
-    QPainter painter(&finalPix);
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.setRenderHint(QPainter::SmoothPixmapTransform);
-
-    // 2. 定义圆角路径
-    QPainterPath pathObj;
-    pathObj.addRoundedRect(0, 0, size, size, radius, radius);
-
-    // 3. 设置裁剪 (所有后续绘制都会限制在这个圆角框内)
-    painter.setClipPath(pathObj);
-
-    QPixmap srcPix(path);
-
-    // === 情况 A: 没有图片 (绘制占位符) ===
-    if (srcPix.isNull()) {
-        // 填充背景色 (深灰)
-        painter.fillRect(QRect(0, 0, size, size), QColor(AppStyle::PanelDark));
-
-        // 画边框 (可选，增加质感)
-        QPen pen{QColor(AppStyle::PanelBorder)};
-        pen.setWidth(2);
-        painter.setPen(pen);
-        painter.drawRoundedRect(1, 1, size-2, size-2, radius, radius);
-
-        // 画文字 "No Image"
-        painter.setPen(QColor(AppStyle::PlaceholderText));
-        QFont f = painter.font();
-        f.setPixelSize(size / 5); // 动态字体大小
-        f.setBold(true);
-        painter.setFont(f);
-        painter.drawText(QRect(0, 0, size, size), Qt::AlignCenter, "No\nImage");
-    }
-    // === 情况 B: 有图片 (裁剪+缩放) ===
-    else {
-        // 计算短边裁剪 (Smart Crop: 居中 + 顶端对齐)
-        int side = qMin(srcPix.width(), srcPix.height());
-        int x = (srcPix.width() - side) / 2;
-        int y = 0; // 顶端对齐
-
-        // 裁剪出正方形
-        QPixmap square = srcPix.copy(x, y, side, side);
-
-        // 缩放到目标大小
-        QPixmap scaled = square.scaled(size, size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-
-        // 绘制 (会被限制在 setClipPath 定义的圆角内)
-        painter.drawPixmap(0, 0, scaled);
-
-        // (可选) 可以在图片上画一圈细边框，防止图片和背景融为一体
-        QPen pen(AppStyle::translucentWhite(30));
-        pen.setWidth(2);
-        painter.setPen(pen);
-        painter.setBrush(Qt::NoBrush);
-        painter.drawRoundedRect(1, 1, size-2, size-2, radius, radius);
-    }
-
-    return QIcon(finalPix);
-}
-
 // ---------------------------------------------------------
 // 主页与收藏夹逻辑结束
 // ---------------------------------------------------------
@@ -3001,21 +2914,7 @@ void MainWindow::addGalleryThumbButton(const ModelMeta &meta, int index, const Q
         }
 
         if (chosen == actOpenLocation) {
-#ifdef Q_OS_WIN
-            QProcess *process = new QProcess(this);
-            process->setProgram("explorer.exe");
-            const QString nativePath = QDir::toNativeSeparators(savePath);
-            if (QFile::exists(savePath)) {
-                process->setNativeArguments(QString("/select,\"%1\"").arg(nativePath));
-            } else {
-                process->setNativeArguments(QString("\"%1\"").arg(QDir::toNativeSeparators(QFileInfo(savePath).absolutePath())));
-            }
-            process->start();
-            connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                    process, &QProcess::deleteLater);
-#else
-            QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(savePath).absolutePath()));
-#endif
+            showFileInFolder(savePath);
         }
     });
 
@@ -3663,13 +3562,6 @@ bool MainWindow::confirmLocalEditOverwrite(QListWidgetItem *item)
     return reply == QMessageBox::Yes;
 }
 
-// ---------------------------------------------------------
-// 文件与网络部分
-// ---------------------------------------------------------
-void MainWindow::onActionOpenFolderTriggered() {
-    editLoraPaths(true);
-}
-
 QString MainWindow::modelSyncFailurePath() const
 {
     return qApp->applicationDirPath() + "/config/model_sync_failures.json";
@@ -3728,11 +3620,6 @@ QStringList MainWindow::normalizeModelCustomTriggers(const QStringList &triggers
         result.append(trigger);
     }
     return result;
-}
-
-QStringList MainWindow::normalizeModelCustomTriggersText(const QString &text) const
-{
-    return normalizeModelCustomTriggers(text.split('\n', Qt::SkipEmptyParts));
 }
 
 void MainWindow::loadModelUserNotes()
@@ -5283,31 +5170,6 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     ui->statusbar->showMessage("元数据已更新", 2000);
 }
 
-void MainWindow::onImageDownloaded(QNetworkReply *reply)
-{
-    // 1. 获取上下文
-    QString localBaseName = reply->property("localBaseName").toString();
-    QString savePath = QFileInfo(reply->property("savePath").toString()).absoluteFilePath();
-    reply->deleteLater();
-
-
-    if (reply->error() != QNetworkReply::NoError) {
-        qDebug() << "Image download failed:" << reply->errorString();
-        return;
-    }
-
-    QByteArray imgData = reply->readAll();
-    if (savePath.isEmpty() || localBaseName.isEmpty()) return;
-
-    // 2. 保存文件
-    QFile file(savePath);
-    if (file.open(QIODevice::WriteOnly)) {
-        file.write(imgData);
-        file.close();
-        applyDownloadedPreviewToUi(localBaseName, savePath);
-    }
-}
-
 void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const QString &savePath)
 {
     if (localBaseName.isEmpty() || savePath.isEmpty()) return;
@@ -5397,10 +5259,6 @@ void MainWindow::saveLocalMetadata(const QString &modelDir, const QString &baseN
     }
 }
 
-QString MainWindow::calculateFileHash(const QString &filePath) {
-    return calculateFileHashWorker(filePath);
-}
-
 void MainWindow::startModelHashSync(const QString &filePath, const QString &baseName, bool forceRefresh)
 {
     if (filePath.isEmpty() || baseName.isEmpty()) {
@@ -5417,7 +5275,7 @@ void MainWindow::startModelHashSync(const QString &filePath, const QString &base
     ui->lblModelName->setText("正在分析模型文件 (计算 Hash)...");
 
     hashWatcher->setFuture(QtConcurrent::run(backgroundThreadPool, [filePath]() {
-        return calculateFileHashWorker(filePath);
+        return FileUtils::calculateSha256Hex(filePath);
     }));
 }
 
@@ -6066,18 +5924,7 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
         if (targetFilePaths.isEmpty()) return;
 
         const QString filePath = targetFilePaths.first();
-#ifdef Q_OS_WIN
-        QProcess *process = new QProcess(this);
-        process->setProgram("explorer.exe");
-        QString nativePath = QDir::toNativeSeparators(filePath);
-        process->setNativeArguments(QString("/select,\"%1\"").arg(nativePath));
-        process->start();
-        connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                process, &QProcess::deleteLater);
-#else
-        QFileInfo fi(filePath);
-        QDesktopServices::openUrl(QUrl::fromLocalFile(fi.absolutePath()));
-#endif
+        showFileInFolder(filePath);
         if (targetFilePaths.size() > 1) {
             ui->statusbar->showMessage(QString("已打开首个模型位置（共选中 %1 个）").arg(targetFilePaths.size()), 2500);
         }
@@ -7621,34 +7468,8 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     watcher->setFuture(future);
 }
 
-QString MainWindow::extractPngParameters(const QString &filePath)
-{
-    return extractPngParametersWorker(filePath);
-}
-
 void MainWindow::parsePngInfo(const QString &path, UserImageInfo &info) {
     parsePngInfoWorker(path, info, optSplitOnNewline, optFilterTags);
-}
-
-void MainWindow::updateUserStats(const QList<UserImageInfo> &images) {
-    QMap<QString, int> tagCounts;
-    for (const auto &img : images) {
-        QSet<QString> perImageTags;
-        for (const QString &tag : img.cleanTags) {
-            if (tag.compare("BREAK", Qt::CaseInsensitive) == 0) continue;
-            perImageTags.insert(tag);
-        }
-        if (ui->chkUserTagIncludeNegative && ui->chkUserTagIncludeNegative->isChecked()) {
-            for (const QString &tag : img.negativeCleanTags) {
-                if (tag.compare("BREAK", Qt::CaseInsensitive) == 0) continue;
-                perImageTags.insert(tag);
-            }
-        }
-        for (const QString &tag : perImageTags) {
-            tagCounts[tag]++;
-        }
-    }
-    tagFlowWidget->setData(tagCounts);
 }
 
 void MainWindow::refreshUserTagFlowStats()
@@ -8041,8 +7862,8 @@ void MainWindow::initDownloadsPage()
         [this]() {
             return civitaiApiKey();
         },
-        [this](const QString &filePath) {
-            return calculateFileHash(filePath);
+        [](const QString &filePath) {
+            return FileUtils::calculateSha256Hex(filePath);
         });
     downloadManager->setTargetPathCallback([this](const ModelUpdateInfo &info, bool *overwrite) {
         return chooseModelDownloadTarget(info, overwrite);
@@ -8088,7 +7909,7 @@ void MainWindow::initDownloadsPage()
         const QStringList filePaths = downloadManager ? downloadManager->selectedFilePaths() : QStringList();
         if (filePaths.isEmpty()) return;
         const QString path = downloadsPage->cardTargetPath(filePaths.first());
-        if (!path.isEmpty()) QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
+        showFileInFolder(path);
     });
     connect(downloadsPage->clearCompletedButton(), &QPushButton::clicked, this, [this]() {
         if (downloadManager) downloadManager->clearCompleted();
@@ -8189,21 +8010,6 @@ void MainWindow::checkUpdatesForItems(const QList<QListWidgetItem*> &items)
     }
     downloadsPage->setStatusText(QString("正在检查 %1 个模型的更新...").arg(pendingUpdateChecks));
     QTimer::singleShot(0, this, &MainWindow::dispatchQueuedUpdateChecks);
-}
-
-void MainWindow::checkUpdateForItem(QListWidgetItem *item)
-{
-    if (!isModelListItem(item)) return;
-    UpdateCheckSnapshot snapshot;
-    snapshot.filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
-    snapshot.baseName = item->data(ROLE_MODEL_NAME).toString();
-    snapshot.modelDir = QFileInfo(snapshot.filePath).absolutePath();
-    snapshot.modelId = item->data(ROLE_CIVITAI_MODEL_ID).toInt();
-    snapshot.displayName = item->text();
-    snapshot.currentVersionId = item->data(ROLE_CIVITAI_VERSION_ID).toInt();
-    snapshot.currentSha256 = item->data(ROLE_CIVITAI_SHA256).toString();
-    snapshot.localEdited = item->data(ROLE_LOCAL_EDITED).toBool();
-    checkUpdateForSnapshot(snapshot);
 }
 
 void MainWindow::checkUpdateForSnapshot(const UpdateCheckSnapshot &snapshot)
@@ -8315,7 +8121,7 @@ void MainWindow::dispatchUpdateHashChecks()
             dispatchUpdateHashChecks();
         });
         watcher->setFuture(QtConcurrent::run(backgroundThreadPool, [filePath = snapshot.filePath]() {
-            return calculateFileHashWorker(filePath);
+            return FileUtils::calculateSha256Hex(filePath);
         }));
     }
 }
@@ -8539,23 +8345,7 @@ void MainWindow::openDownloadCivitaiPage(const QString &filePath)
 
 void MainWindow::showFileInFolder(const QString &filePath)
 {
-    if (filePath.trimmed().isEmpty()) return;
-
-    const QFileInfo fi(filePath);
-#ifdef Q_OS_WIN
-    QProcess *process = new QProcess(this);
-    process->setProgram("explorer.exe");
-    if (fi.exists()) {
-        process->setNativeArguments(QString("/select,\"%1\"").arg(QDir::toNativeSeparators(fi.absoluteFilePath())));
-    } else {
-        process->setNativeArguments(QString("\"%1\"").arg(QDir::toNativeSeparators(fi.absolutePath())));
-    }
-    process->start();
-    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            process, &QProcess::deleteLater);
-#else
-    QDesktopServices::openUrl(QUrl::fromLocalFile(fi.absolutePath()));
-#endif
+    FileUtils::showFileInFolder(filePath, this);
 }
 
 QString MainWindow::resolveDownloadPreviewPath(const ModelUpdateInfo &info) const
@@ -8812,7 +8602,7 @@ void MainWindow::fetchMetadataForSyncJob(const MetadataSyncJob &job)
         connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleMetadataSyncHashReply(reply); });
     });
     watcher->setFuture(QtConcurrent::run(backgroundThreadPool, [filePath = job.snapshot.filePath]() {
-        return calculateFileHashWorker(filePath);
+        return FileUtils::calculateSha256Hex(filePath);
     }));
 }
 
@@ -9004,11 +8794,6 @@ bool MainWindow::saveMetadataFromModelRoot(const MetadataSyncJob &job, const QJs
         refreshCollectionTreeView();
     }
     return true;
-}
-
-void MainWindow::enqueueModelFileDownload(const ModelUpdateInfo &info)
-{
-    if (downloadManager) downloadManager->enqueueModelDownload(info);
 }
 
 QString MainWindow::chooseModelDownloadTarget(const ModelUpdateInfo &info, bool *overwrite)
@@ -9810,40 +9595,6 @@ bool MainWindow::editTranslationCsvPaths()
     return true;
 }
 
-// 加载 CSV 逻辑
-void MainWindow::loadTranslationCSV(const QString &path) {
-    translationMap.clear();
-    if (path.isEmpty() || !QFile::exists(path)) return;
-
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return;
-
-    QTextStream in(&file);
-
-    while (!in.atEnd()) {
-        QString line = in.readLine();
-        if (line.trimmed().isEmpty()) continue;
-
-        // 格式：1girl,1女孩
-        // 使用第一次出现的逗号进行分割，以防翻译内容中也有逗号（虽然CSV通常会有引号处理，这里做简易处理）
-        int firstComma = line.indexOf(',');
-        if (firstComma != -1) {
-            QString en = line.left(firstComma).trimmed();
-            QString cn = line.mid(firstComma + 1).trimmed();
-
-            // 去除可能存在的引号（如果CSV是标准格式）
-            if (en.startsWith('"') && en.endsWith('"')) en = en.mid(1, en.length()-2);
-            if (cn.startsWith('"') && cn.endsWith('"')) cn = cn.mid(1, cn.length()-2);
-
-            if (!en.isEmpty() && !cn.isEmpty()) {
-                translationMap.insert(en, cn);
-            }
-        }
-    }
-    file.close();
-    qDebug() << "Loaded translation entries:" << translationMap.size();
-}
-
 void MainWindow::reloadTranslationMaps(bool notifyWidgets)
 {
     translationMap.clear();
@@ -9942,30 +9693,7 @@ void MainWindow::onUserGalleryContextMenu(const QPoint &pos)
         QDesktopServices::openUrl(QUrl::fromLocalFile(filePath));
     }
     else if (selected == actOpenDir) {
-#ifdef Q_OS_WIN
-        // === Windows 终极修复方案 ===
-        // 使用 QProcess 的 setNativeArguments 绕过 Qt 的自动引号机制
-        QProcess *process = new QProcess(this);
-        process->setProgram("explorer.exe");
-
-        // 转换为 Windows 反斜杠格式
-        QString nativePath = QDir::toNativeSeparators(filePath);
-
-        // 手动构建参数：/select,"C:\Path\File.png"
-        // 这里的引号是我们手动加的，Qt 不会再外面再包一层引号
-        QString args = QString("/select,\"%1\"").arg(nativePath);
-
-        process->setNativeArguments(args);
-        process->start();
-
-        // 进程结束后自动删除对象
-        connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                process, &QProcess::deleteLater);
-#else
-        // Mac / Linux
-        QFileInfo fi(filePath);
-        QDesktopServices::openUrl(QUrl::fromLocalFile(fi.absolutePath()));
-#endif
+        showFileInFolder(filePath);
     }
     else if (selected == actShowRawMetadata) {
         showRawImageMetadataDialog(filePath);
@@ -10577,71 +10305,6 @@ void MainWindow::refreshCollectionTreeView()
             ui->collectionTree->verticalScrollBar()->setValue(scrollPos);
         });
     }
-}
-
-// 辅助函数：添加占位符
-void MainWindow::addPlaceholderChild(QTreeWidgetItem *parent) {
-    QTreeWidgetItem *dummy = new QTreeWidgetItem();
-    dummy->setText(0, "Loading...");
-    dummy->setData(0, ROLE_IS_PLACEHOLDER, true);
-    parent->addChild(dummy);
-}
-
-void MainWindow::filterModelsByCollection(const QString &collectionName)
-{
-    currentCollectionFilter = collectionName; // 更新当前的过滤状态
-
-    // 刷新 modelList 的可见性
-    for (int i = 0; i < ui->modelList->count(); ++i) {
-        QListWidgetItem *item = ui->modelList->item(i);
-        if (!isModelListItem(item)) {
-            if (item) item->setHidden(true);
-            if (item) item->setData(ROLE_MODEL_FILTER_VISIBLE, false);
-            continue;
-        }
-        QString baseName = item->data(ROLE_MODEL_NAME).toString(); // 获取模型的基础名称
-
-        bool shouldBeVisible = false;
-
-        if (currentCollectionFilter.isEmpty()) { // "ALL / 全部模型"
-            shouldBeVisible = true;
-        } else if (currentCollectionFilter == FILTER_UNCATEGORIZED) {
-            bool categorized = false;
-            for (auto it = collections.begin(); it != collections.end(); ++it) {
-                if (it.value().contains(baseName)) {
-                    categorized = true;
-                    break;
-                }
-            }
-            shouldBeVisible = !categorized;
-        } else { // 特定收藏夹
-            QStringList modelsInSelectedCollection = collections.value(currentCollectionFilter);
-            shouldBeVisible = modelsInSelectedCollection.contains(baseName);
-        }
-
-        // --- NSFW 过滤逻辑 (需要复制 scanModels 中的逻辑以保持一致) ---
-        int nsfwLevel = item->data(ROLE_NSFW_LEVEL).toInt();
-        bool isNSFW = nsfwLevel > optNSFWLevel;
-        if (optFilterNSFW && isNSFW && optNSFWMode == 0) {
-            shouldBeVisible = false; // 隐藏模式下，NSFW 不可见
-        }
-
-        item->setData(ROLE_MODEL_FILTER_VISIBLE, shouldBeVisible);
-    }
-    applyModelFolderVisibility();
-
-    // 清除搜索框（因为现在是按收藏夹过滤）
-    ui->searchEdit->clear();
-
-    // 重新执行排序（排序是基于可见项进行的）
-    // executeSort(); // 理论上这里不需要重新排序，只需要刷新可见性。
-    // 但为了保持排序结果和可见性一致，可以调用。
-    // 这里暂时不调，因为 modelList 的 item 隐藏后排序没意义。
-
-    // 刷新主页大图列表
-    refreshHomeGallery();
-
-    ui->statusbar->showMessage(QString("当前过滤: %1").arg(currentCollectionFilter.isEmpty() ? "全部模型" : currentCollectionFilter));
 }
 
 void MainWindow::cancelPendingTasks()

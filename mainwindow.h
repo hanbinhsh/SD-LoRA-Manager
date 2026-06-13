@@ -235,13 +235,11 @@ private slots:
     void onModelsTabButtonClicked();
     void onCollectionsTabButtonClicked();
     void onCollectionTreeContextMenu(const QPoint &pos);
-    void onActionOpenFolderTriggered();
     void onForceUpdateClicked();
     void onScanLocalClicked();
     void onOpenUrlClicked();
     void onCopyLoraTagClicked();
     void onApiMetadataReceived(QNetworkReply *reply);
-    void onImageDownloaded(QNetworkReply *reply);
     void onGalleryImageClicked(int index);
     void onHomeButtonClicked(); // 切换到主页
     void onHomeGalleryClicked(QListWidgetItem *item); // 主页大图点击跳转
@@ -339,7 +337,6 @@ private:
     QStringList normalizeModelUserTags(const QStringList &tags) const;
     QStringList normalizeModelUserTagsText(const QString &text) const;
     QStringList normalizeModelCustomTriggers(const QStringList &triggers) const;
-    QStringList normalizeModelCustomTriggersText(const QString &text) const;
     QString formatModelRating(double rating) const;
     QString formatModelUserNoteTooltip(const QString &filePath, const QString &baseTooltip = QString()) const;
     void applyModelUserNoteData(QListWidgetItem *item);
@@ -367,9 +364,7 @@ private:
     QIcon getSquareIcon(const QPixmap &srcPix);
 
     // 生成一个适合主页大图的 Icon (2:3比例)
-    QIcon getRoundedSquareIcon(const QString &path, int size, int radius);
     QString findLocalPreviewPath(const QString &dirPath, const QString &currentBaseName, const QString &serverFileName, int imgIndex) const;
-    QString calculateFileHash(const QString &filePath);
     void fetchModelInfoFromCivitai(const QString &hash);
     void startModelHashSync(const QString &filePath, const QString &baseName, bool forceRefresh);
     void showPendingLocalModelDetail(const ModelMeta &meta, const QString &message);
@@ -454,7 +449,6 @@ private:
     void initSettingsPage();
     void onMenuSwitchToDownloads();
     void checkUpdatesForItems(const QList<QListWidgetItem*> &items);
-    void checkUpdateForItem(QListWidgetItem *item);
     void checkUpdateForSnapshot(const UpdateCheckSnapshot &snapshot);
     void dispatchQueuedUpdateChecks();
     void enqueueUpdateHashCheck(const UpdateCheckSnapshot &snapshot);
@@ -465,7 +459,6 @@ private:
     void addOrUpdateDownloadCard(const ModelUpdateInfo &info, const QString &status);
     void loadDownloadCardsCache();
     void saveDownloadCardsCache() const;
-    void enqueueModelFileDownload(const ModelUpdateInfo &info);
     QString chooseModelDownloadTarget(const ModelUpdateInfo &info, bool *overwrite);
     QString uniqueFilePath(const QString &dirPath, const QString &fileName) const;
     void finishModelDownload(const ModelFileDownloadTask &task);
@@ -554,7 +547,6 @@ private:
 
     void scanForUserImages(const QString &loraBaseName);
     void parsePngInfo(const QString &path, UserImageInfo &info);
-    void updateUserStats(const QList<UserImageInfo> &images);
     void refreshUserTagFlowStats();
     void resetUserImageThumbLoading();
     void scheduleVisibleUserImageThumbLoad();
@@ -574,13 +566,8 @@ private:
     QPixmap applyNSFWBlur(const QPixmap &pix);
     QPixmap applyRoundedMask(const QPixmap &src, int radius);
     QHash<QString, QString> translationMap; // 存储翻译数据
-    void loadTranslationCSV(const QString &path); // 加载函数
-
-    QString extractPngParameters(const QString &filePath);
 
     void refreshCollectionTreeView();
-    void filterModelsByCollection(const QString &collectionName);
-    void addPlaceholderChild(QTreeWidgetItem *parent);
     void cancelPendingTasks();
     void syncTreeSelection(const QString &filePath);
     void initMenuBar();       // 菜单初始化

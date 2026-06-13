@@ -408,11 +408,6 @@ void PromptParserWidget::updateWd14ImagePreview(const QString &filePath)
     updateImageLabelPreview(ui->lblWd14Image, filePath, "图片加载失败\nFailed to load image");
 }
 
-QString PromptParserWidget::extractPngParameters(const QString &filePath)
-{
-    return extractPngParametersText(filePath);
-}
-
 QString PromptParserWidget::cleanTagText(QString text) const
 {
     text = text.trimmed();
@@ -494,15 +489,6 @@ QString PromptParserWidget::normalizeCompareTag(QString tag) const
     static const QRegularExpression spaces("\\s+");
     tag.replace(spaces, " ");
     return tag;
-}
-
-QStringList PromptParserWidget::tagsFromMap(const QMap<QString, int> &tags) const
-{
-    QStringList out = tags.keys();
-    std::sort(out.begin(), out.end(), [](const QString &a, const QString &b) {
-        return QString::compare(a, b, Qt::CaseInsensitive) < 0;
-    });
-    return out;
 }
 
 void PromptParserWidget::fillCompareList(QListWidget *list, const QStringList &tags)
@@ -1065,11 +1051,6 @@ void PromptParserWidget::runWd14Tagger()
     ui->lblWd14Status->setText("WD14 Python 反推运行中...");
     ui->lblWd14Elapsed->setText("用时: 计算中...");
     wd14Process->start(selectedPythonPath(), args);
-}
-
-void PromptParserWidget::onWd14Finished()
-{
-    // Kept for moc compatibility with older builds; QProcess finished is handled by a lambda.
 }
 
 Wd14InferenceResult PromptParserWidget::parseWd14ProcessOutput(const QByteArray &stdoutBytes, const QByteArray &stderrBytes, int exitCode) const

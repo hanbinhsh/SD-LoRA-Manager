@@ -81,12 +81,10 @@ private:
     void copyCompareTags(const QStringList &tags, const QString &label);
     void copyCompareAll();
     void processWd14Image(const QString &filePath);
-    QString extractPngParameters(const QString &filePath);
     void updateImagePreview(const QString &filePath);
     void updateWd14ImagePreview(const QString &filePath);
     void updateImageLabelPreview(QLabel *label, const QString &filePath, const QString &fallbackText);
     void runWd14Tagger();
-    void onWd14Finished();
     void loadWd14Settings();
     void saveWd14Settings() const;
     void setWd14Running(bool running);
@@ -117,7 +115,6 @@ private:
     QString cleanTagText(QString t) const;
     QMap<QString, int> parsePromptToMap(const QString &rawPrompt);
     QString normalizeCompareTag(QString tag) const;
-    QStringList tagsFromMap(const QMap<QString, int> &tags) const;
     void fillCompareList(QListWidget *list, const QStringList &tags);
     void fillCompareParams();
     QString compareParamValue(const ParsedImageMetadata &meta, const QString &key) const;

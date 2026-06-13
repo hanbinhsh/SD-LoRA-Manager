@@ -58,7 +58,6 @@ public:
     bool containsInfo(const QString &filePath) const;
     ModelUpdateInfo info(const QString &filePath) const;
     void setInfo(const ModelUpdateInfo &info);
-    QStringList infoKeys() const;
 
     QStringList selectedFilePaths() const;
     QString currentCategory() const;
@@ -97,7 +96,6 @@ private slots:
 
 private:
     static DownloadPreviewLoadResult processPreviewTask(const QString &filePath, const QString &previewPath);
-    static QString calculateFileHash(const QString &filePath);
     static QString uniqueFilePath(const QString &dirPath, const QString &fileName);
 
     QString chooseTargetPath(const ModelUpdateInfo &info, bool *overwrite) const;

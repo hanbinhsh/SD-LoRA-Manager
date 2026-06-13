@@ -1,9 +1,9 @@
 #include "downloadmanager.h"
 
 #include "downloadspage.h"
+#include "fileutils.h"
 
 #include <QApplication>
-#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -81,11 +81,6 @@ ModelUpdateInfo DownloadManager::info(const QString &filePath) const
 void DownloadManager::setInfo(const ModelUpdateInfo &info)
 {
     if (!info.filePath.isEmpty()) m_infos.insert(info.filePath, info);
-}
-
-QStringList DownloadManager::infoKeys() const
-{
-    return m_infos.keys();
 }
 
 QStringList DownloadManager::selectedFilePaths() const
@@ -562,7 +557,7 @@ void DownloadManager::processNextModelDownload()
 
         const QString expected = m_activeTask.info.sha256;
         if (!expected.isEmpty()) {
-            const QString actual = m_hash ? m_hash(m_activeTask.tempPath) : calculateFileHash(m_activeTask.tempPath);
+            const QString actual = m_hash ? m_hash(m_activeTask.tempPath) : FileUtils::calculateSha256Hex(m_activeTask.tempPath);
             if (!actual.isEmpty() && actual.compare(expected, Qt::CaseInsensitive) != 0) {
                 QFile::remove(m_activeTask.tempPath);
                 updateStatus(m_activeTask.info.filePath, "失败: SHA256 校验失败");
@@ -594,15 +589,6 @@ void DownloadManager::finishModelDownload(const ModelFileDownloadTask &task)
     saveCache();
     emit modelFileReady(task);
     emit modelFileDownloaded(task.info, task.targetPath);
-}
-
-QString DownloadManager::calculateFileHash(const QString &filePath)
-{
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly)) return QString();
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    while (!file.atEnd()) hash.addData(file.read(1024 * 1024));
-    return hash.result().toHex();
 }
 
 QString DownloadManager::uniqueFilePath(const QString &dirPath, const QString &fileName)

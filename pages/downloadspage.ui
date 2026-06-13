@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>980</width>
+    <width>1034</width>
     <height>720</height>
    </rect>
   </property>
@@ -37,19 +37,19 @@
       </attribute>
       <layout class="QHBoxLayout" name="horizontalLayout_DownloadsRoot">
        <property name="spacing">
-        <number>14</number>
+        <number>7</number>
        </property>
        <property name="leftMargin">
-        <number>0</number>
+        <number>10</number>
        </property>
        <property name="topMargin">
         <number>10</number>
        </property>
        <property name="rightMargin">
-        <number>0</number>
+        <number>10</number>
        </property>
        <property name="bottomMargin">
-        <number>0</number>
+        <number>10</number>
        </property>
        <item>
         <widget class="QGroupBox" name="groupDownloadsActions">
@@ -258,8 +258,8 @@
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>628</width>
-                <height>568</height>
+                <width>669</width>
+                <height>558</height>
                </rect>
               </property>
               <layout class="QVBoxLayout" name="downloadCardsLayout">
@@ -327,8 +327,8 @@
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>628</width>
-                <height>568</height>
+                <width>669</width>
+                <height>558</height>
                </rect>
               </property>
               <layout class="QVBoxLayout" name="downloadCardsLayoutCoexisting">
@@ -396,8 +396,8 @@
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>628</width>
-                <height>568</height>
+                <width>669</width>
+                <height>558</height>
                </rect>
               </property>
               <layout class="QVBoxLayout" name="downloadCardsLayoutIgnored">
@@ -465,8 +465,8 @@
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>628</width>
-                <height>568</height>
+                <width>669</width>
+                <height>558</height>
                </rect>
               </property>
               <layout class="QVBoxLayout" name="downloadCardsLayoutLatest">
@@ -534,8 +534,8 @@
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>628</width>
-                <height>568</height>
+                <width>669</width>
+                <height>558</height>
                </rect>
               </property>
               <layout class="QVBoxLayout" name="downloadCardsLayoutErrors">
@@ -603,8 +603,8 @@
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>628</width>
-                <height>568</height>
+                <width>669</width>
+                <height>558</height>
                </rect>
               </property>
               <layout class="QVBoxLayout" name="downloadCardsLayoutLocal">
@@ -694,7 +694,7 @@
           </widget>
          </item>
          <item>
-         <widget class="QPushButton" name="btnMetadataOpenModel">
+          <widget class="QPushButton" name="btnMetadataOpenModel">
            <property name="text">
             <string>跳转模型</string>
            </property>
@@ -732,7 +732,7 @@
             <string>未选择模型</string>
            </property>
            <property name="alignment">
-            <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignVCenter</set>
+            <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
            </property>
           </widget>
          </item>
@@ -773,14 +773,14 @@
              </column>
              <column>
               <property name="text">
-             <string>状态</string>
+               <string>状态</string>
               </property>
              </column>
              <column>
-             <property name="text">
-              <string>上次同步</string>
-             </property>
-            </column>
+              <property name="text">
+               <string>上次同步</string>
+              </property>
+             </column>
             </widget>
            </item>
           </layout>
@@ -862,7 +862,7 @@
           </widget>
          </item>
          <item>
-         <widget class="QPushButton" name="btnOpenHealthModel">
+          <widget class="QPushButton" name="btnOpenHealthModel">
            <property name="text">
             <string>跳转模型</string>
            </property>
