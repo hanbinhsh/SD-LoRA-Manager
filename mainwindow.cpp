@@ -21,6 +21,7 @@
 #include <QJsonArray>
 #include <QPainterPath>
 #include <QImageReader>
+#include <QImageWriter>
 #include <QPair>
 #include <QTimer>
 #include <QGraphicsScene>
@@ -76,6 +77,89 @@ namespace {
 QString normalizedHomeTagKey(const QString &tag)
 {
     return tag.trimmed().toCaseFolded();
+}
+
+PreviewMetadataPayload previewPayloadFromImageInfo(const ImageInfo &img)
+{
+    PreviewMetadataPayload payload;
+    payload.prompt = img.prompt;
+    payload.negativePrompt = img.negativePrompt;
+    payload.sampler = img.sampler;
+    payload.cfgScale = img.cfgScale;
+    payload.steps = img.steps;
+    payload.seed = img.seed;
+    payload.width = img.width;
+    payload.height = img.height;
+    payload.nsfwLevel = img.nsfwLevel;
+    return payload;
+}
+
+QVector<ImageInfo> imageInfosFromVersionJson(const QJsonObject &root)
+{
+    QVector<ImageInfo> result;
+    const QJsonArray images = root.value("images").toArray();
+    for (const QJsonValue &val : images) {
+        const QJsonObject imgObj = val.toObject();
+        const QString type = imgObj.value("type").toString();
+        const QString url = imgObj.value("url").toString();
+        if (type == "video" || url.endsWith(".mp4", Qt::CaseInsensitive) || url.endsWith(".webm", Qt::CaseInsensitive)) {
+            continue;
+        }
+
+        ImageInfo img;
+        img.url = url;
+        img.hash = imgObj.value("hash").toString();
+        img.width = imgObj.value("width").toInt();
+        img.height = imgObj.value("height").toInt();
+        img.nsfwLevel = imgObj.value("nsfwLevel").toInt();
+        img.nsfw = img.nsfwLevel > 1;
+        const QJsonObject meta = imgObj.value("meta").toObject();
+        img.prompt = meta.value("prompt").toString();
+        img.negativePrompt = meta.value("negativePrompt").toString();
+        img.sampler = meta.value("sampler").toString();
+        if (meta.contains("steps")) img.steps = meta.value("steps").isString() ? meta.value("steps").toString() : QString::number(meta.value("steps").toInt());
+        if (meta.contains("cfgScale")) img.cfgScale = meta.value("cfgScale").isString() ? meta.value("cfgScale").toString() : QString::number(meta.value("cfgScale").toDouble());
+        if (meta.contains("seed")) img.seed = meta.value("seed").isString() ? meta.value("seed").toString() : QString::number(meta.value("seed").toVariant().toLongLong());
+        result.append(img);
+    }
+    return result;
+}
+
+bool writePreviewMetadataToPath(const QString &path,
+                                const QString &parameters,
+                                const QString &prompt,
+                                const QString &negativePrompt)
+{
+    if (path.isEmpty() || parameters.isEmpty() || !QFile::exists(path)) return false;
+
+    QFile input(path);
+    if (!input.open(QIODevice::ReadOnly)) return false;
+    const QByteArray data = input.readAll();
+    input.close();
+    if (data.size() < 12) return false;
+
+    const bool isPng = data.startsWith("\x89PNG\r\n\x1a\n");
+    const bool isJpeg = data.startsWith("\xff\xd8");
+    const bool isWebp = data.size() >= 12 && data.left(4) == "RIFF" && data.mid(8, 4) == "WEBP";
+    if (!isPng && !isJpeg && !isWebp) return false;
+
+    // Avoid libpng spam on partial/corrupt downloads. A complete PNG must contain IEND.
+    if (isPng && !data.contains("IEND")) {
+        return false;
+    }
+
+    QImage image;
+    if (!image.loadFromData(data)) return false;
+    if (image.isNull()) return false;
+
+    QSaveFile output(path);
+    if (!output.open(QIODevice::WriteOnly)) return false;
+    QImageWriter writer(&output, "png");
+    writer.setText("parameters", parameters);
+    writer.setText("civitai_prompt", prompt);
+    writer.setText("civitai_negative_prompt", negativePrompt);
+    if (!writer.write(image)) return false;
+    return output.commit();
 }
 
 QString loadQssResource(const QString &path)
@@ -2853,7 +2937,8 @@ void MainWindow::addGalleryThumbButton(const ModelMeta &meta, int index, const Q
     thumbBtn->setProperty("imageIndex", index);
     thumbBtn->installEventFilter(this);
 
-    if (QFile::exists(effectivePath)) {
+    const PreviewMetadataPayload previewPayload = previewPayloadFromImageInfo(img);
+    if (QFile::exists(effectivePath) && !(m_forceResyncPreview && index > 0 && !img.url.isEmpty())) {
         thumbBtn->setText("Loading...");
         IconLoaderTask *task = new IconLoaderTask(effectivePath, 100, 0, this, effectivePath, true);
         task->setAutoDelete(true);
@@ -2864,8 +2949,11 @@ void MainWindow::addGalleryThumbButton(const ModelMeta &meta, int index, const Q
         } else if (img.url.isEmpty()) {
             thumbBtn->setText("Missing");
         } else {
+            if (QFile::exists(strictLocalPath) && index > 0 && m_forceResyncPreview) {
+                QFile::remove(strictLocalPath);
+            }
             thumbBtn->setText(index == 0 ? "Downloading..." : "Queueing...");
-            enqueueDownload(img.url, strictLocalPath, thumbBtn, baseName);
+            enqueueDownload(img.url, strictLocalPath, thumbBtn, baseName, index, previewPayload);
         }
     }
 
@@ -2896,7 +2984,11 @@ void MainWindow::addGalleryThumbButton(const ModelMeta &meta, int index, const Q
             }
             thumbBtn->setIcon(QIcon());
             thumbBtn->setText(imageIndex == 0 ? "Downloading..." : "Queueing...");
-            enqueueDownload(downloadUrl, savePath, thumbBtn, localBaseName);
+            PreviewMetadataPayload payload;
+            if (imageIndex >= 0 && imageIndex < currentMeta.images.size()) {
+                payload = previewPayloadFromImageInfo(currentMeta.images.at(imageIndex));
+            }
+            enqueueDownload(downloadUrl, savePath, thumbBtn, localBaseName, imageIndex, payload);
             return;
         }
 
@@ -3779,10 +3871,20 @@ void MainWindow::refreshModelUserNotePanel(const QString &filePath)
         ui->layoutUserTags->addWidget(empty);
     } else {
         for (const QString &tag : note.tags) {
-            QLabel *label = new QLabel(tag);
-            label->setProperty("class", "tag");
-            label->setStyleSheet(AppStyle::UserTagChipInlineStyle);
-            ui->layoutUserTags->addWidget(label);
+            QPushButton *button = new QPushButton(forceWrap(tag));
+            button->setProperty("class", "filterChip");
+            button->setProperty("tagSource", "user");
+            button->setCursor(Qt::PointingHandCursor);
+            button->setToolTip("点击在主页添加该用户 Tag 筛选");
+            button->setMaximumWidth(150);
+            button->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+            connect(button, &QPushButton::clicked, this, [this, tag]() {
+                ui->rootStack->setCurrentWidget(ui->pageLibrary);
+                ui->mainStack->setCurrentWidget(ui->pageHome);
+                addHomeTagFilter(tag);
+                ui->statusbar->showMessage("已添加用户 Tag 筛选: " + tag, 2000);
+            });
+            ui->layoutUserTags->addWidget(button);
         }
     }
     ui->layoutUserTags->addStretch();
@@ -4378,30 +4480,39 @@ void MainWindow::onLocalMetaSaveClicked()
 
     commitEditImageFields();
     QJsonArray imagesArr;
-    for (const ImageInfo &img : currentMeta.images) {
-        QJsonObject imgObj;
+    const QJsonArray oldImagesArr = root["images"].toArray();
+    for (int imageIndex = 0; imageIndex < currentMeta.images.size(); ++imageIndex) {
+        const ImageInfo &img = currentMeta.images.at(imageIndex);
+        QJsonObject imgObj = imageIndex < oldImagesArr.size() ? oldImagesArr.at(imageIndex).toObject() : QJsonObject();
         if (!img.url.isEmpty()) imgObj["url"] = img.url;
         if (!img.hash.isEmpty()) imgObj["hash"] = img.hash;
         if (img.width > 0) imgObj["width"] = img.width;
         if (img.height > 0) imgObj["height"] = img.height;
         if (img.nsfwLevel > 0) imgObj["nsfwLevel"] = img.nsfwLevel;
-        QJsonObject imgMeta;
+        QJsonObject imgMeta = imgObj["meta"].toObject();
         if (!img.prompt.isEmpty()) imgMeta["prompt"] = img.prompt;
+        else imgMeta.remove("prompt");
         if (!img.negativePrompt.isEmpty()) imgMeta["negativePrompt"] = img.negativePrompt;
+        else imgMeta.remove("negativePrompt");
         if (!img.sampler.isEmpty()) imgMeta["sampler"] = img.sampler;
+        else imgMeta.remove("sampler");
         bool okSteps = false;
         int steps = img.steps.toInt(&okSteps);
         if (okSteps) imgMeta["steps"] = steps;
         else if (!img.steps.isEmpty()) imgMeta["steps"] = img.steps;
+        else imgMeta.remove("steps");
         bool okCfg = false;
         double cfg = img.cfgScale.toDouble(&okCfg);
         if (okCfg) imgMeta["cfgScale"] = cfg;
         else if (!img.cfgScale.isEmpty()) imgMeta["cfgScale"] = img.cfgScale;
+        else imgMeta.remove("cfgScale");
         bool okSeed = false;
         qlonglong seed = img.seed.toLongLong(&okSeed);
         if (okSeed) imgMeta["seed"] = seed;
         else if (!img.seed.isEmpty()) imgMeta["seed"] = img.seed;
+        else imgMeta.remove("seed");
         if (!imgMeta.isEmpty()) imgObj["meta"] = imgMeta;
+        else imgObj.remove("meta");
         imagesArr.append(imgObj);
     }
     root["images"] = imagesArr;
@@ -5108,9 +5219,6 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
                 meta.previewPath = savePath;
             }
         } else {
-            if (m_forceResyncPreview && QFile::exists(savePath)) {
-                QFile::remove(savePath);
-            }
             meta.previewPath = savePath;
         }
     }
@@ -6699,14 +6807,114 @@ void MainWindow::updateBackgroundDuringTransition()
     ui->backgroundLabel->setPixmap(canvas);
 }
 
+QString MainWindow::buildPreviewParametersText(const PreviewMetadataPayload &payload) const
+{
+    QStringList lines;
+    if (!payload.prompt.trimmed().isEmpty()) {
+        lines << payload.prompt.trimmed();
+    }
+    if (!payload.negativePrompt.trimmed().isEmpty()) {
+        lines << "Negative prompt: " + payload.negativePrompt.trimmed();
+    }
+
+    QStringList params;
+    if (!payload.steps.trimmed().isEmpty() && payload.steps.trimmed() != "0") params << "Steps: " + payload.steps.trimmed();
+    if (!payload.sampler.trimmed().isEmpty()) params << "Sampler: " + payload.sampler.trimmed();
+    if (!payload.cfgScale.trimmed().isEmpty() && payload.cfgScale.trimmed() != "0") params << "CFG scale: " + payload.cfgScale.trimmed();
+    if (!payload.seed.trimmed().isEmpty() && payload.seed.trimmed() != "0") params << "Seed: " + payload.seed.trimmed();
+    if (payload.width > 0 && payload.height > 0) params << QString("Size: %1x%2").arg(payload.width).arg(payload.height);
+    if (!params.isEmpty()) lines << params.join(", ");
+
+    return lines.join('\n').trimmed();
+}
+
+bool MainWindow::savePreviewImageWithMetadata(const QByteArray &data, const QString &savePath, const PreviewMetadataPayload &payload) const
+{
+    const QString parameters = buildPreviewParametersText(payload);
+    if (parameters.isEmpty()) {
+        QFile raw(savePath);
+        if (!raw.open(QIODevice::WriteOnly)) return false;
+        raw.write(data);
+        return true;
+    }
+
+    QImage image;
+    image.loadFromData(data);
+    if (image.isNull()) {
+        QFile raw(savePath);
+        if (!raw.open(QIODevice::WriteOnly)) return false;
+        raw.write(data);
+        return false;
+    }
+
+    QImageWriter writer(savePath, "png");
+    writer.setText("parameters", parameters);
+    writer.setText("civitai_prompt", payload.prompt);
+    writer.setText("civitai_negative_prompt", payload.negativePrompt);
+    if (writer.write(image)) return true;
+
+    QFile raw(savePath);
+    if (raw.open(QIODevice::WriteOnly)) raw.write(data);
+    return false;
+}
+
+bool MainWindow::ensurePreviewImageMetadata(const QString &path, const PreviewMetadataPayload &payload) const
+{
+    const QString parameters = buildPreviewParametersText(payload);
+    return writePreviewMetadataToPath(path, parameters, payload.prompt, payload.negativePrompt);
+}
+
+void MainWindow::syncPreviewImagesFromMetadata(const QString &modelDir,
+                                               const QString &baseName,
+                                               const QVector<ImageInfo> &images,
+                                               bool forceNonCoverDownload,
+                                               bool countForMetadataSync)
+{
+    if (modelDir.isEmpty() || baseName.isEmpty()) return;
+    for (int index = 0; index < images.size(); ++index) {
+        const ImageInfo &img = images.at(index);
+        const QString suffix = (index == 0) ? ".preview.png" : QString(".preview.%1.png").arg(index);
+        const QString savePath = QFileInfo(QDir(modelDir).filePath(baseName + suffix)).absoluteFilePath();
+        const PreviewMetadataPayload payload = previewPayloadFromImageInfo(img);
+        const bool exists = QFile::exists(savePath);
+
+        if (exists && !(forceNonCoverDownload && index > 0)) {
+            enqueueDownload(QString(), savePath, nullptr, baseName, index, payload, true, true, countForMetadataSync);
+            continue;
+        }
+
+        if (img.url.isEmpty()) continue;
+        if (exists && index > 0 && forceNonCoverDownload) {
+            QFile::remove(savePath);
+        }
+        enqueueDownload(img.url, savePath, nullptr, baseName, index, payload, true, false, countForMetadataSync);
+    }
+}
+
 // 1. 入队函数
-void MainWindow::enqueueDownload(const QString &url, const QString &savePath, QPushButton *btn, const QString &localBaseName)
+void MainWindow::enqueueDownload(const QString &url,
+                                 const QString &savePath,
+                                 QPushButton *btn,
+                                 const QString &localBaseName,
+                                 int imageIndex,
+                                 const PreviewMetadataPayload &previewMeta,
+                                 bool allowNoButton,
+                                 bool metadataOnly,
+                                 bool countForMetadataSync)
 {
     DownloadTask task;
     task.url = url;
     task.savePath = savePath;
     task.localBaseName = localBaseName;
     task.button = btn;
+    task.imageIndex = imageIndex;
+    task.previewMeta = previewMeta;
+    task.allowNoButton = allowNoButton;
+    task.metadataOnly = metadataOnly;
+    task.countForMetadataSync = countForMetadataSync;
+    if (countForMetadataSync) {
+        ++metadataPreviewTasksPending;
+    }
 
     downloadQueue.enqueue(task);
 
@@ -6716,22 +6924,53 @@ void MainWindow::enqueueDownload(const QString &url, const QString &savePath, QP
     }
 }
 
+void MainWindow::finishMetadataSyncBatch()
+{
+    metadataSyncWaitingForPreviews = false;
+    metadataSyncPreviewImages = false;
+    downloadsPage->setStatusText(QString("元信息同步完成，共处理 %1 个模型。").arg(metadataSyncTotal));
+    refreshHomeGallery();
+    refreshCollectionTreeView();
+    startMetadataScan();
+    refreshUsageAnalysisWidget();
+}
+
+void MainWindow::markMetadataPreviewTaskFinished()
+{
+    if (metadataPreviewTasksPending > 0) {
+        --metadataPreviewTasksPending;
+    }
+    if (metadataSyncWaitingForPreviews && metadataPreviewTasksPending > 0 && downloadsPage) {
+        downloadsPage->setStatusText(QString("正在同步预览图元信息... 剩余 %1 个任务").arg(metadataPreviewTasksPending));
+    }
+    if (metadataSyncWaitingForPreviews && metadataPreviewTasksPending <= 0) {
+        finishMetadataSyncBatch();
+    }
+}
+
 // 2. 队列处理函数 (核心：一张张下)
 void MainWindow::processNextDownload()
 {
     while (!downloadQueue.isEmpty()) {
         DownloadTask task = downloadQueue.dequeue();
 
-        if (task.button.isNull()) {
+        if (task.button.isNull() && !task.allowNoButton) {
             continue; // 按钮已销毁，直接跳过此任务处理下一个
         }
 
         isDownloading = true;
 
         // 设置按钮状态
-        task.button->setText("Waiting...");
+        if (task.button) task.button->setText("Waiting...");
 
         QString cleanedSavePath = QFileInfo(task.savePath).absoluteFilePath();
+
+        if (task.metadataOnly || task.url.trimmed().isEmpty()) {
+            ensurePreviewImageMetadata(cleanedSavePath, task.previewMeta);
+            if (task.countForMetadataSync) markMetadataPreviewTaskFinished();
+            QTimer::singleShot(0, this, &MainWindow::processNextDownload);
+            return;
+        }
 
         const QUrl taskUrl(task.url);
         const bool hasToken = QUrlQuery(taskUrl).hasQueryItem("token");
@@ -6775,6 +7014,7 @@ void MainWindow::processNextDownload()
 
             // 如果任务是被中止的（例如用户切换了模型清空了旧队列），直接退出回调，阻止僵尸循环继续排队
             if (reply->error() == QNetworkReply::OperationCanceledError) {
+                if (task.countForMetadataSync) markMetadataPreviewTaskFinished();
                 return;
             }
 
@@ -6799,17 +7039,15 @@ void MainWindow::processNextDownload()
                 }
 
                 qDebug() << "Queued preview download failed:" << civitaiNetworkErrorMessage(reply) << errStr;
+                if (task.countForMetadataSync) markMetadataPreviewTaskFinished();
                 QTimer::singleShot(500, this, &MainWindow::processNextDownload);
                 return;
             }
 
             QByteArray data = reply->readAll();
             if (!data.isEmpty()) {
-                QFile file(cleanedSavePath);
-                if (file.open(QIODevice::WriteOnly)) {
-                    file.write(data);
-                    file.close();
-
+                const bool saved = savePreviewImageWithMetadata(data, cleanedSavePath, task.previewMeta);
+                if (saved) {
                     applyDownloadedPreviewToUi(task.localBaseName, cleanedSavePath);
 
                     if (task.button) {
@@ -6822,8 +7060,11 @@ void MainWindow::processNextDownload()
                             task.button->setText("");
                         }
                     }
+                } else {
+                    ui->statusbar->showMessage("预览图已保存，但未能写入可解析元信息: " + QFileInfo(cleanedSavePath).fileName(), 5000);
                 }
             }
+            if (task.countForMetadataSync) markMetadataPreviewTaskFinished();
             QTimer::singleShot(500, this, &MainWindow::processNextDownload);
         });
 
@@ -8356,6 +8597,22 @@ void MainWindow::startMetadataSyncForPaths(const QStringList &filePaths, bool up
         if (ret != QMessageBox::Yes) return;
     }
 
+    QMessageBox previewMsg(this);
+    previewMsg.setWindowTitle("同步预览图");
+    previewMsg.setText("本次元信息同步是否同时同步 Civitai 预览图？\n\n"
+                       "选择“是”会补齐缺失预览图，并尽量把提示词/参数写入本地预览图。\n"
+                       "选择“仅元数据”只更新 JSON，不下载或覆盖图片。");
+    QPushButton *btnYes = previewMsg.addButton("是", QMessageBox::AcceptRole);
+    QPushButton *btnMetaOnly = previewMsg.addButton("仅元数据", QMessageBox::ActionRole);
+    QPushButton *btnCancel = previewMsg.addButton("取消同步", QMessageBox::RejectRole);
+    previewMsg.setDefaultButton(btnMetaOnly);
+    previewMsg.exec();
+    if (previewMsg.clickedButton() == btnCancel) {
+        downloadsPage->setStatusText("已取消元信息同步。");
+        return;
+    }
+    metadataSyncPreviewImages = (previewMsg.clickedButton() == btnYes);
+
     pendingMetadataSyncJobs.clear();
     for (const QString &path : filePaths) {
         QListWidgetItem *item = findModelItemByFilePath(path);
@@ -8367,8 +8624,11 @@ void MainWindow::startMetadataSyncForPaths(const QStringList &filePaths, bool up
     }
     metadataSyncTotal = pendingMetadataSyncJobs.size();
     metadataSyncDone = 0;
+    metadataPreviewTasksPending = 0;
+    metadataSyncWaitingForPreviews = false;
     metadataSyncRunning = metadataSyncTotal > 0;
     if (!metadataSyncRunning) {
+        metadataSyncPreviewImages = false;
         downloadsPage->setStatusText("没有可同步的模型。");
         return;
     }
@@ -8381,9 +8641,12 @@ void MainWindow::processNextMetadataSyncJob()
     if (!metadataSyncRunning) return;
     if (pendingMetadataSyncJobs.isEmpty()) {
         metadataSyncRunning = false;
-        downloadsPage->setStatusText(QString("元信息同步完成，共处理 %1 个模型。").arg(metadataSyncTotal));
-        startMetadataScan();
-        refreshUsageAnalysisWidget();
+        if (metadataSyncPreviewImages && metadataPreviewTasksPending > 0) {
+            metadataSyncWaitingForPreviews = true;
+            downloadsPage->setStatusText(QString("正在同步预览图元信息... 剩余 %1 个任务").arg(metadataPreviewTasksPending));
+            return;
+        }
+        finishMetadataSyncBatch();
         return;
     }
     const MetadataSyncJob job = pendingMetadataSyncJobs.dequeue();
@@ -8535,7 +8798,6 @@ bool MainWindow::saveMetadataFromModelRoot(const MetadataSyncJob &job, const QJs
     QJsonObject selectedVersion = versionHint;
     const QJsonArray versions = modelRoot.value("modelVersions").toArray();
     if (selectedVersion.isEmpty()) {
-        QDateTime latestTime;
         for (const QJsonValue &val : versions) {
             const QJsonObject version = val.toObject();
             bool match = false;
@@ -8555,16 +8817,9 @@ bool MainWindow::saveMetadataFromModelRoot(const MetadataSyncJob &job, const QJs
                 selectedVersion = version;
                 break;
             }
-            if (!job.updateExisting) continue;
-            QDateTime t = QDateTime::fromString(version.value("publishedAt").toString(), Qt::ISODate);
-            if (!t.isValid()) t = QDateTime::fromString(version.value("createdAt").toString(), Qt::ISODate);
-            if (selectedVersion.isEmpty() || (t.isValid() && (!latestTime.isValid() || t > latestTime))) {
-                selectedVersion = version;
-                latestTime = t;
-            }
         }
     }
-    if (selectedVersion.isEmpty() && !versions.isEmpty()) selectedVersion = versions.first().toObject();
+    if (selectedVersion.isEmpty() && !job.updateExisting && !versions.isEmpty()) selectedVersion = versions.first().toObject();
     if (selectedVersion.isEmpty()) return false;
 
     QJsonObject root = mergeCivitaiModelIntoVersion(selectedVersion, modelRoot);
@@ -8580,6 +8835,13 @@ bool MainWindow::saveMetadataFromModelRoot(const MetadataSyncJob &job, const QJs
         root["localOnly"] = false;
     }
     saveLocalMetadata(job.snapshot.modelDir, job.snapshot.baseName, root);
+    if (metadataSyncPreviewImages) {
+        syncPreviewImagesFromMetadata(job.snapshot.modelDir,
+                                      job.snapshot.baseName,
+                                      imageInfosFromVersionJson(root),
+                                      true,
+                                      true);
+    }
 
     if (QListWidgetItem *item = findModelItemByFilePath(job.snapshot.filePath)) {
         preloadItemMetadata(item, QDir(job.snapshot.modelDir).filePath(job.snapshot.baseName + ".json"));
@@ -8591,15 +8853,17 @@ bool MainWindow::saveMetadataFromModelRoot(const MetadataSyncJob &job, const QJs
         applyModelHighlightColor(item);
     }
     clearModelSyncFailure(job.snapshot.filePath);
-    if (QListWidgetItem *current = ui->modelList->currentItem()) {
-        if (current && QFileInfo(current->data(ROLE_FILE_PATH).toString()).absoluteFilePath() == job.snapshot.filePath) {
-            ModelMeta meta;
-            meta.filePath = job.snapshot.filePath;
-            if (readLocalJson(job.snapshot.modelDir, job.snapshot.baseName, meta)) updateDetailView(meta);
+    if (!metadataSyncRunning) {
+        if (QListWidgetItem *current = ui->modelList->currentItem()) {
+            if (current && QFileInfo(current->data(ROLE_FILE_PATH).toString()).absoluteFilePath() == job.snapshot.filePath) {
+                ModelMeta meta;
+                meta.filePath = job.snapshot.filePath;
+                if (readLocalJson(job.snapshot.modelDir, job.snapshot.baseName, meta)) updateDetailView(meta);
+            }
         }
+        refreshHomeGallery();
+        refreshCollectionTreeView();
     }
-    refreshHomeGallery();
-    refreshCollectionTreeView();
     return true;
 }
 

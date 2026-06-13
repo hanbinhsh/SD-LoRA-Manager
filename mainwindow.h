@@ -108,13 +108,6 @@ class PromptTemplateLibraryWidget;
 class DownloadsPage;
 class DownloadManager;
 
-struct DownloadTask {
-    QString url;
-    QString savePath;
-    QString localBaseName;
-    QPointer<QPushButton> button; // 使用 QPointer 防止按钮被销毁后野指针崩溃
-};
-
 struct ModelUserNote {
     double rating = 0.0;
     QString note;
@@ -145,6 +138,30 @@ struct MetadataSyncJob {
     bool updateExisting = false;
 };
 
+struct PreviewMetadataPayload {
+    QString prompt;
+    QString negativePrompt;
+    QString sampler;
+    QString cfgScale;
+    QString steps;
+    QString seed;
+    int width = 0;
+    int height = 0;
+    int nsfwLevel = 0;
+};
+
+struct DownloadTask {
+    QString url;
+    QString savePath;
+    QString localBaseName;
+    QPointer<QPushButton> button; // 使用 QPointer 防止按钮被销毁后野指针崩溃
+    int imageIndex = -1;
+    PreviewMetadataPayload previewMeta;
+    bool allowNoButton = false;
+    bool metadataOnly = false;
+    bool countForMetadataSync = false;
+};
+
 struct ImageInfo {
     QString url;
     QString hash;
@@ -155,10 +172,10 @@ struct ImageInfo {
     QString steps;
     QString seed;
     QString model;
-    int nsfwLevel;
-    int width;
-    int height;
-    bool nsfw;
+    int nsfwLevel = 0;
+    int width = 0;
+    int height = 0;
+    bool nsfw = false;
 };
 
 struct UserImageInfo {
@@ -417,8 +434,22 @@ private:
     QVariantAnimation *transitionAnim = nullptr; // 动画控制器
     void transitionToImage(const QString &path);
     void updateBackgroundDuringTransition();
-    void enqueueDownload(const QString &url, const QString &savePath, QPushButton *btn, const QString &localBaseName);
+    void enqueueDownload(const QString &url,
+                         const QString &savePath,
+                         QPushButton *btn,
+                         const QString &localBaseName,
+                         int imageIndex = -1,
+                         const PreviewMetadataPayload &previewMeta = PreviewMetadataPayload(),
+                         bool allowNoButton = false,
+                         bool metadataOnly = false,
+                         bool countForMetadataSync = false);
     void processNextDownload();
+    void markMetadataPreviewTaskFinished();
+    void finishMetadataSyncBatch();
+    QString buildPreviewParametersText(const PreviewMetadataPayload &payload) const;
+    bool savePreviewImageWithMetadata(const QByteArray &data, const QString &savePath, const PreviewMetadataPayload &payload) const;
+    bool ensurePreviewImageMetadata(const QString &path, const PreviewMetadataPayload &payload) const;
+    void syncPreviewImagesFromMetadata(const QString &modelDir, const QString &baseName, const QVector<ImageInfo> &images, bool forceNonCoverDownload, bool countForMetadataSync = false);
     void initDownloadsPage();
     void initSettingsPage();
     void onMenuSwitchToDownloads();
@@ -484,6 +515,9 @@ private:
     int metadataSyncTotal = 0;
     int metadataSyncDone = 0;
     bool metadataSyncRunning = false;
+    bool metadataSyncPreviewImages = false;
+    bool metadataSyncWaitingForPreviews = false;
+    int metadataPreviewTasksPending = 0;
     QString currentProcessingPath;
 
     QThreadPool *threadPool = nullptr;           //用于详情页、大图 (可被 cancel)
