@@ -451,7 +451,7 @@ private:
     void initDownloadsPage();
     void initSettingsPage();
     void onMenuSwitchToDownloads();
-    void checkUpdatesForItems(const QList<QListWidgetItem*> &items);
+    void checkUpdatesForItems(const QList<QListWidgetItem*> &items, bool switchToDownloads = true, bool detailPrompt = false);
     void checkUpdateForSnapshot(const UpdateCheckSnapshot &snapshot);
     void dispatchQueuedUpdateChecks();
     void enqueueUpdateHashCheck(const UpdateCheckSnapshot &snapshot);
@@ -543,6 +543,8 @@ private:
     int pendingUpdateChecks = 0;
     int completedUpdateChecks = 0;
     int updateCheckToken = 0;
+    QString detailUpdateCheckFilePath;
+    bool detailUpdateCheckPending = false;
 
 
     TagFlowWidget *tagFlowWidget = nullptr;

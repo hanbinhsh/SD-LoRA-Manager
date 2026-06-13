@@ -424,6 +424,12 @@ void DownloadManager::startSelectedDownloads()
         if (!m_infos.contains(filePath)) continue;
         const ModelUpdateInfo info = m_infos.value(filePath);
         if (!info.hasUpdate) continue;
+        const QString status = cardStatusText(filePath);
+        if (status.contains("已忽略") || status.contains("下载中") ||
+            status.contains("认证重试") || status.contains("队列") ||
+            status.contains("完成")) {
+            continue;
+        }
         enqueueModelDownload(info);
         queued = true;
     }
@@ -458,21 +464,31 @@ QString DownloadManager::chooseTargetPath(const ModelUpdateInfo &info, bool *ove
     return uniqueFilePath(info.modelDir, fileName);
 }
 
-void DownloadManager::cancelSelectedDownloads()
+void DownloadManager::ignoreSelectedUpdates()
 {
+    bool changed = false;
     for (const QString &filePath : selectedFilePaths()) {
-        if (m_activeReply && m_activeTask.info.filePath == filePath) m_activeReply->abort();
-        m_canceledPaths.insert(filePath);
-        updateStatus(filePath, "已取消");
+        if (!m_infos.contains(filePath)) continue;
+        if (cardStatusText(filePath).contains("已忽略")) continue;
+        updateStatus(filePath, "已忽略更新");
+        changed = true;
+    }
+    if (changed) {
+        emit statusMessageChanged("已忽略选中的模型更新。");
+        saveCache();
     }
 }
 
-void DownloadManager::retrySelectedFailedDownloads()
+void DownloadManager::retryFailedDownloads()
 {
-    for (const QString &filePath : selectedFilePaths()) {
+    bool queued = false;
+    const QStringList keys = m_infos.keys();
+    for (const QString &filePath : keys) {
         if (!cardStatusText(filePath).contains("失败")) continue;
-        if (m_infos.contains(filePath)) enqueueModelDownload(m_infos.value(filePath));
+        enqueueModelDownload(m_infos.value(filePath));
+        queued = true;
     }
+    if (!queued) emit statusMessageChanged("当前没有失败任务可重试。");
 }
 
 void DownloadManager::processNextModelDownload()

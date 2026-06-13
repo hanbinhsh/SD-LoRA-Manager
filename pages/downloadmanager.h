@@ -81,8 +81,8 @@ public:
 
     void startSelectedDownloads();
     void enqueueModelDownload(const ModelUpdateInfo &info);
-    void cancelSelectedDownloads();
-    void retrySelectedFailedDownloads();
+    void ignoreSelectedUpdates();
+    void retryFailedDownloads();
 
 signals:
     void statusMessageChanged(const QString &message);

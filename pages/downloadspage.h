@@ -30,15 +30,15 @@ public:
     QComboBox *filterCombo() const;
     QTabWidget *statusTabs() const;
 
-    QPushButton *checkCurrentButton() const;
     QPushButton *checkSelectedButton() const;
     QPushButton *checkAllButton() const;
     QPushButton *downloadSelectedButton() const;
-    QPushButton *cancelButton() const;
     QPushButton *retryButton() const;
     QPushButton *openFolderButton() const;
     QPushButton *clearCompletedButton() const;
     QPushButton *toggleCurrentTabButton() const;
+    QPushButton *clearSelectionButton() const;
+    QPushButton *ignoreSelectedButton() const;
 
     QVBoxLayout *cardsLayout(const QString &category) const;
 
@@ -62,7 +62,9 @@ public:
     void setCardPreview(const QString &filePath, const QPixmap &pixmap);
     void setCardSelected(const QString &filePath, bool selected);
     void setCurrentTabSelection(bool checked);
+    void clearAllCardSelection();
     void toggleCurrentTabSelection();
+    bool hasErrorCards() const;
     void placeCardInCategory(const QString &filePath, const QString &category, bool deferSort = false);
     void sortCardsInCategory(const QString &category);
     void sortAllCards();
@@ -84,7 +86,6 @@ signals:
     void downloadRequested(const QString &filePath);
     void ignoreToggled(const QString &filePath);
     void metadataScanRequested();
-    void metadataSyncRequested(const QStringList &filePaths);
     void metadataUpdateRequested(const QStringList &filePaths);
     void metadataOpenModelRequested(const QString &filePath);
     void metadataOpenFolderRequested(const QString &filePath);
@@ -109,6 +110,7 @@ private:
     void applyHealthTableColumnLayout();
     void updateHealthActionButtons();
     void setCurrentMetadataCategoryChecked(bool checked);
+    void clearMetadataSelection();
     void copySelectedHealthIssues() const;
     QString metadataResultCachePath() const;
 

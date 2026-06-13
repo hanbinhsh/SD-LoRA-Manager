@@ -142,9 +142,6 @@ DownloadsPage::DownloadsPage(QWidget *parent)
     updateSelectedMetadataIdentityLabel();
 
     connect(ui->btnMetadataScan, &QPushButton::clicked, this, &DownloadsPage::metadataScanRequested);
-    connect(ui->btnMetadataSyncSelected, &QPushButton::clicked, this, [this]() {
-        emit metadataSyncRequested(checkedMetadataScanFilePaths());
-    });
     connect(ui->btnMetadataUpdateSelected, &QPushButton::clicked, this, [this]() {
         emit metadataUpdateRequested(checkedMetadataScanFilePaths());
     });
@@ -162,6 +159,7 @@ DownloadsPage::DownloadsPage(QWidget *parent)
         }
         if (hasRow) setCurrentMetadataCategoryChecked(!allChecked);
     });
+    connect(ui->btnMetadataClearSelection, &QPushButton::clicked, this, &DownloadsPage::clearMetadataSelection);
     connect(ui->btnMetadataOpenModel, &QPushButton::clicked, this, [this]() {
         const int row = ui->tableMetadataScan->currentRow();
         if (row < 0) return;
@@ -231,15 +229,15 @@ DownloadsPage::~DownloadsPage()
 QComboBox *DownloadsPage::filterCombo() const { return ui->comboDownloadsFilter; }
 QTabWidget *DownloadsPage::statusTabs() const { return ui->tabDownloadsStatus; }
 
-QPushButton *DownloadsPage::checkCurrentButton() const { return ui->btnDownloadsCheckCurrent; }
 QPushButton *DownloadsPage::checkSelectedButton() const { return ui->btnDownloadsCheckSelected; }
 QPushButton *DownloadsPage::checkAllButton() const { return ui->btnDownloadsCheckAll; }
 QPushButton *DownloadsPage::downloadSelectedButton() const { return ui->btnDownloadsDownloadSelected; }
-QPushButton *DownloadsPage::cancelButton() const { return ui->btnDownloadsCancel; }
 QPushButton *DownloadsPage::retryButton() const { return ui->btnDownloadsRetry; }
 QPushButton *DownloadsPage::openFolderButton() const { return ui->btnDownloadsOpenFolder; }
 QPushButton *DownloadsPage::clearCompletedButton() const { return ui->btnDownloadsClearCompleted; }
 QPushButton *DownloadsPage::toggleCurrentTabButton() const { return ui->btnDownloadsToggleCurrentTab; }
+QPushButton *DownloadsPage::clearSelectionButton() const { return ui->btnDownloadsClearSelection; }
+QPushButton *DownloadsPage::ignoreSelectedButton() const { return ui->btnDownloadsIgnoreSelected; }
 
 QVBoxLayout *DownloadsPage::cardsLayout(const QString &category) const
 {
@@ -283,13 +281,24 @@ void DownloadsPage::setUpdateCheckButtonsEnabled(bool enabled)
 
 void DownloadsPage::updateVersionActionButtons()
 {
-    const bool hasSelectedCards = !selectedFilePaths().isEmpty();
-    ui->btnDownloadsCheckCurrent->setEnabled(!m_updateCheckBusy && m_hasCurrentModel);
-    ui->btnDownloadsCheckSelected->setEnabled(!m_updateCheckBusy && m_hasSelectedModels);
+    const QStringList selectedPaths = selectedFilePaths();
+    const bool hasSelectedCards = !selectedPaths.isEmpty();
+    bool hasSelectedDownloadable = false;
+    for (const QString &filePath : selectedPaths) {
+        const DownloadCardWidgets card = m_cards.value(filePath);
+        const QString status = card.statusText;
+        const bool busy = status.contains("下载中") || status.contains("认证重试") || status.contains("队列");
+        if (card.hasUpdate && !busy && !status.contains("完成") && !status.contains("已忽略")) {
+            hasSelectedDownloadable = true;
+            break;
+        }
+    }
+    ui->btnDownloadsCheckSelected->setEnabled(!m_updateCheckBusy && hasSelectedCards);
     ui->btnDownloadsCheckAll->setEnabled(!m_updateCheckBusy);
-    ui->btnDownloadsDownloadSelected->setEnabled(hasSelectedCards);
-    ui->btnDownloadsCancel->setEnabled(hasSelectedCards);
-    ui->btnDownloadsRetry->setEnabled(hasSelectedCards);
+    ui->btnDownloadsDownloadSelected->setEnabled(hasSelectedDownloadable);
+    ui->btnDownloadsIgnoreSelected->setEnabled(hasSelectedCards);
+    ui->btnDownloadsClearSelection->setEnabled(hasSelectedCards);
+    ui->btnDownloadsRetry->setEnabled(hasErrorCards());
     ui->btnDownloadsOpenFolder->setEnabled(hasSelectedCards);
 }
 
@@ -553,12 +562,13 @@ void DownloadsPage::addOrUpdateCard(const ModelUpdateInfo &info, const QString &
         card.civitaiButton->setEnabled(info.modelId > 0);
     }
     if (card.downloadButton) {
-        card.downloadButton->setText("下载更新");
-        card.downloadButton->setEnabled(info.hasUpdate);
+        const bool completed = effectiveStatus.contains("完成");
+        card.downloadButton->setText(completed ? "下载完成" : (info.hasUpdate ? "下载更新" : "检测更新"));
+        card.downloadButton->setEnabled(!completed);
     }
     if (card.ignoreButton) {
         card.ignoreButton->setText(effectiveStatus.contains("已忽略") ? "取消忽略" : "忽略更新");
-        card.ignoreButton->setEnabled(info.hasUpdate || effectiveStatus.contains("已忽略"));
+        card.ignoreButton->setEnabled(!effectiveStatus.contains("下载中") && !effectiveStatus.contains("队列"));
     }
     card.targetPath = targetPath;
     m_cards[info.filePath] = card;
@@ -582,11 +592,13 @@ void DownloadsPage::updateCardStatus(const QString &filePath, const QString &sta
     }
     if (card.downloadButton) {
         const bool busy = status.contains("下载中") || status.contains("认证重试") || status.contains("队列");
-        card.downloadButton->setEnabled(card.hasUpdate && !busy && !status.contains("完成") && !status.contains("已忽略"));
+        const bool completed = status.contains("完成");
+        card.downloadButton->setText(completed ? "下载完成" : (card.hasUpdate && !status.contains("已忽略") ? "下载更新" : "检测更新"));
+        card.downloadButton->setEnabled(!busy && !completed);
     }
     if (card.ignoreButton) {
         card.ignoreButton->setText(status.contains("已忽略") ? "取消忽略" : "忽略更新");
-        card.ignoreButton->setEnabled(card.hasUpdate || status.contains("已忽略"));
+        card.ignoreButton->setEnabled(!status.contains("下载中") && !status.contains("队列"));
     }
     m_cards[filePath] = card;
     placeCardInCategory(filePath, categoryForStatus(status));
@@ -657,6 +669,15 @@ void DownloadsPage::setCurrentTabSelection(bool checked)
     emit cardSelectionChanged();
 }
 
+void DownloadsPage::clearAllCardSelection()
+{
+    for (auto it = m_cards.cbegin(); it != m_cards.cend(); ++it) {
+        if (it.value().selected) setCardSelected(it.key(), false);
+    }
+    updateSelectionSummary();
+    emit cardSelectionChanged();
+}
+
 void DownloadsPage::toggleCurrentTabSelection()
 {
     const QStringList paths = filePathsForCategory(currentCategory());
@@ -668,6 +689,14 @@ void DownloadsPage::toggleCurrentTabSelection()
         }
     }
     setCurrentTabSelection(!allChecked);
+}
+
+bool DownloadsPage::hasErrorCards() const
+{
+    for (auto it = m_cards.cbegin(); it != m_cards.cend(); ++it) {
+        if (it.value().category == "errors" || it.value().statusText.contains("失败")) return true;
+    }
+    return false;
 }
 
 void DownloadsPage::placeCardInCategory(const QString &filePath, const QString &category, bool deferSort)
@@ -909,6 +938,21 @@ void DownloadsPage::setCurrentMetadataCategoryChecked(bool checked)
     emit metadataSelectionChanged();
 }
 
+void DownloadsPage::clearMetadataSelection()
+{
+    bool changed = false;
+    for (MetadataScanItem &item : m_metadataScanItems) {
+        if (!item.checked) continue;
+        item.checked = false;
+        changed = true;
+    }
+    if (!changed) return;
+
+    refreshMetadataScanTable();
+    saveMetadataResultCache();
+    emit metadataSelectionChanged();
+}
+
 void DownloadsPage::updateMetadataSelectionSummary()
 {
     const QString category = currentMetadataCategory();
@@ -925,6 +969,7 @@ void DownloadsPage::updateMetadataSelectionSummary()
     const bool allCurrentChecked = currentTotal > 0 && currentChecked == currentTotal;
     ui->btnMetadataToggleCurrent->setText(allCurrentChecked ? "取消全选当前分类" : "全选当前分类");
     ui->btnMetadataToggleCurrent->setEnabled(!m_metadataScanRunning && currentTotal > 0);
+    ui->btnMetadataClearSelection->setEnabled(!m_metadataScanRunning && allChecked > 0);
     ui->lblMetadataScanStatus->setText(QString("当前分类 %1/%2，全部已选择 %3 个模型。")
                                            .arg(currentChecked)
                                            .arg(currentTotal)
@@ -937,7 +982,6 @@ void DownloadsPage::updateMetadataActionButtons()
     const bool hasChecked = !checkedMetadataScanFilePaths().isEmpty();
     const int row = ui->tableMetadataScan->currentRow();
     const bool hasCurrentRow = row >= 0 && ui->tableMetadataScan->item(row, 1);
-    ui->btnMetadataSyncSelected->setEnabled(!m_metadataScanRunning && hasChecked);
     ui->btnMetadataUpdateSelected->setEnabled(!m_metadataScanRunning && hasChecked);
     ui->btnMetadataOpenModel->setEnabled(hasCurrentRow);
     ui->btnMetadataOpenFolder->setEnabled(hasCurrentRow);

@@ -94,9 +94,23 @@
            </widget>
           </item>
           <item>
+           <widget class="QPushButton" name="btnDownloadsClearSelection">
+            <property name="text">
+             <string>取消所有选择</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="Line" name="line_7">
             <property name="orientation">
              <enum>Qt::Orientation::Horizontal</enum>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btnDownloadsCheckSelected">
+            <property name="text">
+             <string>检查选中模型更新</string>
             </property>
            </widget>
           </item>
@@ -108,9 +122,9 @@
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="btnDownloadsCancel">
+           <widget class="QPushButton" name="btnDownloadsIgnoreSelected">
             <property name="text">
-             <string>取消选中任务</string>
+             <string>忽略选中模型更新</string>
             </property>
            </widget>
           </item>
@@ -118,27 +132,6 @@
            <widget class="QPushButton" name="btnDownloadsRetry">
             <property name="text">
              <string>重试失败任务</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="Line" name="line_5">
-            <property name="orientation">
-             <enum>Qt::Orientation::Horizontal</enum>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="btnDownloadsCheckCurrent">
-            <property name="text">
-             <string>检查当前模型更新</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="btnDownloadsCheckSelected">
-            <property name="text">
-             <string>检查选中模型更新</string>
             </property>
            </widget>
           </item>
@@ -680,9 +673,9 @@
           </widget>
          </item>
          <item>
-          <widget class="QPushButton" name="btnMetadataSyncSelected">
+          <widget class="QPushButton" name="btnMetadataClearSelection">
            <property name="text">
-            <string>同步选中缺失/失败</string>
+            <string>取消选择</string>
            </property>
           </widget>
          </item>

@@ -679,7 +679,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->btnCheckModelUpdate, &QPushButton::clicked, this, [this]() {
         QList<QListWidgetItem*> items;
         if (QListWidgetItem *item = ui->modelList->currentItem(); isModelListItem(item)) items << item;
-        checkUpdatesForItems(items);
+        checkUpdatesForItems(items, false, true);
     });
     connect(ui->btnLocalMetaSave, &QPushButton::clicked, this, &MainWindow::onLocalMetaSaveClicked);
     connect(ui->btnLocalMetaReset, &QPushButton::clicked, this, &MainWindow::onLocalMetaResetClicked);
@@ -7892,15 +7892,11 @@ void MainWindow::initDownloadsPage()
     connect(ui->modelList, &QListWidget::itemSelectionChanged,
             this, &MainWindow::updateDownloadModelActionButtons);
 
-    connect(downloadsPage->checkCurrentButton(), &QPushButton::clicked, this, [this]() {
-        QList<QListWidgetItem*> items;
-        if (QListWidgetItem *item = ui->modelList->currentItem(); isModelListItem(item)) items << item;
-        checkUpdatesForItems(items);
-    });
     connect(downloadsPage->checkSelectedButton(), &QPushButton::clicked, this, [this]() {
         QList<QListWidgetItem*> items;
-        for (QListWidgetItem *item : ui->modelList->selectedItems()) {
-            if (isModelListItem(item)) items << item;
+        const QStringList filePaths = downloadManager ? downloadManager->selectedFilePaths() : QStringList();
+        for (const QString &filePath : filePaths) {
+            if (QListWidgetItem *item = findModelItemByFilePath(filePath)) items << item;
         }
         checkUpdatesForItems(items);
     });
@@ -7915,11 +7911,11 @@ void MainWindow::initDownloadsPage()
     connect(downloadsPage->downloadSelectedButton(), &QPushButton::clicked, this, [this]() {
         if (downloadManager) downloadManager->startSelectedDownloads();
     });
-    connect(downloadsPage->cancelButton(), &QPushButton::clicked, this, [this]() {
-        if (downloadManager) downloadManager->cancelSelectedDownloads();
+    connect(downloadsPage->ignoreSelectedButton(), &QPushButton::clicked, this, [this]() {
+        if (downloadManager) downloadManager->ignoreSelectedUpdates();
     });
     connect(downloadsPage->retryButton(), &QPushButton::clicked, this, [this]() {
-        if (downloadManager) downloadManager->retrySelectedFailedDownloads();
+        if (downloadManager) downloadManager->retryFailedDownloads();
     });
     connect(downloadsPage->openFolderButton(), &QPushButton::clicked, this, [this]() {
         const QStringList filePaths = downloadManager ? downloadManager->selectedFilePaths() : QStringList();
@@ -7939,6 +7935,9 @@ void MainWindow::initDownloadsPage()
     connect(downloadsPage->toggleCurrentTabButton(), &QPushButton::clicked, this, [this]() {
         downloadsPage->toggleCurrentTabSelection();
     });
+    connect(downloadsPage->clearSelectionButton(), &QPushButton::clicked, this, [this]() {
+        downloadsPage->clearAllCardSelection();
+    });
     connect(downloadsPage, &DownloadsPage::cardSelectionChanged,
             this, &MainWindow::updateDownloadSelectionSummary);
     connect(downloadsPage, &DownloadsPage::sourceRequested,
@@ -7951,8 +7950,17 @@ void MainWindow::initDownloadsPage()
             return;
         }
         const ModelUpdateInfo info = downloadManager->info(filePath);
-        if (!info.hasUpdate) {
-            downloadsPage->setStatusText("该模型当前没有可下载的新版本。");
+        const QString status = downloadsPage->cardStatusText(filePath);
+        if (!info.hasUpdate || status.contains("已忽略") || status.contains("已是最新") ||
+            status.contains("失败") || status.contains("无法") || status.contains("错误") ||
+            status.contains("出错") || status.contains("本地") || status.contains("跳过")) {
+            if (QListWidgetItem *item = findModelItemByFilePath(filePath)) {
+                QList<QListWidgetItem*> items;
+                items << item;
+                checkUpdatesForItems(items);
+            } else {
+                downloadsPage->setStatusText("模型已不在当前列表中，无法重新检测。");
+            }
             return;
         }
         if (downloadManager) downloadManager->enqueueModelDownload(info);
@@ -7962,8 +7970,6 @@ void MainWindow::initDownloadsPage()
     });
     connect(downloadsPage, &DownloadsPage::metadataScanRequested,
             this, &MainWindow::startMetadataScan);
-    connect(downloadsPage, &DownloadsPage::metadataSyncRequested,
-            this, [this](const QStringList &paths) { startMetadataSyncForPaths(paths, false); });
     connect(downloadsPage, &DownloadsPage::metadataUpdateRequested,
             this, [this](const QStringList &paths) { startMetadataSyncForPaths(paths, true); });
     connect(downloadsPage, &DownloadsPage::metadataOpenModelRequested,
@@ -8003,19 +8009,23 @@ void MainWindow::updateDownloadModelActionButtons()
     downloadsPage->setModelSelectionAvailability(hasCurrentModel, hasSelectedModels);
 }
 
-void MainWindow::checkUpdatesForItems(const QList<QListWidgetItem*> &items)
+void MainWindow::checkUpdatesForItems(const QList<QListWidgetItem*> &items, bool switchToDownloads, bool detailPrompt)
 {
     if (downloadManager && !downloadManager->cacheLoaded()) {
         downloadManager->ensureCacheLoaded();
     }
     if (items.isEmpty()) {
-        downloadsPage->setStatusText("没有可检查的模型。请先选择模型，或使用检查全部。");
-        onMenuSwitchToDownloads();
+        if (downloadsPage) downloadsPage->setStatusText("没有可检查的模型。请先选择模型，或使用检查全部。");
+        if (switchToDownloads) onMenuSwitchToDownloads();
         return;
     }
 
-    onMenuSwitchToDownloads();
+    if (switchToDownloads) onMenuSwitchToDownloads();
     ++updateCheckToken;
+    detailUpdateCheckPending = detailPrompt && items.size() == 1;
+    detailUpdateCheckFilePath = detailUpdateCheckPending
+        ? QFileInfo(items.first()->data(ROLE_FILE_PATH).toString()).absoluteFilePath()
+        : QString();
     pendingUpdateChecksQueue.clear();
     pendingUpdateHashChecks.clear();
     activeUpdateNetworkChecks = 0;
@@ -8039,6 +8049,8 @@ void MainWindow::checkUpdatesForItems(const QList<QListWidgetItem*> &items)
     if (pendingUpdateChecks <= 0) {
         downloadsPage->setStatusText("没有可检查的模型。");
         downloadsPage->setUpdateCheckButtonsEnabled(true);
+        detailUpdateCheckPending = false;
+        detailUpdateCheckFilePath.clear();
         return;
     }
     downloadsPage->setStatusText(QString("正在检查 %1 个模型的更新...").arg(pendingUpdateChecks));
@@ -8169,6 +8181,34 @@ void MainWindow::markUpdateCheckFinished()
         downloadsPage->setStatusText(QString("更新检查完成，共 %1 个模型。").arg(pendingUpdateChecks));
         downloadsPage->setUpdateCheckButtonsEnabled(true);
         if (downloadManager) downloadManager->saveCache();
+        if (detailUpdateCheckPending) {
+            const QString filePath = detailUpdateCheckFilePath;
+            detailUpdateCheckPending = false;
+            detailUpdateCheckFilePath.clear();
+            const QString status = downloadsPage ? downloadsPage->cardStatusText(filePath) : QString();
+            const bool hasUpdate = downloadManager && downloadManager->containsInfo(filePath)
+                && downloadManager->info(filePath).hasUpdate;
+            const bool coexisting = status.contains("旧版共存");
+            if (hasUpdate || coexisting) {
+                const QMessageBox::StandardButton choice = QMessageBox::question(
+                    this,
+                    "检测到模型更新",
+                    QString("检测到该模型有可用更新。\n\n状态: %1\n\n是否跳转到下载任务列表？")
+                        .arg(status.isEmpty() ? "发现新版本" : status),
+                    QMessageBox::Yes | QMessageBox::No,
+                    QMessageBox::Yes);
+                if (choice == QMessageBox::Yes) {
+                    onMenuSwitchToDownloads();
+                    if (downloadsPage) downloadsPage->setCardSelected(filePath, true);
+                    updateDownloadSelectionSummary();
+                }
+            } else {
+                QMessageBox::information(
+                    this,
+                    "检查更新",
+                    status.isEmpty() ? "当前模型没有检测到可用更新。" : QString("当前模型状态: %1").arg(status));
+            }
+        }
         return;
     }
     QTimer::singleShot(0, this, &MainWindow::dispatchQueuedUpdateChecks);
