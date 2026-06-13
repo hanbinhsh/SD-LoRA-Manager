@@ -90,6 +90,7 @@ QString loadQssResource(const QString &path)
 struct ThemeBundle {
     QString mainQss;
     QString toolQss;
+    QString dialogQss;
     QString status;
     bool ok = true;
 };
@@ -108,10 +109,13 @@ ThemeBundle loadThemeBundle(const QString &themeId, const QString &customPath)
     ThemeBundle bundle;
     const QString baseMain = loadQssResource(":/styles/mainwindow.qss");
     const QString baseTool = loadQssResource(":/styles/toolpage.qss");
+    const QString baseDialog = loadQssResource(":/styles/dialog.qss");
+    bundle.dialogQss = baseDialog;
 
     auto withOverrides = [&](const QString &mainOverride, const QString &toolOverride, const QString &name) {
         bundle.mainQss = baseMain + "\n" + loadQssResource(mainOverride);
         bundle.toolQss = baseTool + "\n" + loadQssResource(toolOverride);
+        bundle.dialogQss = baseDialog;
         bundle.status = QString("当前主题：%1").arg(name);
         bundle.ok = true;
     };
@@ -122,12 +126,14 @@ ThemeBundle loadThemeBundle(const QString &themeId, const QString &customPath)
             const QString customQss = QString::fromUtf8(file.readAll());
             bundle.mainQss = baseMain + "\n" + customQss;
             bundle.toolQss = baseTool + "\n" + customQss;
+            bundle.dialogQss = baseDialog + "\n" + customQss;
             bundle.status = QString("当前主题：Custom QSS (%1)").arg(QFileInfo(customPath).fileName());
             bundle.ok = true;
             return bundle;
         }
         bundle.mainQss = baseMain;
         bundle.toolQss = baseTool;
+        bundle.dialogQss = baseDialog;
         bundle.status = "自定义 QSS 读取失败，已保留 Steam Dark。";
         bundle.ok = false;
         return bundle;
@@ -142,6 +148,7 @@ ThemeBundle loadThemeBundle(const QString &themeId, const QString &customPath)
     } else {
         bundle.mainQss = baseMain;
         bundle.toolQss = baseTool;
+        bundle.dialogQss = baseDialog;
         bundle.status = "当前主题：Steam Dark";
         bundle.ok = true;
     }
@@ -582,6 +589,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->btnLocalMetaSave, &QPushButton::clicked, this, &MainWindow::onLocalMetaSaveClicked);
     connect(ui->btnLocalMetaReset, &QPushButton::clicked, this, &MainWindow::onLocalMetaResetClicked);
     connect(ui->btnEditMeta, &QPushButton::clicked, this, &MainWindow::onEditMetaTabClicked);
+    connect(ui->btnShowDescriptionDetail, &QPushButton::clicked, this, &MainWindow::showModelDescriptionDialog);
     connect(ui->btnEditUserNote, &QPushButton::clicked, this, [this]() {
         if (QListWidgetItem *item = ui->modelList->currentItem(); isModelListItem(item)) {
             openModelNoteDialog(item);
@@ -3112,6 +3120,8 @@ void MainWindow::clearDetailView()
     ui->editLocalCreatedAt->clear();
     ui->editLocalDownloads->clear();
     ui->editLocalLikes->clear();
+    ui->editLocalCreator->clear();
+    ui->textLocalModelTags->clear();
     ui->chkLocalNSFW->setChecked(false);
     ui->textLocalTriggers->clear();
     ui->textLocalDescription->clear();
@@ -3182,6 +3192,8 @@ void MainWindow::updateLocalEditorFromMeta(const ModelMeta &meta)
     ui->editLocalCreatedAt->setText(meta.createdAt);
     ui->editLocalDownloads->setText(QString::number(meta.downloadCount));
     ui->editLocalLikes->setText(QString::number(meta.thumbsUpCount));
+    ui->editLocalCreator->setText(meta.creatorName);
+    ui->textLocalModelTags->setPlainText(meta.modelTags.join("\n"));
     ui->chkLocalNSFW->setChecked(meta.nsfw);
     ui->textLocalTriggers->setPlainText(meta.trainedWordsGroups.join("\n"));
 
@@ -3203,7 +3215,7 @@ void MainWindow::updateLocalEditorFromMeta(const ModelMeta &meta)
 void MainWindow::setLocalMetaStatus(const ModelMeta &meta)
 {
     QString status;
-    QString color = AppStyle::MutedText;
+    QString color = AppStyle::WhiteText;
     if (meta.isLocalOnly && meta.isLocalEdited) {
         status = "状态: 本地模型 (已编辑)";
         color = AppStyle::WarningYellow;
@@ -3811,7 +3823,7 @@ void MainWindow::refreshModelAttributionPanel(const ModelMeta &meta)
     } else {
         QWidget *tagFlowWidget = new QWidget();
         tagFlowWidget->setStyleSheet("background:transparent;");
-        tagFlowWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+        tagFlowWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
         FlowLayout *tagFlowLayout = new FlowLayout(tagFlowWidget, 0, 6, 6);
         for (const QString &tag : meta.modelTags) {
             QPushButton *tagButton = new QPushButton(forceWrap(tag));
@@ -4255,12 +4267,54 @@ void MainWindow::onLocalMetaSaveClicked()
     bool okLikes = false;
     int likes = ui->editLocalLikes->text().trimmed().toInt(&okLikes);
     if (!okLikes) likes = 0;
+    const QString creatorName = ui->editLocalCreator->text().trimmed();
+    auto parseModelTags = [](const QString &text) {
+        QStringList tags;
+        QSet<QString> seen;
+        const QStringList parts = text.split(QRegularExpression("[,\\n\\r]+"), Qt::SkipEmptyParts);
+        for (QString tag : parts) {
+            tag = tag.trimmed();
+            if (tag.isEmpty()) continue;
+            const QString key = tag.toCaseFolded();
+            if (seen.contains(key)) continue;
+            seen.insert(key);
+            tags.append(tag);
+        }
+        return tags;
+    };
+    const QStringList modelTags = parseModelTags(ui->textLocalModelTags->toPlainText());
 
     QJsonObject modelObj = root["model"].toObject();
     modelObj["name"] = modelName;
     if (!type.isEmpty()) modelObj["type"] = type;
     else modelObj.remove("type");
     modelObj["nsfw"] = nsfw;
+    QJsonObject creatorObj = modelObj.value("creator").toObject();
+    QJsonObject topCreatorObj = root.value("creator").toObject();
+    if (!creatorName.isEmpty()) {
+        creatorObj["username"] = creatorName;
+        topCreatorObj["username"] = creatorName;
+        modelObj["creator"] = creatorObj;
+        root["creator"] = topCreatorObj;
+    } else {
+        creatorObj.remove("username");
+        creatorObj.remove("name");
+        topCreatorObj.remove("username");
+        topCreatorObj.remove("name");
+        if (creatorObj.isEmpty()) modelObj.remove("creator");
+        else modelObj["creator"] = creatorObj;
+        if (topCreatorObj.isEmpty()) root.remove("creator");
+        else root["creator"] = topCreatorObj;
+    }
+    QJsonArray tagArray;
+    for (const QString &tag : modelTags) tagArray.append(tag);
+    if (modelTags.isEmpty()) {
+        modelObj.remove("tags");
+        root.remove("tags");
+    } else {
+        modelObj["tags"] = tagArray;
+        root["tags"] = tagArray;
+    }
     root["model"] = modelObj;
 
     root["name"] = versionName;
@@ -4373,6 +4427,9 @@ void MainWindow::onLocalMetaSaveClicked()
     }
 
     preloadItemMetadata(item, jsonPath);
+    refreshCollectionTreeView();
+    refreshHomeFilterChips();
+    refreshHomeGallery();
     QString civitaiName = item->data(ROLE_CIVITAI_NAME).toString();
     if (optUseCivitaiName && !civitaiName.isEmpty()) {
         item->setText(civitaiName);
@@ -8891,6 +8948,7 @@ void MainWindow::applyRandomUserAgent()
 void MainWindow::applyApplicationTheme(const QString &themeId, const QString &customPath, bool updateStatus)
 {
     const ThemeBundle bundle = loadThemeBundle(themeId, customPath);
+    qApp->setStyleSheet(bundle.dialogQss);
     setStyleSheet(bundle.mainQss);
     currentToolPageQss = bundle.toolQss;
     refreshLoadedToolPageThemes();
@@ -9521,6 +9579,74 @@ void MainWindow::onUserGalleryContextMenu(const QPoint &pos)
 void MainWindow::showComfyWorkflowViewer(const QString &filePath)
 {
     ComfyWorkflowViewerDialog dialog(filePath, this);
+    dialog.exec();
+}
+
+void MainWindow::showModelDescriptionDialog()
+{
+    QString descriptionHtml = currentMeta.description.trimmed();
+    if (descriptionHtml.isEmpty()) {
+        descriptionHtml = ui->textDescription->toHtml().trimmed();
+    }
+
+    QTextDocument probe;
+    probe.setHtml(descriptionHtml);
+    const QString plainText = probe.toPlainText().trimmed();
+    if (plainText.isEmpty() || plainText == "No description.") {
+        QMessageBox::information(this, "模型简介", "当前模型没有可显示的简介。");
+        return;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle("模型简介 / Description");
+    dialog.resize(820, 620);
+
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *title = new QLabel(currentMeta.name.isEmpty() ? currentMeta.fileNameServer : currentMeta.name, &dialog);
+    title->setObjectName("lblTitle");
+    title->setWordWrap(true);
+    title->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    layout->addWidget(title);
+
+    auto *textEdit = new QTextEdit(&dialog);
+    textEdit->setReadOnly(true);
+    textEdit->setAcceptRichText(true);
+    textEdit->setHtml(descriptionHtml);
+    textEdit->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard | Qt::LinksAccessibleByMouse);
+    layout->addWidget(textEdit, 1);
+
+    auto *buttons = new QHBoxLayout();
+    auto *btnCopySelected = new QPushButton("复制选中 / Copy Selected", &dialog);
+    auto *btnCopyAll = new QPushButton("复制全部 / Copy All", &dialog);
+    auto *btnClose = new QPushButton("关闭 / Close", &dialog);
+    buttons->addWidget(btnCopySelected);
+    buttons->addWidget(btnCopyAll);
+    buttons->addStretch(1);
+    buttons->addWidget(btnClose);
+    layout->addLayout(buttons);
+
+    auto normalizeCopiedText = [](QString text) {
+        text.replace(QChar(0x2029), '\n');
+        text.replace(QChar(0x2028), '\n');
+        return text.trimmed();
+    };
+
+    connect(btnCopySelected, &QPushButton::clicked, &dialog, [this, textEdit, normalizeCopiedText]() {
+        const QString selected = normalizeCopiedText(textEdit->textCursor().selectedText());
+        if (selected.isEmpty()) {
+            ui->statusbar->showMessage("请先在简介中选中要复制的文本。", 2000);
+            return;
+        }
+        QGuiApplication::clipboard()->setText(selected);
+        ui->statusbar->showMessage("已复制选中的简介文本。", 2000);
+    });
+
+    connect(btnCopyAll, &QPushButton::clicked, &dialog, [this, textEdit, normalizeCopiedText]() {
+        QGuiApplication::clipboard()->setText(normalizeCopiedText(textEdit->toPlainText()));
+        ui->statusbar->showMessage("已复制完整简介。", 2000);
+    });
+
+    connect(btnClose, &QPushButton::clicked, &dialog, &QDialog::accept);
     dialog.exec();
 }
 

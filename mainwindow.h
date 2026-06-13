@@ -459,6 +459,7 @@ private:
     void applyApplicationTheme(const QString &themeId, const QString &customPath, bool updateStatus);
     void applyToolPageTheme(QWidget *page);
     void refreshLoadedToolPageThemes();
+    void showModelDescriptionDialog();
     void beginGalleryBuild(const ModelMeta &meta);
     void buildGalleryBatch();
     void addGalleryThumbButton(const ModelMeta &meta, int index, const QString &modelDir, const QString &baseName);

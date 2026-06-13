@@ -1,0 +1,253 @@
+/* === Unified dialog style === */
+QDialog,
+QMessageBox,
+QInputDialog {
+    background-color: #1b2838;
+    color: #dcdedf;
+}
+
+QDialog QLabel,
+QMessageBox QLabel,
+QInputDialog QLabel {
+    color: #dcdedf;
+    background: transparent;
+}
+
+QDialog QLabel#lblTitle {
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+QDialog QGroupBox,
+QMessageBox QGroupBox,
+QInputDialog QGroupBox {
+    border: 1px solid #3d4d5d;
+    background-color: #1e252f;
+    border-radius: 6px;
+    margin-top: 14px;
+    color: #66c0f4;
+    font-weight: bold;
+}
+
+QDialog QGroupBox::title,
+QMessageBox QGroupBox::title,
+QInputDialog QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 8px;
+    padding: 0 4px;
+}
+
+QDialog QPushButton,
+QMessageBox QPushButton,
+QInputDialog QPushButton {
+    background-color: #2a3f5a;
+    color: #ffffff;
+    border: 1px solid rgba(102, 192, 244, 48);
+    border-radius: 4px;
+    padding: 6px 14px;
+    min-width: 72px;
+}
+
+QDialog QPushButton:hover,
+QMessageBox QPushButton:hover,
+QInputDialog QPushButton:hover {
+    background-color: #3d5677;
+    border-color: rgba(102, 192, 244, 130);
+}
+
+QDialog QPushButton:pressed,
+QMessageBox QPushButton:pressed,
+QInputDialog QPushButton:pressed {
+    background-color: #66c0f4;
+    color: #000000;
+}
+
+QDialog QPushButton:disabled,
+QMessageBox QPushButton:disabled,
+QInputDialog QPushButton:disabled {
+    background-color: #2a3038;
+    color: #7f8791;
+    border-color: #31363d;
+}
+
+QDialog QLineEdit,
+QDialog QTextEdit,
+QDialog QPlainTextEdit,
+QDialog QTextBrowser,
+QDialog QComboBox,
+QDialog QSpinBox,
+QDialog QDoubleSpinBox,
+QInputDialog QLineEdit,
+QInputDialog QTextEdit,
+QInputDialog QPlainTextEdit,
+QMessageBox QTextEdit {
+    background-color: #16191e;
+    border: 1px solid #31363d;
+    color: #dcdedf;
+    border-radius: 4px;
+    padding: 5px 7px;
+    selection-background-color: #3d5677;
+    selection-color: #ffffff;
+}
+
+QDialog QLineEdit:focus,
+QDialog QTextEdit:focus,
+QDialog QPlainTextEdit:focus,
+QDialog QComboBox:focus,
+QDialog QSpinBox:focus,
+QDialog QDoubleSpinBox:focus,
+QInputDialog QLineEdit:focus {
+    border-color: #66c0f4;
+}
+
+QDialog QComboBox::drop-down {
+    border: none;
+    width: 22px;
+}
+
+QDialog QComboBox::down-arrow {
+    image: none;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 6px solid #dcdedf;
+}
+
+QDialog QTableWidget,
+QDialog QTableView,
+QDialog QListWidget,
+QDialog QTreeWidget {
+    background-color: #16191e;
+    border: 1px solid #31363d;
+    color: #dcdedf;
+    border-radius: 4px;
+    gridline-color: #31363d;
+    selection-background-color: #3d5677;
+    selection-color: #ffffff;
+    outline: none;
+}
+
+QDialog QTableWidget::item,
+QDialog QTableView::item,
+QDialog QListWidget::item,
+QDialog QTreeWidget::item {
+    border: none;
+    padding: 4px 6px;
+}
+
+QDialog QTableWidget::item:hover,
+QDialog QTableView::item:hover,
+QDialog QListWidget::item:hover,
+QDialog QTreeWidget::item:hover {
+    background-color: #212831;
+}
+
+QDialog QTableWidget::item:selected,
+QDialog QTableView::item:selected,
+QDialog QListWidget::item:selected,
+QDialog QTreeWidget::item:selected {
+    background-color: #3d5677;
+    color: #ffffff;
+}
+
+QDialog QHeaderView::section {
+    background-color: #212831;
+    color: #dcdedf;
+    padding: 6px;
+    border: none;
+    border-right: 1px solid #31363d;
+}
+
+QDialog QCheckBox,
+QMessageBox QCheckBox,
+QInputDialog QCheckBox {
+    color: #dcdedf;
+    spacing: 6px;
+    background: transparent;
+}
+
+QDialog QCheckBox::indicator,
+QMessageBox QCheckBox::indicator,
+QInputDialog QCheckBox::indicator {
+    width: 15px;
+    height: 15px;
+    border: 1px solid #66717f;
+    border-radius: 3px;
+    background-color: #16191e;
+}
+
+QDialog QCheckBox::indicator:checked,
+QMessageBox QCheckBox::indicator:checked,
+QInputDialog QCheckBox::indicator:checked {
+    background-color: #66c0f4;
+    border-color: #90d0ff;
+}
+
+QDialog QScrollBar:vertical,
+QMessageBox QScrollBar:vertical,
+QInputDialog QScrollBar:vertical {
+    background: #12161c;
+    width: 4px;
+    margin: 2px 0 2px 0;
+    border-radius: 2px;
+}
+
+QDialog QScrollBar:horizontal,
+QMessageBox QScrollBar:horizontal,
+QInputDialog QScrollBar:horizontal {
+    background: #12161c;
+    height: 4px;
+    margin: 0 2px 0 2px;
+    border-radius: 2px;
+}
+
+QDialog QScrollBar::handle:vertical,
+QDialog QScrollBar::handle:horizontal,
+QMessageBox QScrollBar::handle:vertical,
+QMessageBox QScrollBar::handle:horizontal,
+QInputDialog QScrollBar::handle:vertical,
+QInputDialog QScrollBar::handle:horizontal {
+    background: #3a4654;
+    border-radius: 2px;
+}
+
+QDialog QScrollBar::handle:vertical,
+QMessageBox QScrollBar::handle:vertical,
+QInputDialog QScrollBar::handle:vertical {
+    min-height: 24px;
+}
+
+QDialog QScrollBar::handle:horizontal,
+QMessageBox QScrollBar::handle:horizontal,
+QInputDialog QScrollBar::handle:horizontal {
+    min-width: 24px;
+}
+
+QDialog QScrollBar::handle:vertical:hover,
+QDialog QScrollBar::handle:horizontal:hover,
+QMessageBox QScrollBar::handle:vertical:hover,
+QMessageBox QScrollBar::handle:horizontal:hover,
+QInputDialog QScrollBar::handle:vertical:hover,
+QInputDialog QScrollBar::handle:horizontal:hover {
+    background: #4b5a6b;
+}
+
+QDialog QScrollBar::add-line,
+QDialog QScrollBar::sub-line,
+QMessageBox QScrollBar::add-line,
+QMessageBox QScrollBar::sub-line,
+QInputDialog QScrollBar::add-line,
+QInputDialog QScrollBar::sub-line {
+    width: 0px;
+    height: 0px;
+}
+
+QDialog QScrollBar::add-page,
+QDialog QScrollBar::sub-page,
+QMessageBox QScrollBar::add-page,
+QMessageBox QScrollBar::sub-page,
+QInputDialog QScrollBar::add-page,
+QInputDialog QScrollBar::sub-page {
+    background: transparent;
+}

@@ -295,6 +295,21 @@ QTextBrowser { background-color: #16191e; border: 1px solid #31363d; color: #acb
 #cardModelAttribution #label_DescTitle {
     margin-top: 8px;
 }
+#cardModelAttribution #descTitleRow {
+    background-color: transparent;
+}
+#cardModelAttribution #btnShowDescriptionDetail {
+    background-color: rgba(255,255,255,18);
+    color: #ffffff;
+    border: 1px solid rgba(255,255,255,26);
+    border-radius: 5px;
+    padding: 2px 8px;
+    font-weight: bold;
+}
+#cardModelAttribution #btnShowDescriptionDetail:hover {
+    background-color: rgba(102,192,244,72);
+    border-color: rgba(102,192,244,160);
+}
 #cardModelAttribution #textDescription,
 #cardUserNotes #textUserNotePreview {
     background-color: rgba(0, 0, 0, 24);
@@ -308,14 +323,14 @@ QTextBrowser { background-color: #16191e; border: 1px solid #31363d; color: #acb
     border-radius: 6px;
     padding: 8px;
 }
-#textLocalDescription, #textLocalTriggers, #textEditImgPrompt, #textEditImgNegPrompt {
+#textLocalDescription, #textLocalTriggers, #textLocalModelTags, #textEditImgPrompt, #textEditImgNegPrompt {
     background-color: #16191e;
     border: 1px solid #31363d;
     color: #acb2b8;
     border-radius: 3px;
     padding: 6px;
 }
-#lblLocalMetaStatus { color: #8c96a0; }
+#lblLocalMetaStatus { color: #ffffff; }
 #btnLocalMetaSave, #btnLocalMetaReset { background-color: #2a3f5a; border-radius: 2px; color: #66c0f4; border: none; padding: 6px 12px; }
 #btnLocalMetaSave:hover, #btnLocalMetaReset:hover { background-color: #3d5677; color: #ffffff; }
 #listEditImages { background-color: #1a1f29; border: 1px solid #31363d; color: #acb2b8; }

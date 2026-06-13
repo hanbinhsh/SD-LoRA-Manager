@@ -15,12 +15,9 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="QLabel" name="lblTitle">
+   <widget class="QLabel" name="lblTitle">
      <property name="text">
       <string>编辑用户私有模型信息</string>
-     </property>
-     <property name="styleSheet">
-      <string notr="true">font-size: 16px; font-weight: bold;</string>
      </property>
     </widget>
    </item>
