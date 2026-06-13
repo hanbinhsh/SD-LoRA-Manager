@@ -8132,16 +8132,14 @@ void MainWindow::initDownloadsPage()
     connect(downloadsPage, &DownloadsPage::metadataOpenModelRequested,
             this, &MainWindow::jumpToDownloadSource);
     connect(downloadsPage, &DownloadsPage::metadataOpenFolderRequested, this, [this](const QString &filePath) {
-        if (filePath.isEmpty()) return;
-        QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(filePath).absolutePath()));
+        showFileInFolder(filePath);
     });
     connect(downloadsPage, &DownloadsPage::healthCheckRequested,
             this, &MainWindow::runMetadataHealthCheck);
     connect(downloadsPage, &DownloadsPage::healthOpenModelRequested,
             this, &MainWindow::jumpToDownloadSource);
     connect(downloadsPage, &DownloadsPage::healthOpenFolderRequested, this, [this](const QString &filePath) {
-        if (filePath.isEmpty()) return;
-        QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(filePath).absolutePath()));
+        showFileInFolder(filePath);
     });
     updateDownloadSelectionSummary();
 }
@@ -8537,6 +8535,27 @@ void MainWindow::openDownloadCivitaiPage(const QString &filePath)
         return;
     }
     QDesktopServices::openUrl(QUrl(QString("https://civitai.com/models/%1").arg(modelId)));
+}
+
+void MainWindow::showFileInFolder(const QString &filePath)
+{
+    if (filePath.trimmed().isEmpty()) return;
+
+    const QFileInfo fi(filePath);
+#ifdef Q_OS_WIN
+    QProcess *process = new QProcess(this);
+    process->setProgram("explorer.exe");
+    if (fi.exists()) {
+        process->setNativeArguments(QString("/select,\"%1\"").arg(QDir::toNativeSeparators(fi.absoluteFilePath())));
+    } else {
+        process->setNativeArguments(QString("\"%1\"").arg(QDir::toNativeSeparators(fi.absolutePath())));
+    }
+    process->start();
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            process, &QProcess::deleteLater);
+#else
+    QDesktopServices::openUrl(QUrl::fromLocalFile(fi.absolutePath()));
+#endif
 }
 
 QString MainWindow::resolveDownloadPreviewPath(const ModelUpdateInfo &info) const

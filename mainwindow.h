@@ -472,6 +472,7 @@ private:
     void updateDownloadSelectionSummary();
     void jumpToDownloadSource(const QString &filePath);
     void openDownloadCivitaiPage(const QString &filePath);
+    void showFileInFolder(const QString &filePath);
     QVector<MetadataScanItem> collectMetadataScanSeeds() const;
     void startMetadataScan();
     void runMetadataHealthCheck();
