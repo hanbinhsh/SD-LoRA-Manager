@@ -359,6 +359,7 @@ private:
     void scanModels(const QString &path);
     void scanModels(const QStringList &paths);
     void updateDetailView(const ModelMeta &meta);
+    void fitDetailContentToCurrentPage();
     void refreshTriggerWordsPanel(const ModelMeta &meta);
     void clearDetailView();
     QIcon getSquareIcon(const QPixmap &srcPix);

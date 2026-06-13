@@ -2740,9 +2740,40 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
     }
 
     QTimer::singleShot(0, this, [this, meta](){
-        ui->scrollAreaWidgetContents->adjustSize();
+        fitDetailContentToCurrentPage();
         transitionToImage(meta.previewPath);
     });
+}
+
+void MainWindow::fitDetailContentToCurrentPage()
+{
+    if (!ui || !ui->detailContentStack || !ui->contentAreaWidget) return;
+
+    QWidget *page = ui->detailContentStack->currentWidget();
+    if (!page) return;
+
+    int targetHeight = 0;
+    const int currentIndex = ui->detailContentStack->currentIndex();
+    if (currentIndex == 1) {
+        targetHeight = 750;
+    } else if (currentIndex == 2) {
+        targetHeight = 900;
+    } else {
+        if (QLayout *pageLayout = page->layout()) {
+            pageLayout->activate();
+        }
+        page->updateGeometry();
+        targetHeight = qMax(page->minimumSizeHint().height(), page->sizeHint().height());
+    }
+
+    targetHeight = qMax(1, targetHeight);
+    ui->detailContentStack->setFixedHeight(targetHeight);
+    ui->contentAreaWidget->setFixedHeight(targetHeight);
+    ui->detailContentStack->updateGeometry();
+    ui->contentAreaWidget->updateGeometry();
+    if (ui->scrollAreaWidgetContents) {
+        ui->scrollAreaWidgetContents->adjustSize();
+    }
 }
 
 void MainWindow::cancelGalleryBuild()
@@ -3144,6 +3175,7 @@ void MainWindow::clearDetailView()
     ui->editImgSeed->clear();
     ui->spinImgNsfw->setValue(1);
     currentEditImageIndex = -1;
+    QTimer::singleShot(0, this, &MainWindow::fitDetailContentToCurrentPage);
 }
 
 void MainWindow::setModelTitleNormal()
@@ -3182,6 +3214,7 @@ void MainWindow::showPendingLocalModelDetail(const ModelMeta &meta, const QStrin
         transitionToImage("");
     }
     updateLocalEditorFromMeta(meta);
+    QTimer::singleShot(0, this, &MainWindow::fitDetailContentToCurrentPage);
 }
 
 void MainWindow::updateLocalEditorFromMeta(const ModelMeta &meta)
@@ -4068,6 +4101,7 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
         if (ui->mainStack->currentIndex() != 1) {
             ui->mainStack->setCurrentIndex(1);
         }
+        QTimer::singleShot(0, this, &MainWindow::fitDetailContentToCurrentPage);
         // 无论是否切换了页面，都直接返回，不再执行后续繁重的 JSON 解析
         return;
     }
@@ -4500,22 +4534,12 @@ void MainWindow::onEditMetaTabClicked()
         refreshEditImages(currentMeta);
     }
 
-    if (targetIndex == 1) {
-        ui->detailContentStack->setFixedHeight(750);
-    } else if (targetIndex == 2) {
-        ui->detailContentStack->setFixedHeight(900);
-    } else {
-        ui->detailContentStack->setMinimumHeight(500);
-        ui->detailContentStack->setMaximumHeight(16777215);
-        QTimer::singleShot(0, this, [this](){
-            ui->scrollAreaWidgetContents->adjustSize();
-        });
-    }
+    fitDetailContentToCurrentPage();
 
     QTimer::singleShot(50, this, [this, targetIndex](){
         ui->scrollAreaWidgetContents->installEventFilter(this);
         if (targetIndex == 0) {
-            ui->scrollAreaWidgetContents->adjustSize();
+            fitDetailContentToCurrentPage();
         }
         updateBackgroundImage();
     });
@@ -7004,16 +7028,8 @@ void MainWindow::onToggleDetailTab() {
     // 1. 切换页面
     ui->detailContentStack->setCurrentIndex(nextIndex);
 
-    // 2. === 核心修改：动态调整高度约束 ===
-    if (nextIndex == 1) {
-        ui->detailContentStack->setFixedHeight(750);
-    } else {
-        ui->detailContentStack->setMinimumHeight(500);
-        ui->detailContentStack->setMaximumHeight(16777215); // QWIDGETSIZE_MAX
-        QTimer::singleShot(0, this, [this](){
-            ui->scrollAreaWidgetContents->adjustSize();
-        });
-    }
+    // 2. 按当前页实际内容收紧外壳高度，避免主详情页底部留下可滚动空白
+    fitDetailContentToCurrentPage();
 
     QTimer::singleShot(50, this, [this, nextIndex](){
         // 恢复事件监听
@@ -7021,7 +7037,7 @@ void MainWindow::onToggleDetailTab() {
 
         // 如果切换到详情页，调整容器大小
         if (nextIndex == 0) {
-            ui->scrollAreaWidgetContents->adjustSize();
+            fitDetailContentToCurrentPage();
         }
 
         // 强制更新一次背景（避免尺寸不对）
@@ -7605,9 +7621,7 @@ void MainWindow::onGalleryButtonClicked()
     // 3. 强制切换到“本地返图”标签页 (Index 1)
     // 注意：这里我们手动模拟 onToggleDetailTab 的部分逻辑
     ui->detailContentStack->setCurrentIndex(1);
-
-    // 设置固定高度，确保 ScrollArea 能滚动
-    ui->detailContentStack->setFixedHeight(750);
+    fitDetailContentToCurrentPage();
 
     // 4. 设置 UI 状态 (伪装成一个 Model)
     clearDetailView(); // 清空之前的模型信息
