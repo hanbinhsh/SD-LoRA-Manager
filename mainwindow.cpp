@@ -162,6 +162,14 @@ bool writePreviewMetadataToPath(const QString &path,
     return output.commit();
 }
 
+bool previewFileAlreadyHasPromptMetadata(const QString &path)
+{
+    QFile file(path);
+    if (!file.exists() || !file.open(QIODevice::ReadOnly)) return false;
+    const QByteArray data = file.readAll();
+    return data.contains("parameters") || data.contains("civitai_prompt");
+}
+
 QString loadQssResource(const QString &path)
 {
     QFile file(path);
@@ -5247,6 +5255,21 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
 
     // 保存并更新UI
     saveLocalMetadata(modelDir, localBaseName, root);
+    if (!m_skipPreviewSync && m_forceResyncPreview && !meta.images.isEmpty()) {
+        const QString coverPath = QFileInfo(QDir(modelDir).filePath(localBaseName + ".preview.png")).absoluteFilePath();
+        const ImageInfo &cover = meta.images.first();
+        if (QFile::exists(coverPath) && !cover.url.isEmpty()) {
+            enqueueDownload(cover.url,
+                            coverPath,
+                            nullptr,
+                            localBaseName,
+                            0,
+                            previewPayloadFromImageInfo(cover),
+                            true,
+                            true,
+                            false);
+        }
+    }
 
     currentMeta = meta; // 缓存到成员变量
     ui->scrollAreaWidgetContents->setUpdatesEnabled(false);
@@ -6832,29 +6855,35 @@ bool MainWindow::savePreviewImageWithMetadata(const QByteArray &data, const QStr
 {
     const QString parameters = buildPreviewParametersText(payload);
     if (parameters.isEmpty()) {
-        QFile raw(savePath);
+        QSaveFile raw(savePath);
         if (!raw.open(QIODevice::WriteOnly)) return false;
         raw.write(data);
-        return true;
+        return raw.commit();
     }
 
     QImage image;
     image.loadFromData(data);
     if (image.isNull()) {
-        QFile raw(savePath);
+        QSaveFile raw(savePath);
         if (!raw.open(QIODevice::WriteOnly)) return false;
         raw.write(data);
+        raw.commit();
         return false;
     }
 
-    QImageWriter writer(savePath, "png");
+    QSaveFile output(savePath);
+    if (!output.open(QIODevice::WriteOnly)) return false;
+    QImageWriter writer(&output, "png");
     writer.setText("parameters", parameters);
     writer.setText("civitai_prompt", payload.prompt);
     writer.setText("civitai_negative_prompt", payload.negativePrompt);
-    if (writer.write(image)) return true;
+    if (writer.write(image) && output.commit()) return true;
 
-    QFile raw(savePath);
-    if (raw.open(QIODevice::WriteOnly)) raw.write(data);
+    QSaveFile raw(savePath);
+    if (raw.open(QIODevice::WriteOnly)) {
+        raw.write(data);
+        raw.commit();
+    }
     return false;
 }
 
@@ -6879,7 +6908,7 @@ void MainWindow::syncPreviewImagesFromMetadata(const QString &modelDir,
         const bool exists = QFile::exists(savePath);
 
         if (exists && !(forceNonCoverDownload && index > 0)) {
-            enqueueDownload(QString(), savePath, nullptr, baseName, index, payload, true, true, countForMetadataSync);
+            enqueueDownload(img.url, savePath, nullptr, baseName, index, payload, true, true, countForMetadataSync);
             continue;
         }
 
@@ -6966,9 +6995,42 @@ void MainWindow::processNextDownload()
         QString cleanedSavePath = QFileInfo(task.savePath).absoluteFilePath();
 
         if (task.metadataOnly || task.url.trimmed().isEmpty()) {
-            ensurePreviewImageMetadata(cleanedSavePath, task.previewMeta);
-            if (task.countForMetadataSync) markMetadataPreviewTaskFinished();
-            QTimer::singleShot(0, this, &MainWindow::processNextDownload);
+            if (!task.url.trimmed().isEmpty()) {
+                if (previewFileAlreadyHasPromptMetadata(cleanedSavePath)) {
+                    if (task.countForMetadataSync) markMetadataPreviewTaskFinished();
+                } else {
+                    DownloadTask retryTask = task;
+                    retryTask.metadataOnly = false;
+                    retryTask.allowNoButton = true;
+                    downloadQueue.enqueue(retryTask);
+                }
+                QTimer::singleShot(0, this, &MainWindow::processNextDownload);
+                return;
+            }
+
+            auto *watcher = new QFutureWatcher<bool>(this);
+            connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher, task]() {
+                const bool ok = watcher->result();
+                watcher->deleteLater();
+
+                if (!ok && !task.url.trimmed().isEmpty()) {
+                    DownloadTask retryTask = task;
+                    retryTask.metadataOnly = false;
+                    retryTask.allowNoButton = true;
+                    downloadQueue.enqueue(retryTask);
+                    if (downloadsPage && task.countForMetadataSync) {
+                        downloadsPage->setStatusText(QString("本地预览图元信息写入失败，正在重新下载: %1")
+                                                         .arg(QFileInfo(task.savePath).fileName()));
+                    }
+                } else if (task.countForMetadataSync) {
+                    markMetadataPreviewTaskFinished();
+                }
+
+                QTimer::singleShot(0, this, &MainWindow::processNextDownload);
+            });
+            watcher->setFuture(QtConcurrent::run(backgroundThreadPool, [this, path = cleanedSavePath, payload = task.previewMeta]() {
+                return ensurePreviewImageMetadata(path, payload);
+            }));
             return;
         }
 
@@ -8657,11 +8719,27 @@ void MainWindow::processNextMetadataSyncJob()
 void MainWindow::fetchMetadataForSyncJob(const MetadataSyncJob &job)
 {
     if (job.snapshot.modelId > 0) {
+        if (job.snapshot.currentVersionId > 0) {
+            downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "正在获取完整版本元信息...", QString());
+            QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/model-versions/%1").arg(job.snapshot.currentVersionId))));
+            reply->setProperty("filePath", job.snapshot.filePath);
+            reply->setProperty("baseName", job.snapshot.baseName);
+            reply->setProperty("modelDir", job.snapshot.modelDir);
+            reply->setProperty("displayName", job.snapshot.displayName);
+            reply->setProperty("modelId", job.snapshot.modelId);
+            reply->setProperty("currentVersionId", job.snapshot.currentVersionId);
+            reply->setProperty("currentSha256", job.snapshot.currentSha256);
+            reply->setProperty("updateExisting", job.updateExisting);
+            connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleMetadataSyncVersionReply(reply); });
+            return;
+        }
+
         QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/models/%1").arg(job.snapshot.modelId))));
         reply->setProperty("filePath", job.snapshot.filePath);
         reply->setProperty("baseName", job.snapshot.baseName);
         reply->setProperty("modelDir", job.snapshot.modelDir);
         reply->setProperty("displayName", job.snapshot.displayName);
+        reply->setProperty("modelId", job.snapshot.modelId);
         reply->setProperty("currentVersionId", job.snapshot.currentVersionId);
         reply->setProperty("currentSha256", job.snapshot.currentSha256);
         reply->setProperty("updateExisting", job.updateExisting);
@@ -8717,6 +8795,48 @@ void MainWindow::fetchMetadataForSyncJob(const MetadataSyncJob &job)
     watcher->setFuture(QtConcurrent::run(backgroundThreadPool, [filePath = job.snapshot.filePath]() {
         return calculateFileHashWorker(filePath);
     }));
+}
+
+void MainWindow::handleMetadataSyncVersionReply(QNetworkReply *reply)
+{
+    MetadataSyncJob job;
+    job.snapshot.filePath = reply->property("filePath").toString();
+    job.snapshot.baseName = reply->property("baseName").toString();
+    job.snapshot.modelDir = reply->property("modelDir").toString();
+    job.snapshot.displayName = reply->property("displayName").toString();
+    job.snapshot.modelId = reply->property("modelId").toInt();
+    job.snapshot.currentVersionId = reply->property("currentVersionId").toInt();
+    job.snapshot.currentSha256 = reply->property("currentSha256").toString();
+    job.updateExisting = reply->property("updateExisting").toBool();
+    reply->deleteLater();
+
+    if (reply->error() != QNetworkReply::NoError) {
+        downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "版本元信息获取失败: " + civitaiNetworkErrorMessage(reply), "failed");
+        ++metadataSyncDone;
+        processNextMetadataSyncJob();
+        return;
+    }
+
+    const QJsonObject versionRoot = QJsonDocument::fromJson(reply->readAll()).object();
+    const int modelId = versionRoot.value("modelId").toInt(job.snapshot.modelId);
+    job.snapshot.currentVersionId = versionRoot.value("id").toInt(job.snapshot.currentVersionId);
+    if (modelId <= 0) {
+        downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "版本元信息缺少模型 ID", "failed");
+        ++metadataSyncDone;
+        processNextMetadataSyncJob();
+        return;
+    }
+
+    QNetworkReply *detailReply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/models/%1").arg(modelId))));
+    detailReply->setProperty("filePath", job.snapshot.filePath);
+    detailReply->setProperty("baseName", job.snapshot.baseName);
+    detailReply->setProperty("modelDir", job.snapshot.modelDir);
+    detailReply->setProperty("displayName", job.snapshot.displayName);
+    detailReply->setProperty("currentVersionId", job.snapshot.currentVersionId);
+    detailReply->setProperty("currentSha256", job.snapshot.currentSha256);
+    detailReply->setProperty("updateExisting", job.updateExisting);
+    detailReply->setProperty("versionHint", QJsonDocument(versionRoot).toJson(QJsonDocument::Compact));
+    connect(detailReply, &QNetworkReply::finished, this, [this, detailReply]() { handleMetadataSyncModelReply(detailReply); });
 }
 
 void MainWindow::handleMetadataSyncHashReply(QNetworkReply *reply)

@@ -479,6 +479,7 @@ private:
     void processNextMetadataSyncJob();
     void fetchMetadataForSyncJob(const MetadataSyncJob &job);
     void handleMetadataSyncModelReply(QNetworkReply *reply);
+    void handleMetadataSyncVersionReply(QNetworkReply *reply);
     void handleMetadataSyncHashReply(QNetworkReply *reply);
     bool saveMetadataFromModelRoot(const MetadataSyncJob &job, const QJsonObject &modelRoot, const QJsonObject &versionHint = QJsonObject());
     UpdateCheckSnapshot snapshotForModelItem(QListWidgetItem *item) const;
