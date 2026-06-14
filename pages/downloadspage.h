@@ -87,6 +87,7 @@ signals:
     void ignoreToggled(const QString &filePath);
     void metadataScanRequested();
     void metadataUpdateRequested(const QStringList &filePaths);
+    void metadataCivArchiveRequested(const QStringList &filePaths);
     void metadataOpenModelRequested(const QString &filePath);
     void metadataOpenFolderRequested(const QString &filePath);
     void metadataSelectionChanged();

@@ -793,6 +793,19 @@
               </property>
              </widget>
             </item>
+            <item>
+             <widget class="QCheckBox" name="chkTryCivArchiveOnMetadataFail">
+              <property name="toolTip">
+               <string>默认开启。当 Civitai 元信息同步失败或模型已删除时，尝试从 CivArchive 补充元信息。</string>
+              </property>
+              <property name="text">
+               <string>Civitai 失败时尝试 CivArchive / Try CivArchive when Civitai metadata fails</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
            </layout>
           </widget>
          </item>

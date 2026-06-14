@@ -37,6 +37,7 @@ struct SettingsState {
     bool suppressLocalWarnings = false;
     int userGalleryMatchMode = 0;
     bool recalculateKnownMetadataHash = false;
+    bool tryCivArchiveOnMetadataFail = true;
     double uiScale = 1.0;
     QString themeId = "steam_dark";
     QString customThemePath;

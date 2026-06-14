@@ -22,6 +22,8 @@ struct ModelUpdateInfo {
     QString downloadUrl;
     QString downloadFileName;
     QString sha256;
+    QString metadataSource;
+    QString sourceUrl;
     QJsonObject latestVersionJson;
     int modelId = 0;
     int currentVersionId = 0;

@@ -687,6 +687,16 @@
           </widget>
          </item>
          <item>
+          <widget class="QPushButton" name="btnMetadataCivArchiveSelected">
+           <property name="toolTip">
+            <string>跳过 Civitai，直接尝试从 CivArchive 为选中模型补充元信息。</string>
+           </property>
+           <property name="text">
+            <string>从 CivArchive 补充</string>
+           </property>
+          </widget>
+         </item>
+         <item>
           <widget class="QPushButton" name="btnMetadataOpenModel">
            <property name="text">
             <string>跳转模型</string>
@@ -813,6 +823,12 @@
            <string>缺少识别字段</string>
           </attribute>
           <layout class="QVBoxLayout" name="verticalLayout_MetadataNoIds"/>
+         </widget>
+         <widget class="QWidget" name="pageMetadataDuplicate">
+          <attribute name="title">
+           <string>重复模型</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="verticalLayout_MetadataDuplicate"/>
          </widget>
         </widget>
        </item>

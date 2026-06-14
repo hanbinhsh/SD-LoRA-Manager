@@ -24,6 +24,7 @@
 #include <QProgressBar>
 #include <QPixmap>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -44,6 +45,12 @@ constexpr int RoleModelIdText = Qt::UserRole + 1;
 constexpr int RoleVersionIdText = Qt::UserRole + 2;
 constexpr int RoleSha256 = Qt::UserRole + 3;
 
+QString normalizedMetadataSha(QString hash)
+{
+    hash.remove(QRegularExpression("[^A-Fa-f0-9]"));
+    return hash.toLower();
+}
+
 QString metadataCategoryDisplayName(const QString &category)
 {
     if (category == "missing") return QStringLiteral("缺失元信息");
@@ -52,6 +59,7 @@ QString metadataCategoryDisplayName(const QString &category)
     if (category == "failed") return QStringLiteral("同步失败");
     if (category == "invalid") return QStringLiteral("JSON 异常");
     if (category == "no_ids") return QStringLiteral("缺少识别字段");
+    if (category == "duplicate") return QStringLiteral("重复模型");
     return QStringLiteral("全部");
 }
 
@@ -118,6 +126,16 @@ MetadataHealthIssue metadataHealthIssueFromJson(const QJsonObject &obj)
     issue.filePath = obj.value("filePath").toString();
     return issue;
 }
+
+QHash<QString, int> duplicateHashCounts(const QVector<MetadataScanItem> &items)
+{
+    QHash<QString, int> counts;
+    for (const MetadataScanItem &item : items) {
+        const QString hash = normalizedMetadataSha(item.sha256);
+        if (!hash.isEmpty()) ++counts[hash];
+    }
+    return counts;
+}
 }
 
 DownloadsPage::DownloadsPage(QWidget *parent)
@@ -145,12 +163,14 @@ DownloadsPage::DownloadsPage(QWidget *parent)
     connect(ui->btnMetadataUpdateSelected, &QPushButton::clicked, this, [this]() {
         emit metadataUpdateRequested(checkedMetadataScanFilePaths());
     });
+    connect(ui->btnMetadataCivArchiveSelected, &QPushButton::clicked, this, [this]() {
+        emit metadataCivArchiveRequested(checkedMetadataScanFilePaths());
+    });
     connect(ui->btnMetadataToggleCurrent, &QPushButton::clicked, this, [this]() {
-        const QString category = currentMetadataCategory();
         bool allChecked = true;
         bool hasRow = false;
         for (const MetadataScanItem &item : std::as_const(m_metadataScanItems)) {
-            if (category != "all" && item.category != category) continue;
+            if (!metadataItemMatchesCurrentCategory(item)) continue;
             hasRow = true;
             if (!item.checked) {
                 allChecked = false;
@@ -558,8 +578,14 @@ void DownloadsPage::addOrUpdateCard(const ModelUpdateInfo &info, const QString &
         card.sourceButton->setEnabled(sourceAvailable);
     }
     if (card.civitaiButton) {
-        card.civitaiButton->setText(info.modelId > 0 ? QString("Civitai #%1").arg(info.modelId) : "Civitai");
-        card.civitaiButton->setEnabled(info.modelId > 0);
+        const bool isArchive = info.metadataSource.compare("civarchive", Qt::CaseInsensitive) == 0;
+        if (isArchive) {
+            card.civitaiButton->setText("CivArchive");
+            card.civitaiButton->setEnabled(!info.sourceUrl.trimmed().isEmpty() || !info.sha256.trimmed().isEmpty());
+        } else {
+            card.civitaiButton->setText(info.modelId > 0 ? QString("Civitai #%1").arg(info.modelId) : "来源");
+            card.civitaiButton->setEnabled(info.modelId > 0 || !info.sourceUrl.trimmed().isEmpty() || !info.sha256.trimmed().isEmpty());
+        }
     }
     if (card.downloadButton) {
         const bool completed = effectiveStatus.contains("完成");
@@ -791,6 +817,7 @@ QString DownloadsPage::currentMetadataCategory() const
     case 4: return "failed";
     case 5: return "invalid";
     case 6: return "no_ids";
+    case 7: return "duplicate";
     default: return "all";
     }
 }
@@ -798,6 +825,10 @@ QString DownloadsPage::currentMetadataCategory() const
 bool DownloadsPage::metadataItemMatchesCurrentCategory(const MetadataScanItem &item) const
 {
     const QString category = currentMetadataCategory();
+    if (category == "duplicate") {
+        const QString hash = normalizedMetadataSha(item.sha256);
+        return !hash.isEmpty() && duplicateHashCounts(m_metadataScanItems).value(hash) > 1;
+    }
     return category == "all" || item.category == category;
 }
 
@@ -881,6 +912,8 @@ void DownloadsPage::refreshMetadataScanTable()
     ui->tableMetadataScan->setSortingEnabled(false);
     ui->tableMetadataScan->setRowCount(0);
 
+    const QString category = currentMetadataCategory();
+    const QHash<QString, int> duplicateCounts = duplicateHashCounts(m_metadataScanItems);
     int row = 0;
     for (const MetadataScanItem &item : std::as_const(m_metadataScanItems)) {
         if (!metadataItemMatchesCurrentCategory(item)) continue;
@@ -904,7 +937,14 @@ void DownloadsPage::refreshMetadataScanTable()
                                       item.sha256.isEmpty() ? QStringLiteral("--") : item.sha256));
         ui->tableMetadataScan->setItem(row, 1, nameItem);
         ui->tableMetadataScan->setItem(row, 2, new QTableWidgetItem(metadataCategoryDisplayName(item.category)));
-        ui->tableMetadataScan->setItem(row, 3, new QTableWidgetItem(item.status));
+        QString statusText = item.status;
+        if (category == "duplicate") {
+            const QString hash = normalizedMetadataSha(item.sha256);
+            statusText = QString("重复摘要：%1...，共 %2 个")
+                             .arg(hash.left(12))
+                             .arg(duplicateCounts.value(hash));
+        }
+        ui->tableMetadataScan->setItem(row, 3, new QTableWidgetItem(statusText));
         const QString syncedText = item.lastSyncedAt.isEmpty()
             ? QStringLiteral("-")
             : QString("%1 (%2)").arg(item.lastSyncedAt, item.lastSyncedSource);
@@ -929,9 +969,8 @@ QStringList DownloadsPage::checkedMetadataScanFilePaths() const
 
 void DownloadsPage::setCurrentMetadataCategoryChecked(bool checked)
 {
-    const QString category = currentMetadataCategory();
     for (MetadataScanItem &item : m_metadataScanItems) {
-        if (category == "all" || item.category == category) item.checked = checked;
+        if (metadataItemMatchesCurrentCategory(item)) item.checked = checked;
     }
     refreshMetadataScanTable();
     saveMetadataResultCache();
@@ -955,13 +994,12 @@ void DownloadsPage::clearMetadataSelection()
 
 void DownloadsPage::updateMetadataSelectionSummary()
 {
-    const QString category = currentMetadataCategory();
     int currentTotal = 0;
     int currentChecked = 0;
     int allChecked = 0;
     for (const MetadataScanItem &item : std::as_const(m_metadataScanItems)) {
         if (item.checked) ++allChecked;
-        if (category == "all" || item.category == category) {
+        if (metadataItemMatchesCurrentCategory(item)) {
             ++currentTotal;
             if (item.checked) ++currentChecked;
         }
@@ -983,6 +1021,7 @@ void DownloadsPage::updateMetadataActionButtons()
     const int row = ui->tableMetadataScan->currentRow();
     const bool hasCurrentRow = row >= 0 && ui->tableMetadataScan->item(row, 1);
     ui->btnMetadataUpdateSelected->setEnabled(!m_metadataScanRunning && hasChecked);
+    ui->btnMetadataCivArchiveSelected->setEnabled(!m_metadataScanRunning && hasChecked);
     ui->btnMetadataOpenModel->setEnabled(hasCurrentRow);
     ui->btnMetadataOpenFolder->setEnabled(hasCurrentRow);
 }

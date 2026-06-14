@@ -137,6 +137,8 @@ struct ImageLoadResult {
 struct MetadataSyncJob {
     UpdateCheckSnapshot snapshot;
     bool updateExisting = false;
+    bool civArchiveOnly = false;
+    bool detailFallback = false;
 };
 
 struct PreviewMetadataPayload {
@@ -477,7 +479,12 @@ private:
     void handleMetadataSyncModelReply(QNetworkReply *reply);
     void handleMetadataSyncVersionReply(QNetworkReply *reply);
     void handleMetadataSyncHashReply(QNetworkReply *reply);
+    void handleMetadataSyncCivArchiveReply(QNetworkReply *reply);
     bool saveMetadataFromModelRoot(const MetadataSyncJob &job, const QJsonObject &modelRoot, const QJsonObject &versionHint = QJsonObject());
+    void fetchMetadataFromCivArchive(const MetadataSyncJob &job, const QString &reason, bool directOnly = false);
+    bool startDetailCivArchiveFallback(const QString &filePath, const QString &baseName, const QString &modelDir, const QString &reason, const QString &currentSha256 = QString());
+    void finishMetadataSyncJobWithFailure(const MetadataSyncJob &job, const QString &message, const QString &category = "failed");
+    bool tryStartCivArchiveHashCalculation(const MetadataSyncJob &job, const QString &reason);
     UpdateCheckSnapshot snapshotForModelItem(QListWidgetItem *item) const;
     QListWidgetItem *findModelItemByFilePath(const QString &filePath) const;
     QString resolveDownloadPreviewPath(const ModelUpdateInfo &info) const;
@@ -619,6 +626,7 @@ private:
     bool          optSuppressLocalWarnings                    = false;            // 隐藏本地模型总量提醒
     int           optUserGalleryMatchMode                     = 0;                // 0: 当前逻辑匹配, 1: 摘要值匹配(可回退), 2: 严格摘要值匹配(不回退)
     bool          optRecalculateKnownMetadataHash             = false;            // 元信息同步时是否重新计算已有 Hash
+    bool          optTryCivArchiveOnMetadataFail              = true;             // Civitai 元信息失败时尝试 CivArchive
     int           optModelUpdateDownloadPolicy                = 0;                // 0: 每次询问, 1: 保留旧版, 2: 覆盖当前文件
     bool          optAutoCheckUpdatesOnStartup                = true;             // 启动时自动检查软件更新
     double        optUiScale                                  = 1.0;              // 缩放比率

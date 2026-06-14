@@ -229,6 +229,8 @@ void DownloadManager::ensureCacheLoaded()
         info.downloadUrl = obj.value("downloadUrl").toString();
         info.downloadFileName = obj.value("downloadFileName").toString();
         info.sha256 = obj.value("sha256").toString();
+        info.metadataSource = obj.value("metadataSource").toString();
+        info.sourceUrl = obj.value("sourceUrl").toString();
         info.latestVersionJson = obj.value("latestVersionJson").toObject();
         info.modelId = obj.value("modelId").toInt();
         info.currentVersionId = obj.value("currentVersionId").toInt();
@@ -272,6 +274,8 @@ void DownloadManager::saveCache() const
             obj["downloadUrl"] = info.downloadUrl;
             obj["downloadFileName"] = info.downloadFileName;
             obj["sha256"] = info.sha256;
+            obj["metadataSource"] = info.metadataSource;
+            obj["sourceUrl"] = info.sourceUrl;
             obj["latestVersionJson"] = info.latestVersionJson;
             obj["modelId"] = info.modelId;
             obj["currentVersionId"] = info.currentVersionId;

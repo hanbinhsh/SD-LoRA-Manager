@@ -265,6 +265,285 @@ QString metadataShaFromRoot(const QJsonObject &root)
     return QString();
 }
 
+QString htmlDecodeMinimal(QString text)
+{
+    text.replace("&quot;", "\"");
+    text.replace("&#34;", "\"");
+    text.replace("&#x22;", "\"");
+    text.replace("&amp;", "&");
+    text.replace("&#38;", "&");
+    text.replace("&lt;", "<");
+    text.replace("&gt;", ">");
+    text.replace("&#x2F;", "/");
+    return text;
+}
+
+QJsonObject findObjectWithModelVersions(const QJsonValue &value)
+{
+    if (value.isObject()) {
+        const QJsonObject obj = value.toObject();
+        if (obj.value("modelVersions").isArray()) return obj;
+        for (auto it = obj.constBegin(); it != obj.constEnd(); ++it) {
+            const QJsonObject found = findObjectWithModelVersions(it.value());
+            if (!found.isEmpty()) return found;
+        }
+    } else if (value.isArray()) {
+        const QJsonArray arr = value.toArray();
+        for (const QJsonValue &child : arr) {
+            const QJsonObject found = findObjectWithModelVersions(child);
+            if (!found.isEmpty()) return found;
+        }
+    }
+    return {};
+}
+
+QJsonObject findObjectWithVersionFiles(const QJsonValue &value)
+{
+    if (value.isObject()) {
+        const QJsonObject obj = value.toObject();
+        if (obj.value("files").isArray() && (obj.contains("modelId") || obj.contains("model"))) return obj;
+        for (auto it = obj.constBegin(); it != obj.constEnd(); ++it) {
+            const QJsonObject found = findObjectWithVersionFiles(it.value());
+            if (!found.isEmpty()) return found;
+        }
+    } else if (value.isArray()) {
+        const QJsonArray arr = value.toArray();
+        for (const QJsonValue &child : arr) {
+            const QJsonObject found = findObjectWithVersionFiles(child);
+            if (!found.isEmpty()) return found;
+        }
+    }
+    return {};
+}
+
+QString normalizedSha256Text(QString hash)
+{
+    hash.remove(QRegularExpression("[^A-Fa-f0-9]"));
+    return hash.toLower();
+}
+
+QString shaFromCivArchiveSourceUrl(const QString &sourceUrl)
+{
+    const QUrl url(sourceUrl);
+    const QStringList parts = url.path().split('/', Qt::SkipEmptyParts);
+    for (int i = 0; i + 1 < parts.size(); ++i) {
+        if (parts.at(i).compare("sha256", Qt::CaseInsensitive) == 0) {
+            return normalizedSha256Text(parts.at(i + 1));
+        }
+    }
+    return {};
+}
+
+QString civArchiveFileSha(const QJsonObject &file)
+{
+    QString sha = file.value("sha256").toString();
+    if (sha.isEmpty()) sha = file.value("hashes").toObject().value("SHA256").toString();
+    return normalizedSha256Text(sha);
+}
+
+bool civArchiveVersionMatchesHash(const QJsonObject &version, const QString &hash)
+{
+    if (hash.isEmpty()) return true;
+    for (const QJsonValue &fileVal : version.value("files").toArray()) {
+        if (civArchiveFileSha(fileVal.toObject()) == hash) return true;
+    }
+    return false;
+}
+
+bool findCivArchiveModelAndVersion(const QJsonValue &value,
+                                   const QString &hash,
+                                   QJsonObject &archiveModel,
+                                   QJsonObject &archiveVersion)
+{
+    if (value.isObject()) {
+        const QJsonObject obj = value.toObject();
+        const QJsonObject version = obj.value("version").toObject();
+        if (!version.isEmpty()
+            && version.value("files").isArray()
+            && (obj.contains("id") || obj.contains("name"))
+            && civArchiveVersionMatchesHash(version, hash)) {
+            archiveModel = obj;
+            archiveVersion = version;
+            return true;
+        }
+
+        for (auto it = obj.constBegin(); it != obj.constEnd(); ++it) {
+            if (findCivArchiveModelAndVersion(it.value(), hash, archiveModel, archiveVersion)) return true;
+        }
+    } else if (value.isArray()) {
+        const QJsonArray arr = value.toArray();
+        for (const QJsonValue &child : arr) {
+            if (findCivArchiveModelAndVersion(child, hash, archiveModel, archiveVersion)) return true;
+        }
+    }
+    return false;
+}
+
+QJsonObject civArchiveFileToCivitaiFile(QJsonObject file)
+{
+    if (!file.contains("sizeKB") && file.contains("size_kb")) file["sizeKB"] = file.value("size_kb");
+    if (!file.contains("downloadUrl") && file.contains("download_url")) file["downloadUrl"] = file.value("download_url");
+    if (!file.contains("primary") && file.contains("is_primary")) file["primary"] = file.value("is_primary");
+    if (!file.contains("modelId") && file.contains("model_id")) file["modelId"] = file.value("model_id");
+    if (!file.contains("modelVersionId") && file.contains("model_version_id")) file["modelVersionId"] = file.value("model_version_id");
+
+    QJsonObject hashes = file.value("hashes").toObject();
+    const QString sha = file.value("sha256").toString().trimmed();
+    if (!sha.isEmpty() && hashes.value("SHA256").toString().isEmpty()) hashes["SHA256"] = sha;
+    if (!hashes.isEmpty()) file["hashes"] = hashes;
+    return file;
+}
+
+QJsonObject civArchiveImageToCivitaiImage(QJsonObject image)
+{
+    if (!image.contains("url") && image.contains("image_url")) image["url"] = image.value("image_url");
+    if (!image.contains("nsfwLevel") && image.contains("nsfw_level")) image["nsfwLevel"] = image.value("nsfw_level");
+    return image;
+}
+
+QJsonObject civArchiveVersionToCivitaiVersion(QJsonObject version, const QJsonObject &archiveModel)
+{
+    if (!version.contains("modelId")) {
+        const int modelId = version.value("model_id").toInt(archiveModel.value("id").toInt());
+        if (modelId > 0) version["modelId"] = modelId;
+    }
+    if (!version.contains("baseModel") && version.contains("base_model")) version["baseModel"] = version.value("base_model");
+    if (!version.contains("baseModelType") && version.contains("base_model_type")) version["baseModelType"] = version.value("base_model_type");
+    if (!version.contains("publishedAt") && version.contains("created_at")) version["publishedAt"] = version.value("created_at");
+    if (!version.contains("createdAt") && version.contains("created_at")) version["createdAt"] = version.value("created_at");
+    if (!version.contains("updatedAt") && version.contains("updated_at")) version["updatedAt"] = version.value("updated_at");
+    if (!version.contains("downloadUrl") && version.contains("download_url")) version["downloadUrl"] = version.value("download_url");
+    if (!version.contains("trainedWords") && version.value("trigger").isArray()) version["trainedWords"] = version.value("trigger");
+
+    QJsonArray files;
+    for (const QJsonValue &fileVal : version.value("files").toArray()) {
+        files.append(civArchiveFileToCivitaiFile(fileVal.toObject()));
+    }
+    if (!files.isEmpty()) version["files"] = files;
+
+    QJsonArray images;
+    for (const QJsonValue &imageVal : version.value("images").toArray()) {
+        images.append(civArchiveImageToCivitaiImage(imageVal.toObject()));
+    }
+    if (!images.isEmpty()) version["images"] = images;
+    return version;
+}
+
+QJsonObject civArchiveModelToCivitaiRoot(QJsonObject archiveModel, const QJsonObject &archiveVersion)
+{
+    QJsonObject version = civArchiveVersionToCivitaiVersion(archiveVersion, archiveModel);
+
+    QJsonObject root = archiveModel;
+    root.remove("version");
+    root.remove("versions");
+    root.remove("meta");
+    if (!root.contains("nsfw") && root.contains("is_nsfw")) root["nsfw"] = root.value("is_nsfw");
+    if (!root.contains("nsfwLevel") && root.contains("nsfw_level")) root["nsfwLevel"] = root.value("nsfw_level");
+
+    QJsonObject creator = root.value("creator").toObject();
+    const QString creatorUser = root.value("creator_username").toString(root.value("username").toString()).trimmed();
+    const QString creatorName = root.value("creator_name").toString(creatorUser).trimmed();
+    if (!creatorUser.isEmpty() && creator.value("username").toString().isEmpty()) creator["username"] = creatorUser;
+    if (!creatorName.isEmpty() && creator.value("name").toString().isEmpty()) creator["name"] = creatorName;
+    if (!creator.isEmpty()) root["creator"] = creator;
+
+    QJsonArray versions;
+    versions.append(version);
+    root["modelVersions"] = versions;
+    return root;
+}
+
+QJsonObject modelRootFromVersionObject(const QJsonObject &version)
+{
+    if (version.isEmpty()) return {};
+    QJsonObject model = version.value("model").toObject();
+    const int modelId = version.value("modelId").toInt(model.value("id").toInt());
+    if (modelId > 0 && !model.contains("id")) model["id"] = modelId;
+
+    QJsonObject root = model;
+    if (root.isEmpty()) root["id"] = modelId;
+    if (!root.contains("id") && modelId > 0) root["id"] = modelId;
+    QJsonArray versions;
+    versions.append(version);
+    root["modelVersions"] = versions;
+    return root;
+}
+
+bool parseCivArchivePayload(const QByteArray &data,
+                            const QString &sourceUrl,
+                            QJsonObject &modelRoot,
+                            QJsonObject &versionHint)
+{
+    modelRoot = {};
+    versionHint = {};
+    if (data.trimmed().isEmpty()) return false;
+    const QString sourceHash = shaFromCivArchiveSourceUrl(sourceUrl);
+
+    auto acceptJson = [&](const QJsonDocument &doc) -> bool {
+        if (doc.isNull()) return false;
+        const QJsonValue rootValue = doc.isObject() ? QJsonValue(doc.object()) : QJsonValue(doc.array());
+        modelRoot = findObjectWithModelVersions(rootValue);
+        versionHint = findObjectWithVersionFiles(rootValue);
+        if (modelRoot.isEmpty()) {
+            QJsonObject archiveModel;
+            QJsonObject archiveVersion;
+            if (findCivArchiveModelAndVersion(rootValue, sourceHash, archiveModel, archiveVersion)) {
+                modelRoot = civArchiveModelToCivitaiRoot(archiveModel, archiveVersion);
+                versionHint = civArchiveVersionToCivitaiVersion(archiveVersion, archiveModel);
+            }
+        }
+        if (modelRoot.isEmpty() && !versionHint.isEmpty()) {
+            modelRoot = modelRootFromVersionObject(versionHint);
+        }
+        if (modelRoot.isEmpty()) return false;
+        modelRoot["metadataSource"] = QStringLiteral("civarchive");
+        modelRoot["sourceUrl"] = sourceUrl;
+        return true;
+    };
+
+    QJsonParseError directErr;
+    if (acceptJson(QJsonDocument::fromJson(data, &directErr))) return true;
+
+    const QString html = QString::fromUtf8(data);
+    static const QRegularExpression nextDataRegex(
+        "<script[^>]*id=[\"']__NEXT_DATA__[\"'][^>]*>(.*?)</script>",
+        QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatch nextMatch = nextDataRegex.match(html);
+    if (nextMatch.hasMatch()) {
+        const QByteArray jsonBytes = htmlDecodeMinimal(nextMatch.captured(1).trimmed()).toUtf8();
+        if (acceptJson(QJsonDocument::fromJson(jsonBytes))) return true;
+    }
+
+    static const QRegularExpression jsonScriptRegex(
+        "<script[^>]*type=[\"']application/(?:ld\\+)?json[\"'][^>]*>(.*?)</script>",
+        QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatchIterator it = jsonScriptRegex.globalMatch(html);
+    while (it.hasNext()) {
+        const QByteArray jsonBytes = htmlDecodeMinimal(it.next().captured(1).trimmed()).toUtf8();
+        if (acceptJson(QJsonDocument::fromJson(jsonBytes))) return true;
+    }
+    return false;
+}
+
+QUrl civArchiveLookupUrl(const MetadataSyncJob &job)
+{
+    QString hash = job.snapshot.currentSha256.trimmed();
+    hash.remove(QRegularExpression("[^A-Fa-f0-9]"));
+    if (!hash.isEmpty()) {
+        return QUrl(QString("https://civarchive.com/sha256/%1").arg(hash.toLower()));
+    }
+    if (job.snapshot.modelId > 0) {
+        QUrl url(QString("https://civarchive.com/models/%1").arg(job.snapshot.modelId));
+        if (job.snapshot.currentVersionId > 0) {
+            QUrlQuery query(url);
+            query.addQueryItem("modelVersionId", QString::number(job.snapshot.currentVersionId));
+            url.setQuery(query);
+        }
+        return url;
+    }
+    return {};
+}
+
 QVector<MetadataScanItem> scanMetadataItemsWorker(QVector<MetadataScanItem> items)
 {
     for (MetadataScanItem &item : items) {
@@ -4777,6 +5056,7 @@ QJsonObject MainWindow::mergeCivitaiModelIntoVersion(const QJsonObject &versionR
 
     QJsonObject modelObj = merged.value("model").toObject();
     for (auto it = modelRoot.constBegin(); it != modelRoot.constEnd(); ++it) {
+        if (it.key() == "metadataSource" || it.key() == "sourceUrl") continue;
         modelObj.insert(it.key(), it.value());
     }
     merged["model"] = modelObj;
@@ -4812,6 +5092,7 @@ void MainWindow::fetchModelInfoFromCivitai(const QString &hash) {
     reply->setProperty("modelDir", modelDir);
     reply->setProperty("localFilePath", filePath);
     reply->setProperty("filePath", filePath);
+    reply->setProperty("currentSha256", hash.trimmed());
 
     connect(reply, &QNetworkReply::finished, this, [this, reply](){
         this->onApiMetadataReceived(reply);
@@ -4945,6 +5226,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     QString localBaseName = reply->property("localBaseName").toString();
     QString modelDir = reply->property("modelDir").toString();
     QString filePath = reply->property("filePath").toString();
+    QString currentSha256 = reply->property("currentSha256").toString();
     reply->deleteLater();
     ui->btnForceUpdate->setEnabled(true);
     currentHashSyncForceRefresh = false;
@@ -4970,6 +5252,10 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
         } else {
             clearLayout(ui->layoutTriggerStack); // 清空触发词区域
             const QString err = civitaiNetworkErrorMessage(reply);
+            if (startDetailCivArchiveFallback(filePath, localBaseName, modelDir, err, currentSha256)) {
+                ui->statusbar->showMessage("Civitai 获取失败，正在尝试 CivArchive...", 4000);
+                return;
+            }
             recordModelSyncFailure(filePath, localBaseName, err);
             setModelTitleError(err);
             ui->textDescription->setPlainText(QString("上次同步失败，请点击刷新模型详情重新同步。\n%1").arg(err));
@@ -4987,6 +5273,10 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     QJsonObject root = usingVersionFallback ? QJsonDocument::fromJson(versionJsonBytes).object() : doc.object();
     if ((!usingVersionFallback && doc.isNull()) || root.isEmpty()) {
         const QString err = "返回数据为空或不是有效 JSON";
+        if (startDetailCivArchiveFallback(filePath, localBaseName, modelDir, err, currentSha256)) {
+            ui->statusbar->showMessage("Civitai 元数据解析失败，正在尝试 CivArchive...", 4000);
+            return;
+        }
         recordModelSyncFailure(filePath, localBaseName, err);
         setModelTitleError(err);
         ui->textDescription->setPlainText(QString("上次同步失败，请点击刷新模型详情重新同步。\n%1").arg(err));
@@ -5012,6 +5302,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
             detailReply->setProperty("modelDir", modelDir);
             detailReply->setProperty("localFilePath", filePath);
             detailReply->setProperty("filePath", filePath);
+            detailReply->setProperty("currentSha256", currentSha256);
             detailReply->setProperty("versionJson", QJsonDocument(root).toJson(QJsonDocument::Compact));
             connect(detailReply, &QNetworkReply::finished, this, [this, detailReply]() {
                 this->onApiMetadataReceived(detailReply);
@@ -7972,6 +8263,73 @@ void MainWindow::initDownloadsPage()
             this, &MainWindow::startMetadataScan);
     connect(downloadsPage, &DownloadsPage::metadataUpdateRequested,
             this, [this](const QStringList &paths) { startMetadataSyncForPaths(paths, true); });
+    connect(downloadsPage, &DownloadsPage::metadataCivArchiveRequested,
+            this, [this](const QStringList &paths) {
+                if (paths.isEmpty()) {
+                    downloadsPage->setStatusText("请先勾选要从 CivArchive 补充的模型。");
+                    return;
+                }
+                if (metadataSyncRunning) {
+                    downloadsPage->setStatusText("已有元信息同步任务正在运行。");
+                    return;
+                }
+
+                bool hasLocalEdited = false;
+                for (const QString &path : paths) {
+                    if (QListWidgetItem *item = findModelItemByFilePath(path)) {
+                        if (item->data(ROLE_LOCAL_EDITED).toBool()) {
+                            hasLocalEdited = true;
+                            break;
+                        }
+                    }
+                }
+                if (hasLocalEdited) {
+                    const auto ret = QMessageBox::warning(this,
+                                                          "覆盖本地元信息",
+                                                          "选中的模型包含本地/已编辑 metadata。\n继续从 CivArchive 补充会覆盖元信息，但会保留本地保护字段和用户私有数据。\n是否继续？",
+                                                          QMessageBox::Yes | QMessageBox::Cancel,
+                                                          QMessageBox::Cancel);
+                    if (ret != QMessageBox::Yes) return;
+                }
+
+                QMessageBox previewMsg(this);
+                previewMsg.setWindowTitle("同步预览图");
+                previewMsg.setText("从 CivArchive 补充元信息时是否同时同步预览图？\n\n"
+                                   "选择“是”会在归档信息包含图片时同步预览图。\n"
+                                   "选择“仅元数据”只更新 JSON，不下载或覆盖图片。");
+                QPushButton *btnYes = previewMsg.addButton("是", QMessageBox::AcceptRole);
+                QPushButton *btnMetaOnly = previewMsg.addButton("仅元数据", QMessageBox::ActionRole);
+                QPushButton *btnCancel = previewMsg.addButton("取消同步", QMessageBox::RejectRole);
+                previewMsg.setDefaultButton(btnMetaOnly);
+                previewMsg.exec();
+                if (previewMsg.clickedButton() == btnCancel) {
+                    downloadsPage->setStatusText("已取消 CivArchive 元信息补充。");
+                    return;
+                }
+                metadataSyncPreviewImages = (previewMsg.clickedButton() == btnYes);
+                pendingMetadataSyncJobs.clear();
+                for (const QString &path : paths) {
+                    if (QListWidgetItem *item = findModelItemByFilePath(path)) {
+                        MetadataSyncJob job;
+                        job.snapshot = snapshotForModelItem(item);
+                        job.updateExisting = true;
+                        job.civArchiveOnly = true;
+                        if (!job.snapshot.filePath.isEmpty()) pendingMetadataSyncJobs.enqueue(job);
+                    }
+                }
+                metadataSyncTotal = pendingMetadataSyncJobs.size();
+                metadataSyncDone = 0;
+                metadataPreviewTasksPending = 0;
+                metadataSyncWaitingForPreviews = false;
+                metadataSyncRunning = metadataSyncTotal > 0;
+                if (!metadataSyncRunning) {
+                    metadataSyncPreviewImages = false;
+                    downloadsPage->setStatusText("没有可从 CivArchive 补充的模型。");
+                    return;
+                }
+                downloadsPage->setStatusText(QString("正在从 CivArchive 补充元信息... 0/%1").arg(metadataSyncTotal));
+                processNextMetadataSyncJob();
+            });
     connect(downloadsPage, &DownloadsPage::metadataOpenModelRequested,
             this, &MainWindow::jumpToDownloadSource);
     connect(downloadsPage, &DownloadsPage::metadataOpenFolderRequested, this, [this](const QString &filePath) {
@@ -8300,6 +8658,8 @@ ModelUpdateInfo MainWindow::parseModelUpdateInfo(QListWidgetItem *item, const QJ
     info.modelId = modelRoot["id"].toInt(item->data(ROLE_CIVITAI_MODEL_ID).toInt());
     info.currentVersionId = item->data(ROLE_CIVITAI_VERSION_ID).toInt();
     const QString currentSha = item->data(ROLE_CIVITAI_SHA256).toString();
+    info.metadataSource = modelRoot.value("metadataSource").toString();
+    info.sourceUrl = modelRoot.value("sourceUrl").toString();
 
     QJsonArray versions = modelRoot["modelVersions"].toArray();
     QJsonObject currentVersionObj;
@@ -8344,6 +8704,7 @@ ModelUpdateInfo MainWindow::parseModelUpdateInfo(QListWidgetItem *item, const QJ
     info.downloadUrl = selectedFile["downloadUrl"].toString();
     info.downloadFileName = selectedFile["name"].toString();
     info.sha256 = selectedFile["hashes"].toObject()["SHA256"].toString();
+    if (info.sha256.isEmpty()) info.sha256 = currentSha;
     info.sizeMB = selectedFile["sizeKB"].toDouble() / 1024.0;
     info.hasUpdate = info.latestVersionId > 0 && info.latestVersionId != info.currentVersionId && !info.downloadUrl.isEmpty();
     if (info.hasUpdate && !info.downloadFileName.isEmpty()) {
@@ -8393,12 +8754,46 @@ void MainWindow::jumpToDownloadSource(const QString &filePath)
 
 void MainWindow::openDownloadCivitaiPage(const QString &filePath)
 {
-    int modelId = downloadManager ? downloadManager->info(filePath).modelId : 0;
-    if (modelId <= 0) {
-        if (QListWidgetItem *item = findModelItemByFilePath(filePath)) {
-            modelId = item->data(ROLE_CIVITAI_MODEL_ID).toInt();
+    ModelUpdateInfo info = downloadManager ? downloadManager->info(filePath) : ModelUpdateInfo{};
+    int modelId = info.modelId;
+    QString metadataSource = info.metadataSource.trimmed();
+    QString sourceUrl = info.sourceUrl.trimmed();
+    QString sha256 = info.sha256.trimmed();
+    QString modelDir = info.modelDir;
+    QString baseName = info.baseName;
+
+    if (QListWidgetItem *item = findModelItemByFilePath(filePath)) {
+        if (modelId <= 0) modelId = item->data(ROLE_CIVITAI_MODEL_ID).toInt();
+        if (sha256.isEmpty()) sha256 = item->data(ROLE_CIVITAI_SHA256).toString().trimmed();
+        if (modelDir.isEmpty()) modelDir = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absolutePath();
+        if (baseName.isEmpty()) baseName = item->data(ROLE_MODEL_NAME).toString();
+    }
+
+    if ((metadataSource.isEmpty() || sourceUrl.isEmpty()) && !modelDir.isEmpty() && !baseName.isEmpty()) {
+        QFile file(QDir(modelDir).filePath(baseName + ".json"));
+        if (file.open(QIODevice::ReadOnly)) {
+            const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+            if (metadataSource.isEmpty()) metadataSource = root.value("metadataSource").toString().trimmed();
+            if (sourceUrl.isEmpty()) sourceUrl = root.value("sourceUrl").toString().trimmed();
+            if (sha256.isEmpty()) sha256 = metadataShaFromRoot(root);
+            if (modelId <= 0) modelId = root.value("model").toObject().value("id").toInt(root.value("modelId").toInt());
         }
     }
+
+    if (metadataSource.compare("civarchive", Qt::CaseInsensitive) == 0) {
+        if (sourceUrl.isEmpty() && !sha256.isEmpty()) {
+            QString normalized = sha256;
+            normalized.remove(QRegularExpression("[^A-Fa-f0-9]"));
+            sourceUrl = QString("https://civarchive.com/sha256/%1").arg(normalized.toLower());
+        }
+        if (sourceUrl.isEmpty()) {
+            downloadsPage->setStatusText("该任务没有可打开的 CivArchive 链接或 SHA256。");
+            return;
+        }
+        QDesktopServices::openUrl(QUrl(sourceUrl));
+        return;
+    }
+
     if (modelId <= 0) {
         downloadsPage->setStatusText("该任务没有可打开的 Civitai 模型 ID。");
         return;
@@ -8590,6 +8985,11 @@ void MainWindow::processNextMetadataSyncJob()
 
 void MainWindow::fetchMetadataForSyncJob(const MetadataSyncJob &job)
 {
+    if (job.civArchiveOnly) {
+        fetchMetadataFromCivArchive(job, "手动从 CivArchive 补充", true);
+        return;
+    }
+
     if (job.snapshot.modelId > 0) {
         if (job.snapshot.currentVersionId > 0) {
             downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "正在获取完整版本元信息...", QString());
@@ -8602,6 +9002,8 @@ void MainWindow::fetchMetadataForSyncJob(const MetadataSyncJob &job)
             reply->setProperty("currentVersionId", job.snapshot.currentVersionId);
             reply->setProperty("currentSha256", job.snapshot.currentSha256);
             reply->setProperty("updateExisting", job.updateExisting);
+            reply->setProperty("civArchiveOnly", job.civArchiveOnly);
+            reply->setProperty("detailFallback", job.detailFallback);
             connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleMetadataSyncVersionReply(reply); });
             return;
         }
@@ -8615,6 +9017,8 @@ void MainWindow::fetchMetadataForSyncJob(const MetadataSyncJob &job)
         reply->setProperty("currentVersionId", job.snapshot.currentVersionId);
         reply->setProperty("currentSha256", job.snapshot.currentSha256);
         reply->setProperty("updateExisting", job.updateExisting);
+        reply->setProperty("civArchiveOnly", job.civArchiveOnly);
+        reply->setProperty("detailFallback", job.detailFallback);
         connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleMetadataSyncModelReply(reply); });
         return;
     }
@@ -8629,6 +9033,8 @@ void MainWindow::fetchMetadataForSyncJob(const MetadataSyncJob &job)
         reply->setProperty("displayName", job.snapshot.displayName);
         reply->setProperty("currentSha256", cachedHash);
         reply->setProperty("updateExisting", job.updateExisting);
+        reply->setProperty("civArchiveOnly", job.civArchiveOnly);
+        reply->setProperty("detailFallback", job.detailFallback);
         connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleMetadataSyncHashReply(reply); });
         return;
     }
@@ -8640,6 +9046,8 @@ void MainWindow::fetchMetadataForSyncJob(const MetadataSyncJob &job)
     watcher->setProperty("modelDir", job.snapshot.modelDir);
     watcher->setProperty("displayName", job.snapshot.displayName);
     watcher->setProperty("updateExisting", job.updateExisting);
+    watcher->setProperty("civArchiveOnly", job.civArchiveOnly);
+    watcher->setProperty("detailFallback", job.detailFallback);
     connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher]() {
         MetadataSyncJob job;
         job.snapshot.filePath = watcher->property("filePath").toString();
@@ -8647,14 +9055,15 @@ void MainWindow::fetchMetadataForSyncJob(const MetadataSyncJob &job)
         job.snapshot.modelDir = watcher->property("modelDir").toString();
         job.snapshot.displayName = watcher->property("displayName").toString();
         job.updateExisting = watcher->property("updateExisting").toBool();
+        job.civArchiveOnly = watcher->property("civArchiveOnly").toBool();
+        job.detailFallback = watcher->property("detailFallback").toBool();
         const QString hash = watcher->result();
         watcher->deleteLater();
         if (hash.isEmpty()) {
-            downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "无法计算 Hash，无法同步", "no_ids");
-            ++metadataSyncDone;
-            processNextMetadataSyncJob();
+            fetchMetadataFromCivArchive(job, "无法计算 Hash，尝试使用 ID 查询 CivArchive");
             return;
         }
+        job.snapshot.currentSha256 = hash;
         QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/model-versions/by-hash/%1").arg(hash))));
         reply->setProperty("filePath", job.snapshot.filePath);
         reply->setProperty("baseName", job.snapshot.baseName);
@@ -8662,6 +9071,8 @@ void MainWindow::fetchMetadataForSyncJob(const MetadataSyncJob &job)
         reply->setProperty("displayName", job.snapshot.displayName);
         reply->setProperty("currentSha256", hash);
         reply->setProperty("updateExisting", job.updateExisting);
+        reply->setProperty("civArchiveOnly", job.civArchiveOnly);
+        reply->setProperty("detailFallback", job.detailFallback);
         connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleMetadataSyncHashReply(reply); });
     });
     watcher->setFuture(QtConcurrent::run(backgroundThreadPool, [filePath = job.snapshot.filePath]() {
@@ -8680,12 +9091,12 @@ void MainWindow::handleMetadataSyncVersionReply(QNetworkReply *reply)
     job.snapshot.currentVersionId = reply->property("currentVersionId").toInt();
     job.snapshot.currentSha256 = reply->property("currentSha256").toString();
     job.updateExisting = reply->property("updateExisting").toBool();
+    job.civArchiveOnly = reply->property("civArchiveOnly").toBool();
+    job.detailFallback = reply->property("detailFallback").toBool();
     reply->deleteLater();
 
     if (reply->error() != QNetworkReply::NoError) {
-        downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "版本元信息获取失败: " + civitaiNetworkErrorMessage(reply), "failed");
-        ++metadataSyncDone;
-        processNextMetadataSyncJob();
+        fetchMetadataFromCivArchive(job, "版本元信息获取失败: " + civitaiNetworkErrorMessage(reply));
         return;
     }
 
@@ -8693,9 +9104,7 @@ void MainWindow::handleMetadataSyncVersionReply(QNetworkReply *reply)
     const int modelId = versionRoot.value("modelId").toInt(job.snapshot.modelId);
     job.snapshot.currentVersionId = versionRoot.value("id").toInt(job.snapshot.currentVersionId);
     if (modelId <= 0) {
-        downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "版本元信息缺少模型 ID", "failed");
-        ++metadataSyncDone;
-        processNextMetadataSyncJob();
+        fetchMetadataFromCivArchive(job, "版本元信息缺少模型 ID");
         return;
     }
 
@@ -8707,6 +9116,8 @@ void MainWindow::handleMetadataSyncVersionReply(QNetworkReply *reply)
     detailReply->setProperty("currentVersionId", job.snapshot.currentVersionId);
     detailReply->setProperty("currentSha256", job.snapshot.currentSha256);
     detailReply->setProperty("updateExisting", job.updateExisting);
+    detailReply->setProperty("civArchiveOnly", job.civArchiveOnly);
+    detailReply->setProperty("detailFallback", job.detailFallback);
     detailReply->setProperty("versionHint", QJsonDocument(versionRoot).toJson(QJsonDocument::Compact));
     connect(detailReply, &QNetworkReply::finished, this, [this, detailReply]() { handleMetadataSyncModelReply(detailReply); });
 }
@@ -8720,12 +9131,12 @@ void MainWindow::handleMetadataSyncHashReply(QNetworkReply *reply)
     job.snapshot.displayName = reply->property("displayName").toString();
     job.snapshot.currentSha256 = reply->property("currentSha256").toString();
     job.updateExisting = reply->property("updateExisting").toBool();
+    job.civArchiveOnly = reply->property("civArchiveOnly").toBool();
+    job.detailFallback = reply->property("detailFallback").toBool();
     reply->deleteLater();
 
     if (reply->error() != QNetworkReply::NoError) {
-        downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "Hash 匹配失败: " + civitaiNetworkErrorMessage(reply), "failed");
-        ++metadataSyncDone;
-        processNextMetadataSyncJob();
+        fetchMetadataFromCivArchive(job, "Hash 匹配失败: " + civitaiNetworkErrorMessage(reply));
         return;
     }
 
@@ -8733,9 +9144,7 @@ void MainWindow::handleMetadataSyncHashReply(QNetworkReply *reply)
     const int modelId = versionRoot.value("modelId").toInt();
     job.snapshot.currentVersionId = versionRoot.value("id").toInt();
     if (modelId <= 0) {
-        downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "无法从 Hash 匹配 Civitai 模型", "failed");
-        ++metadataSyncDone;
-        processNextMetadataSyncJob();
+        fetchMetadataFromCivArchive(job, "无法从 Hash 匹配 Civitai 模型");
         return;
     }
 
@@ -8747,6 +9156,8 @@ void MainWindow::handleMetadataSyncHashReply(QNetworkReply *reply)
     detailReply->setProperty("currentVersionId", job.snapshot.currentVersionId);
     detailReply->setProperty("currentSha256", job.snapshot.currentSha256);
     detailReply->setProperty("updateExisting", job.updateExisting);
+    detailReply->setProperty("civArchiveOnly", job.civArchiveOnly);
+    detailReply->setProperty("detailFallback", job.detailFallback);
     detailReply->setProperty("versionHint", QJsonDocument(versionRoot).toJson(QJsonDocument::Compact));
     connect(detailReply, &QNetworkReply::finished, this, [this, detailReply]() { handleMetadataSyncModelReply(detailReply); });
 }
@@ -8761,26 +9172,201 @@ void MainWindow::handleMetadataSyncModelReply(QNetworkReply *reply)
     job.snapshot.currentVersionId = reply->property("currentVersionId").toInt();
     job.snapshot.currentSha256 = reply->property("currentSha256").toString();
     job.updateExisting = reply->property("updateExisting").toBool();
+    job.civArchiveOnly = reply->property("civArchiveOnly").toBool();
+    job.detailFallback = reply->property("detailFallback").toBool();
     const QJsonObject versionHint = QJsonDocument::fromJson(reply->property("versionHint").toByteArray()).object();
     reply->deleteLater();
 
     if (reply->error() != QNetworkReply::NoError) {
-        downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "同步失败: " + civitaiNetworkErrorMessage(reply), "failed");
-        ++metadataSyncDone;
-        processNextMetadataSyncJob();
+        fetchMetadataFromCivArchive(job, "同步失败: " + civitaiNetworkErrorMessage(reply));
         return;
     }
 
     const QJsonObject modelRoot = QJsonDocument::fromJson(reply->readAll()).object();
     const bool ok = saveMetadataFromModelRoot(job, modelRoot, versionHint);
+    if (!ok && !job.civArchiveOnly) {
+        fetchMetadataFromCivArchive(job, "Civitai 返回成功但无法匹配当前版本");
+        return;
+    }
+    if (!ok) {
+        finishMetadataSyncJobWithFailure(job, "同步失败: 未找到可保存的版本");
+        return;
+    }
     const QString nowText = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm");
     downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath,
-                                                ok ? "metadata 已同步" : "同步失败: 未找到可保存的版本",
-                                                ok ? "existing" : "failed",
-                                                ok ? nowText : QString(),
-                                                ok ? "同步时间" : QString());
+                                                "metadata 已同步",
+                                                "existing",
+                                                nowText,
+                                                "同步时间");
     ++metadataSyncDone;
     downloadsPage->setStatusText(QString("正在同步元信息... %1/%2").arg(metadataSyncDone).arg(metadataSyncTotal));
+    processNextMetadataSyncJob();
+}
+
+bool MainWindow::tryStartCivArchiveHashCalculation(const MetadataSyncJob &job, const QString &reason)
+{
+    if (job.snapshot.filePath.isEmpty() || !QFileInfo::exists(job.snapshot.filePath)) return false;
+    if (!job.snapshot.currentSha256.trimmed().isEmpty()) return false;
+    if (!optRecalculateKnownMetadataHash && !job.civArchiveOnly) return false;
+
+    downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "正在计算 Hash 以查询 CivArchive...", QString());
+    auto *watcher = new QFutureWatcher<QString>(this);
+    watcher->setProperty("filePath", job.snapshot.filePath);
+    watcher->setProperty("baseName", job.snapshot.baseName);
+    watcher->setProperty("modelDir", job.snapshot.modelDir);
+    watcher->setProperty("displayName", job.snapshot.displayName);
+    watcher->setProperty("modelId", job.snapshot.modelId);
+    watcher->setProperty("currentVersionId", job.snapshot.currentVersionId);
+    watcher->setProperty("updateExisting", job.updateExisting);
+    watcher->setProperty("civArchiveOnly", job.civArchiveOnly);
+    watcher->setProperty("detailFallback", job.detailFallback);
+    watcher->setProperty("reason", reason);
+    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher]() {
+        MetadataSyncJob retryJob;
+        retryJob.snapshot.filePath = watcher->property("filePath").toString();
+        retryJob.snapshot.baseName = watcher->property("baseName").toString();
+        retryJob.snapshot.modelDir = watcher->property("modelDir").toString();
+        retryJob.snapshot.displayName = watcher->property("displayName").toString();
+        retryJob.snapshot.modelId = watcher->property("modelId").toInt();
+        retryJob.snapshot.currentVersionId = watcher->property("currentVersionId").toInt();
+        retryJob.snapshot.currentSha256 = watcher->result();
+        retryJob.updateExisting = watcher->property("updateExisting").toBool();
+        retryJob.civArchiveOnly = watcher->property("civArchiveOnly").toBool();
+        retryJob.detailFallback = watcher->property("detailFallback").toBool();
+        const QString reason = watcher->property("reason").toString();
+        watcher->deleteLater();
+        fetchMetadataFromCivArchive(retryJob, reason);
+    });
+    watcher->setFuture(QtConcurrent::run(backgroundThreadPool, [filePath = job.snapshot.filePath]() {
+        return FileUtils::calculateSha256Hex(filePath);
+    }));
+    return true;
+}
+
+void MainWindow::fetchMetadataFromCivArchive(const MetadataSyncJob &job, const QString &reason, bool directOnly)
+{
+    if (!downloadsPage) return;
+    if (!directOnly && !job.civArchiveOnly && !optTryCivArchiveOnMetadataFail) {
+        finishMetadataSyncJobWithFailure(job, reason);
+        return;
+    }
+
+    MetadataSyncJob lookupJob = job;
+    QUrl url = civArchiveLookupUrl(lookupJob);
+    if (!url.isValid()) {
+        if (tryStartCivArchiveHashCalculation(job, reason)) return;
+        finishMetadataSyncJobWithFailure(job, reason + "；CivArchive 查询缺少 Hash 或模型 ID", "no_ids");
+        return;
+    }
+
+    downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "正在查询 CivArchive...", QString());
+    QNetworkReply *reply = netManager->get(makeNetworkRequest(url, false));
+    reply->setProperty("filePath", lookupJob.snapshot.filePath);
+    reply->setProperty("baseName", lookupJob.snapshot.baseName);
+    reply->setProperty("modelDir", lookupJob.snapshot.modelDir);
+    reply->setProperty("displayName", lookupJob.snapshot.displayName);
+    reply->setProperty("modelId", lookupJob.snapshot.modelId);
+    reply->setProperty("currentVersionId", lookupJob.snapshot.currentVersionId);
+    reply->setProperty("currentSha256", lookupJob.snapshot.currentSha256);
+    reply->setProperty("updateExisting", lookupJob.updateExisting);
+    reply->setProperty("civArchiveOnly", lookupJob.civArchiveOnly);
+    reply->setProperty("detailFallback", lookupJob.detailFallback);
+    reply->setProperty("civArchiveReason", reason);
+    reply->setProperty("civArchiveUrl", url.toString());
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        handleMetadataSyncCivArchiveReply(reply);
+    });
+}
+
+bool MainWindow::startDetailCivArchiveFallback(const QString &filePath, const QString &baseName, const QString &modelDir, const QString &reason, const QString &currentSha256)
+{
+    if (!optTryCivArchiveOnMetadataFail || filePath.isEmpty()) return false;
+    MetadataSyncJob job;
+    if (QListWidgetItem *item = findModelItemByFilePath(filePath)) {
+        job.snapshot = snapshotForModelItem(item);
+    }
+    job.snapshot.filePath = filePath;
+    job.snapshot.baseName = baseName;
+    job.snapshot.modelDir = modelDir.isEmpty() ? QFileInfo(filePath).absolutePath() : modelDir;
+    if (!currentSha256.trimmed().isEmpty()) job.snapshot.currentSha256 = currentSha256.trimmed();
+    if (job.snapshot.displayName.isEmpty()) job.snapshot.displayName = QFileInfo(filePath).completeBaseName();
+    job.updateExisting = true;
+    job.detailFallback = true;
+    metadataSyncTotal = qMax(metadataSyncTotal, 1);
+    metadataSyncDone = 0;
+    metadataSyncRunning = false;
+    metadataSyncPreviewImages = !m_skipPreviewSync;
+    fetchMetadataFromCivArchive(job, reason);
+    return true;
+}
+
+void MainWindow::handleMetadataSyncCivArchiveReply(QNetworkReply *reply)
+{
+    MetadataSyncJob job;
+    job.snapshot.filePath = reply->property("filePath").toString();
+    job.snapshot.baseName = reply->property("baseName").toString();
+    job.snapshot.modelDir = reply->property("modelDir").toString();
+    job.snapshot.displayName = reply->property("displayName").toString();
+    job.snapshot.modelId = reply->property("modelId").toInt();
+    job.snapshot.currentVersionId = reply->property("currentVersionId").toInt();
+    job.snapshot.currentSha256 = reply->property("currentSha256").toString();
+    job.updateExisting = reply->property("updateExisting").toBool();
+    job.civArchiveOnly = reply->property("civArchiveOnly").toBool();
+    job.detailFallback = reply->property("detailFallback").toBool();
+    const QString reason = reply->property("civArchiveReason").toString();
+    const QString sourceUrl = reply->property("civArchiveUrl").toString();
+    const QByteArray body = reply->readAll();
+    const QString networkError = reply->error() == QNetworkReply::NoError ? QString() : reply->errorString();
+    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    reply->deleteLater();
+
+    if (!networkError.isEmpty()) {
+        QString message = reason + QString("；CivArchive 查询失败: %1").arg(networkError);
+        if (status > 0) message += QString(" (HTTP %1)").arg(status);
+        finishMetadataSyncJobWithFailure(job, message);
+        return;
+    }
+
+    QJsonObject modelRoot;
+    QJsonObject versionHint;
+    if (!parseCivArchivePayload(body, sourceUrl, modelRoot, versionHint)) {
+        finishMetadataSyncJobWithFailure(job, reason + "；CivArchive 返回内容中未找到可识别的模型元信息");
+        return;
+    }
+
+    const bool ok = saveMetadataFromModelRoot(job, modelRoot, versionHint);
+    if (!ok) {
+        finishMetadataSyncJobWithFailure(job, reason + "；CivArchive 元信息无法匹配当前模型版本");
+        return;
+    }
+
+    const QString nowText = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm");
+    downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath,
+                                                "metadata 已从 CivArchive 补充",
+                                                "existing",
+                                                nowText,
+                                                "CivArchive");
+    ++metadataSyncDone;
+    downloadsPage->setStatusText(QString("正在同步元信息... %1/%2").arg(metadataSyncDone).arg(metadataSyncTotal));
+    processNextMetadataSyncJob();
+}
+
+void MainWindow::finishMetadataSyncJobWithFailure(const MetadataSyncJob &job, const QString &message, const QString &category)
+{
+    if (downloadsPage) {
+        downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, message, category);
+        downloadsPage->setStatusText(QString("正在同步元信息... %1/%2").arg(metadataSyncDone + 1).arg(metadataSyncTotal));
+    }
+    recordModelSyncFailure(job.snapshot.filePath, job.snapshot.baseName, message);
+    if (job.detailFallback) {
+        setModelTitleError(message);
+        ui->textDescription->setPlainText(QString("上次同步失败，请点击刷新模型详情重新同步。\n%1").arg(message));
+        transitionToImage("");
+        ui->statusbar->showMessage("元数据获取失败: " + message, 4000);
+        m_forceResyncPreview = false;
+        m_skipPreviewSync = false;
+    }
+    ++metadataSyncDone;
     processNextMetadataSyncJob();
 }
 
@@ -8816,6 +9402,12 @@ bool MainWindow::saveMetadataFromModelRoot(const MetadataSyncJob &job, const QJs
 
     QJsonObject root = mergeCivitaiModelIntoVersion(selectedVersion, modelRoot);
     root["syncedAt"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    if (modelRoot.value("metadataSource").toString() == "civarchive") {
+        root["metadataSource"] = QStringLiteral("civarchive");
+        if (modelRoot.contains("sourceUrl")) root["sourceUrl"] = modelRoot.value("sourceUrl");
+    } else if (!root.contains("metadataSource")) {
+        root["metadataSource"] = QStringLiteral("civitai");
+    }
     QFile existing(QDir(job.snapshot.modelDir).filePath(job.snapshot.baseName + ".json"));
     if (existing.exists() && existing.open(QIODevice::ReadOnly)) {
         const QJsonObject oldRoot = QJsonDocument::fromJson(existing.readAll()).object();
@@ -8962,6 +9554,7 @@ void MainWindow::loadGlobalConfig() {
         optSuppressLocalWarnings = settings.suppressLocalWarnings;
         optUserGalleryMatchMode = settings.userGalleryMatchMode;
         optRecalculateKnownMetadataHash = settings.recalculateKnownMetadataHash;
+        optTryCivArchiveOnMetadataFail = settings.tryCivArchiveOnMetadataFail;
         optModelUpdateDownloadPolicy = settings.modelUpdateDownloadPolicy;
         optAutoCheckUpdatesOnStartup = settings.autoCheckUpdatesOnStartup;
         optThemeId = settings.themeId;
@@ -9128,6 +9721,7 @@ void MainWindow::applySettingsState(SettingsState state)
     optSuppressLocalWarnings = state.suppressLocalWarnings;
     optUserGalleryMatchMode = state.userGalleryMatchMode;
     optRecalculateKnownMetadataHash = state.recalculateKnownMetadataHash;
+    optTryCivArchiveOnMetadataFail = state.tryCivArchiveOnMetadataFail;
     optUiScale = state.uiScale;
     optThemeId = state.themeId;
     optCustomThemePath = state.customThemePath;
@@ -9270,6 +9864,7 @@ void MainWindow::saveGlobalConfig() {
         settings.suppressLocalWarnings = optSuppressLocalWarnings;
         settings.userGalleryMatchMode = optUserGalleryMatchMode;
         settings.recalculateKnownMetadataHash = optRecalculateKnownMetadataHash;
+        settings.tryCivArchiveOnMetadataFail = optTryCivArchiveOnMetadataFail;
         settings.uiScale = optUiScale;
         settings.themeId = optThemeId;
         settings.customThemePath = optCustomThemePath;

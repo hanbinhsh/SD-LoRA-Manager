@@ -49,6 +49,7 @@ SettingsState SettingsState::fromJson(const QJsonObject &root, const QString &de
     state.suppressLocalWarnings = root["suppress_local_model_warnings"].toBool(false);
     state.userGalleryMatchMode = root["user_gallery_match_mode"].toInt(0);
     state.recalculateKnownMetadataHash = root["recalculate_known_metadata_hash"].toBool(false);
+    state.tryCivArchiveOnMetadataFail = root["try_civarchive_on_metadata_fail"].toBool(true);
     state.modelUpdateDownloadPolicy = root["model_update_download_policy"].toInt(0);
     state.autoCheckUpdatesOnStartup = root["auto_check_update_on_startup"].toBool(true);
     state.themeId = kThemeSettingsEnabled ? root["theme_id"].toString("steam_dark") : QStringLiteral("steam_dark");
@@ -86,6 +87,7 @@ void SettingsState::writeToJson(QJsonObject &root) const
     root["suppress_local_model_warnings"] = normalized.suppressLocalWarnings;
     root["user_gallery_match_mode"] = normalized.userGalleryMatchMode;
     root["recalculate_known_metadata_hash"] = normalized.recalculateKnownMetadataHash;
+    root["try_civarchive_on_metadata_fail"] = normalized.tryCivArchiveOnMetadataFail;
     root["model_update_download_policy"] = normalized.modelUpdateDownloadPolicy;
     root["auto_check_update_on_startup"] = normalized.autoCheckUpdatesOnStartup;
     root["theme_id"] = normalized.themeId;
@@ -201,6 +203,7 @@ SettingsPage::SettingsPage(QWidget *parent)
     if (ui->chkSuppressLocalWarnings) connect(ui->chkSuppressLocalWarnings, &QCheckBox::toggled, this, &SettingsPage::emitStateChanged);
     if (ui->chkAutoCheckUpdatesOnStartup) connect(ui->chkAutoCheckUpdatesOnStartup, &QCheckBox::toggled, this, &SettingsPage::emitStateChanged);
     if (ui->chkRecalculateKnownMetadataHash) connect(ui->chkRecalculateKnownMetadataHash, &QCheckBox::toggled, this, &SettingsPage::emitStateChanged);
+    if (ui->chkTryCivArchiveOnMetadataFail) connect(ui->chkTryCivArchiveOnMetadataFail, &QCheckBox::toggled, this, &SettingsPage::emitStateChanged);
     if (ui->editCivitaiApiKey) connect(ui->editCivitaiApiKey, &QLineEdit::editingFinished, this, [this]() {
         setCivitaiApiStatus(ui->editCivitaiApiKey && ui->editCivitaiApiKey->text().trimmed().isEmpty() ? "API Key 未配置" : "API Key 未测试");
         emitStateChanged();
@@ -272,6 +275,7 @@ SettingsState SettingsPage::state() const
     s.suppressLocalWarnings = ui->chkSuppressLocalWarnings && ui->chkSuppressLocalWarnings->isChecked();
     s.userGalleryMatchMode = ui->comboUserGalleryMatchMode ? ui->comboUserGalleryMatchMode->currentIndex() : 0;
     s.recalculateKnownMetadataHash = ui->chkRecalculateKnownMetadataHash && ui->chkRecalculateKnownMetadataHash->isChecked();
+    s.tryCivArchiveOnMetadataFail = !ui->chkTryCivArchiveOnMetadataFail || ui->chkTryCivArchiveOnMetadataFail->isChecked();
     s.uiScale = ui->spinUiScale ? ui->spinUiScale->value() : 1.0;
     s.themeId = currentThemeId();
     s.customThemePath = ui->editCustomThemePath ? ui->editCustomThemePath->text().trimmed() : QString();
@@ -313,6 +317,7 @@ void SettingsPage::setState(const SettingsState &state)
     if (ui->chkSuppressLocalWarnings) ui->chkSuppressLocalWarnings->setChecked(state.suppressLocalWarnings);
     if (ui->comboUserGalleryMatchMode) ui->comboUserGalleryMatchMode->setCurrentIndex(qBound(0, state.userGalleryMatchMode, 2));
     if (ui->chkRecalculateKnownMetadataHash) ui->chkRecalculateKnownMetadataHash->setChecked(state.recalculateKnownMetadataHash);
+    if (ui->chkTryCivArchiveOnMetadataFail) ui->chkTryCivArchiveOnMetadataFail->setChecked(state.tryCivArchiveOnMetadataFail);
     if (ui->spinUiScale) ui->spinUiScale->setValue(state.uiScale);
     if (ui->comboTheme) {
         const int themeIndex = themeIndexForId(state.themeId);
