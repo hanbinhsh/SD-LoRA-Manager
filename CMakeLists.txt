@@ -67,6 +67,9 @@ qt_add_executable(SD_LoRA_Manager
     tools/promptparserwidget.h
     tools/promptparserwidget.cpp
     tools/promptparserwidget.ui
+    tools/launcherwidget.h
+    tools/launcherwidget.cpp
+    tools/launcherwidget.ui
 )
 
 target_include_directories(SD_LoRA_Manager

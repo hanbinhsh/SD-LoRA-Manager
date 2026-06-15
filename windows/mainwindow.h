@@ -107,6 +107,7 @@ class TagBrowserWidget;
 class LlmPromptWidget;
 class UsageAnalysisWidget;
 class PromptTemplateLibraryWidget;
+class LauncherWidget;
 class DownloadsPage;
 class DownloadManager;
 
@@ -297,6 +298,7 @@ private:
     LlmPromptWidget *llmPromptWidget = nullptr;
     UsageAnalysisWidget *usageAnalysisWidget = nullptr;
     PromptTemplateLibraryWidget *promptTemplateLibraryWidget = nullptr;
+    LauncherWidget *launcherWidget = nullptr;
     DownloadsPage *downloadsPage = nullptr;
     SettingsPage *settingsPage = nullptr;
     AboutPage *aboutPage = nullptr;

@@ -66,6 +66,7 @@
 #include "tools/promptparserwidget.h"
 #include "tools/usageanalysiswidget.h"
 #include "tools/prompttemplatelibrarywidget.h"
+#include "tools/launcherwidget.h"
 #include "pages/downloadmanager.h"
 #include "pages/downloadspage.h"
 #include "pages/settingspage.h"
@@ -3683,6 +3684,10 @@ void MainWindow::refreshPromptTemplateModelTriggerRows()
         const QString modelName = item->text().trimmed().isEmpty() ? baseName : item->text().trimmed();
         const QString modelType = item->data(ROLE_MODEL_TYPE).toString();
         const QString previewPath = item->data(ROLE_PREVIEW_PATH).toString();
+        // LoRA 模型的 <lora:name:1> 名称（取文件名去扩展名）。
+        const QString loraName = modelType.contains("lora", Qt::CaseInsensitive)
+            ? QFileInfo(filePath).completeBaseName()
+            : QString();
 
         auto appendTrigger = [&](const QString &trigger, const QString &source) {
             const QString clean = trigger.trimmed();
@@ -3698,6 +3703,7 @@ void MainWindow::refreshPromptTemplateModelTriggerRows()
             row.trigger = clean;
             row.source = source;
             row.modelType = modelType;
+            row.loraName = loraName;
             rows.append(row);
         };
 
@@ -8099,9 +8105,21 @@ void MainWindow::initMenuBar() {
     });
     bar->addAction(actTools);
 
+    // 5b. 启动器页 (Launcher)
+    if (!launcherWidget) {
+        launcherWidget = new LauncherWidget(this);
+        ui->rootStack->addWidget(launcherWidget);
+    }
+    QAction *actLauncher = new QAction("🚀 启动器 / Launcher", this);
+    actLauncher->setShortcut(QKeySequence("Ctrl+5"));
+    connect(actLauncher, &QAction::triggered, this, [this](){
+        ui->rootStack->setCurrentWidget(launcherWidget);
+    });
+    bar->addAction(actLauncher);
+
     // 6. 关于按钮
     QAction *btnAbout = new QAction("ℹ️ 关于 / About");
-    btnAbout->setShortcut(QKeySequence("Ctrl+5"));
+    btnAbout->setShortcut(QKeySequence("Ctrl+6"));
     connect(btnAbout, &QAction::triggered, this, &MainWindow::onMenuSwitchToAbout);
     bar->addAction(btnAbout);
 

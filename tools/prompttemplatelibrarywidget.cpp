@@ -20,6 +20,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFrame>
 #include <QFutureWatcher>
 #include <QBoxLayout>
 #include <QHBoxLayout>
@@ -36,6 +37,7 @@
 #include <QSpinBox>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -497,18 +499,29 @@ QString promptSummary(QString text, int maxLen = 80)
     return text.left(maxLen - 3) + "...";
 }
 
+// 收藏的更新时间（存储为 UTC ISO）转换为本地 yyyy-MM-dd HH:mm:ss。
+QString formatFavoriteTime(const QString &iso)
+{
+    QDateTime dt = QDateTime::fromString(iso, Qt::ISODate);
+    if (!dt.isValid()) return iso;
+    dt.setTimeSpec(Qt::UTC);
+    return dt.toLocalTime().toString("yyyy-MM-dd HH:mm:ss");
+}
+
 void populateModelTriggerChildren(QTreeWidgetItem *modelItem)
 {
     if (!modelItem || modelItem->childCount() > 0) return;
     const QStringList metadataTriggers = modelItem->data(0, Qt::UserRole + 2).toStringList();
     const QStringList customTriggers = modelItem->data(0, Qt::UserRole + 3).toStringList();
 
+    const QVariant loraName = modelItem->data(0, Qt::UserRole + 5);
     auto addTriggerChildren = [&](const QStringList &list, const QColor &color) {
         for (const QString &trigger : list) {
             auto *child = new QTreeWidgetItem(modelItem);
             child->setText(0, trigger);
             child->setData(0, Qt::UserRole, modelItem->data(0, Qt::UserRole));
             child->setData(0, Qt::UserRole + 1, QStringList{trigger});
+            child->setData(0, Qt::UserRole + 5, loraName);
             child->setForeground(0, color);
             child->setToolTip(0, trigger);
         }
@@ -725,22 +738,8 @@ PromptTemplateLibraryWidget::PromptTemplateLibraryWidget(QWidget *parent)
     };
     setupModelTriggerPickerUi(m_generateModelTriggerPicker);
     setupModelTriggerPickerUi(m_templateModelTriggerPicker);
-    ui->tablePromptFavorites->verticalHeader()->hide();
-    ui->tablePromptFavorites->setShowGrid(false);
-    ui->tablePromptFavorites->setFocusPolicy(Qt::NoFocus);
-    ui->tablePromptFavorites->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    ui->tablePromptFavorites->setSelectionBehavior(QAbstractItemView::SelectRows);
-    ui->tablePromptFavorites->setColumnCount(7);
-    ui->tablePromptFavorites->setHorizontalHeaderLabels({"名称", "正面摘要", "负面摘要", "更新时间", "复制", "替换", "删除"});
-    ui->tablePromptFavorites->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
-    ui->tablePromptFavorites->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-    ui->tablePromptFavorites->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
-    ui->tablePromptFavorites->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Interactive);
-    ui->tablePromptFavorites->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
-    ui->tablePromptFavorites->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
-    ui->tablePromptFavorites->horizontalHeader()->setSectionResizeMode(6, QHeaderView::ResizeToContents);
-    ui->tablePromptFavorites->horizontalHeader()->resizeSection(0, 150);
-    ui->tablePromptFavorites->horizontalHeader()->resizeSection(3, 130);
+    ui->scrollFavorites->setFrameShape(QFrame::NoFrame);
+    ui->favoritesContainer->setStyleSheet("background:transparent;");
     applyUnifiedTableRowStyle(this);
     ui->splitterTemplateManage->setSizes({240, 520, 520});
     ui->splitterGenerate->setSizes({560, 620});
@@ -769,6 +768,31 @@ PromptTemplateLibraryWidget::PromptTemplateLibraryWidget(QWidget *parent)
         setupPromptTagFlowView(edit);
         setupAutocompleteForEditor(edit);
     }
+    // 占位选项内容编辑框也启用自动补全（无需标签视图）。
+    setupAutocompleteForEditor(ui->editPlaceholderOptionValue);
+
+    // 设置页：每个输入框单独的自动补全开关。
+    m_autocompleteToggles = {
+        { ui->textGeneratedPositive,      ui->chkAcGeneratePositive, "autocomplete_enable_generate_positive" },
+        { ui->textGeneratedNegative,      ui->chkAcGenerateNegative, "autocomplete_enable_generate_negative" },
+        { ui->textTemplatePositive,       ui->chkAcTemplatePositive, "autocomplete_enable_template_positive" },
+        { ui->textTemplateNegative,       ui->chkAcTemplateNegative, "autocomplete_enable_template_negative" },
+        { ui->editPlaceholderOptionValue, ui->chkAcOptionValue,      "autocomplete_enable_option_value" },
+    };
+    for (const AutocompleteToggle &toggle : std::as_const(m_autocompleteToggles)) {
+        m_autocompleteEnabledByEdit.insert(toggle.edit, true);
+        QPlainTextEdit *edit = toggle.edit;
+        connect(toggle.check, &QCheckBox::toggled, this, [this, edit](bool on) {
+            m_autocompleteEnabledByEdit[edit] = on;
+            if (!on) hideAutocompletePopup();
+            saveAutocompleteSettings();
+        });
+    }
+    connect(ui->chkAddLoraTagWithTrigger, &QCheckBox::toggled, this, [this](bool on) {
+        m_addLoraTagWithTrigger = on;
+        saveAutocompleteSettings();
+    });
+
     loadAutocompleteSettings();
     connect(ui->spinAutocompleteLimit, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
         m_autocompleteLimit = qBound(1, value, 50);
@@ -918,6 +942,16 @@ PromptTemplateLibraryWidget::~PromptTemplateLibraryWidget()
 
 bool PromptTemplateLibraryWidget::eventFilter(QObject *watched, QEvent *event)
 {
+    // 点击收藏卡片头部展开/收起详情（按钮自身的点击不会到达头部）。
+    if (event->type() == QEvent::MouseButtonPress) {
+        if (QWidget *detail = m_favoriteHeaderToDetail.value(watched, nullptr)) {
+            if (static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
+                detail->setVisible(!detail->isVisible());
+                return true;
+            }
+        }
+    }
+
     if (auto *edit = qobject_cast<QPlainTextEdit*>(watched)) {
         if (event->type() == QEvent::KeyPress) {
             if (m_autocompleteEdit == edit && handleAutocompleteKeyPress(static_cast<QKeyEvent*>(event))) {
@@ -1240,40 +1274,95 @@ void PromptTemplateLibraryWidget::refreshAllLists()
 
 void PromptTemplateLibraryWidget::refreshFavoritesTable()
 {
-    if (!ui->tablePromptFavorites) return;
-    QSignalBlocker blocker(ui->tablePromptFavorites);
-    ui->tablePromptFavorites->setRowCount(0);
-
-    for (const PromptFavorite &item : std::as_const(m_favorites)) {
-        const int row = ui->tablePromptFavorites->rowCount();
-        ui->tablePromptFavorites->insertRow(row);
-
-        auto *nameItem = makeReadOnlyPromptTemplateItem(item.name);
-        nameItem->setData(Qt::UserRole, item.id);
-        nameItem->setToolTip(item.name);
-        ui->tablePromptFavorites->setItem(row, 0, nameItem);
-
-        auto *positiveItem = makeReadOnlyPromptTemplateItem(promptSummary(item.positive));
-        positiveItem->setToolTip(item.positive);
-        ui->tablePromptFavorites->setItem(row, 1, positiveItem);
-
-        auto *negativeItem = makeReadOnlyPromptTemplateItem(promptSummary(item.negative));
-        negativeItem->setToolTip(item.negative);
-        ui->tablePromptFavorites->setItem(row, 2, negativeItem);
-        ui->tablePromptFavorites->setItem(row, 3, makeReadOnlyPromptTemplateItem(item.updatedAt));
-
-        auto addButton = [this, row, id = item.id](int column, const QString &text, auto callback) {
-            auto *button = new QPushButton(text, ui->tablePromptFavorites);
-            connect(button, &QPushButton::clicked, this, [this, id, callback]() {
-                (this->*callback)(id);
-            });
-            ui->tablePromptFavorites->setCellWidget(row, column, button);
-        };
-
-        addButton(4, "复制", &PromptTemplateLibraryWidget::copyFavoriteById);
-        addButton(5, "替换", &PromptTemplateLibraryWidget::replacePromptFromFavoriteById);
-        addButton(6, "删除", &PromptTemplateLibraryWidget::deleteFavoriteById);
+    if (!ui->layoutFavorites) return;
+    m_favoriteHeaderToDetail.clear();
+    while (QLayoutItem *li = ui->layoutFavorites->takeAt(0)) {
+        if (QWidget *w = li->widget()) w->deleteLater();
+        delete li;
     }
+
+    for (const PromptFavorite &fav : std::as_const(m_favorites)) {
+        auto *card = new QFrame(ui->favoritesContainer);
+        card->setObjectName("favoriteCard");
+        card->setStyleSheet(
+            "QFrame#favoriteCard{background:#1f2833;border:1px solid #31363d;border-radius:6px;}"
+            "QFrame#favoriteCard QLabel{background:transparent;}");
+        auto *cardLayout = new QVBoxLayout(card);
+        cardLayout->setContentsMargins(0, 0, 0, 0);
+        cardLayout->setSpacing(0);
+
+        // 头部（可点击展开/收起）：第一行名称，第二行左侧时间、右侧三个按钮。
+        auto *header = new QWidget(card);
+        header->setObjectName("favoriteHeader");
+        header->setCursor(Qt::PointingHandCursor);
+        auto *headerLayout = new QVBoxLayout(header);
+        headerLayout->setContentsMargins(10, 8, 10, 8);
+        headerLayout->setSpacing(4);
+
+        auto *nameLabel = new QLabel(fav.name, header);
+        nameLabel->setStyleSheet("font-weight:bold;color:#dcdedf;");
+        nameLabel->setToolTip(fav.name);
+        nameLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        headerLayout->addWidget(nameLabel);
+
+        auto *line2 = new QHBoxLayout();
+        line2->setContentsMargins(0, 0, 0, 0);
+        line2->setSpacing(6);
+        auto *timeLabel = new QLabel(formatFavoriteTime(fav.updatedAt), header);
+        timeLabel->setStyleSheet("color:#8c96a0;");
+        timeLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        line2->addWidget(timeLabel);
+        line2->addStretch(1);
+
+        const QString id = fav.id;
+        auto addBtn = [&](const QString &text, auto cb) {
+            auto *b = new QPushButton(text, header);
+            b->setCursor(Qt::PointingHandCursor);
+            b->setFocusPolicy(Qt::NoFocus);
+            b->setFixedHeight(24);
+            b->setStyleSheet("QPushButton{padding:1px 12px;}");
+            connect(b, &QPushButton::clicked, this, [this, id, cb]() { (this->*cb)(id); });
+            line2->addWidget(b);
+        };
+        addBtn("复制", &PromptTemplateLibraryWidget::copyFavoriteById);
+        addBtn("替换", &PromptTemplateLibraryWidget::replacePromptFromFavoriteById);
+        addBtn("删除", &PromptTemplateLibraryWidget::deleteFavoriteById);
+        headerLayout->addLayout(line2);
+        cardLayout->addWidget(header);
+
+        // 详情（默认隐藏）：正/负面提示词全文。
+        auto *detail = new QFrame(card);
+        detail->setObjectName("favoriteDetail");
+        detail->setStyleSheet(
+            "QFrame#favoriteDetail{background:#16191e;border:none;border-top:1px solid #31363d;"
+            "border-bottom-left-radius:5px;border-bottom-right-radius:5px;}"
+            "QFrame#favoriteDetail QLabel{background:transparent;}");
+        auto *detailLayout = new QVBoxLayout(detail);
+        detailLayout->setContentsMargins(12, 8, 12, 10);
+        detailLayout->setSpacing(4);
+        auto addSection = [&](const QString &title, const QString &text, const QString &color) {
+            auto *t = new QLabel(title, detail);
+            t->setStyleSheet(QString("color:%1;font-weight:bold;").arg(color));
+            detailLayout->addWidget(t);
+            auto *body = new QLabel(text.trimmed().isEmpty() ? "（空）" : text, detail);
+            body->setWordWrap(true);
+            body->setTextInteractionFlags(Qt::TextSelectableByMouse);
+            body->setStyleSheet("color:#dcdedf;");
+            detailLayout->addWidget(body);
+        };
+        addSection("正面", fav.positive, "#5fd38d");
+        addSection("负面", fav.negative, "#ff6b6b");
+        detail->setVisible(false);
+        cardLayout->addWidget(detail);
+
+        ui->layoutFavorites->addWidget(card);
+
+        // 点击头部切换详情显示（按钮的点击不会到达头部）。
+        header->installEventFilter(this);
+        m_favoriteHeaderToDetail.insert(header, detail);
+    }
+
+    ui->layoutFavorites->addStretch(1);
 
     ui->lblPromptFavoritesStatus->setText(m_favorites.isEmpty()
         ? "暂无收藏。可在右侧当前提示词区域点击“添加至收藏”。"
@@ -1412,8 +1501,17 @@ void PromptTemplateLibraryWidget::rebuildPlaceholderInputs()
     QSet<QString> usedNameSet;
     for (const QString &name : usedNames) usedNameSet.insert(name);
 
+    // 分别统计占位符出现在正面 / 负面模板中，用于卡片配色。
+    QSet<QString> positiveNameSet;
+    for (const QString &name : placeholderNamesInTemplateText(currentTemplate.positiveTemplate, QString()))
+        positiveNameSet.insert(name);
+    QSet<QString> negativeNameSet;
+    for (const QString &name : placeholderNamesInTemplateText(QString(), currentTemplate.negativeTemplate))
+        negativeNameSet.insert(name);
+
     const QHash<QString, QString> defaults = currentTemplate.placeholderDefaults;
 
+    ui->layoutPlaceholderInputs->setSpacing(8);
     bool addedAny = false;
 
     for (const PromptPlaceholder &placeholder : std::as_const(m_placeholders)) {
@@ -1421,21 +1519,46 @@ void PromptTemplateLibraryWidget::rebuildPlaceholderInputs()
 
         addedAny = true;
 
-        auto *row = new QWidget(ui->placeholderInputContainer);
-        auto *layout = new QVBoxLayout(row);
-        layout->setContentsMargins(0, 0, 0, 8);
-        layout->addWidget(new QLabel(QString("%1  {%2}").arg(placeholder.label, placeholder.name), row));
+        const bool inPositive = positiveNameSet.contains(placeholder.name);
+        const bool inNegative = negativeNameSet.contains(placeholder.name);
+        QString accent;
+        QString badgeText;
+        if (inPositive && inNegative) { accent = "#66c0f4"; badgeText = "正面 · 负面"; }
+        else if (inNegative)          { accent = "#ff6b6b"; badgeText = "负面"; }
+        else                          { accent = "#5fd38d"; badgeText = "正面"; }
+
+        auto *card = new QFrame(ui->placeholderInputContainer);
+        card->setObjectName("placeholderCard");
+        card->setStyleSheet(QString(
+            "QFrame#placeholderCard{background:#1f2833;border:1px solid #31363d;"
+            "border-left:3px solid %1;border-radius:6px;}").arg(accent));
+        auto *layout = new QVBoxLayout(card);
+        layout->setContentsMargins(10, 8, 10, 10);
+        layout->setSpacing(6);
+
+        auto *header = new QHBoxLayout();
+        header->setContentsMargins(0, 0, 0, 0);
+        header->setSpacing(6);
+        auto *title = new QLabel(QString("%1  {%2}").arg(placeholder.label, placeholder.name), card);
+        title->setStyleSheet("background:transparent;");
+        auto *badge = new QLabel(badgeText, card);
+        badge->setStyleSheet(QString(
+            "color:#12161c;background:%1;border-radius:8px;padding:1px 8px;font-weight:bold;").arg(accent));
+        header->addWidget(title);
+        header->addStretch(1);
+        header->addWidget(badge);
+        layout->addLayout(header);
 
         const QString value = defaults.value(placeholder.name, placeholder.defaultValue);
 
         if (placeholder.type == PlaceholderType::Text) {
-            auto *line = new QLineEdit(row);
+            auto *line = new QLineEdit(card);
             line->setText(value);
             connect(line, &QLineEdit::textChanged, this, &PromptTemplateLibraryWidget::updateGeneratedPrompt);
             layout->addWidget(line);
             m_placeholderEditors.insert(placeholder.name, line);
         } else if (placeholder.type == PlaceholderType::SingleChoice) {
-            auto *combo = new QComboBox(row);
+            auto *combo = new QComboBox(card);
             combo->setEditable(true);
             for (const QString &option : placeholder.options) {
                 combo->addItem(placeholderOptionDisplayText(option), option);
@@ -1451,29 +1574,73 @@ void PromptTemplateLibraryWidget::rebuildPlaceholderInputs()
             layout->addWidget(combo);
             m_placeholderEditors.insert(placeholder.name, combo);
         } else {
-            auto *container = new QWidget(row);
-            auto *boxLayout = new QVBoxLayout(container);
-            boxLayout->setContentsMargins(0, 0, 0, 0);
+            // 多选：用 TagFlow 风格的可点击标签（无多选框、自动换行，比多行更省空间）。
+            auto *flow = new TagFlowWidget(card);
+            flow->setShowCount(false);
+            flow->setPixmapCacheEnabled(false);
+            flow->setTranslationMap(m_translationMap);
 
-            QSet<QString> selected;
+            // 工具按钮：翻译 / 全选·取消全选 / 取消选择。
+            auto makeMini = [card](const QString &text, bool checkable) {
+                auto *b = new QPushButton(text, card);
+                b->setCheckable(checkable);
+                b->setCursor(Qt::PointingHandCursor);
+                b->setFocusPolicy(Qt::NoFocus);
+                b->setFixedHeight(24);
+                b->setStyleSheet("QPushButton{padding:1px 8px;}");
+                b->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+                QFont f = b->font();
+                f.setPointSize(9);
+                b->setFont(f);
+                return b;
+            };
+            auto *btnTranslate = makeMini("文", true);
+            btnTranslate->setObjectName("btnTranslate");   // 复用 QSS 选中高亮
+            btnTranslate->setToolTip("显示/隐藏选项翻译");
+            auto *btnSelectAll = makeMini("全选", false);
+            btnSelectAll->setToolTip("全选 / 取消全选");
+            auto *btnClear = makeMini("×", false);
+            btnClear->setToolTip("取消选择");
+
+            auto *btnRow = new QHBoxLayout();
+            btnRow->setContentsMargins(0, 0, 0, 0);
+            btnRow->setSpacing(4);
+            btnRow->addStretch(1);
+            btnRow->addWidget(btnTranslate);
+            btnRow->addWidget(btnSelectAll);
+            btnRow->addWidget(btnClear);
+            layout->addLayout(btnRow);
+
+            QStringList selected;
+            QSet<QString> selectedSet;
             for (const QString &part : value.split(',', Qt::SkipEmptyParts)) {
-                selected.insert(part.trimmed());
+                const QString trimmed = part.trimmed();
+                if (!selectedSet.contains(trimmed)) { selectedSet.insert(trimmed); selected << trimmed; }
             }
 
+            // 用递减的“计数”作为排序权重，保证按定义顺序排列，再隐藏计数显示。
+            QMap<QString, int> data;
+            int weight = placeholder.options.size();
             for (const QString &option : placeholder.options) {
-                auto *box = new QCheckBox(placeholderOptionDisplayText(option), container);
-                box->setProperty("optionValue", option);
-                box->setToolTip(option.isEmpty() ? "空选项" : option);
-                box->setChecked(selected.contains(option));
-                connect(box, &QCheckBox::toggled, this, &PromptTemplateLibraryWidget::updateGeneratedPrompt);
-                boxLayout->addWidget(box);
+                data.insert(option, weight--);
             }
+            flow->setData(data);
+            flow->setSelectedTags(selected);   // 在连接信号前设置初始选中，避免触发渲染
 
-            layout->addWidget(container);
-            m_placeholderEditors.insert(placeholder.name, container);
+            connect(btnTranslate, &QPushButton::toggled, flow, [flow](bool on){ flow->setShowTranslation(on); });
+            connect(btnSelectAll, &QPushButton::clicked, flow, [flow]() {
+                if (flow->getSelectedTags().isEmpty()) flow->selectAllVisibleTags();
+                else flow->clearSelectedTags();
+            });
+            connect(btnClear, &QPushButton::clicked, flow, [flow]() { flow->clearSelectedTags(); });
+            connect(flow, &TagFlowWidget::filterChanged, this,
+                    [this](const QSet<QString> &){ updateGeneratedPrompt(); });
+
+            layout->addWidget(flow);
+            m_placeholderEditors.insert(placeholder.name, flow);
         }
 
-        ui->layoutPlaceholderInputs->addWidget(row);
+        ui->layoutPlaceholderInputs->addWidget(card);
     }
 
     if (!addedAny) {
@@ -1507,6 +1674,16 @@ QHash<QString, QString> PromptTemplateLibraryWidget::currentPlaceholderValues(QS
             } else {
                 value = combo->currentText();
             }
+        } else if (auto *flow = qobject_cast<TagFlowWidget*>(editor)) {
+            const QSet<QString> chosen = flow->getSelectedTags();
+            QStringList selected;
+            // 按占位符定义顺序输出选中的选项。
+            for (const QString &option : placeholder.options) {
+                if (!chosen.contains(option)) continue;
+                selected << option;
+                if (option.isEmpty()) hasValidEmptyChoice = true;
+            }
+            value = selected.join(", ");
         } else {
             QStringList selected;
             const auto boxes = editor->findChildren<QCheckBox*>();
@@ -2046,7 +2223,12 @@ void PromptTemplateLibraryWidget::setupModelTriggerPickerUi(ModelTriggerPickerUi
     connect(picker.tree, &QTreeWidget::itemDoubleClicked, this, [this, pickerRef](QTreeWidgetItem *item, int) mutable {
         if (!item || !item->parent()) return; // 顶层模型条目不填入
         ModelTriggerPickerUi &p = pickerRef();
-        const QStringList tags = item->data(0, Qt::UserRole + 1).toStringList();
+        QStringList tags;
+        if (m_addLoraTagWithTrigger) {
+            const QString lora = item->data(0, Qt::UserRole + 5).toString().trimmed();
+            if (!lora.isEmpty()) tags << QString("<lora:%1:1>").arg(lora);
+        }
+        tags += item->data(0, Qt::UserRole + 1).toStringList();
         if (tags.isEmpty()) return;
         QPlainTextEdit *target = p.insertIntoTemplate ? ui->textTemplatePositive : ui->textGeneratedPositive;
         const int added = appendUniquePromptTags(target, tags);
@@ -2098,6 +2280,7 @@ void PromptTemplateLibraryWidget::refreshModelTriggerPickerTable(ModelTriggerPic
         QString previewPath;
         QIcon previewIcon;
         QString modelType;
+        QString loraName;
         QStringList metadataTriggers;
         QStringList customTriggers;
     };
@@ -2130,6 +2313,7 @@ void PromptTemplateLibraryWidget::refreshModelTriggerPickerTable(ModelTriggerPic
             group.previewPath = rowData.previewPath;
             group.previewIcon = rowData.previewIcon;
             group.modelType = rowData.modelType;
+            group.loraName = rowData.loraName;
             groupIndex = groups.size();
             groups.append(group);
             groupIndexByKey.insert(key, groupIndex);
@@ -2157,6 +2341,7 @@ void PromptTemplateLibraryWidget::refreshModelTriggerPickerTable(ModelTriggerPic
         modelItem->setData(0, Qt::UserRole + 2, group.metadataTriggers);
         modelItem->setData(0, Qt::UserRole + 3, group.customTriggers);
         modelItem->setData(0, Qt::UserRole + 4, group.modelType);
+        modelItem->setData(0, Qt::UserRole + 5, group.loraName);
         modelItem->setToolTip(0, group.modelName);
         if (!group.previewIcon.isNull()) modelItem->setIcon(0, group.previewIcon);
         modelItem->setChildIndicatorPolicy(QTreeWidgetItem::ShowIndicator);
@@ -2178,7 +2363,24 @@ void PromptTemplateLibraryWidget::refreshModelTriggerPickerTable(ModelTriggerPic
 
 void PromptTemplateLibraryWidget::addModelTriggerTags(ModelTriggerPickerUi &picker)
 {
-    const QStringList tags = selectedModelTriggerTexts(picker);
+    const QStringList triggers = selectedModelTriggerTexts(picker);
+
+    // 选项开启时，连同所属模型的 LoRA 标签一起加入（去重）。
+    QStringList loraTags;
+    if (m_addLoraTagWithTrigger && picker.tree) {
+        QSet<QString> seenLora;
+        for (QTreeWidgetItem *item : picker.tree->selectedItems()) {
+            const QString lora = item->data(0, Qt::UserRole + 5).toString().trimmed();
+            if (lora.isEmpty()) continue;
+            const QString tag = QString("<lora:%1:1>").arg(lora);
+            if (seenLora.contains(tag.toCaseFolded())) continue;
+            seenLora.insert(tag.toCaseFolded());
+            loraTags << tag;
+        }
+    }
+
+    QStringList tags = loraTags;
+    tags += triggers;
     if (tags.isEmpty()) {
         if (picker.status) picker.status->setText("请先选择模型触发词。");
         return;
@@ -2382,6 +2584,7 @@ void PromptTemplateLibraryWidget::updateAutocompletePopup(QPlainTextEdit *edit)
 {
     if (m_autocompleteInserting) return;
     if (!edit || m_autocompleteEntries.isEmpty()) { hideAutocompletePopup(); return; }
+    if (!m_autocompleteEnabledByEdit.value(edit, true)) { hideAutocompletePopup(); return; }
     for (const PromptTagFlowView &v : m_tagFlowViews) {
         if (v.edit == edit && v.tagViewActive) { hideAutocompletePopup(); return; }
     }
@@ -2567,17 +2770,31 @@ QString PromptTemplateLibraryWidget::autocompleteSettingsPath() const
 
 void PromptTemplateLibraryWidget::loadAutocompleteSettings()
 {
-    int limit = 12;
+    QJsonObject root;
     QFile file(autocompleteSettingsPath());
     if (file.open(QIODevice::ReadOnly)) {
-        const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
-        limit = root.value("prompt_autocomplete_limit").toInt(12);
+        root = QJsonDocument::fromJson(file.readAll()).object();
         file.close();
     }
-    m_autocompleteLimit = qBound(1, limit, 50);
+    m_autocompleteLimit = qBound(1, root.value("prompt_autocomplete_limit").toInt(12), 50);
     if (ui->spinAutocompleteLimit) {
         QSignalBlocker blocker(ui->spinAutocompleteLimit);
         ui->spinAutocompleteLimit->setValue(m_autocompleteLimit);
+    }
+
+    for (const AutocompleteToggle &toggle : std::as_const(m_autocompleteToggles)) {
+        const bool on = root.value(toggle.key).toBool(true);
+        m_autocompleteEnabledByEdit[toggle.edit] = on;
+        if (toggle.check) {
+            QSignalBlocker blocker(toggle.check);
+            toggle.check->setChecked(on);
+        }
+    }
+
+    m_addLoraTagWithTrigger = root.value("model_trigger_add_lora_tag").toBool(true);
+    if (ui->chkAddLoraTagWithTrigger) {
+        QSignalBlocker blocker(ui->chkAddLoraTagWithTrigger);
+        ui->chkAddLoraTagWithTrigger->setChecked(m_addLoraTagWithTrigger);
     }
 }
 
@@ -2590,6 +2807,10 @@ void PromptTemplateLibraryWidget::saveAutocompleteSettings() const
         file.close();
     }
     root["prompt_autocomplete_limit"] = m_autocompleteLimit;
+    root["model_trigger_add_lora_tag"] = m_addLoraTagWithTrigger;
+    for (const AutocompleteToggle &toggle : m_autocompleteToggles) {
+        root[toggle.key] = m_autocompleteEnabledByEdit.value(toggle.edit, true);
+    }
     if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
         file.close();

@@ -93,6 +93,22 @@ public:
         rebuildVisibleTags();
     }
 
+    void setShowCount(bool show) {
+        if (m_showCount == show) return;
+        m_showCount = show;
+        invalidateLayoutAndCache();
+    }
+
+    void setSelectedTags(const QStringList &tags) {
+        const QSet<QString> want(tags.begin(), tags.end());
+        for (auto &tag : m_allTags) tag.selected = want.contains(tag.text);
+        for (auto &tag : m_tags) tag.selected = want.contains(tag.text);
+        m_lastClickedIndex = -1;
+        m_cacheDirty = true;
+        update();
+        emit filterChanged(getSelectedTags());
+    }
+
     void setSortMode(SortMode mode) {
         if (m_sortMode == mode) return;
         m_sortMode = mode;
@@ -171,6 +187,7 @@ protected:
     int m_calculatedHeight = 0;
     const QHash<QString, QString> *m_translationMap = nullptr;
     bool m_showTranslation = false;
+    bool m_showCount = true;
     SortMode m_sortMode = SortByCount;
     QString m_searchText;
     bool m_loraOnly = false;
@@ -269,7 +286,7 @@ protected:
 
         for (int i = 0; i < m_tags.size(); ++i) {
             TagState &tag = m_tags[i];
-            const QString line1 = QString("%1  %2").arg(tag.text).arg(tag.count);
+            const QString line1 = m_showCount ? QString("%1  %2").arg(tag.text).arg(tag.count) : tag.text;
             QString line2;
             if (m_showTranslation) {
                 line2 = tryGetTranslation(tag.text);
@@ -323,7 +340,7 @@ protected:
                 continue;
             }
 
-            const QString line1 = QString("%1  %2").arg(tag.text).arg(tag.count);
+            const QString line1 = m_showCount ? QString("%1  %2").arg(tag.text).arg(tag.count) : tag.text;
             const QString line2 = m_showTranslation ? tryGetTranslation(tag.text) : QString();
 
             QColor bgColor = QColor("#2a3f5a");

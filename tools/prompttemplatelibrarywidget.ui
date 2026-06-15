@@ -347,13 +347,29 @@
            </attribute>
            <layout class="QVBoxLayout" name="verticalLayoutGenerateFavorites">
             <item>
-             <widget class="QTableWidget" name="tablePromptFavorites">
-              <property name="selectionMode">
-               <enum>QAbstractItemView::SelectionMode::SingleSelection</enum>
+             <widget class="QScrollArea" name="scrollFavorites">
+              <property name="widgetResizable">
+               <bool>true</bool>
               </property>
-              <property name="selectionBehavior">
-               <enum>QAbstractItemView::SelectionBehavior::SelectRows</enum>
-              </property>
+              <widget class="QWidget" name="favoritesContainer">
+               <layout class="QVBoxLayout" name="layoutFavorites">
+                <property name="spacing">
+                 <number>6</number>
+                </property>
+                <property name="leftMargin">
+                 <number>2</number>
+                </property>
+                <property name="topMargin">
+                 <number>2</number>
+                </property>
+                <property name="rightMargin">
+                 <number>2</number>
+                </property>
+                <property name="bottomMargin">
+                 <number>2</number>
+                </property>
+               </layout>
+              </widget>
              </widget>
             </item>
             <item>
@@ -1148,6 +1164,82 @@
             </property>
             <property name="text">
              <string>在“提示词生成”和“模板与占位管理”中编辑提示词时，输入会自动弹出候选词（含翻译）。候选来源于已加载的翻译词表，兼容 a1111 与 ComfyUI 词表格式。</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0" colspan="2">
+           <widget class="QLabel" name="lblAutocompleteEnableHint">
+            <property name="text">
+             <string>启用自动补全的输入框：</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0" colspan="2">
+           <widget class="QCheckBox" name="chkAcGeneratePositive">
+            <property name="text">
+             <string>提示词生成 · 正面</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0" colspan="2">
+           <widget class="QCheckBox" name="chkAcGenerateNegative">
+            <property name="text">
+             <string>提示词生成 · 负面</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0" colspan="2">
+           <widget class="QCheckBox" name="chkAcTemplatePositive">
+            <property name="text">
+             <string>模板编辑 · 正面</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="0" colspan="2">
+           <widget class="QCheckBox" name="chkAcTemplateNegative">
+            <property name="text">
+             <string>模板编辑 · 负面</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="7" column="0" colspan="2">
+           <widget class="QCheckBox" name="chkAcOptionValue">
+            <property name="text">
+             <string>占位选项内容</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupModelTriggerSettings">
+         <property name="title">
+          <string>模型触发词</string>
+         </property>
+         <layout class="QVBoxLayout" name="layoutModelTriggerSettings">
+          <item>
+           <widget class="QCheckBox" name="chkAddLoraTagWithTrigger">
+            <property name="text">
+             <string>添加模型触发词时，同时添加该模型的 LoRA 标签（例如 &lt;lora:name:1&gt;）</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
             </property>
            </widget>
           </item>

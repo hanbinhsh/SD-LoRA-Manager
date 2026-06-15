@@ -1,0 +1,426 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>LauncherWidget</class>
+ <widget class="QWidget" name="LauncherWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1000</width>
+    <height>720</height>
+   </rect>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayoutRoot">
+   <property name="spacing">
+    <number>0</number>
+   </property>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
+   <item>
+    <widget class="QTabWidget" name="targetTabs">
+     <property name="tabPosition">
+      <enum>QTabWidget::TabPosition::West</enum>
+     </property>
+     <property name="currentIndex">
+      <number>0</number>
+     </property>
+     <widget class="QWidget" name="pageA1111">
+      <attribute name="title">
+       <string>🎨 A1111 / WebUI</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="layoutA1111">
+       <item>
+        <widget class="QGroupBox" name="groupA1111">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="title">
+          <string>启动配置</string>
+         </property>
+         <layout class="QFormLayout" name="formA1111">
+          <item row="0" column="0">
+           <widget class="QLabel" name="lblScriptA1111">
+            <property name="text">
+             <string>启动脚本/程序</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <layout class="QHBoxLayout" name="rowScriptA1111">
+            <item>
+             <widget class="QLineEdit" name="editScript_a1111">
+              <property name="placeholderText">
+               <string>例如 webui-user.bat / launch.py</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnBrowse_a1111">
+              <property name="text">
+               <string>浏览…</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="lblArgsA1111">
+            <property name="text">
+             <string>命令行参数</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="editArgs_a1111">
+            <property name="placeholderText">
+             <string>例如 --xformers --api（可选）</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="lblWorkdirA1111">
+            <property name="text">
+             <string>工作目录(可选)</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <layout class="QHBoxLayout" name="rowWorkdirA1111">
+            <item>
+             <widget class="QLineEdit" name="editWorkdir_a1111">
+              <property name="placeholderText">
+               <string>留空则使用脚本所在目录</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnBrowseWd_a1111">
+              <property name="text">
+               <string>浏览…</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="lblUrlA1111">
+            <property name="text">
+             <string>界面地址(可选)</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QLineEdit" name="editUrl_a1111">
+            <property name="placeholderText">
+             <string>http://127.0.0.1:7860（留空则自动识别）</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="lblEnvA1111">
+            <property name="text">
+             <string>环境变量</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1">
+           <widget class="QPlainTextEdit" name="editEnv_a1111">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Maximum">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>64</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>16777215</width>
+              <height>80</height>
+             </size>
+            </property>
+            <property name="placeholderText">
+             <string>每行 KEY=VALUE，可用 %VAR% 引用现有变量，例如：
+HF_ENDPOINT=https://hf-mirror.com
+PATH=D:\novel-ai\novelai-webui-aki-v3\git\bin;%PATH%</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="controlsA1111">
+         <item>
+          <widget class="QPushButton" name="btnStartStop_a1111">
+           <property name="text">
+            <string>启动 / Start</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnOpen_a1111">
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
+           <property name="text">
+            <string>打开界面 / Open</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnClear_a1111">
+           <property name="text">
+            <string>清空 / Clear</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="controlsSpacerA1111">
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QPlainTextEdit" name="console_a1111">
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QProgressBar" name="progress_a1111">
+         <property name="visible">
+          <bool>false</bool>
+         </property>
+         <property name="value">
+          <number>0</number>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="pageComfyUI">
+      <attribute name="title">
+       <string>🧩 ComfyUI</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="layoutComfyUI">
+       <item>
+        <widget class="QGroupBox" name="groupComfyUI">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="title">
+          <string>启动配置</string>
+         </property>
+         <layout class="QFormLayout" name="formComfyUI">
+          <item row="0" column="0">
+           <widget class="QLabel" name="lblScriptComfyUI">
+            <property name="text">
+             <string>启动脚本/程序</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <layout class="QHBoxLayout" name="rowScriptComfyUI">
+            <item>
+             <widget class="QLineEdit" name="editScript_comfyui">
+              <property name="placeholderText">
+               <string>例如 run_nvidia_gpu.bat / main.py</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnBrowse_comfyui">
+              <property name="text">
+               <string>浏览…</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="lblArgsComfyUI">
+            <property name="text">
+             <string>命令行参数</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="editArgs_comfyui">
+            <property name="placeholderText">
+             <string>例如 --listen --port 8188（可选）</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="lblWorkdirComfyUI">
+            <property name="text">
+             <string>工作目录(可选)</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <layout class="QHBoxLayout" name="rowWorkdirComfyUI">
+            <item>
+             <widget class="QLineEdit" name="editWorkdir_comfyui">
+              <property name="placeholderText">
+               <string>留空则使用脚本所在目录</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnBrowseWd_comfyui">
+              <property name="text">
+               <string>浏览…</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="lblUrlComfyUI">
+            <property name="text">
+             <string>界面地址(可选)</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QLineEdit" name="editUrl_comfyui">
+            <property name="placeholderText">
+             <string>http://127.0.0.1:8188（留空则自动识别）</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="lblEnvComfyUI">
+            <property name="text">
+             <string>环境变量</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1">
+           <widget class="QPlainTextEdit" name="editEnv_comfyui">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Maximum">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>64</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>16777215</width>
+              <height>80</height>
+             </size>
+            </property>
+            <property name="placeholderText">
+             <string>每行 KEY=VALUE，可用 %VAR% 引用现有变量，例如：
+HF_ENDPOINT=https://hf-mirror.com</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="controlsComfyUI">
+         <item>
+          <widget class="QPushButton" name="btnStartStop_comfyui">
+           <property name="text">
+            <string>启动 / Start</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnOpen_comfyui">
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
+           <property name="text">
+            <string>打开界面 / Open</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnClear_comfyui">
+           <property name="text">
+            <string>清空 / Clear</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="controlsSpacerComfyUI">
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QPlainTextEdit" name="console_comfyui">
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QProgressBar" name="progress_comfyui">
+         <property name="visible">
+          <bool>false</bool>
+         </property>
+         <property name="value">
+          <number>0</number>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

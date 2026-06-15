@@ -15,6 +15,7 @@ class PromptTemplateLibraryWidget;
 
 template <typename T>
 class QFutureWatcher;
+class QCheckBox;
 class QComboBox;
 class QEvent;
 class QKeyEvent;
@@ -29,6 +30,7 @@ class QStackedWidget;
 class QTableWidget;
 class QTableWidgetItem;
 class QTreeWidget;
+class QTreeWidgetItem;
 class TagFlowWidget;
 
 class PromptTemplateLibraryWidget : public QWidget
@@ -56,6 +58,7 @@ public:
         QString trigger;
         QString source;
         QString modelType;
+        QString loraName;   // LoRA 模型用于生成 <lora:name:1> 的名称（非 LoRA 为空）
     };
 
     void setModelTriggerRows(const QVector<ModelTriggerRow> &rows);
@@ -178,6 +181,17 @@ private:
     QPlainTextEdit *m_autocompleteEdit = nullptr;
     bool m_autocompleteInserting = false;
     int m_autocompleteLimit = 12;
+
+    // 每个输入框是否启用自动补全（设置页可单独开关）。
+    struct AutocompleteToggle {
+        QPlainTextEdit *edit = nullptr;
+        QCheckBox *check = nullptr;
+        QString key;
+    };
+    QVector<AutocompleteToggle> m_autocompleteToggles;
+    QHash<QPlainTextEdit*, bool> m_autocompleteEnabledByEdit;
+    bool m_addLoraTagWithTrigger = true;
+    QHash<QObject*, QWidget*> m_favoriteHeaderToDetail;   // 收藏卡片头部 -> 详情区（点击展开/收起）
     QString m_currentImagePath;
     QString m_lastRenderedPositivePrompt;
     QString m_lastRenderedNegativePrompt;
