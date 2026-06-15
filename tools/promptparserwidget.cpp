@@ -163,6 +163,10 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
         posTagWidget->setShowTranslation(checked);
         negTagWidget->setShowTranslation(checked);
     });
+    connect(ui->btnSelectAllTags, &QPushButton::clicked, this, [this]() {
+        posTagWidget->selectAllVisibleTags();
+        negTagWidget->selectAllVisibleTags();
+    });
     connect(ui->btnClearTagSelection, &QPushButton::clicked, this, [this]() {
         posTagWidget->clearSelectedTags();
         negTagWidget->clearSelectedTags();

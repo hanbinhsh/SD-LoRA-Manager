@@ -3,6 +3,7 @@
 
 #include <QHash>
 #include <QIcon>
+#include <QPair>
 #include <QPointer>
 #include <QSet>
 #include <QVector>
@@ -16,11 +17,15 @@ template <typename T>
 class QFutureWatcher;
 class QComboBox;
 class QEvent;
+class QKeyEvent;
 class QLabel;
 class QLineEdit;
+class QListWidget;
 class QListWidgetItem;
 class QObject;
+class QPlainTextEdit;
 class QPushButton;
+class QStackedWidget;
 class QTableWidget;
 class QTableWidgetItem;
 class QTreeWidget;
@@ -126,6 +131,26 @@ private:
         QSet<QString> expandedModelKeys;
     };
 
+    // 把某个提示词输入框切换为 TagFlow 标签视图（仿提示词解析页）所需的控件集合。
+    struct PromptTagFlowView {
+        QPlainTextEdit *edit = nullptr;
+        QStackedWidget *stack = nullptr;
+        TagFlowWidget *flow = nullptr;
+        QPushButton *toggleButton = nullptr;
+        QPushButton *clearButton = nullptr;
+        QPushButton *selectAllButton = nullptr;
+        QPushButton *translateButton = nullptr;
+        bool tagViewActive = false;
+    };
+
+    // 自动补全候选条目（来自翻译词表）。
+    struct AutocompleteEntry {
+        QString tag;
+        QString translation;
+        QString foldedTag;
+        int count = 0;
+    };
+
     Ui::PromptTemplateLibraryWidget *ui;
     const QHash<QString, QString> *m_translationMap = nullptr;
     QVector<PromptTemplate> m_templates;
@@ -147,6 +172,12 @@ private:
     QVector<ModelTriggerRow> m_modelTriggerRows;
     bool m_modelTriggerRowsDirty = true;
     bool m_modelTriggerRowsLoaded = false;
+    QVector<PromptTagFlowView> m_tagFlowViews;
+    QVector<AutocompleteEntry> m_autocompleteEntries;
+    QListWidget *m_autocompletePopup = nullptr;
+    QPlainTextEdit *m_autocompleteEdit = nullptr;
+    bool m_autocompleteInserting = false;
+    int m_autocompleteLimit = 12;
     QString m_currentImagePath;
     QString m_lastRenderedPositivePrompt;
     QString m_lastRenderedNegativePrompt;
@@ -201,6 +232,21 @@ private:
     void addPickerTags(TagPickerUi &picker, bool positiveTarget);
     void refreshModelTriggerPickerTable(ModelTriggerPickerUi &picker);
     void addModelTriggerTags(ModelTriggerPickerUi &picker);
+
+    void setupPromptTagFlowView(QPlainTextEdit *edit);
+    void togglePromptTagFlowView(int viewIndex, bool tagView);
+    void refreshPromptTagFlowFromText(PromptTagFlowView &view);
+
+    void setupAutocompleteForEditor(QPlainTextEdit *edit);
+    void rebuildAutocompleteIndex();
+    void updateAutocompletePopup(QPlainTextEdit *edit);
+    void hideAutocompletePopup();
+    void acceptAutocompleteSelection();
+    bool handleAutocompleteKeyPress(QKeyEvent *event);
+    QPair<int, int> currentAutocompleteTokenRange(QPlainTextEdit *edit) const;
+    QString autocompleteSettingsPath() const;
+    void loadAutocompleteSettings();
+    void saveAutocompleteSettings() const;
     void addCurrentPromptToFavorites();
     void copyFavoriteById(const QString &id) const;
     void replacePromptFromFavoriteById(const QString &id);

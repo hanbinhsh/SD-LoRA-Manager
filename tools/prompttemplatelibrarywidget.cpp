@@ -21,30 +21,39 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFutureWatcher>
+#include <QBoxLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QIcon>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QInputDialog>
+#include <QSpinBox>
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QSignalBlocker>
+#include <QStackedWidget>
 #include <QStyle>
 #include <QStyledItemDelegate>
 #include <QTableWidget>
+#include <QTextCursor>
 #include <QTextStream>
 #include <QTextOption>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QUrl>
+#include <QVBoxLayout>
 #include <QtConcurrent>
 #include <algorithm>
 #include <numeric>
@@ -141,6 +150,103 @@ QString normalizeTagSearch(QString text)
     text.replace(spaces, " ");
     return text;
 }
+
+bool isAsciiText(const QString &text)
+{
+    for (const QChar c : text) {
+        if (c.unicode() > 0x7f) return false;
+    }
+    return true;
+}
+
+// 解析翻译词表的中文字段：去掉末尾的 ",数字"（autocomplete 词表里的优先级/使用次数），
+// 把数字作为排序权重返回，剩余部分作为展示文本。
+void parseTranslationValue(const QString &raw, QString &display, int &count)
+{
+    display = raw.trimmed();
+    count = 0;
+    const int lastComma = display.lastIndexOf(',');
+    if (lastComma > 0) {
+        const QString tail = display.mid(lastComma + 1).trimmed();
+        bool numeric = !tail.isEmpty();
+        for (const QChar c : tail) {
+            if (!c.isDigit()) { numeric = false; break; }
+        }
+        if (numeric) {
+            count = tail.toInt();
+            display = display.left(lastComma).trimmed();
+        }
+    }
+}
+
+// 从翻译字段中剥离重复出现的英文 tag 前缀。
+// ComfyUI 词表里中文字段形如 "1girl 人物-一个女孩"（tag 类型-翻译），需要去掉开头的 "1girl "；
+// a1111 词表形如 "一个女孩"，无需处理。
+QString stripLeadingTagFromTranslation(const QString &tag, QString display)
+{
+    display = display.trimmed();
+    if (display.isEmpty() || tag.isEmpty()) return display;
+
+    QStringList prefixes;
+    prefixes << tag;
+    QString spaced = tag; spaced.replace('_', ' ');
+    if (spaced != tag) prefixes << spaced;
+    QString underscored = tag; underscored.replace(' ', '_');
+    if (underscored != tag) prefixes << underscored;
+
+    for (const QString &prefix : prefixes) {
+        if (display.size() > prefix.size() + 1 &&
+            display.startsWith(prefix, Qt::CaseInsensitive) &&
+            display.at(prefix.size()).isSpace()) {
+            return display.mid(prefix.size()).trimmed();
+        }
+    }
+    // 翻译字段与 tag 完全相同时视为没有翻译。
+    if (display.compare(tag, Qt::CaseInsensitive) == 0) return QString();
+    return display;
+}
+
+// 自动补全弹窗的条目绘制：左侧 tag（白色左对齐），右侧翻译（灰色右对齐）。
+class AutocompleteItemDelegate : public QStyledItemDelegate
+{
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        QSize s = QStyledItemDelegate::sizeHint(option, index);
+        s.setHeight(qMax(s.height(), option.fontMetrics.height() + 8));
+        return s;
+    }
+
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        painter->save();
+        const bool selected = option.state.testFlag(QStyle::State_Selected);
+        if (selected) painter->fillRect(option.rect, QColor("#3d4450"));
+
+        const QString tag = index.data(Qt::UserRole).toString();
+        const QString translation = index.data(Qt::UserRole + 1).toString();
+        const QRect r = option.rect.adjusted(8, 0, -8, 0);
+        const QFontMetrics fm(option.font);
+
+        painter->setFont(option.font);
+        painter->setPen(selected ? QColor("#ffffff") : QColor("#dcdedf"));
+        const QString tagText = fm.elidedText(tag, Qt::ElideRight, r.width());
+        painter->drawText(r, Qt::AlignVCenter | Qt::AlignLeft, tagText);
+
+        if (!translation.isEmpty()) {
+            const int tagWidth = fm.horizontalAdvance(tagText) + 14;
+            const QRect trRect = r.adjusted(tagWidth, 0, 0, 0);
+            if (trRect.width() > 12) {
+                painter->setPen(QColor("#8c96a0"));
+                const QString trText = fm.elidedText(translation, Qt::ElideRight, trRect.width());
+                painter->drawText(trRect, Qt::AlignVCenter | Qt::AlignRight, trText);
+            }
+        }
+        painter->restore();
+    }
+};
 
 bool isSupportedImagePath(const QString &path)
 {
@@ -657,6 +763,18 @@ PromptTemplateLibraryWidget::PromptTemplateLibraryWidget(QWidget *parent)
     ui->layoutTemplateImagePositiveTags->addWidget(m_templateImagePositiveTags);
     ui->layoutTemplateImageNegativeTags->addWidget(m_templateImageNegativeTags);
 
+    // 为四个提示词输入框添加“标签视图”切换与自动补全。
+    for (QPlainTextEdit *edit : {ui->textGeneratedPositive, ui->textGeneratedNegative,
+                                 ui->textTemplatePositive, ui->textTemplateNegative}) {
+        setupPromptTagFlowView(edit);
+        setupAutocompleteForEditor(edit);
+    }
+    loadAutocompleteSettings();
+    connect(ui->spinAutocompleteLimit, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        m_autocompleteLimit = qBound(1, value, 50);
+        saveAutocompleteSettings();
+    });
+
     connect(ui->tabTemplateLibrary, &QTabWidget::currentChanged, this, &PromptTemplateLibraryWidget::onTabChanged);
     connect(ui->comboGenerateTemplate, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &PromptTemplateLibraryWidget::onGenerateTemplateChanged);
     connect(ui->btnReloadLibrary, &QPushButton::clicked, this, &PromptTemplateLibraryWidget::reloadTemplateLibrary);
@@ -800,6 +918,17 @@ PromptTemplateLibraryWidget::~PromptTemplateLibraryWidget()
 
 bool PromptTemplateLibraryWidget::eventFilter(QObject *watched, QEvent *event)
 {
+    if (auto *edit = qobject_cast<QPlainTextEdit*>(watched)) {
+        if (event->type() == QEvent::KeyPress) {
+            if (m_autocompleteEdit == edit && handleAutocompleteKeyPress(static_cast<QKeyEvent*>(event))) {
+                return true;
+            }
+        } else if (event->type() == QEvent::FocusOut) {
+            if (m_autocompleteEdit == edit) hideAutocompletePopup();
+        }
+        return QWidget::eventFilter(watched, event);
+    }
+
     const bool isGenerateImagePath = watched == ui->editGenerateImagePath;
     const bool isTemplateImagePath = watched == ui->editTemplateImagePath;
     if (!isGenerateImagePath && !isTemplateImagePath) {
@@ -838,6 +967,11 @@ void PromptTemplateLibraryWidget::setTranslationMap(const QHash<QString, QString
     if (m_generateImageNegativeTags) m_generateImageNegativeTags->setTranslationMap(map);
     if (m_templateImagePositiveTags) m_templateImagePositiveTags->setTranslationMap(map);
     if (m_templateImageNegativeTags) m_templateImageNegativeTags->setTranslationMap(map);
+    for (PromptTagFlowView &view : m_tagFlowViews) {
+        if (view.flow) view.flow->setTranslationMap(map);
+        if (view.tagViewActive) refreshPromptTagFlowFromText(view);
+    }
+    rebuildAutocompleteIndex();
     refreshTagPickerTable(m_generateTagPicker);
     refreshTagPickerTable(m_templateTagPicker);
 }
@@ -2056,6 +2190,409 @@ void PromptTemplateLibraryWidget::addModelTriggerTags(ModelTriggerPickerUi &pick
         picker.status->setText(added == 0
             ? "目标中已经包含选中的触发词。"
             : QString("已添加 %1 个触发词到%2。").arg(added).arg(picker.insertIntoTemplate ? "正面模板" : "正面提示词"));
+    }
+}
+
+void PromptTemplateLibraryWidget::setupPromptTagFlowView(QPlainTextEdit *edit)
+{
+    if (!edit) return;
+    QWidget *host = edit->parentWidget();
+    auto *parentLayout = host ? qobject_cast<QBoxLayout*>(host->layout()) : nullptr;
+    if (!parentLayout) return;
+    const int editIndex = parentLayout->indexOf(edit);
+    if (editIndex < 0) return;
+
+    // 紧邻编辑框上方的标题标签（“正面提示词”/“负面提示词”），把按钮放到它右侧。
+    QLabel *titleLabel = nullptr;
+    if (editIndex > 0) {
+        if (QLayoutItem *prev = parentLayout->itemAt(editIndex - 1))
+            titleLabel = qobject_cast<QLabel*>(prev->widget());
+    }
+
+    PromptTagFlowView view;
+    view.edit = edit;
+
+    auto makeMiniButton = [host](const QString &text, bool checkable) {
+        auto *b = new QPushButton(text, host);
+        b->setCheckable(checkable);
+        b->setCursor(Qt::PointingHandCursor);
+        b->setFocusPolicy(Qt::NoFocus);
+        b->setFixedHeight(26);
+        // 收紧内边距并让按钮按内容自适应宽度，避免文本被压缩截断。
+        b->setStyleSheet("QPushButton{padding:2px 10px;}");
+        b->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        QFont f = b->font();
+        f.setPointSize(9);
+        b->setFont(f);
+        return b;
+    };
+
+    view.translateButton = makeMiniButton("文", true);
+    view.translateButton->setObjectName("btnTranslate"); // 复用 QSS 的选中高亮样式
+    view.translateButton->setToolTip("显示/隐藏 Tag 翻译");
+    view.translateButton->setChecked(true);
+    view.selectAllButton = makeMiniButton("全选", false);
+    view.selectAllButton->setToolTip("全选 / 取消全选当前显示的 Tag");
+    view.clearButton = makeMiniButton("×", false);
+    view.clearButton->setToolTip("取消选中的 Tag");
+    view.toggleButton = makeMiniButton("标签", true);
+    view.toggleButton->setToolTip("在文本编辑与标签视图之间切换");
+
+    // 标签视图相关按钮仅在标签视图下显示。
+    view.translateButton->setVisible(false);
+    view.selectAllButton->setVisible(false);
+    view.clearButton->setVisible(false);
+
+    auto *header = new QWidget(host);
+    auto *headerLayout = new QHBoxLayout(header);
+    headerLayout->setContentsMargins(0, 0, 0, 0);
+    headerLayout->setSpacing(4);
+    headerLayout->addStretch(1);
+    headerLayout->addWidget(view.translateButton);
+    headerLayout->addWidget(view.selectAllButton);
+    headerLayout->addWidget(view.clearButton);
+    headerLayout->addWidget(view.toggleButton); // 切换按钮固定在最右侧
+
+    // 堆叠控件：第 0 页文本编辑，第 1 页标签视图。
+    view.stack = new QStackedWidget(host);
+    view.stack->setSizePolicy(edit->sizePolicy());
+
+    auto *area = new QScrollArea(view.stack);
+    area->setWidgetResizable(true);
+    area->setFrameShape(QFrame::NoFrame);
+    // 与文本编辑框保持一致的背景。
+    area->setStyleSheet("QScrollArea { background-color:#16191e; border:1px solid #31363d; border-radius:3px; }");
+    auto *areaContents = new QWidget(area);
+    areaContents->setStyleSheet("background:transparent;");
+    auto *areaLayout = new QVBoxLayout(areaContents);
+    areaLayout->setContentsMargins(4, 4, 4, 4);
+    areaLayout->setSpacing(0);
+    view.flow = new TagFlowWidget(areaContents);
+    view.flow->setTranslationMap(m_translationMap);
+    view.flow->setShowTranslation(true);
+    view.flow->setPixmapCacheEnabled(false);
+    areaLayout->addWidget(view.flow);
+    areaLayout->addStretch(1);
+    area->setWidget(areaContents);
+
+    // 用 header 接管标题标签所在位置，并把标签移到 header 最左侧。
+    if (titleLabel) {
+        delete parentLayout->replaceWidget(titleLabel, header);
+        headerLayout->insertWidget(0, titleLabel); // 重新父化到 header 最左
+    } else {
+        parentLayout->insertWidget(editIndex, header);
+    }
+    // 用 stack 接管编辑框所在位置。
+    delete parentLayout->replaceWidget(edit, view.stack);
+    view.stack->addWidget(edit);   // 重新父化到 stack
+    view.stack->addWidget(area);
+    view.stack->setCurrentIndex(0);
+
+    const int viewIndex = m_tagFlowViews.size();
+    m_tagFlowViews.append(view);
+
+    connect(view.toggleButton, &QPushButton::toggled, this, [this, viewIndex](bool checked) {
+        togglePromptTagFlowView(viewIndex, checked);
+    });
+    connect(view.clearButton, &QPushButton::clicked, this, [this, viewIndex]() {
+        if (m_tagFlowViews[viewIndex].flow) m_tagFlowViews[viewIndex].flow->clearSelectedTags();
+    });
+    connect(view.selectAllButton, &QPushButton::clicked, this, [this, viewIndex]() {
+        TagFlowWidget *flow = m_tagFlowViews[viewIndex].flow;
+        if (!flow) return;
+        if (flow->getSelectedTags().isEmpty()) flow->selectAllVisibleTags();
+        else flow->clearSelectedTags();
+    });
+    connect(view.translateButton, &QPushButton::toggled, this, [this, viewIndex](bool checked) {
+        if (m_tagFlowViews[viewIndex].flow) m_tagFlowViews[viewIndex].flow->setShowTranslation(checked);
+    });
+    connect(edit, &QPlainTextEdit::textChanged, this, [this, viewIndex]() {
+        PromptTagFlowView &v = m_tagFlowViews[viewIndex];
+        if (v.tagViewActive) refreshPromptTagFlowFromText(v);
+    });
+}
+
+void PromptTemplateLibraryWidget::togglePromptTagFlowView(int viewIndex, bool tagView)
+{
+    if (viewIndex < 0 || viewIndex >= m_tagFlowViews.size()) return;
+    PromptTagFlowView &view = m_tagFlowViews[viewIndex];
+    view.tagViewActive = tagView;
+    if (view.translateButton) view.translateButton->setVisible(tagView);
+    if (view.selectAllButton) view.selectAllButton->setVisible(tagView);
+    if (view.clearButton) view.clearButton->setVisible(tagView);
+    if (view.toggleButton) view.toggleButton->setText(tagView ? "文本" : "标签");
+    if (tagView) {
+        hideAutocompletePopup();
+        refreshPromptTagFlowFromText(view);
+    }
+    if (view.stack) view.stack->setCurrentIndex(tagView ? 1 : 0);
+}
+
+void PromptTemplateLibraryWidget::refreshPromptTagFlowFromText(PromptTagFlowView &view)
+{
+    if (!view.flow || !view.edit) return;
+    view.flow->setTranslationMap(m_translationMap);
+    view.flow->setData(tagCountsFromPrompt(view.edit->toPlainText()));
+    if (view.translateButton) view.flow->setShowTranslation(view.translateButton->isChecked());
+}
+
+void PromptTemplateLibraryWidget::setupAutocompleteForEditor(QPlainTextEdit *edit)
+{
+    if (!edit) return;
+    edit->installEventFilter(this);
+    connect(edit, &QPlainTextEdit::textChanged, this, [this, edit]() {
+        if (m_autocompleteInserting || !edit->hasFocus()) return;
+        updateAutocompletePopup(edit);
+    });
+    connect(edit, &QPlainTextEdit::cursorPositionChanged, this, [this, edit]() {
+        if (m_autocompleteInserting || !edit->hasFocus()) return;
+        if (m_autocompletePopup && m_autocompletePopup->isVisible() && m_autocompleteEdit == edit) {
+            updateAutocompletePopup(edit);
+        }
+    });
+}
+
+void PromptTemplateLibraryWidget::rebuildAutocompleteIndex()
+{
+    m_autocompleteEntries.clear();
+    if (!m_translationMap || m_translationMap->isEmpty()) {
+        hideAutocompletePopup();
+        return;
+    }
+    m_autocompleteEntries.reserve(m_translationMap->size());
+    for (auto it = m_translationMap->constBegin(); it != m_translationMap->constEnd(); ++it) {
+        const QString tag = it.key().trimmed();
+        if (tag.isEmpty()) continue;
+        AutocompleteEntry entry;
+        entry.tag = tag;
+        parseTranslationValue(it.value(), entry.translation, entry.count);
+        entry.translation = stripLeadingTagFromTranslation(tag, entry.translation);
+        entry.foldedTag = normalizeTagSearch(tag);
+        if (entry.foldedTag.isEmpty()) continue;
+        m_autocompleteEntries.append(entry);
+    }
+    std::sort(m_autocompleteEntries.begin(), m_autocompleteEntries.end(),
+        [](const AutocompleteEntry &a, const AutocompleteEntry &b) {
+            if (a.foldedTag != b.foldedTag) return a.foldedTag < b.foldedTag;
+            return a.count > b.count;
+        });
+}
+
+void PromptTemplateLibraryWidget::updateAutocompletePopup(QPlainTextEdit *edit)
+{
+    if (m_autocompleteInserting) return;
+    if (!edit || m_autocompleteEntries.isEmpty()) { hideAutocompletePopup(); return; }
+    for (const PromptTagFlowView &v : m_tagFlowViews) {
+        if (v.edit == edit && v.tagViewActive) { hideAutocompletePopup(); return; }
+    }
+
+    const QPair<int, int> range = currentAutocompleteTokenRange(edit);
+    if (range.second <= range.first) { hideAutocompletePopup(); return; }
+    const QString token = edit->toPlainText().mid(range.first, range.second - range.first).trimmed();
+    if (token.isEmpty() || token.startsWith('{') || token.startsWith('<')) { hideAutocompletePopup(); return; }
+    const QString needle = normalizeTagSearch(token);
+    if (needle.isEmpty()) { hideAutocompletePopup(); return; }
+
+    const bool ascii = isAsciiText(needle);
+    const int kMaxResults = qBound(1, m_autocompleteLimit, 50);
+
+    struct Scored { const AutocompleteEntry *e; int score; };
+    QVector<Scored> scored;
+    QSet<QString> seen;
+
+    // 1) 标签前缀匹配（已按 foldedTag 排序，二分定位）
+    auto lower = std::lower_bound(m_autocompleteEntries.cbegin(), m_autocompleteEntries.cend(), needle,
+        [](const AutocompleteEntry &entry, const QString &key) { return entry.foldedTag < key; });
+    for (auto it = lower; it != m_autocompleteEntries.cend(); ++it) {
+        if (!it->foldedTag.startsWith(needle)) break;
+        if (seen.contains(it->tag)) continue;
+        seen.insert(it->tag);
+        scored.append({ &(*it), it->foldedTag == needle ? 3 : 2 });
+        if (scored.size() >= 400) break;
+    }
+
+    // 2) 补充：标签子串 / 翻译子串匹配（中文输入或中间匹配），限制扫描量
+    if (scored.size() < kMaxResults * 6) {
+        int scan = 0;
+        for (const AutocompleteEntry &entry : m_autocompleteEntries) {
+            if (++scan > 60000) break;
+            if (seen.contains(entry.tag)) continue;
+            bool hit = ascii && entry.foldedTag.contains(needle);
+            if (!hit && !entry.translation.isEmpty() && entry.translation.contains(token, Qt::CaseInsensitive)) hit = true;
+            if (!hit) continue;
+            seen.insert(entry.tag);
+            scored.append({ &entry, 1 });
+            if (scored.size() >= kMaxResults * 6) break;
+        }
+    }
+
+    if (scored.isEmpty()) { hideAutocompletePopup(); return; }
+
+    std::sort(scored.begin(), scored.end(), [](const Scored &a, const Scored &b) {
+        if (a.score != b.score) return a.score > b.score;
+        if (a.e->count != b.e->count) return a.e->count > b.e->count;
+        if (a.e->tag.size() != b.e->tag.size()) return a.e->tag.size() < b.e->tag.size();
+        return a.e->tag < b.e->tag;
+    });
+
+    if (!m_autocompletePopup) {
+        m_autocompletePopup = new QListWidget(this);
+        m_autocompletePopup->setWindowFlags(Qt::FramelessWindowHint | Qt::Tool | Qt::WindowStaysOnTopHint | Qt::WindowDoesNotAcceptFocus);
+        m_autocompletePopup->setAttribute(Qt::WA_ShowWithoutActivating);
+        m_autocompletePopup->setFocusPolicy(Qt::NoFocus);
+        m_autocompletePopup->setUniformItemSizes(true);
+        m_autocompletePopup->setSelectionMode(QAbstractItemView::SingleSelection);
+        m_autocompletePopup->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        m_autocompletePopup->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        m_autocompletePopup->setStyleSheet(
+            "QListWidget { background:#1f2833; color:#dcdedf; border:1px solid #3d4450; outline:0; }");
+        m_autocompletePopup->setItemDelegate(new AutocompleteItemDelegate(m_autocompletePopup));
+        connect(m_autocompletePopup, &QListWidget::itemClicked, this, [this](QListWidgetItem *) {
+            acceptAutocompleteSelection();
+        });
+    }
+
+    m_autocompletePopup->clear();
+    const int shown = qMin<int>(kMaxResults, scored.size());
+    const QFontMetrics fm(m_autocompletePopup->font());
+    int contentW = 0;
+    for (int i = 0; i < shown; ++i) {
+        const AutocompleteEntry *e = scored[i].e;
+        auto *item = new QListWidgetItem(e->tag, m_autocompletePopup); // text 仅作回退/无障碍用
+        item->setData(Qt::UserRole, e->tag);
+        item->setData(Qt::UserRole + 1, e->translation);
+        int w = fm.horizontalAdvance(e->tag);
+        if (!e->translation.isEmpty()) w += 28 + fm.horizontalAdvance(e->translation);
+        contentW = qMax(contentW, w);
+    }
+    m_autocompletePopup->setCurrentRow(0);
+    m_autocompleteEdit = edit;
+
+    const int rowH = fm.height() + 8;
+    const int h = rowH * shown + 6;
+    const int w = qBound(200, contentW + 28, 620);
+    m_autocompletePopup->resize(w, h);
+    const QRect cr = edit->cursorRect();
+    const QPoint pos = edit->viewport()->mapToGlobal(cr.bottomLeft()) + QPoint(0, 2);
+    m_autocompletePopup->move(pos);
+    m_autocompletePopup->show();
+}
+
+void PromptTemplateLibraryWidget::hideAutocompletePopup()
+{
+    if (m_autocompletePopup && m_autocompletePopup->isVisible()) m_autocompletePopup->hide();
+    m_autocompleteEdit = nullptr;
+}
+
+void PromptTemplateLibraryWidget::acceptAutocompleteSelection()
+{
+    if (!m_autocompletePopup || !m_autocompleteEdit) { hideAutocompletePopup(); return; }
+    QListWidgetItem *item = m_autocompletePopup->currentItem();
+    if (!item) item = m_autocompletePopup->item(0);
+    QPlainTextEdit *edit = m_autocompleteEdit;
+    if (!item || !edit) { hideAutocompletePopup(); return; }
+    const QString tag = item->data(Qt::UserRole).toString();
+    if (tag.isEmpty()) { hideAutocompletePopup(); return; }
+
+    const QPair<int, int> range = currentAutocompleteTokenRange(edit);
+    const QString full = edit->toPlainText();
+    QString insert = tag;
+    const QChar nextChar = range.second < full.size() ? full.at(range.second) : QChar();
+    if (nextChar != ',') insert += ", ";
+
+    m_autocompleteInserting = true;
+    QTextCursor cursor = edit->textCursor();
+    cursor.beginEditBlock();
+    cursor.setPosition(range.first);
+    cursor.setPosition(range.second, QTextCursor::KeepAnchor);
+    cursor.insertText(insert);
+    cursor.endEditBlock();
+    edit->setTextCursor(cursor);
+    m_autocompleteInserting = false;
+
+    hideAutocompletePopup();
+}
+
+bool PromptTemplateLibraryWidget::handleAutocompleteKeyPress(QKeyEvent *event)
+{
+    if (!m_autocompletePopup || !m_autocompletePopup->isVisible()) return false;
+    const int n = m_autocompletePopup->count();
+    switch (event->key()) {
+    case Qt::Key_Down:
+        if (n > 0) m_autocompletePopup->setCurrentRow((m_autocompletePopup->currentRow() + 1) % n);
+        return true;
+    case Qt::Key_Up:
+        if (n > 0) m_autocompletePopup->setCurrentRow((m_autocompletePopup->currentRow() - 1 + n) % n);
+        return true;
+    case Qt::Key_Return:
+    case Qt::Key_Enter:
+    case Qt::Key_Tab:
+        acceptAutocompleteSelection();
+        return true;
+    case Qt::Key_Escape:
+        hideAutocompletePopup();
+        return true;
+    default:
+        return false;
+    }
+}
+
+QPair<int, int> PromptTemplateLibraryWidget::currentAutocompleteTokenRange(QPlainTextEdit *edit) const
+{
+    if (!edit) return {0, 0};
+    const QTextCursor cursor = edit->textCursor();
+    if (cursor.hasSelection()) return {0, 0};
+    const int pos = cursor.position();
+    const QString text = edit->toPlainText();
+    int start = pos;
+    while (start > 0) {
+        const QChar c = text.at(start - 1);
+        if (c == ',' || c == '\n' || c == '\r') break;
+        --start;
+    }
+    while (start < pos) {
+        const QChar c = text.at(start);
+        if (c == ' ' || c == '\t') ++start;
+        else break;
+    }
+    return {start, pos};
+}
+
+QString PromptTemplateLibraryWidget::autocompleteSettingsPath() const
+{
+    const QString configDir = qApp->applicationDirPath() + "/config";
+    QDir().mkpath(configDir);
+    return configDir + "/settings.json";
+}
+
+void PromptTemplateLibraryWidget::loadAutocompleteSettings()
+{
+    int limit = 12;
+    QFile file(autocompleteSettingsPath());
+    if (file.open(QIODevice::ReadOnly)) {
+        const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+        limit = root.value("prompt_autocomplete_limit").toInt(12);
+        file.close();
+    }
+    m_autocompleteLimit = qBound(1, limit, 50);
+    if (ui->spinAutocompleteLimit) {
+        QSignalBlocker blocker(ui->spinAutocompleteLimit);
+        ui->spinAutocompleteLimit->setValue(m_autocompleteLimit);
+    }
+}
+
+void PromptTemplateLibraryWidget::saveAutocompleteSettings() const
+{
+    QFile file(autocompleteSettingsPath());
+    QJsonObject root;
+    if (file.open(QIODevice::ReadOnly)) {
+        root = QJsonDocument::fromJson(file.readAll()).object();
+        file.close();
+    }
+    root["prompt_autocomplete_limit"] = m_autocompleteLimit;
+    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+        file.close();
     }
 }
 

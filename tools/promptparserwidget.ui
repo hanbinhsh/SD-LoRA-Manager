@@ -174,6 +174,36 @@ Click or Drag Image Here</string>
             </widget>
            </item>
            <item>
+            <widget class="QPushButton" name="btnSelectAllTags">
+             <property name="minimumSize">
+              <size>
+               <width>44</width>
+               <height>28</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>44</width>
+               <height>28</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>8</pointsize>
+              </font>
+             </property>
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
+             <property name="toolTip">
+              <string>全选 / 取消全选当前显示的 Tag</string>
+             </property>
+             <property name="text">
+              <string>全选</string>
+             </property>
+            </widget>
+           </item>
+           <item>
             <widget class="QPushButton" name="btnClearTagSelection">
              <property name="minimumSize">
               <size>

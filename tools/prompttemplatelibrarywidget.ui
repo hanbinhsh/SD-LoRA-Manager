@@ -1107,6 +1107,68 @@
        </item>
       </layout>
      </widget>
+     <widget class="QWidget" name="tabAutocompleteSettings">
+      <attribute name="title">
+       <string>设置</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="layoutAutocompleteSettings">
+       <item>
+        <widget class="QGroupBox" name="groupAutocompleteSettings">
+         <property name="title">
+          <string>自动补全</string>
+         </property>
+         <layout class="QFormLayout" name="formAutocompleteSettings">
+          <item row="0" column="0">
+           <widget class="QLabel" name="lblAutocompleteLimit">
+            <property name="text">
+             <string>候选显示数量</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QSpinBox" name="spinAutocompleteLimit">
+            <property name="minimum">
+             <number>1</number>
+            </property>
+            <property name="maximum">
+             <number>50</number>
+            </property>
+            <property name="value">
+             <number>12</number>
+            </property>
+            <property name="toolTip">
+             <string>编辑提示词时自动补全弹窗最多显示的候选数量。</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0" colspan="2">
+           <widget class="QLabel" name="lblAutocompleteHint">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="text">
+             <string>在“提示词生成”和“模板与占位管理”中编辑提示词时，输入会自动弹出候选词（含翻译）。候选来源于已加载的翻译词表，兼容 a1111 与 ComfyUI 词表格式。</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacerAutocomplete">
+         <property name="orientation">
+          <enum>Qt::Orientation::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
     </widget>
    </item>
   </layout>
