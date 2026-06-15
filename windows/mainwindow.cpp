@@ -2168,6 +2168,7 @@ void MainWindow::refreshHomeGallery()
         item->setData(ROLE_MODEL_NAME, modelKey);
         item->setData(ROLE_CIVITAI_NAME, sideItem->data(ROLE_CIVITAI_NAME));
         item->setData(ROLE_MODEL_TYPE, sideItem->data(ROLE_MODEL_TYPE));
+        item->setData(ROLE_MODEL_TRAINED_WORDS, sideItem->data(ROLE_MODEL_TRAINED_WORDS));
         item->setData(ROLE_MODEL_CREATOR, sideItem->data(ROLE_MODEL_CREATOR));
         item->setData(ROLE_MODEL_TAGS, sideItem->data(ROLE_MODEL_TAGS));
         item->setData(ROLE_USER_RATING, sideItem->data(ROLE_USER_RATING));
@@ -3666,6 +3667,59 @@ void MainWindow::refreshUsageAnalysisWidget()
     usageAnalysisWidget->setAnalysisData(data);
 }
 
+void MainWindow::refreshPromptTemplateModelTriggerRows()
+{
+    if (!promptTemplateLibraryWidget || !ui || !ui->modelList) return;
+
+    QVector<PromptTemplateLibraryWidget::ModelTriggerRow> rows;
+    QSet<QString> seen;
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (!isModelListItem(item)) continue;
+
+        const QString filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+        if (filePath.isEmpty()) continue;
+        const QString baseName = item->data(ROLE_MODEL_NAME).toString();
+        const QString modelName = item->text().trimmed().isEmpty() ? baseName : item->text().trimmed();
+        const QString modelType = item->data(ROLE_MODEL_TYPE).toString();
+        const QString previewPath = item->data(ROLE_PREVIEW_PATH).toString();
+
+        auto appendTrigger = [&](const QString &trigger, const QString &source) {
+            const QString clean = trigger.trimmed();
+            if (clean.isEmpty()) return;
+            const QString key = (filePath + "|" + source + "|" + clean).toCaseFolded();
+            if (seen.contains(key)) return;
+            seen.insert(key);
+            PromptTemplateLibraryWidget::ModelTriggerRow row;
+            row.modelKey = filePath;
+            row.modelName = modelName;
+            row.previewPath = previewPath;
+            row.previewIcon = item->icon();
+            row.trigger = clean;
+            row.source = source;
+            row.modelType = modelType;
+            rows.append(row);
+        };
+
+        for (const QString &trigger : item->data(ROLE_MODEL_TRAINED_WORDS).toStringList()) {
+            appendTrigger(trigger, "Metadata");
+        }
+
+        for (const QString &trigger : item->data(ROLE_USER_CUSTOM_TRIGGERS).toStringList()) {
+            appendTrigger(trigger, "Custom");
+        }
+    }
+
+    std::sort(rows.begin(), rows.end(), [](const auto &a, const auto &b) {
+        const int modelCmp = QString::compare(a.modelName, b.modelName, Qt::CaseInsensitive);
+        if (modelCmp != 0) return modelCmp < 0;
+        const int triggerCmp = QString::compare(a.trigger, b.trigger, Qt::CaseInsensitive);
+        if (triggerCmp != 0) return triggerCmp < 0;
+        return a.source < b.source;
+    });
+    promptTemplateLibraryWidget->setModelTriggerRows(rows);
+}
+
 QString MainWindow::currentEditBaseName() const
 {
     if (QListWidgetItem *item = ui->modelList->currentItem()) {
@@ -4216,6 +4270,7 @@ void MainWindow::openModelNoteDialog(QListWidgetItem *item)
     if (QFileInfo(currentMeta.filePath).absoluteFilePath() == filePath) {
         refreshTriggerWordsPanel(currentMeta);
     }
+    refreshPromptTemplateModelTriggerRows();
     executeSort();
     refreshCollectionTreeView();
     refreshHomeGallery();
@@ -5381,6 +5436,13 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
         if(w.endsWith(",")) w.chop(1);
         if(!w.isEmpty()) meta.trainedWordsGroups.append(w);
     }
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
+            item->setData(ROLE_MODEL_TRAINED_WORDS, meta.trainedWordsGroups);
+            break;
+        }
+    }
 
     int modelId = root["modelId"].toInt();
     meta.modelId = modelId;
@@ -6474,6 +6536,7 @@ void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonP
     item->setData(ROLE_MODEL_CREATOR, QString());
     item->setData(ROLE_MODEL_TAGS, QStringList());
     item->setData(ROLE_MODEL_TYPE, QString());
+    item->setData(ROLE_MODEL_TRAINED_WORDS, QStringList());
 
     // === 读取本地文件时间 (下载/添加时间) ===
     QString filePath = item->data(ROLE_FILE_PATH).toString();
@@ -6498,6 +6561,13 @@ void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonP
     QJsonObject root = doc.object();
     applyCivitaiAttributionToItem(item, readModelCreatorFromJson(root), readModelTagsFromJson(root));
     item->setData(ROLE_MODEL_TYPE, root["model"].toObject()["type"].toString());
+    QStringList trainedWords;
+    for (const QJsonValue &value : root["trainedWords"].toArray()) {
+        QString word = value.toString().trimmed();
+        if (word.endsWith(",")) word.chop(1);
+        if (!word.isEmpty()) trainedWords << word;
+    }
+    item->setData(ROLE_MODEL_TRAINED_WORDS, trainedWords);
 
     // 读取模型真实名称
     QString modelName = root["model"].toObject()["name"].toString();
@@ -8097,6 +8167,8 @@ void MainWindow::ensureToolTabLoaded(int index)
         case 5:
             promptTemplateLibraryWidget = new PromptTemplateLibraryWidget(toolsTabWidget);
             promptTemplateLibraryWidget->setTranslationMap(&translationMap);
+            connect(promptTemplateLibraryWidget, &PromptTemplateLibraryWidget::modelTriggerRowsRequested,
+                    this, &MainWindow::refreshPromptTemplateModelTriggerRows);
             newPage = promptTemplateLibraryWidget;
             break;
         default:
@@ -9459,6 +9531,7 @@ bool MainWindow::saveMetadataFromModelRoot(const MetadataSyncJob &job, const QJs
         }
         applyModelUserNoteData(item);
         applyModelHighlightColor(item);
+        refreshPromptTemplateModelTriggerRows();
     }
     clearModelSyncFailure(job.snapshot.filePath);
     if (!metadataSyncRunning) {
@@ -10809,6 +10882,8 @@ void MainWindow::refreshCollectionTreeView()
                 child->setData(0, ROLE_PREVIEW_PATH, sourceItem->data(ROLE_PREVIEW_PATH));
                 child->setData(0, ROLE_NSFW_LEVEL, sourceItem->data(ROLE_NSFW_LEVEL));
                 child->setData(0, ROLE_MODEL_NAME, sourceItem->data(ROLE_MODEL_NAME));
+                child->setData(0, ROLE_MODEL_TYPE, sourceItem->data(ROLE_MODEL_TYPE));
+                child->setData(0, ROLE_MODEL_TRAINED_WORDS, sourceItem->data(ROLE_MODEL_TRAINED_WORDS));
                 child->setData(0, ROLE_MODEL_CREATOR, sourceItem->data(ROLE_MODEL_CREATOR));
                 child->setData(0, ROLE_MODEL_TAGS, sourceItem->data(ROLE_MODEL_TAGS));
                 child->setData(0, ROLE_USER_RATING, sourceItem->data(ROLE_USER_RATING));

@@ -2,7 +2,9 @@
 #define PROMPTTEMPLATELIBRARYWIDGET_H
 
 #include <QHash>
+#include <QIcon>
 #include <QPointer>
+#include <QSet>
 #include <QVector>
 #include <QWidget>
 
@@ -21,6 +23,7 @@ class QObject;
 class QPushButton;
 class QTableWidget;
 class QTableWidgetItem;
+class QTreeWidget;
 class TagFlowWidget;
 
 class PromptTemplateLibraryWidget : public QWidget
@@ -39,6 +42,21 @@ public:
         QString kind;
         int count = 0;
     };
+
+    struct ModelTriggerRow {
+        QString modelKey;
+        QString modelName;
+        QString previewPath;
+        QIcon previewIcon;
+        QString trigger;
+        QString source;
+        QString modelType;
+    };
+
+    void setModelTriggerRows(const QVector<ModelTriggerRow> &rows);
+
+signals:
+    void modelTriggerRowsRequested();
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -77,6 +95,15 @@ private:
         QString notes;
     };
 
+    struct PromptFavorite {
+        QString id;
+        QString name;
+        QString positive;
+        QString negative;
+        QString createdAt;
+        QString updatedAt;
+    };
+
     struct TagPickerUi {
         QWidget *page = nullptr;
         QLineEdit *search = nullptr;
@@ -89,11 +116,22 @@ private:
         bool insertIntoTemplate = false;
     };
 
+    struct ModelTriggerPickerUi {
+        QWidget *page = nullptr;
+        QLineEdit *search = nullptr;
+        QPushButton *insertPositive = nullptr;
+        QTreeWidget *tree = nullptr;
+        QLabel *status = nullptr;
+        bool insertIntoTemplate = false;
+        QSet<QString> expandedModelKeys;
+    };
+
     Ui::PromptTemplateLibraryWidget *ui;
     const QHash<QString, QString> *m_translationMap = nullptr;
     QVector<PromptTemplate> m_templates;
     QVector<PromptPlaceholder> m_placeholders;
     QVector<ImageExtractTemplate> m_imageTemplates;
+    QVector<PromptFavorite> m_favorites;
     QHash<QString, QWidget*> m_placeholderEditors;
     QFutureWatcher<QVector<TagUsageRow>> *m_tagWatcher = nullptr;
     TagFlowWidget *m_generateImagePositiveTags = nullptr;
@@ -104,6 +142,11 @@ private:
     int m_loadedTagScope = -1;
     TagPickerUi m_generateTagPicker;
     TagPickerUi m_templateTagPicker;
+    ModelTriggerPickerUi m_generateModelTriggerPicker;
+    ModelTriggerPickerUi m_templateModelTriggerPicker;
+    QVector<ModelTriggerRow> m_modelTriggerRows;
+    bool m_modelTriggerRowsDirty = true;
+    bool m_modelTriggerRowsLoaded = false;
     QString m_currentImagePath;
     QString m_lastRenderedPositivePrompt;
     QString m_lastRenderedNegativePrompt;
@@ -135,6 +178,7 @@ private:
     void refreshGenerateTemplateCombo();
     void refreshTemplateList();
     void refreshPlaceholderTable();
+    void refreshFavoritesTable();
     void rebuildPlaceholderInputs();
     void updateGeneratedPrompt();
     void updateTemplateEditorFromSelection();
@@ -149,10 +193,18 @@ private:
     void setStatus(const QString &text);
     void copyText(const QString &text) const;
     void setupTagPickerUi(TagPickerUi &picker);
+    void setupModelTriggerPickerUi(ModelTriggerPickerUi &picker);
     QStringList selectedTagTexts(const TagPickerUi &picker) const;
+    QStringList selectedModelTriggerTexts(const ModelTriggerPickerUi &picker) const;
     void loadTagPickerRows(TagPickerUi &picker, bool force = false);
     void refreshTagPickerTable(TagPickerUi &picker);
     void addPickerTags(TagPickerUi &picker, bool positiveTarget);
+    void refreshModelTriggerPickerTable(ModelTriggerPickerUi &picker);
+    void addModelTriggerTags(ModelTriggerPickerUi &picker);
+    void addCurrentPromptToFavorites();
+    void copyFavoriteById(const QString &id) const;
+    void replacePromptFromFavoriteById(const QString &id);
+    void deleteFavoriteById(const QString &id);
     void parseGenerateImageTags();
     void addGenerateImageTagsToPrompt(bool positiveTarget);
     void parseTemplateImageTags();

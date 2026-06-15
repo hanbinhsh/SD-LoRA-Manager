@@ -294,6 +294,77 @@
             </item>
            </layout>
           </widget>
+          <widget class="QWidget" name="tabGenerateModelTriggers">
+           <attribute name="title">
+            <string>模型触发词</string>
+           </attribute>
+           <layout class="QVBoxLayout" name="verticalLayoutGenerateModelTriggers">
+            <item>
+             <layout class="QHBoxLayout" name="layoutGenerateModelTriggerTop">
+              <item>
+               <widget class="QLineEdit" name="editGenerateModelTriggerSearch">
+                <property name="placeholderText">
+                 <string>搜索模型名或触发词</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnAddGenerateModelTriggersPositive">
+                <property name="text">
+                 <string>添加到正面</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <widget class="QTreeWidget" name="treeGenerateModelTriggers">
+              <property name="selectionMode">
+               <enum>QAbstractItemView::SelectionMode::ExtendedSelection</enum>
+              </property>
+              <property name="selectionBehavior">
+               <enum>QAbstractItemView::SelectionBehavior::SelectRows</enum>
+              </property>
+              <column>
+               <property name="text">
+                <string>模型 / 触发词</string>
+               </property>
+              </column>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblGenerateModelTriggerStatus">
+              <property name="text">
+               <string>从模型中选择触发词并添加到当前正面提示词。</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+          <widget class="QWidget" name="tabGenerateFavorites">
+           <attribute name="title">
+            <string>收藏</string>
+           </attribute>
+           <layout class="QVBoxLayout" name="verticalLayoutGenerateFavorites">
+            <item>
+             <widget class="QTableWidget" name="tablePromptFavorites">
+              <property name="selectionMode">
+               <enum>QAbstractItemView::SelectionMode::SingleSelection</enum>
+              </property>
+              <property name="selectionBehavior">
+               <enum>QAbstractItemView::SelectionBehavior::SelectRows</enum>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblPromptFavoritesStatus">
+              <property name="text">
+               <string>收藏当前正负面提示词后，可在这里复制、替换或删除。</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
          </widget>
         </widget>
        </item>
@@ -384,6 +455,13 @@
              <widget class="QPushButton" name="btnClearGenerate">
               <property name="text">
                <string>清空输入</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnAddPromptFavorite">
+              <property name="text">
+               <string>添加至收藏</string>
               </property>
              </widget>
             </item>
@@ -972,6 +1050,53 @@
              <widget class="QLabel" name="lblTemplateTagPickerStatus">
               <property name="text">
                <string>切换到此页面后会读取用户图库缓存。</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+          <widget class="QWidget" name="tabTemplateModelTriggers">
+           <attribute name="title">
+            <string>模型触发词</string>
+           </attribute>
+           <layout class="QVBoxLayout" name="verticalLayoutTemplateModelTriggers">
+            <item>
+             <layout class="QHBoxLayout" name="layoutTemplateModelTriggerTop">
+              <item>
+               <widget class="QLineEdit" name="editTemplateModelTriggerSearch">
+                <property name="placeholderText">
+                 <string>搜索模型名或触发词</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnAddTemplateModelTriggersPositive">
+                <property name="text">
+                 <string>添加到正面模板</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <widget class="QTreeWidget" name="treeTemplateModelTriggers">
+              <property name="selectionMode">
+               <enum>QAbstractItemView::SelectionMode::ExtendedSelection</enum>
+              </property>
+              <property name="selectionBehavior">
+               <enum>QAbstractItemView::SelectionBehavior::SelectRows</enum>
+              </property>
+              <column>
+               <property name="text">
+                <string>模型 / 触发词</string>
+               </property>
+              </column>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblTemplateModelTriggerStatus">
+              <property name="text">
+               <string>从模型中选择触发词并添加到当前正面模板。</string>
               </property>
              </widget>
             </item>

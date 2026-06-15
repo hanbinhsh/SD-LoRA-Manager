@@ -69,6 +69,7 @@ const int ROLE_USER_CUSTOM_TRIGGERS   = Qt::UserRole + 27;  // 用户自定义�
 const int ROLE_MODEL_CREATOR          = Qt::UserRole + 28;  // Civitai 作者
 const int ROLE_MODEL_TAGS             = Qt::UserRole + 29;  // Civitai 模型标签
 const int ROLE_MODEL_TYPE             = Qt::UserRole + 30;  // Civitai 模型类型，如 LoRA / Checkpoint
+const int ROLE_MODEL_TRAINED_WORDS    = Qt::UserRole + 31;  // Civitai/metadata 触发词
 // 用户图库专用
 const int ROLE_USER_IMAGE_PATH        = Qt::UserRole + 40;
 const int ROLE_USER_IMAGE_PROMPT      = Qt::UserRole + 41;
@@ -405,6 +406,7 @@ private:
     void setLocalMetaStatus(const ModelMeta &meta);
     void refreshCurrentDetailCacheStatus();
     void refreshUsageAnalysisWidget();
+    void refreshPromptTemplateModelTriggerRows();
     int countLocalEditedModels() const;
     bool confirmLocalEditOverwrite(QListWidgetItem *item);
     void refreshEditImages(const ModelMeta &meta);

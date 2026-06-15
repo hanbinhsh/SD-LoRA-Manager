@@ -7,8 +7,10 @@
 #include "tagutils.h"
 
 #include <QApplication>
+#include <QBrush>
 #include <QCheckBox>
 #include <QClipboard>
+#include <QColor>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDir>
@@ -24,21 +26,111 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
+#include <QInputDialog>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QPainter>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSignalBlocker>
+#include <QStyle>
+#include <QStyledItemDelegate>
 #include <QTableWidget>
 #include <QTextStream>
+#include <QTextOption>
+#include <QTreeWidget>
+#include <QTreeWidgetItem>
 #include <QUrl>
 #include <QtConcurrent>
 #include <algorithm>
+#include <numeric>
 
 namespace {
+
+class ModelTriggerTreeDelegate : public QStyledItemDelegate
+{
+public:
+    explicit ModelTriggerTreeDelegate(QTreeWidget *tree, QObject *parent = nullptr)
+        : QStyledItemDelegate(parent), m_tree(tree) {}
+
+    QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        const bool child = index.parent().isValid();
+        const int viewportWidth = m_tree ? m_tree->viewport()->width() : option.rect.width();
+        const int indent = child ? (m_tree ? m_tree->indentation() : 18) : 0;
+        // 与 paint() 中文本的可用宽度保持一致，并略微取窄以确保测得行数 >= 实际绘制行数，
+        // 避免最后一行因实际换行更多而被裁掉。
+        const int sideInsets = child ? 60 : 100;
+        const int availableWidth = qMax(80, viewportWidth - indent - sideInsets);
+        QFont font = option.font;
+        font.setBold(true); // 以粗体测量，行宽更保守
+        QFontMetrics fm(font);
+        const QRect textRect = fm.boundingRect(QRect(0, 0, availableWidth, 10000),
+                                               Qt::TextWordWrap | Qt::AlignLeft,
+                                               index.data(Qt::DisplayRole).toString());
+        const int height = child
+            ? qMax(38, textRect.height() + 20)
+            : qMax(72, textRect.height() + 24);
+        return QSize(viewportWidth, height);
+    }
+
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing, true);
+
+        const bool child = index.parent().isValid();
+        const bool selected = option.state.testFlag(QStyle::State_Selected);
+        const bool hover = option.state.testFlag(QStyle::State_MouseOver);
+        QRect card = option.rect.adjusted(child ? 26 : 4, 3, -6, -3);
+
+        const QColor bg = selected
+            ? QColor("#3D4450")
+            : hover ? QColor("#2a3442")
+                    : child ? QColor("#202936") : QColor("#1f2833");
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(bg);
+        painter->drawRoundedRect(card, 7, 7);
+
+        if (selected) {
+            painter->setBrush(QColor("#66c0f4"));
+            painter->drawRoundedRect(QRect(card.left(), card.top(), 4, card.height()), 2, 2);
+        }
+
+        QRect textRect = card.adjusted(12, 4, -12, -4);
+        if (!child) {
+            const QIcon icon = qvariant_cast<QIcon>(index.data(Qt::DecorationRole));
+            if (!icon.isNull()) {
+                const QRect iconRect(card.left() + 12, card.top() + qMax(8, (card.height() - 52) / 2), 52, 52);
+                icon.paint(painter, iconRect, Qt::AlignCenter, QIcon::Normal, QIcon::Off);
+                textRect.setLeft(iconRect.right() + 12);
+            }
+        }
+
+        QFont font = option.font;
+        font.setBold(!child || selected);
+        painter->setFont(font);
+        QColor textColor = QColor("#dcdedf");
+        if (const QVariant foreground = index.data(Qt::ForegroundRole); foreground.canConvert<QBrush>()) {
+            textColor = foreground.value<QBrush>().color();
+        }
+        if (selected) textColor = QColor("#ffffff");
+        painter->setPen(textColor);
+
+        QTextOption textOption;
+        textOption.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+        textOption.setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
+        painter->drawText(QRectF(textRect), index.data(Qt::DisplayRole).toString(), textOption);
+        painter->restore();
+    }
+
+private:
+    QTreeWidget *m_tree = nullptr;
+};
 
 QString normalizeTagSearch(QString text)
 {
@@ -197,6 +289,13 @@ QTableWidgetItem *makePromptTemplateTableItem(const QVariant &value)
     return item;
 }
 
+QTableWidgetItem *makeReadOnlyPromptTemplateItem(const QVariant &value)
+{
+    auto *item = makePromptTemplateTableItem(value);
+    item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+    return item;
+}
+
 QString placeholderOptionDisplayText(QString value)
 {
     value.replace("\r\n", "\n");
@@ -283,6 +382,34 @@ QStringList promptTagsNotInBase(const QString &prompt, const QString &basePrompt
         out.append(tag);
     }
     return out;
+}
+
+QString promptSummary(QString text, int maxLen = 80)
+{
+    text = text.simplified();
+    if (text.size() <= maxLen) return text;
+    return text.left(maxLen - 3) + "...";
+}
+
+void populateModelTriggerChildren(QTreeWidgetItem *modelItem)
+{
+    if (!modelItem || modelItem->childCount() > 0) return;
+    const QStringList metadataTriggers = modelItem->data(0, Qt::UserRole + 2).toStringList();
+    const QStringList customTriggers = modelItem->data(0, Qt::UserRole + 3).toStringList();
+
+    auto addTriggerChildren = [&](const QStringList &list, const QColor &color) {
+        for (const QString &trigger : list) {
+            auto *child = new QTreeWidgetItem(modelItem);
+            child->setText(0, trigger);
+            child->setData(0, Qt::UserRole, modelItem->data(0, Qt::UserRole));
+            child->setData(0, Qt::UserRole + 1, QStringList{trigger});
+            child->setForeground(0, color);
+            child->setToolTip(0, trigger);
+        }
+    };
+
+    addTriggerChildren(metadataTriggers, QColor("#66c0f4"));
+    addTriggerChildren(customTriggers, QColor("#7bd88f"));
 }
 
 void addTagCounts(const QString &prompt, QMap<QString, int> &counts)
@@ -474,6 +601,40 @@ PromptTemplateLibraryWidget::PromptTemplateLibraryWidget(QWidget *parent)
     };
 
     setupTagPickerUi(m_templateTagPicker);
+    m_generateModelTriggerPicker = {
+        ui->tabGenerateModelTriggers,
+        ui->editGenerateModelTriggerSearch,
+        ui->btnAddGenerateModelTriggersPositive,
+        ui->treeGenerateModelTriggers,
+        ui->lblGenerateModelTriggerStatus,
+        false
+    };
+    m_templateModelTriggerPicker = {
+        ui->tabTemplateModelTriggers,
+        ui->editTemplateModelTriggerSearch,
+        ui->btnAddTemplateModelTriggersPositive,
+        ui->treeTemplateModelTriggers,
+        ui->lblTemplateModelTriggerStatus,
+        true
+    };
+    setupModelTriggerPickerUi(m_generateModelTriggerPicker);
+    setupModelTriggerPickerUi(m_templateModelTriggerPicker);
+    ui->tablePromptFavorites->verticalHeader()->hide();
+    ui->tablePromptFavorites->setShowGrid(false);
+    ui->tablePromptFavorites->setFocusPolicy(Qt::NoFocus);
+    ui->tablePromptFavorites->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    ui->tablePromptFavorites->setSelectionBehavior(QAbstractItemView::SelectRows);
+    ui->tablePromptFavorites->setColumnCount(7);
+    ui->tablePromptFavorites->setHorizontalHeaderLabels({"名称", "正面摘要", "负面摘要", "更新时间", "复制", "替换", "删除"});
+    ui->tablePromptFavorites->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
+    ui->tablePromptFavorites->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    ui->tablePromptFavorites->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    ui->tablePromptFavorites->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Interactive);
+    ui->tablePromptFavorites->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+    ui->tablePromptFavorites->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
+    ui->tablePromptFavorites->horizontalHeader()->setSectionResizeMode(6, QHeaderView::ResizeToContents);
+    ui->tablePromptFavorites->horizontalHeader()->resizeSection(0, 150);
+    ui->tablePromptFavorites->horizontalHeader()->resizeSection(3, 130);
     applyUnifiedTableRowStyle(this);
     ui->splitterTemplateManage->setSizes({240, 520, 520});
     ui->splitterGenerate->setSizes({560, 620});
@@ -521,6 +682,7 @@ PromptTemplateLibraryWidget::PromptTemplateLibraryWidget(QWidget *parent)
         m_loadingUi = false;
         updateGeneratedPrompt();
     });
+    connect(ui->btnAddPromptFavorite, &QPushButton::clicked, this, &PromptTemplateLibraryWidget::addCurrentPromptToFavorites);
 
     connect(ui->listTemplates, &QListWidget::currentRowChanged, this, &PromptTemplateLibraryWidget::onTemplateListCurrentRowChanged);
     connect(ui->btnSaveTemplate, &QPushButton::clicked, this, &PromptTemplateLibraryWidget::onSaveTemplateClicked);
@@ -538,9 +700,20 @@ PromptTemplateLibraryWidget::PromptTemplateLibraryWidget(QWidget *parent)
 
     connect(ui->tabTemplateManageSide, &QTabWidget::currentChanged, this, [this](int index) {
         if (ui->tabTemplateManageSide->widget(index) == m_templateTagPicker.page) loadTagPickerRows(m_templateTagPicker, false);
+        if (ui->tabTemplateManageSide->widget(index) == m_templateModelTriggerPicker.page
+            && (m_modelTriggerRowsDirty || m_templateModelTriggerPicker.tree->topLevelItemCount() == 0)) {
+            if (!m_modelTriggerRowsLoaded) emit modelTriggerRowsRequested();
+            else refreshModelTriggerPickerTable(m_templateModelTriggerPicker);
+        }
     });
     connect(ui->tabGenerateTools, &QTabWidget::currentChanged, this, [this](int index) {
         if (ui->tabGenerateTools->widget(index) == ui->tabGenerateTagPicker) loadTagPickerRows(m_generateTagPicker, false);
+        if (ui->tabGenerateTools->widget(index) == m_generateModelTriggerPicker.page
+            && (m_modelTriggerRowsDirty || m_generateModelTriggerPicker.tree->topLevelItemCount() == 0)) {
+            if (!m_modelTriggerRowsLoaded) emit modelTriggerRowsRequested();
+            else refreshModelTriggerPickerTable(m_generateModelTriggerPicker);
+        }
+        if (ui->tabGenerateTools->widget(index) == ui->tabGenerateFavorites) refreshFavoritesTable();
     });
     connect(ui->btnChooseGenerateImage, &QPushButton::clicked, this, [this]() {
         const QString path = QFileDialog::getOpenFileName(this, "选择图片", QString(), "Images (*.png *.jpg *.jpeg *.webp)");
@@ -669,6 +842,19 @@ void PromptTemplateLibraryWidget::setTranslationMap(const QHash<QString, QString
     refreshTagPickerTable(m_templateTagPicker);
 }
 
+void PromptTemplateLibraryWidget::setModelTriggerRows(const QVector<ModelTriggerRow> &rows)
+{
+    m_modelTriggerRows = rows;
+    m_modelTriggerRowsDirty = true;
+    m_modelTriggerRowsLoaded = true;
+    if (ui->tabGenerateTools->currentWidget() == m_generateModelTriggerPicker.page) {
+        refreshModelTriggerPickerTable(m_generateModelTriggerPicker);
+    }
+    if (ui->tabTemplateManageSide->currentWidget() == m_templateModelTriggerPicker.page) {
+        refreshModelTriggerPickerTable(m_templateModelTriggerPicker);
+    }
+}
+
 void PromptTemplateLibraryWidget::reloadTemplateLibrary()
 {
     loadLibrary();
@@ -722,6 +908,7 @@ void PromptTemplateLibraryWidget::loadLibrary()
     m_templates.clear();
     m_placeholders.clear();
     m_imageTemplates.clear();
+    m_favorites.clear();
 
     QFile file(libraryPath());
     if (!file.open(QIODevice::ReadOnly)) {
@@ -773,6 +960,21 @@ void PromptTemplateLibraryWidget::loadLibrary()
         m_imageTemplates.append(item);
     }
 
+    const QJsonArray favoriteArray = root["favorites"].toArray();
+    for (const QJsonValue &value : favoriteArray) {
+        const QJsonObject obj = value.toObject();
+        PromptFavorite item;
+        item.id = jsonString(obj, "id", ensureId("favorite"));
+        item.name = jsonString(obj, "name", "Favorite Prompt");
+        item.positive = obj["positive"].toString();
+        item.negative = obj["negative"].toString();
+        item.createdAt = obj["createdAt"].toString();
+        item.updatedAt = obj["updatedAt"].toString(item.createdAt);
+        if (!item.positive.trimmed().isEmpty() || !item.negative.trimmed().isEmpty()) {
+            m_favorites.append(item);
+        }
+    }
+
     if (m_templates.isEmpty() || m_placeholders.isEmpty() || m_imageTemplates.isEmpty()) {
         const QVector<PromptTemplate> loadedTemplates = m_templates;
         const QVector<PromptPlaceholder> loadedPlaceholders = m_placeholders;
@@ -783,6 +985,7 @@ void PromptTemplateLibraryWidget::loadLibrary()
         if (!loadedImageTemplates.isEmpty()) m_imageTemplates = loadedImageTemplates;
     }
     refreshAllLists();
+    refreshFavoritesTable();
     m_loadingUi = false;
     updateGeneratedPrompt();
 }
@@ -829,11 +1032,24 @@ void PromptTemplateLibraryWidget::saveLibrary()
         imageArray.append(obj);
     }
 
+    QJsonArray favoriteArray;
+    for (const PromptFavorite &item : std::as_const(m_favorites)) {
+        QJsonObject obj;
+        obj["id"] = item.id;
+        obj["name"] = item.name;
+        obj["positive"] = item.positive;
+        obj["negative"] = item.negative;
+        obj["createdAt"] = item.createdAt;
+        obj["updatedAt"] = item.updatedAt;
+        favoriteArray.append(obj);
+    }
+
     QJsonObject root;
     root["version"] = 1;
     root["templates"] = templateArray;
     root["placeholders"] = placeholderArray;
     root["image_extract_templates"] = imageArray;
+    root["favorites"] = favoriteArray;
 
     QFile file(libraryPath());
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -849,6 +1065,7 @@ void PromptTemplateLibraryWidget::createDefaultLibrary()
     m_placeholders.clear();
     m_templates.clear();
     m_imageTemplates.clear();
+    m_favorites.clear();
 
     m_placeholders.append({ensureId("placeholder"), "quality", "质量词", PlaceholderType::MultiChoice,
                            "masterpiece, best quality", {"masterpiece", "best quality", "very aesthetic", "absurdres"}});
@@ -882,8 +1099,51 @@ void PromptTemplateLibraryWidget::refreshAllLists()
     refreshGenerateTemplateCombo();
     refreshTemplateList();
     refreshPlaceholderTable();
+    refreshFavoritesTable();
     rebuildPlaceholderInputs();
     updateGeneratedPrompt();
+}
+
+void PromptTemplateLibraryWidget::refreshFavoritesTable()
+{
+    if (!ui->tablePromptFavorites) return;
+    QSignalBlocker blocker(ui->tablePromptFavorites);
+    ui->tablePromptFavorites->setRowCount(0);
+
+    for (const PromptFavorite &item : std::as_const(m_favorites)) {
+        const int row = ui->tablePromptFavorites->rowCount();
+        ui->tablePromptFavorites->insertRow(row);
+
+        auto *nameItem = makeReadOnlyPromptTemplateItem(item.name);
+        nameItem->setData(Qt::UserRole, item.id);
+        nameItem->setToolTip(item.name);
+        ui->tablePromptFavorites->setItem(row, 0, nameItem);
+
+        auto *positiveItem = makeReadOnlyPromptTemplateItem(promptSummary(item.positive));
+        positiveItem->setToolTip(item.positive);
+        ui->tablePromptFavorites->setItem(row, 1, positiveItem);
+
+        auto *negativeItem = makeReadOnlyPromptTemplateItem(promptSummary(item.negative));
+        negativeItem->setToolTip(item.negative);
+        ui->tablePromptFavorites->setItem(row, 2, negativeItem);
+        ui->tablePromptFavorites->setItem(row, 3, makeReadOnlyPromptTemplateItem(item.updatedAt));
+
+        auto addButton = [this, row, id = item.id](int column, const QString &text, auto callback) {
+            auto *button = new QPushButton(text, ui->tablePromptFavorites);
+            connect(button, &QPushButton::clicked, this, [this, id, callback]() {
+                (this->*callback)(id);
+            });
+            ui->tablePromptFavorites->setCellWidget(row, column, button);
+        };
+
+        addButton(4, "复制", &PromptTemplateLibraryWidget::copyFavoriteById);
+        addButton(5, "替换", &PromptTemplateLibraryWidget::replacePromptFromFavoriteById);
+        addButton(6, "删除", &PromptTemplateLibraryWidget::deleteFavoriteById);
+    }
+
+    ui->lblPromptFavoritesStatus->setText(m_favorites.isEmpty()
+        ? "暂无收藏。可在右侧当前提示词区域点击“添加至收藏”。"
+        : QString("共 %1 条收藏。").arg(m_favorites.size()));
 }
 
 void PromptTemplateLibraryWidget::refreshGenerateTemplateCombo()
@@ -1591,6 +1851,214 @@ void PromptTemplateLibraryWidget::setupTagPickerUi(TagPickerUi &picker)
     });
 }
 
+void PromptTemplateLibraryWidget::setupModelTriggerPickerUi(ModelTriggerPickerUi &picker)
+{
+    if (!picker.tree) return;
+    picker.tree->setColumnCount(1);
+    picker.tree->setHeaderHidden(true);
+    picker.tree->setFocusPolicy(Qt::NoFocus);
+    picker.tree->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    picker.tree->setSelectionBehavior(QAbstractItemView::SelectRows);
+    picker.tree->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    picker.tree->setRootIsDecorated(false);
+    picker.tree->setUniformRowHeights(false);
+    picker.tree->setIconSize(QSize(52, 52));
+    // 缩进设为 0，子项的视觉缩进完全由 delegate 的卡片偏移(+26)呈现。
+    // 否则左侧缩进列会显示默认的选中/悬停高亮（不属于 ::item，无法被样式表去掉）。
+    picker.tree->setIndentation(0);
+    picker.tree->setTextElideMode(Qt::ElideNone);
+    picker.tree->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    picker.tree->setItemDelegate(new ModelTriggerTreeDelegate(picker.tree, picker.tree));
+    picker.tree->setStyleSheet(
+        "QTreeWidget#treeGenerateModelTriggers, QTreeWidget#treeTemplateModelTriggers {"
+        " background-color:#16191e; border:1px solid #31363d; border-radius:3px; padding:4px;"
+        "}"
+        "QTreeWidget#treeGenerateModelTriggers::item, QTreeWidget#treeTemplateModelTriggers::item {"
+        " background:transparent; border:none; padding:0; margin:0;"
+        "}"
+        "QTreeWidget#treeGenerateModelTriggers::item:selected, QTreeWidget#treeTemplateModelTriggers::item:selected,"
+        "QTreeWidget#treeGenerateModelTriggers::item:hover, QTreeWidget#treeTemplateModelTriggers::item:hover {"
+        " background:transparent; color:inherit;"
+        "}"
+        "QTreeWidget#treeGenerateModelTriggers::branch, QTreeWidget#treeTemplateModelTriggers::branch,"
+        "QTreeWidget#treeGenerateModelTriggers::branch:selected, QTreeWidget#treeTemplateModelTriggers::branch:selected,"
+        "QTreeWidget#treeGenerateModelTriggers::branch:hover, QTreeWidget#treeTemplateModelTriggers::branch:hover {"
+        " background:transparent; border:none; image:none;"
+        "}");
+
+    picker.tree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+
+    const bool insertIntoTemplate = picker.insertIntoTemplate;
+    auto pickerRef = [this, insertIntoTemplate]() -> ModelTriggerPickerUi& {
+        return insertIntoTemplate ? m_templateModelTriggerPicker : m_generateModelTriggerPicker;
+    };
+    if (picker.search) {
+        connect(picker.search, &QLineEdit::textChanged, this, [this, pickerRef]() mutable {
+            refreshModelTriggerPickerTable(pickerRef());
+        });
+    }
+    if (picker.insertPositive) {
+        connect(picker.insertPositive, &QPushButton::clicked, this, [this, pickerRef]() mutable {
+            addModelTriggerTags(pickerRef());
+        });
+    }
+    // 单击模型条目即展开/收缩（不再显示第一列的展开箭头）
+    connect(picker.tree, &QTreeWidget::itemClicked, this, [this, pickerRef](QTreeWidgetItem *item, int) mutable {
+        Q_UNUSED(pickerRef);
+        if (!item || item->parent()) return; // 仅顶层模型条目响应展开/收缩
+        item->setExpanded(!item->isExpanded());
+    });
+    // 仅双击展开后的某条触发词行时，把该触发词填入；双击模型本身不再填入全部触发词
+    connect(picker.tree, &QTreeWidget::itemDoubleClicked, this, [this, pickerRef](QTreeWidgetItem *item, int) mutable {
+        if (!item || !item->parent()) return; // 顶层模型条目不填入
+        ModelTriggerPickerUi &p = pickerRef();
+        const QStringList tags = item->data(0, Qt::UserRole + 1).toStringList();
+        if (tags.isEmpty()) return;
+        QPlainTextEdit *target = p.insertIntoTemplate ? ui->textTemplatePositive : ui->textGeneratedPositive;
+        const int added = appendUniquePromptTags(target, tags);
+        if (p.status) {
+            p.status->setText(added == 0
+                ? "目标中已经包含该触发词。"
+                : QString("已添加 %1 个触发词到%2。").arg(added).arg(p.insertIntoTemplate ? "正面模板" : "正面提示词"));
+        }
+    });
+    connect(picker.tree, &QTreeWidget::itemExpanded, this, [this, pickerRef](QTreeWidgetItem *item) mutable {
+        if (!item || item->parent()) return;
+        populateModelTriggerChildren(item);
+        pickerRef().tree->doItemsLayout();
+        pickerRef().expandedModelKeys.insert(item->data(0, Qt::UserRole).toString());
+    });
+    connect(picker.tree, &QTreeWidget::itemCollapsed, this, [this, pickerRef](QTreeWidgetItem *item) mutable {
+        if (item && !item->parent()) pickerRef().expandedModelKeys.remove(item->data(0, Qt::UserRole).toString());
+    });
+}
+
+QStringList PromptTemplateLibraryWidget::selectedModelTriggerTexts(const ModelTriggerPickerUi &picker) const
+{
+    QStringList triggers;
+    if (!picker.tree) return triggers;
+    QSet<QString> seen;
+    for (QTreeWidgetItem *item : picker.tree->selectedItems()) {
+        for (const QString &trigger : item->data(0, Qt::UserRole + 1).toStringList()) {
+            const QString clean = trigger.trimmed();
+            if (clean.isEmpty()) continue;
+            const QString key = clean.toCaseFolded();
+            if (seen.contains(key)) continue;
+            seen.insert(key);
+            triggers << clean;
+        }
+    }
+    return triggers;
+}
+
+void PromptTemplateLibraryWidget::refreshModelTriggerPickerTable(ModelTriggerPickerUi &picker)
+{
+    if (!picker.tree || !picker.status) return;
+    const QString needle = picker.search ? normalizeTagSearch(picker.search->text()) : QString();
+    QSignalBlocker blocker(picker.tree);
+    picker.tree->clear();
+
+    struct ModelTriggerGroup {
+        QString key;
+        QString modelName;
+        QString previewPath;
+        QIcon previewIcon;
+        QString modelType;
+        QStringList metadataTriggers;
+        QStringList customTriggers;
+    };
+
+    QVector<ModelTriggerGroup> groups;
+    QHash<QString, int> groupIndexByKey;
+    auto appendUnique = [](QStringList &list, const QString &value) {
+        const QString clean = value.trimmed();
+        if (clean.isEmpty()) return;
+        for (const QString &existing : std::as_const(list)) {
+            if (existing.compare(clean, Qt::CaseInsensitive) == 0) return;
+        }
+        list << clean;
+    };
+
+    for (const ModelTriggerRow &rowData : std::as_const(m_modelTriggerRows)) {
+        if (rowData.trigger.trimmed().isEmpty()) continue;
+        if (!needle.isEmpty()) {
+            const QString modelHaystack = normalizeTagSearch(rowData.modelName + " " + rowData.source + " " + rowData.modelType);
+            const QString triggerHaystack = normalizeTagSearch(rowData.trigger);
+            if (!modelHaystack.contains(needle) && !triggerHaystack.contains(needle)) continue;
+        }
+
+        const QString key = rowData.modelKey.isEmpty() ? rowData.modelName : rowData.modelKey;
+        int groupIndex = groupIndexByKey.value(key, -1);
+        if (groupIndex < 0) {
+            ModelTriggerGroup group;
+            group.key = key;
+            group.modelName = rowData.modelName;
+            group.previewPath = rowData.previewPath;
+            group.previewIcon = rowData.previewIcon;
+            group.modelType = rowData.modelType;
+            groupIndex = groups.size();
+            groups.append(group);
+            groupIndexByKey.insert(key, groupIndex);
+        }
+
+        QStringList &target = rowData.source.compare("Custom", Qt::CaseInsensitive) == 0
+            ? groups[groupIndex].customTriggers
+            : groups[groupIndex].metadataTriggers;
+        appendUnique(target, rowData.trigger);
+    }
+
+    for (const ModelTriggerGroup &group : std::as_const(groups)) {
+        const QStringList allTriggers = group.metadataTriggers + group.customTriggers;
+        if (allTriggers.isEmpty()) continue;
+        const QStringList sources = QStringList()
+            << (group.metadataTriggers.isEmpty() ? QString() : QString("Metadata(%1)").arg(group.metadataTriggers.size()))
+            << (group.customTriggers.isEmpty() ? QString() : QString("Custom(%1)").arg(group.customTriggers.size()));
+
+        auto *modelItem = new QTreeWidgetItem(picker.tree);
+        const QString sourceText = sources.filter(QRegularExpression(".+")).join(" / ");
+        const QString detailLine = QStringList{group.modelType, sourceText}.filter(QRegularExpression(".+")).join(" · ");
+        modelItem->setText(0, detailLine.isEmpty() ? group.modelName : QString("%1\n%2").arg(group.modelName, detailLine));
+        modelItem->setData(0, Qt::UserRole, group.key);
+        modelItem->setData(0, Qt::UserRole + 1, allTriggers);
+        modelItem->setData(0, Qt::UserRole + 2, group.metadataTriggers);
+        modelItem->setData(0, Qt::UserRole + 3, group.customTriggers);
+        modelItem->setData(0, Qt::UserRole + 4, group.modelType);
+        modelItem->setToolTip(0, group.modelName);
+        if (!group.previewIcon.isNull()) modelItem->setIcon(0, group.previewIcon);
+        modelItem->setChildIndicatorPolicy(QTreeWidgetItem::ShowIndicator);
+        if (picker.expandedModelKeys.contains(group.key)) {
+            populateModelTriggerChildren(modelItem);
+            modelItem->setExpanded(true);
+        }
+    }
+
+    picker.status->setText(picker.tree->topLevelItemCount() == 0
+        ? "没有可显示的模型触发词。请先同步模型元数据或编辑自定义触发词。"
+        : QString("显示 %1 个模型，共 %2 条触发词。")
+              .arg(picker.tree->topLevelItemCount())
+              .arg(std::accumulate(groups.cbegin(), groups.cend(), 0, [](int total, const ModelTriggerGroup &group) {
+                  return total + group.metadataTriggers.size() + group.customTriggers.size();
+              })));
+    m_modelTriggerRowsDirty = false;
+}
+
+void PromptTemplateLibraryWidget::addModelTriggerTags(ModelTriggerPickerUi &picker)
+{
+    const QStringList tags = selectedModelTriggerTexts(picker);
+    if (tags.isEmpty()) {
+        if (picker.status) picker.status->setText("请先选择模型触发词。");
+        return;
+    }
+
+    QPlainTextEdit *target = picker.insertIntoTemplate ? ui->textTemplatePositive : ui->textGeneratedPositive;
+    const int added = appendUniquePromptTags(target, tags);
+    if (picker.status) {
+        picker.status->setText(added == 0
+            ? "目标中已经包含选中的触发词。"
+            : QString("已添加 %1 个触发词到%2。").arg(added).arg(picker.insertIntoTemplate ? "正面模板" : "正面提示词"));
+    }
+}
+
 QMap<QString, int> PromptTemplateLibraryWidget::tagCountsFromPrompt(const QString &prompt) const
 {
     QMap<QString, int> counts;
@@ -1814,6 +2282,83 @@ void PromptTemplateLibraryWidget::addPickerTags(TagPickerUi &picker, bool positi
         status->setText(added == 0
             ? QString("%1中已经包含选中的 Tag。").arg(targetName)
             : QString("已添加 %1 个新 Tag 到%2。").arg(added).arg(targetName));
+    }
+}
+
+void PromptTemplateLibraryWidget::addCurrentPromptToFavorites()
+{
+    const QString positive = ui->textGeneratedPositive->toPlainText().trimmed();
+    const QString negative = ui->textGeneratedNegative->toPlainText().trimmed();
+    if (positive.isEmpty() && negative.isEmpty()) {
+        ui->lblGenerateStatus->setText("当前提示词为空，无法添加收藏。");
+        return;
+    }
+
+    QString defaultName = ui->comboGenerateTemplate->currentText().trimmed();
+    if (defaultName.isEmpty()) defaultName = "Favorite Prompt";
+    bool ok = false;
+    const QString name = QInputDialog::getText(this,
+                                               "添加提示词收藏",
+                                               "收藏名称:",
+                                               QLineEdit::Normal,
+                                               defaultName,
+                                               &ok).trimmed();
+    if (!ok) return;
+
+    PromptFavorite item;
+    item.id = ensureId("favorite");
+    item.name = name.isEmpty() ? defaultName : name;
+    item.positive = positive;
+    item.negative = negative;
+    item.createdAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    item.updatedAt = item.createdAt;
+    m_favorites.prepend(item);
+    saveLibrary();
+    refreshFavoritesTable();
+    ui->tabGenerateTools->setCurrentWidget(ui->tabGenerateFavorites);
+    ui->lblGenerateStatus->setText("已添加到提示词收藏。");
+}
+
+void PromptTemplateLibraryWidget::copyFavoriteById(const QString &id) const
+{
+    for (const PromptFavorite &item : m_favorites) {
+        if (item.id != id) continue;
+        QApplication::clipboard()->setText("Positive prompt:\n" + item.positive + "\n\nNegative prompt:\n" + item.negative);
+        if (ui->lblPromptFavoritesStatus) ui->lblPromptFavoritesStatus->setText("已复制收藏提示词。");
+        return;
+    }
+}
+
+void PromptTemplateLibraryWidget::replacePromptFromFavoriteById(const QString &id)
+{
+    for (const PromptFavorite &item : std::as_const(m_favorites)) {
+        if (item.id != id) continue;
+        m_loadingUi = true;
+        ui->textGeneratedPositive->setPlainText(item.positive);
+        ui->textGeneratedNegative->setPlainText(item.negative);
+        m_lastRenderedPositivePrompt = item.positive;
+        m_lastRenderedNegativePrompt = item.negative;
+        m_loadingUi = false;
+        ui->lblPromptFavoritesStatus->setText("已用收藏替换当前提示词。");
+        ui->lblGenerateStatus->setText("已用收藏替换当前提示词。");
+        return;
+    }
+}
+
+void PromptTemplateLibraryWidget::deleteFavoriteById(const QString &id)
+{
+    for (int i = 0; i < m_favorites.size(); ++i) {
+        if (m_favorites.at(i).id != id) continue;
+        if (QMessageBox::question(this,
+                                  "删除收藏",
+                                  QString("确定删除收藏“%1”吗？").arg(m_favorites.at(i).name))
+            != QMessageBox::Yes) {
+            return;
+        }
+        m_favorites.removeAt(i);
+        saveLibrary();
+        refreshFavoritesTable();
+        return;
     }
 }
 
