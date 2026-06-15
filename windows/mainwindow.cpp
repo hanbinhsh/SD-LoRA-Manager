@@ -265,6 +265,28 @@ QString metadataShaFromRoot(const QJsonObject &root)
     return QString();
 }
 
+QString metadataBrowserUrlFromRoot(const QJsonObject &root)
+{
+    const QString customUrl = root.value("modelUrl").toString().trimmed();
+    if (!customUrl.isEmpty()) return customUrl;
+
+    const QString source = root.value("metadataSource").toString().trimmed();
+    QString sourceUrl = root.value("sourceUrl").toString().trimmed();
+    if (source.compare("civarchive", Qt::CaseInsensitive) == 0
+        || sourceUrl.contains("civarchive.com", Qt::CaseInsensitive)) {
+        if (sourceUrl.isEmpty()) {
+            QString sha = metadataShaFromRoot(root);
+            sha.remove(QRegularExpression("[^A-Fa-f0-9]"));
+            if (!sha.isEmpty()) sourceUrl = QString("https://civarchive.com/sha256/%1").arg(sha.toLower());
+        }
+        return sourceUrl;
+    }
+
+    const int modelId = root.value("modelId").toInt(root.value("model").toObject().value("id").toInt());
+    if (modelId > 0) return QString("https://civitai.com/models/%1").arg(modelId);
+    return {};
+}
+
 QString htmlDecodeMinimal(QString text)
 {
     text.replace("&quot;", "\"");
@@ -2944,6 +2966,9 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
     if (!meta.modelUrl.isEmpty()) {
         ui->btnOpenUrl->setVisible(true);
         ui->btnOpenUrl->setProperty("url", meta.modelUrl);
+        ui->btnOpenUrl->setToolTip(meta.modelUrl.contains("civarchive.com", Qt::CaseInsensitive)
+                                   ? "访问 CivArchive"
+                                   : "访问 Civitai");
     } else { ui->btnOpenUrl->setVisible(false); }
 
     // 2. 标签栏 (Badges)
@@ -5122,15 +5147,10 @@ bool MainWindow::readLocalJson(const QString &dirPath, const QString &baseName, 
     }
 
     // ID (用于打开网页)
-    int modelId = root["modelId"].toInt();
+    int modelId = root["modelId"].toInt(root.value("model").toObject().value("id").toInt());
     meta.modelId = modelId;
     meta.versionId = root["id"].toInt();
-    QString customUrl = root["modelUrl"].toString();
-    if (!customUrl.isEmpty()) {
-        meta.modelUrl = customUrl;
-    } else if (modelId > 0) {
-        meta.modelUrl = QString("https://civitai.com/models/%1").arg(modelId);
-    }
+    meta.modelUrl = metadataBrowserUrlFromRoot(root);
     meta.isLocalEdited = root["localEdited"].toBool(false);
     meta.isLocalOnly = root["localOnly"].toBool(false);
     if (!meta.isLocalOnly && modelId <= 0 && meta.modelUrl.isEmpty()) {
@@ -8756,11 +8776,11 @@ void MainWindow::openDownloadCivitaiPage(const QString &filePath)
 {
     ModelUpdateInfo info = downloadManager ? downloadManager->info(filePath) : ModelUpdateInfo{};
     int modelId = info.modelId;
-    QString metadataSource = info.metadataSource.trimmed();
     QString sourceUrl = info.sourceUrl.trimmed();
     QString sha256 = info.sha256.trimmed();
     QString modelDir = info.modelDir;
     QString baseName = info.baseName;
+    QJsonObject metadataRoot;
 
     if (QListWidgetItem *item = findModelItemByFilePath(filePath)) {
         if (modelId <= 0) modelId = item->data(ROLE_CIVITAI_MODEL_ID).toInt();
@@ -8769,27 +8789,31 @@ void MainWindow::openDownloadCivitaiPage(const QString &filePath)
         if (baseName.isEmpty()) baseName = item->data(ROLE_MODEL_NAME).toString();
     }
 
-    if ((metadataSource.isEmpty() || sourceUrl.isEmpty()) && !modelDir.isEmpty() && !baseName.isEmpty()) {
+    if (!modelDir.isEmpty() && !baseName.isEmpty()) {
         QFile file(QDir(modelDir).filePath(baseName + ".json"));
         if (file.open(QIODevice::ReadOnly)) {
-            const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
-            if (metadataSource.isEmpty()) metadataSource = root.value("metadataSource").toString().trimmed();
-            if (sourceUrl.isEmpty()) sourceUrl = root.value("sourceUrl").toString().trimmed();
-            if (sha256.isEmpty()) sha256 = metadataShaFromRoot(root);
-            if (modelId <= 0) modelId = root.value("model").toObject().value("id").toInt(root.value("modelId").toInt());
+            metadataRoot = QJsonDocument::fromJson(file.readAll()).object();
+            if (sourceUrl.isEmpty()) sourceUrl = metadataBrowserUrlFromRoot(metadataRoot);
+            if (sha256.isEmpty()) sha256 = metadataShaFromRoot(metadataRoot);
+            if (modelId <= 0) modelId = metadataRoot.value("model").toObject().value("id").toInt(metadataRoot.value("modelId").toInt());
         }
     }
 
-    if (metadataSource.compare("civarchive", Qt::CaseInsensitive) == 0) {
-        if (sourceUrl.isEmpty() && !sha256.isEmpty()) {
-            QString normalized = sha256;
-            normalized.remove(QRegularExpression("[^A-Fa-f0-9]"));
-            sourceUrl = QString("https://civarchive.com/sha256/%1").arg(normalized.toLower());
-        }
-        if (sourceUrl.isEmpty()) {
-            downloadsPage->setStatusText("该任务没有可打开的 CivArchive 链接或 SHA256。");
+    if (sourceUrl.contains("civarchive.com", Qt::CaseInsensitive)) {
+        QDesktopServices::openUrl(QUrl(sourceUrl));
+        return;
+    }
+    if (sourceUrl.isEmpty()
+        && info.metadataSource.compare("civarchive", Qt::CaseInsensitive) == 0
+        && !sha256.isEmpty()) {
+        QString normalized = sha256;
+        normalized.remove(QRegularExpression("[^A-Fa-f0-9]"));
+        if (!normalized.isEmpty()) {
+            QDesktopServices::openUrl(QUrl(QString("https://civarchive.com/sha256/%1").arg(normalized.toLower())));
             return;
         }
+    }
+    if (!sourceUrl.isEmpty() && modelId <= 0) {
         QDesktopServices::openUrl(QUrl(sourceUrl));
         return;
     }
