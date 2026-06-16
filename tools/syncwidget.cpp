@@ -16,21 +16,12 @@
 #include <openssl/rand.h>
 #include <QHBoxLayout>
 
-namespace {
-QString loadToolPageStyle()
-{
-    QFile file(":/styles/toolpage.qss");
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
-    return QString::fromUtf8(file.readAll());
-}
-}
-
 SyncWidget::SyncWidget(QWidget *parent) :
     QWidget(parent),
     ui(new Ui::SyncWidget)
 {
     ui->setupUi(this);
-    setStyleSheet(loadToolPageStyle());
+    setStyleSheet(AppStyle::loadQss(":/styles/toolpage.qss"));
 
     // 初始化网络和文件监控
     tcpServer = new QTcpServer(this);

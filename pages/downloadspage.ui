@@ -6,25 +6,25 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1034</width>
+    <width>1076</width>
     <height>720</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_DownloadsRoot">
    <property name="spacing">
-    <number>14</number>
+    <number>0</number>
    </property>
    <property name="leftMargin">
-    <number>24</number>
+    <number>0</number>
    </property>
    <property name="topMargin">
-    <number>24</number>
+    <number>0</number>
    </property>
    <property name="rightMargin">
-    <number>24</number>
+    <number>0</number>
    </property>
    <property name="bottomMargin">
-    <number>24</number>
+    <number>0</number>
    </property>
    <item>
     <widget class="QTabWidget" name="tabDownloadsMain">
@@ -219,7 +219,7 @@
        <item>
         <widget class="QTabWidget" name="tabDownloadsStatus">
          <property name="currentIndex">
-          <number>0</number>
+          <number>1</number>
          </property>
          <widget class="QWidget" name="pageDownloadsUpdates">
           <attribute name="title">
@@ -251,8 +251,8 @@
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>669</width>
-                <height>558</height>
+                <width>759</width>
+                <height>606</height>
                </rect>
               </property>
               <layout class="QVBoxLayout" name="downloadCardsLayout">
@@ -320,8 +320,8 @@
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>669</width>
-                <height>558</height>
+                <width>759</width>
+                <height>606</height>
                </rect>
               </property>
               <layout class="QVBoxLayout" name="downloadCardsLayoutCoexisting">
@@ -389,8 +389,8 @@
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>669</width>
-                <height>558</height>
+                <width>759</width>
+                <height>606</height>
                </rect>
               </property>
               <layout class="QVBoxLayout" name="downloadCardsLayoutIgnored">
@@ -458,8 +458,8 @@
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>669</width>
-                <height>558</height>
+                <width>759</width>
+                <height>606</height>
                </rect>
               </property>
               <layout class="QVBoxLayout" name="downloadCardsLayoutLatest">
@@ -527,8 +527,8 @@
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>669</width>
-                <height>558</height>
+                <width>759</width>
+                <height>606</height>
                </rect>
               </property>
               <layout class="QVBoxLayout" name="downloadCardsLayoutErrors">
@@ -596,8 +596,8 @@
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>669</width>
-                <height>558</height>
+                <width>759</width>
+                <height>606</height>
                </rect>
               </property>
               <layout class="QVBoxLayout" name="downloadCardsLayoutLocal">

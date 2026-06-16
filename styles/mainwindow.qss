@@ -581,20 +581,33 @@ QMenuBar::item:pressed {
     color: #000000;
 }
 
-QTabWidget#toolsTabWidget::pane {
+QTabWidget#toolsTabWidget::pane,
+QTabWidget#tabSettings::pane {
     border: 1px solid #444;
     background-color: #1b2838;
     color: #dcdedf;
 }
-QTabWidget#toolsTabWidget QTabBar {
+/* Downloads content area is #1b2838; match the pane so no lighter "padding" frame shows. */
+QTabWidget#tabDownloadsMain::pane {
+    border: 1px solid #444;
+    background-color: #1b2838;
+    color: #dcdedf;
+}
+QTabWidget#toolsTabWidget QTabBar,
+QTabWidget#tabSettings QTabBar,
+QTabWidget#tabDownloadsMain QTabBar {
     background-color: #1a1f29;
 }
-QTabWidget#toolsTabWidget QTabBar::tab {
+QTabWidget#toolsTabWidget QTabBar::tab,
+QTabWidget#tabSettings QTabBar::tab,
+QTabWidget#tabDownloadsMain QTabBar::tab {
     background: #1a1f29;
     color: #ccc;
     padding: 10px;
 }
-QTabWidget#toolsTabWidget QTabBar::tab:selected {
+QTabWidget#toolsTabWidget QTabBar::tab:selected,
+QTabWidget#tabSettings QTabBar::tab:selected,
+QTabWidget#tabDownloadsMain QTabBar::tab:selected {
     background: #3d4450;
     color: #fff;
     font-weight: bold;
@@ -622,30 +635,30 @@ QTabWidget#toolsTabWidget QTabBar::tab:selected {
 }
 
 /* Downloads */
-QWidget#pageDownloads { background-color: #1b2838; color: #dcdedf; }
-QWidget#pageDownloads QGroupBox { border: 1px solid #3d4d5d; border-radius: 4px; margin-top: 10px; padding-top: 12px; color: #dcdedf; }
-QWidget#pageDownloads QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color: #66c0f4; font-weight: bold; }
-QWidget#pageDownloads QPushButton { background-color: #2a3f5a; color: #fff; border: none; padding: 7px 12px; border-radius: 3px; }
-QWidget#pageDownloads QPushButton:hover { background-color: #3d5677; }
-QWidget#pageDownloads QPushButton:disabled { background-color: #2a3038; color: #7f8791; }
+QWidget#DownloadsPage { background-color: #1b2838; color: #dcdedf; }
+QWidget#DownloadsPage QGroupBox { border: 1px solid #3d4d5d; border-radius: 4px; margin-top: 10px; padding-top: 12px; color: #dcdedf; }
+QWidget#DownloadsPage QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color: #66c0f4; font-weight: bold; }
+QWidget#DownloadsPage QPushButton { background-color: #2a3f5a; color: #fff; border: none; padding: 7px 12px; border-radius: 3px; }
+QWidget#DownloadsPage QPushButton:hover { background-color: #3d5677; }
+QWidget#DownloadsPage QPushButton:disabled { background-color: #2a3038; color: #7f8791; }
 QWidget#pageDownloadsUpdates,
 QWidget#pageDownloadsCoexisting,
 QWidget#pageDownloadsIgnored,
 QWidget#pageDownloadsLatest,
 QWidget#pageDownloadsErrors,
-QWidget#pageDownloadsLocal { background-color: #131922; }
+QWidget#pageDownloadsLocal { background: transparent; }
 QScrollArea#scrollDownloadsCards,
 QScrollArea#scrollDownloadsIgnored,
 QScrollArea#scrollDownloadsLatest,
 QScrollArea#scrollDownloadsErrors,
 QScrollArea#scrollDownloadsLocal,
-QScrollArea#scrollDownloadsCoexisting { background-color: #131922; border: none; }
+QScrollArea#scrollDownloadsCoexisting { background-color: #1e252f; border: none; }
 QWidget#downloadCardsContainer,
 QWidget#downloadCardsContainerCoexisting,
 QWidget#downloadCardsContainerIgnored,
 QWidget#downloadCardsContainerLatest,
 QWidget#downloadCardsContainerErrors,
-QWidget#downloadCardsContainerLocal { background-color: #131922; }
+QWidget#downloadCardsContainerLocal { background-color: #1e252f; }
 QFrame[class="downloadCard"] { background-color: #16191e; border: 1px solid #313d49; border-radius: 8px; }
 QFrame[class="downloadCard"]:hover { border: 1px solid #4b637a; background-color: #1b222b; }
 QFrame[class="downloadCard"][selected="true"] { background-color: #20344a; border: 1px solid #66c0f4; }
@@ -653,49 +666,27 @@ QLabel[class="downloadTitle"] { color: #ffffff; font-size: 15px; font-weight: bo
 QLabel[class="downloadMeta"] { color: #aeb7c2; }
 QLabel[class="downloadStatus"] { color: #66c0f4; font-weight: bold; }
 QLabel[class="downloadPreview"] { background-color: #0f141a; border: 1px solid #2b3440; border-radius: 6px; }
-QWidget#pageDownloads QProgressBar { background-color: #0f141a; border: 1px solid #313d49; border-radius: 4px; color: #dcdedf; text-align: center; }
-QWidget#pageDownloads QProgressBar::chunk { background-color: #66c0f4; border-radius: 3px; }
+QWidget#DownloadsPage QProgressBar { background-color: #0f141a; border: 1px solid #313d49; border-radius: 4px; color: #dcdedf; text-align: center; }
+QWidget#DownloadsPage QProgressBar::chunk { background-color: #66c0f4; border-radius: 3px; }
 
-/* Shared card tabs: Settings + Downloads */
-QTabWidget#tabSettings::pane,
+/* Inner tabs (nested inside Downloads) — match the tool-page nested-tab style.
+   Tab buttons inherit the flat look from "QTabWidget#tabDownloadsMain QTabBar::tab";
+   the pane below copies toolpage.qss's QTabWidget::pane (bg, border, 圆角：左上直角其余圆角). */
 QTabWidget#tabDownloadsStatus::pane,
-QTabWidget#tabDownloadsMain::pane,
 QTabWidget#tabMetadataScanStatus::pane {
-    border: 1px solid #313d49;
-    background-color: #131922;
-    top: -1px;
+    border: 1px solid #3d4d5d;
+    background-color: #1e252f;
+    border-radius: 4px;
+    border-top-left-radius: 0;
 }
 
-QTabWidget#tabSettings QTabBar::tab,
-QTabWidget#tabDownloadsStatus QTabBar::tab,
-QTabWidget#tabDownloadsMain QTabBar::tab,
-QTabWidget#tabMetadataScanStatus QTabBar::tab {
-    background: #16191e;
-    color: #aeb7c2;
-    padding: 8px 16px;
-    border: 1px solid #313d49;
-    border-bottom: none;
-    border-top-left-radius: 5px;
-    border-top-right-radius: 5px;
-    margin-right: 3px;
-}
-
-QTabWidget#tabSettings QTabBar::tab:selected,
-QTabWidget#tabDownloadsStatus QTabBar::tab:selected,
-QTabWidget#tabDownloadsMain QTabBar::tab:selected,
-QTabWidget#tabMetadataScanStatus QTabBar::tab:selected {
-    background: #243447;
-    color: #ffffff;
-    border-color: #4b637a;
-}
-
-QWidget#pageDownloads QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf; border-radius: 3px; padding: 5px; }
+QWidget#DownloadsPage QComboBox { background-color: #16191e; border: 1px solid #31363d; color: #dcdedf; border-radius: 3px; padding: 5px; }
 #lblDownloadsSelected,
 #lblDownloadsStatus { color: #8c96a0; }
 
 /* About */
-QWidget#pageAbout { background-color: #1b2838; }
-QWidget#pageAbout QLabel { color: #dcdedf; }
+QWidget#AboutPage { background-color: #1b2838; }
+QWidget#AboutPage QLabel { color: #dcdedf; }
 QLabel#lblAboutTitle { font-size: 32px; font-weight: bold; color: #66c0f4; margin-bottom: 10px; }
 QLabel#lblAboutVersion { font-size: 16px; color: #8c929a; font-weight: bold; }
 QLabel#lblAboutDesc { font-size: 14px; line-height: 1.5; color: #acb2b8; margin: 20px 0; }

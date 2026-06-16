@@ -35,6 +35,7 @@
 #include <QFrame>
 #include <QProgressBar>
 #include <QVBoxLayout>
+#include <functional>
 
 #include "pages/downloadmodels.h"
 #include "pages/settingspage.h"
@@ -364,7 +365,7 @@ private:
     void refreshHomeGallery(); // 刷新主页下方的图库
 
     void scanModels(const QString &path);
-    void scanModels(const QStringList &paths);
+    void scanModels(const QStringList &paths, std::function<void()> onComplete = {});
     void updateDetailView(const ModelMeta &meta);
     void fitDetailContentToCurrentPage();
     void refreshTriggerWordsPanel(const ModelMeta &meta);
@@ -512,6 +513,7 @@ private:
     int currentEditImageIndex = -1;
     int editImageLoadToken = 0;
     int modelUsageStatsToken = 0;
+    int modelScanToken = 0;
     bool editImagesNeedRefresh = false;
     bool m_forceResyncPreview = false;
     bool m_skipPreviewSync = false;

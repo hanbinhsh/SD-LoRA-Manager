@@ -24,13 +24,6 @@
 #include <QUrl>
 
 namespace {
-QString loadToolPageStyle()
-{
-    QFile file(":/styles/toolpage.qss");
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
-    return QString::fromUtf8(file.readAll());
-}
-
 // 去掉所有 ANSI 转义序列，得到纯文本（用于 URL 识别 / 进度判断）。
 QString stripAnsi(QString text)
 {
@@ -137,7 +130,7 @@ LauncherWidget::LauncherWidget(QWidget *parent)
     , ui(new Ui::LauncherWidget)
 {
     ui->setupUi(this);
-    setStyleSheet(loadToolPageStyle());
+    setStyleSheet(AppStyle::loadQss(":/styles/toolpage.qss"));
 
     // 与工具箱页保持一致：West 标签条使用深色侧栏背景。
     ui->targetTabs->setAutoFillBackground(true);

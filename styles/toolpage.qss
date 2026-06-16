@@ -1,7 +1,14 @@
 QWidget#UsageAnalysisWidget, QWidget#TagBrowserWidget, QWidget#LlmPromptWidget,
-QWidget#PromptParserWidget, QWidget#PromptTemplateLibraryWidget, QWidget#SyncWidget {
+QWidget#PromptParserWidget, QWidget#PromptTemplateLibraryWidget, QWidget#SyncWidget,
+QWidget#LauncherWidget {
     background-color: #1b2838;
     color: #dcdedf;
+}
+/* 启动器外层 tab 与设置/下载/工具箱一致：扁平、直角（无圆角） */
+QTabWidget#targetTabs::pane {
+    background-color: #1b2838;
+    border: 1px solid #444;
+    border-radius: 0;
 }
 QTabWidget::pane {
     border: 1px solid #3d4d5d;
@@ -267,7 +274,7 @@ QListWidget#listTemplates::item:hover {
 QListWidget#listTemplates::item:selected,
 QListWidget#listTemplates::item:selected:active,
 QListWidget#listTemplates::item:selected:!active {
-    background-color: #3D4450;
+    background-color: #3d4450;
     color: #ffffff;
     border-left: 4px solid #66c0f4;
     font-weight: bold;

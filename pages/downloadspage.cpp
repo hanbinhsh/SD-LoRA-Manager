@@ -143,6 +143,16 @@ DownloadsPage::DownloadsPage(QWidget *parent)
     , ui(new Ui::DownloadsPage)
 {
     ui->setupUi(this);
+
+    // 最外层 tab 移到侧边，与工具箱/启动器一致。
+    ui->tabDownloadsMain->setTabPosition(QTabWidget::West);
+    ui->tabDownloadsMain->setAutoFillBackground(true);
+    {
+        QPalette tabPalette = ui->tabDownloadsMain->palette();
+        tabPalette.setColor(QPalette::Window, QColor(AppStyle::SidebarDark));
+        ui->tabDownloadsMain->setPalette(tabPalette);
+    }
+
     applyUnifiedTableRowStyle(ui->tableMetadataScan);
     applyUnifiedTableRowStyle(ui->tableHealth);
     for (QTableWidget *table : {ui->tableMetadataScan, ui->tableHealth}) {

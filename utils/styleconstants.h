@@ -1,9 +1,18 @@
 #pragma once
 
 #include <QColor>
+#include <QFile>
 #include <QString>
 
 namespace AppStyle {
+
+// 读取一个 QSS 资源文件内容（失败时返回空串）。统一各工具页加载 toolpage.qss 的逻辑。
+inline QString loadQss(const QString &resourcePath)
+{
+    QFile file(resourcePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
+    return QString::fromUtf8(file.readAll());
+}
 
 inline constexpr const char *AccentBlue = "#66c0f4";
 inline constexpr const char *CustomTriggerGreen = "#5fd38d";

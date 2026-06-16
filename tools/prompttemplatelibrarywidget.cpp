@@ -3,6 +3,7 @@
 #include "ui_prompttemplatelibrarywidget.h"
 
 #include "imagemetadataparser.h"
+#include "styleconstants.h"
 #include "tagflowwidget.h"
 #include "tagutils.h"
 
@@ -100,7 +101,7 @@ public:
         QRect card = option.rect.adjusted(child ? 26 : 4, 3, -6, -3);
 
         const QColor bg = selected
-            ? QColor("#3D4450")
+            ? QColor("#3d4450")
             : hover ? QColor("#2a3442")
                     : child ? QColor("#202936") : QColor("#1f2833");
         painter->setPen(Qt::NoPen);
@@ -639,13 +640,6 @@ QString jsonString(const QJsonObject &obj, const QString &key, const QString &fa
     return value.isEmpty() ? fallback : value;
 }
 
-QString loadToolPageStyle()
-{
-    QFile file(":/styles/toolpage.qss");
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
-    return QString::fromUtf8(file.readAll());
-}
-
 QJsonObject hashToObject(const QHash<QString, QString> &hash)
 {
     QJsonObject obj;
@@ -671,7 +665,7 @@ PromptTemplateLibraryWidget::PromptTemplateLibraryWidget(QWidget *parent)
     , ui(new Ui::PromptTemplateLibraryWidget)
 {
     ui->setupUi(this);
-    setStyleSheet(loadToolPageStyle());
+    setStyleSheet(AppStyle::loadQss(":/styles/toolpage.qss"));
 
     ui->splitterGenerate->setSizes({360, 760});
     ui->tableTemplateDefaults->horizontalHeader()->setStretchLastSection(true);

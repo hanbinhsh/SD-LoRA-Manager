@@ -804,18 +804,13 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
     applyApplicationTheme(optThemeId, optCustomThemePath, false);
-    downloadsPage = new DownloadsPage(ui->pageDownloads);
-    if (ui->pageDownloads && ui->pageDownloads->layout()) {
-        ui->pageDownloads->layout()->addWidget(downloadsPage);
-    }
-    settingsPage = new SettingsPage(ui->pageSettings);
-    if (ui->pageSettings && ui->pageSettings->layout()) {
-        ui->pageSettings->layout()->addWidget(settingsPage);
-    }
-    aboutPage = new AboutPage(ui->pageAbout);
-    if (ui->pageAbout && ui->pageAbout->layout()) {
-        ui->pageAbout->layout()->addWidget(aboutPage);
-    }
+    // 顶级页面统一直接加入 rootStack（与 LauncherWidget 一致，不再用 .ui 里的空壳页面）。
+    downloadsPage = new DownloadsPage(this);
+    ui->rootStack->addWidget(downloadsPage);
+    settingsPage = new SettingsPage(this);
+    ui->rootStack->addWidget(settingsPage);
+    aboutPage = new AboutPage(this);
+    ui->rootStack->addWidget(aboutPage);
     aboutPage->setVersionText(CURRENT_VERSION);
     connect(aboutPage, &AboutPage::checkUpdateRequested, this, &MainWindow::onCheckUpdateClicked);
 
@@ -1076,7 +1071,7 @@ MainWindow::MainWindow(QWidget *parent)
                                               QMessageBox::Yes|QMessageBox::No);
 
                 if (reply == QMessageBox::Yes) {
-                    ui->rootStack->setCurrentWidget(ui->pageSettings); // 跳转到设置页
+                    ui->rootStack->setCurrentWidget(settingsPage); // 跳转到设置页
                     if (settingsPage) settingsPage->focusTranslationPath();
                 }
                 return;
@@ -1164,20 +1159,29 @@ MainWindow::MainWindow(QWidget *parent)
         loadModelHighlightColors();
         loadModelUserNotes();
         loadUserGalleryCache();
-        const QStringList activeLoraPaths = collectEnabledPaths(loraPaths, disabledLoraPaths);
-        if (!activeLoraPaths.isEmpty()) scanModels(activeLoraPaths);
         ui->comboSort->setCurrentIndex(0);
-        executeSort();
-        refreshCollectionTreeView();
-        int modelCount = 0;
-        for (int i = 0; i < ui->modelList->count(); ++i) {
-            if (isModelListItem(ui->modelList->item(i))) modelCount++;
-        }
-        ui->statusbar->showMessage(QString("加载完成，共 %1 个模型").arg(modelCount), 3000);
-        if (optAutoCheckUpdatesOnStartup) {
-            QTimer::singleShot(800, this, [this]() {
-                startAppUpdateCheck(true);
-            });
+
+        // 扫描完成后（异步）刷新状态栏计数，并按需检查软件更新。
+        auto afterScan = [this]() {
+            int modelCount = 0;
+            for (int i = 0; i < ui->modelList->count(); ++i) {
+                if (isModelListItem(ui->modelList->item(i))) modelCount++;
+            }
+            ui->statusbar->showMessage(QString("加载完成，共 %1 个模型").arg(modelCount), 3000);
+            if (optAutoCheckUpdatesOnStartup) {
+                QTimer::singleShot(800, this, [this]() {
+                    startAppUpdateCheck(true);
+                });
+            }
+        };
+
+        const QStringList activeLoraPaths = collectEnabledPaths(loraPaths, disabledLoraPaths);
+        if (!activeLoraPaths.isEmpty()) {
+            scanModels(activeLoraPaths, afterScan);
+        } else {
+            executeSort();
+            refreshCollectionTreeView();
+            afterScan();
         }
     });
 
@@ -1197,21 +1201,7 @@ static constexpr int USER_GALLERY_PARSER_VERSION = 4;
 static QStringList parsePromptsToTagsWorker(const QString &rawPrompt, bool splitOnNewline, const QStringList &filterTags)
 {
     QStringList result;
-    const QString trimmedPrompt = rawPrompt.trimmed();
-    if (trimmedPrompt.isEmpty()) return result;
-    if (trimmedPrompt.startsWith('{') || trimmedPrompt.startsWith('[')) {
-        const QJsonDocument doc = QJsonDocument::fromJson(trimmedPrompt.toUtf8());
-        if (!doc.isNull()) return result;
-    }
-
-    QString processText = trimmedPrompt;
-    if (splitOnNewline) {
-        processText.replace("\r\n", ",");
-        processText.replace("\n", ",");
-        processText.replace("\r", ",");
-    }
-
-    const QStringList parts = processText.split(",", Qt::SkipEmptyParts);
+    const QStringList parts = TagUtils::splitPromptParts(rawPrompt, splitOnNewline);
     for (const QString &part : parts) {
         const QString clean = TagUtils::cleanPromptTag(part);
         if (clean.isEmpty()) continue;
@@ -2824,105 +2814,267 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 // 业务逻辑
 // ---------------------------------------------------------
 
-void MainWindow::scanModels(const QString &path)
+namespace {
+
+// 纯函数：从 JSON root 解析模型标签（与 MainWindow::readModelTagsFromJson 同逻辑，可在工作线程调用）。
+QStringList jsonModelTags(const QJsonObject &root)
 {
-    scanModels(QStringList() << path);
+    QJsonArray arr = root.value("model").toObject().value("tags").toArray();
+    if (arr.isEmpty()) arr = root.value("tags").toArray();
+
+    QStringList tags;
+    QSet<QString> seen;
+    for (const QJsonValue &value : arr) {
+        const QString tag = value.toString().trimmed();
+        if (tag.isEmpty()) continue;
+        const QString key = tag.toCaseFolded();
+        if (seen.contains(key)) continue;
+        seen.insert(key);
+        tags.append(tag);
+    }
+    return tags;
 }
 
-void MainWindow::scanModels(const QStringList &paths)
+// 纯函数：从 JSON root 解析作者名（与 MainWindow::readModelCreatorFromJson 同逻辑）。
+QString jsonModelCreator(const QJsonObject &root)
 {
-    // 1. 锁定 UI 更新，防止闪烁
-    ui->modelList->setUpdatesEnabled(false);
-    ui->modelList->clear();
+    QJsonObject creator = root.value("model").toObject().value("creator").toObject();
+    if (creator.isEmpty()) creator = root.value("creator").toObject();
+    QString name = creator.value("username").toString().trimmed();
+    if (name.isEmpty()) name = creator.value("name").toString().trimmed();
+    return name;
+}
 
-    ui->comboBaseModel->blockSignals(true);
-    ui->comboBaseModel->clear();
-    ui->comboBaseModel->addItem("All");
+// 模型列表项的元数据（侧边栏/排序/筛选所需），可在工作线程中解析。
+struct ModelListMetadata {
+    qint64 sortDate = 0;
+    qint64 sortAdded = 0;
+    int downloads = 0;
+    int likes = 0;
+    QString filterBase = QStringLiteral("Unknown");
+    int nsfwLevel = 1;
+    bool localEdited = false;
+    int modelId = 0;
+    int versionId = 0;
+    QString civitaiSha256;
+    QString creator;
+    QStringList modelTags;
+    QString modelType;
+    QStringList trainedWords;
+    QString civitaiName; // 为空表示不覆盖已有的 ROLE_CIVITAI_NAME
+};
 
-    QSet<QString> foundBaseModels; // 用于去重记录发现的底模
+// 工作线程函数：读取并解析单个模型的 .json，填充 ModelListMetadata（纯 I/O，无 UI 依赖）。
+ModelListMetadata parseModelListMetadata(const QString &filePath, const QString &jsonPath)
+{
+    ModelListMetadata m;
 
-    // 2. 准备文件名过滤器
-    QStringList nameFilters;
-    nameFilters << "*.safetensors" << "*.ckpt" << "*.pt";
+    QFileInfo fi(filePath);
+    QDateTime birthTime = fi.birthTime();
+    if (!birthTime.isValid()) birthTime = fi.lastModified();
+    m.sortAdded = birthTime.toMSecsSinceEpoch();
 
-    // 3. 准备目录过滤器 (只看文件，不包含 . 和 ..)
-    QDir::Filters dirFilters = QDir::Files | QDir::NoDotAndDotDot;
-
-    // 4. 准备迭代器标志 (是否递归)
-    QDirIterator::IteratorFlags iterFlags = QDirIterator::NoIteratorFlags;
-    if (optLoraRecursive) {
-        iterFlags = QDirIterator::Subdirectories; // 开启递归
+    QFile file(jsonPath);
+    if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
+        m.sortDate = fi.lastModified().toMSecsSinceEpoch();
+        return m;
     }
 
-    int addedCount = 0;
+    const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+    m.creator = jsonModelCreator(root);
+    m.modelTags = jsonModelTags(root);
+    m.modelType = root["model"].toObject()["type"].toString();
 
-    // 5. 遍历多个路径
+    for (const QJsonValue &value : root["trainedWords"].toArray()) {
+        QString word = value.toString().trimmed();
+        if (word.endsWith(",")) word.chop(1);
+        if (!word.isEmpty()) m.trainedWords << word;
+    }
+
+    const QString modelName = root["model"].toObject()["name"].toString();
+    const QString versionName = root["name"].toString();
+    if (!modelName.isEmpty()) {
+        QString fullName = modelName;
+        if (!versionName.isEmpty()) fullName += " [" + versionName + "]";
+        m.civitaiName = fullName;
+    }
+    m.localEdited = root["localEdited"].toBool(false) || root["localOnly"].toBool(false);
+    m.modelId = root["modelId"].toInt();
+    m.versionId = root["id"].toInt();
+
+    int coverLevel = 1; // 默认 Safe
+    const QJsonArray images = root["images"].toArray();
+    if (!images.isEmpty()) {
+        const QJsonObject coverObj = images[0].toObject();
+        if (coverObj.contains("nsfwLevel")) {
+            coverLevel = coverObj["nsfwLevel"].toInt();
+        } else if (coverObj.contains("nsfw")) {
+            const QString val = coverObj["nsfw"].toString().toLower();
+            if (val == "x" || val == "mature") coverLevel = 16;
+            else if (val == "soft") coverLevel = 2;
+            else coverLevel = 1;
+        }
+    } else {
+        if (root.contains("nsfwLevel")) coverLevel = root["nsfwLevel"].toInt();
+        else if (root["nsfw"].toBool()) coverLevel = 16;
+    }
+    m.nsfwLevel = coverLevel;
+
+    const QString baseModel = root["baseModel"].toString();
+    if (!baseModel.isEmpty()) m.filterBase = baseModel;
+
+    const QString dateStr = root["createdAt"].toString();
+    if (!dateStr.isEmpty()) {
+        const QDateTime dt = QDateTime::fromString(dateStr, Qt::ISODate);
+        if (dt.isValid()) m.sortDate = dt.toMSecsSinceEpoch();
+        // dateStr 非空但无法解析时，保持 0（与旧逻辑一致）
+    } else {
+        m.sortDate = fi.lastModified().toMSecsSinceEpoch();
+    }
+
+    const QJsonObject stats = root["stats"].toObject();
+    m.downloads = stats["downloadCount"].toInt();
+    m.likes = stats["thumbsUpCount"].toInt();
+    const QJsonArray files = root["files"].toArray();
+    if (!files.isEmpty()) {
+        m.civitaiSha256 = files[0].toObject()["hashes"].toObject()["SHA256"].toString();
+    }
+
+    return m;
+}
+
+// 把解析好的元数据写入列表项（必须在主线程调用）。
+void applyModelListMetadataToItem(QListWidgetItem *item, const ModelListMetadata &m)
+{
+    item->setData(ROLE_SORT_DATE, m.sortDate);
+    item->setData(ROLE_SORT_ADDED, m.sortAdded);
+    item->setData(ROLE_SORT_DOWNLOADS, m.downloads);
+    item->setData(ROLE_SORT_LIKES, m.likes);
+    item->setData(ROLE_SORT_USAGE_COUNT, 0);
+    item->setData(ROLE_SORT_LAST_USED, 0);
+    item->setData(ROLE_FILTER_BASE, m.filterBase);
+    item->setData(ROLE_NSFW_LEVEL, m.nsfwLevel);
+    item->setData(ROLE_LOCAL_EDITED, m.localEdited);
+    item->setData(ROLE_CIVITAI_MODEL_ID, m.modelId);
+    item->setData(ROLE_CIVITAI_VERSION_ID, m.versionId);
+    item->setData(ROLE_CIVITAI_SHA256, m.civitaiSha256);
+    item->setData(ROLE_MODEL_CREATOR, m.creator);
+    item->setData(ROLE_MODEL_TAGS, m.modelTags);
+    item->setData(ROLE_MODEL_TYPE, m.modelType);
+    item->setData(ROLE_MODEL_TRAINED_WORDS, m.trainedWords);
+    if (!m.civitaiName.isEmpty()) item->setData(ROLE_CIVITAI_NAME, m.civitaiName);
+}
+
+// 扫描结果中的单个条目：路径信息 + 解析好的元数据。
+struct ScannedModelEntry {
+    QString baseName;
+    QString fullPath;
+    QString previewPath;
+    QString rootPath;
+    QString rootName;
+    ModelListMetadata meta;
+};
+
+// 工作线程函数：遍历所有路径，做目录扫描 + 预览图查找 + JSON 解析（全部为 I/O，离开 UI 线程）。
+QList<ScannedModelEntry> scanModelsWorker(const QStringList &paths, bool recursive)
+{
+    QList<ScannedModelEntry> entries;
+    static const QStringList nameFilters = {"*.safetensors", "*.ckpt", "*.pt"};
+    static const QStringList imgExts = {".preview.png", ".png", ".jpg", ".jpeg"};
+    const QDir::Filters dirFilters = QDir::Files | QDir::NoDotAndDotDot;
+    const QDirIterator::IteratorFlags iterFlags =
+        recursive ? QDirIterator::Subdirectories : QDirIterator::NoIteratorFlags;
+
     for (const QString &path : paths) {
         if (path.isEmpty() || !QDir(path).exists()) continue;
         const QString rootPath = QFileInfo(path).absoluteFilePath();
         QString rootName = QFileInfo(rootPath).fileName();
         if (rootName.isEmpty()) rootName = rootPath;
 
-        // 构造函数签名: QDirIterator(path, nameFilters, filters, flags)
         QDirIterator it(path, nameFilters, dirFilters, iterFlags);
-
         while (it.hasNext()) {
             it.next();
-            QFileInfo fileInfo = it.fileInfo();
+            const QFileInfo fileInfo = it.fileInfo();
 
-            QString baseName = fileInfo.completeBaseName();
-            QString fullPath = fileInfo.absoluteFilePath();
+            ScannedModelEntry e;
+            e.baseName = fileInfo.completeBaseName();
+            e.fullPath = fileInfo.absoluteFilePath();
+            e.rootPath = rootPath;
+            e.rootName = rootName;
 
-            // 获取当前文件所在的目录 (递归模式下可能是子目录)
-            QDir currentFileDir = fileInfo.dir();
-
-            // 6. 寻找预览图
-            QString previewPath = "";
-            QStringList imgExts = {".preview.png", ".png", ".jpg", ".jpeg"};
+            const QDir currentFileDir = fileInfo.dir();
             for (const QString &ext : imgExts) {
-                // 在当前模型文件的同级目录下找图片
-                QString tryPath = currentFileDir.absoluteFilePath(baseName + ext);
-                if (QFile::exists(tryPath)) {
-                    previewPath = tryPath;
-                    break;
-                }
+                const QString tryPath = currentFileDir.absoluteFilePath(e.baseName + ext);
+                if (QFile::exists(tryPath)) { e.previewPath = tryPath; break; }
             }
 
-            // 7. 创建列表项
-            QListWidgetItem *item = new QListWidgetItem(baseName);
-            item->setToolTip(fullPath);
-            item->setData(ROLE_MODEL_NAME, baseName);
-            item->setData(ROLE_FILE_PATH, fullPath);
-            item->setData(ROLE_PREVIEW_PATH, previewPath);
-            item->setData(ROLE_MODEL_ROOT_PATH, rootPath);
-            item->setData(ROLE_MODEL_ROOT_NAME, rootName);
+            const QString jsonPath = currentFileDir.filePath(e.baseName + ".json");
+            e.meta = parseModelListMetadata(e.fullPath, jsonPath);
+            entries.append(e);
+        }
+    }
+    return entries;
+}
+
+} // namespace
+
+void MainWindow::scanModels(const QString &path)
+{
+    scanModels(QStringList() << path);
+}
+
+void MainWindow::scanModels(const QStringList &paths, std::function<void()> onComplete)
+{
+    // 同步清空列表，随后把繁重的目录遍历 + JSON 解析放到后台线程，避免大模型库卡 UI。
+    ui->modelList->clear();
+    ui->comboBaseModel->blockSignals(true);
+    ui->comboBaseModel->clear();
+    ui->comboBaseModel->addItem("All");
+    ui->comboBaseModel->blockSignals(false);
+
+    ui->statusbar->showMessage("正在扫描模型...");
+
+    const int token = ++modelScanToken;
+    const bool recursive = optLoraRecursive;
+    QFuture<QList<ScannedModelEntry>> future = QtConcurrent::run(
+        backgroundThreadPool,
+        [paths, recursive]() { return scanModelsWorker(paths, recursive); });
+
+    auto *watcher = new QFutureWatcher<QList<ScannedModelEntry>>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this,
+            [this, watcher, token, onComplete = std::move(onComplete)]() {
+        const QList<ScannedModelEntry> entries = watcher->result();
+        watcher->deleteLater();
+        // 期间又触发了新的扫描：丢弃过期结果，避免把旧条目塞进已被清空的列表。
+        if (token != modelScanToken) return;
+
+        ui->modelList->setUpdatesEnabled(false);
+        ui->comboBaseModel->blockSignals(true);
+
+        QSet<QString> foundBaseModels;
+        int addedCount = 0;
+        for (const ScannedModelEntry &e : entries) {
+            const bool isNSFW = e.meta.nsfwLevel > optNSFWLevel;
+            if (optFilterNSFW && isNSFW && optNSFWMode == 0) continue; // 隐藏模式下跳过
+
+            QListWidgetItem *item = new QListWidgetItem(e.baseName);
+            item->setToolTip(e.fullPath);
+            item->setData(ROLE_MODEL_NAME, e.baseName);
+            item->setData(ROLE_FILE_PATH, e.fullPath);
+            item->setData(ROLE_PREVIEW_PATH, e.previewPath);
+            item->setData(ROLE_MODEL_ROOT_PATH, e.rootPath);
+            item->setData(ROLE_MODEL_ROOT_NAME, e.rootName);
             item->setData(ROLE_MODEL_FILTER_VISIBLE, true);
+            applyModelListMetadataToItem(item, e.meta);
 
-            QString jsonPath = currentFileDir.filePath(baseName + ".json");
-            preloadItemMetadata(item, jsonPath);
-
-            int nsfwLevel = item->data(ROLE_NSFW_LEVEL).toInt();
-            bool isNSFW = nsfwLevel > optNSFWLevel;
-
-            if (optFilterNSFW && isNSFW && optNSFWMode == 0) {
-                // 如果开启过滤 + 是NSFW + 模式为隐藏(0) -> 直接删除item并跳过
-                delete item;
-                continue;
-            }
-
-            QString civitaiName = item->data(ROLE_CIVITAI_NAME).toString();
-            if (optUseCivitaiName && !civitaiName.isEmpty()) {
-                item->setText(civitaiName);
-            } else {
-            item->setText(baseName); // 默认使用文件名
-            }
+            const QString civitaiName = item->data(ROLE_CIVITAI_NAME).toString();
+            item->setText(optUseCivitaiName && !civitaiName.isEmpty() ? civitaiName : e.baseName);
 
             item->setIcon(placeholderIcon);
             applyModelHighlightColor(item);
             applyModelUserNoteData(item);
 
-            // 9. 处理底模过滤器
-            QString baseModel = item->data(ROLE_FILTER_BASE).toString();
+            const QString baseModel = item->data(ROLE_FILTER_BASE).toString();
             if (!baseModel.isEmpty() && !foundBaseModels.contains(baseModel)) {
                 foundBaseModels.insert(baseModel);
                 ui->comboBaseModel->addItem(baseModel);
@@ -2930,30 +3082,26 @@ void MainWindow::scanModels(const QStringList &paths)
 
             ui->modelList->addItem(item);
             addedCount++;
-            if (!previewPath.isEmpty()) {
-                // 【修改】添加 "SIDEBAR:" 前缀
-                QString taskId = "SIDEBAR:" + fullPath;
-
-                // 使用 backgroundThreadPool (静默加载)
-                IconLoaderTask *task = new IconLoaderTask(previewPath, 64, 8, this, taskId);
+            if (!e.previewPath.isEmpty()) {
+                const QString taskId = "SIDEBAR:" + e.fullPath;
+                IconLoaderTask *task = new IconLoaderTask(e.previewPath, 64, 8, this, taskId);
                 task->setAutoDelete(true);
                 backgroundThreadPool->start(task);
             }
         }
-    }
 
-    // 10. 恢复 UI 更新
-    ui->statusbar->showMessage(QString("扫描完成，共 %1 个模型").arg(addedCount));
-    ui->comboBaseModel->blockSignals(false);
-    ui->modelList->setUpdatesEnabled(true);
+        ui->statusbar->showMessage(QString("扫描完成，共 %1 个模型").arg(addedCount));
+        ui->comboBaseModel->blockSignals(false);
+        ui->modelList->setUpdatesEnabled(true);
 
-    refreshModelUsageStatsAsync();
+        refreshModelUsageStatsAsync();
+        executeSort();
+        refreshHomeGallery();
+        refreshCollectionTreeView();
 
-    // 11. 刷新主页大图视图
-    executeSort();
-    refreshHomeGallery();
-    // 刷新收藏夹树状视图
-    refreshCollectionTreeView();
+        if (onComplete) onComplete();
+    });
+    watcher->setFuture(future);
 }
 
 // 更新界面显示
@@ -4409,7 +4557,7 @@ void MainWindow::clearModelSyncFailure(const QString &filePath)
 {
     const QString key = QFileInfo(filePath).absoluteFilePath();
     if (key.isEmpty()) return;
-    if (modelSyncFailures.remove(key) > 0) saveModelSyncFailures();
+    if (modelSyncFailures.remove(key)) saveModelSyncFailures();
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *item = ui->modelList->item(i);
         if (item && QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath() == key) {
@@ -5111,29 +5259,12 @@ QString MainWindow::civitaiNetworkErrorMessage(QNetworkReply *reply) const
 
 QStringList MainWindow::readModelTagsFromJson(const QJsonObject &root) const
 {
-    QJsonArray arr = root.value("model").toObject().value("tags").toArray();
-    if (arr.isEmpty()) arr = root.value("tags").toArray();
-
-    QStringList tags;
-    QSet<QString> seen;
-    for (const QJsonValue &value : arr) {
-        const QString tag = value.toString().trimmed();
-        if (tag.isEmpty()) continue;
-        const QString key = tag.toCaseFolded();
-        if (seen.contains(key)) continue;
-        seen.insert(key);
-        tags.append(tag);
-    }
-    return tags;
+    return jsonModelTags(root);
 }
 
 QString MainWindow::readModelCreatorFromJson(const QJsonObject &root) const
 {
-    QJsonObject creator = root.value("model").toObject().value("creator").toObject();
-    if (creator.isEmpty()) creator = root.value("creator").toObject();
-    QString name = creator.value("username").toString().trimmed();
-    if (name.isEmpty()) name = creator.value("name").toString().trimmed();
-    return name;
+    return jsonModelCreator(root);
 }
 
 QString MainWindow::readModelCreatorAvatarFromJson(const QJsonObject &root) const
@@ -6520,7 +6651,7 @@ void MainWindow::clearHighlightColorForItems(const QList<QListWidgetItem*> &item
         if (!isModelListItem(item)) continue;
         const QString filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
         if (filePath.isEmpty()) continue;
-        if (modelHighlightColors.remove(filePath) > 0) {
+        if (modelHighlightColors.remove(filePath)) {
             applyModelHighlightColor(item);
             changed++;
         }
@@ -6535,118 +6666,9 @@ void MainWindow::clearHighlightColorForItems(const QList<QListWidgetItem*> &item
 
 void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonPath)
 {
-    // 初始化默认值 (方便排序)
-    item->setData(ROLE_SORT_DATE, 0);
-    item->setData(ROLE_SORT_DOWNLOADS, 0);
-    item->setData(ROLE_SORT_LIKES, 0);
-    item->setData(ROLE_SORT_USAGE_COUNT, 0);
-    item->setData(ROLE_SORT_LAST_USED, 0);
-    item->setData(ROLE_FILTER_BASE, "Unknown");
-    item->setData(ROLE_NSFW_LEVEL, 1);
-    item->setData(ROLE_LOCAL_EDITED, false);
-    item->setData(ROLE_CIVITAI_MODEL_ID, 0);
-    item->setData(ROLE_CIVITAI_VERSION_ID, 0);
-    item->setData(ROLE_CIVITAI_SHA256, QString());
-    item->setData(ROLE_MODEL_CREATOR, QString());
-    item->setData(ROLE_MODEL_TAGS, QStringList());
-    item->setData(ROLE_MODEL_TYPE, QString());
-    item->setData(ROLE_MODEL_TRAINED_WORDS, QStringList());
-
-    // === 读取本地文件时间 (下载/添加时间) ===
-    QString filePath = item->data(ROLE_FILE_PATH).toString();
-    QFileInfo fi(filePath);
-    QDateTime birthTime = fi.birthTime(); // 获取创建时间
-    // 在某些系统(如Linux部分文件系统) birthTime 可能无效，回退到 lastModified
-    if (!birthTime.isValid()) {
-        birthTime = fi.lastModified();
-    }
-    item->setData(ROLE_SORT_ADDED, birthTime.toMSecsSinceEpoch());
-    // ============================================
-
-    QFile file(jsonPath);
-    if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
-        // 如果没有 JSON，尝试用文件修改时间作为日期
-        QFileInfo fi(item->data(ROLE_FILE_PATH).toString());
-        item->setData(ROLE_SORT_DATE, fi.lastModified().toMSecsSinceEpoch());
-        return;
-    }
-
-    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-    QJsonObject root = doc.object();
-    applyCivitaiAttributionToItem(item, readModelCreatorFromJson(root), readModelTagsFromJson(root));
-    item->setData(ROLE_MODEL_TYPE, root["model"].toObject()["type"].toString());
-    QStringList trainedWords;
-    for (const QJsonValue &value : root["trainedWords"].toArray()) {
-        QString word = value.toString().trimmed();
-        if (word.endsWith(",")) word.chop(1);
-        if (!word.isEmpty()) trainedWords << word;
-    }
-    item->setData(ROLE_MODEL_TRAINED_WORDS, trainedWords);
-
-    // 读取模型真实名称
-    QString modelName = root["model"].toObject()["name"].toString();
-    QString versionName = root["name"].toString();
-    if (!modelName.isEmpty()) {
-        QString fullName = modelName;
-        if (!versionName.isEmpty()) fullName += " [" + versionName + "]";
-        item->setData(ROLE_CIVITAI_NAME, fullName); // 存入 UserRole
-    }
-    bool localEdited = root["localEdited"].toBool(false) || root["localOnly"].toBool(false);
-    item->setData(ROLE_LOCAL_EDITED, localEdited);
-    item->setData(ROLE_CIVITAI_MODEL_ID, root["modelId"].toInt());
-    item->setData(ROLE_CIVITAI_VERSION_ID, root["id"].toInt());
-
-    // NSFW
-    int coverLevel = 1; // 默认 Safe
-
-    QJsonArray images = root["images"].toArray();
-    if (!images.isEmpty()) {
-        // 优先：读取 images[0] 的 nsfwLevel
-        // 因为侧边栏和主页显示的都是这张图，我们只关心这张图是否违规
-        QJsonObject coverObj = images[0].toObject();
-        if (coverObj.contains("nsfwLevel")) {
-            coverLevel = coverObj["nsfwLevel"].toInt();
-        }
-        // 兼容旧数据：有的旧 JSON image 里只有 nsfw (None/Soft/Mature/X)
-        else if (coverObj.contains("nsfw")) {
-            QString val = coverObj["nsfw"].toString().toLower();
-            if (val == "x" || val == "mature") coverLevel = 16;
-            else if (val == "soft") coverLevel = 2;
-            else coverLevel = 1;
-        }
-    }
-    else {
-        // 后备：如果 images 数组为空（极少见），才回退到读取整个模型的等级
-        if (root.contains("nsfwLevel")) coverLevel = root["nsfwLevel"].toInt();
-        else if (root["nsfw"].toBool()) coverLevel = 16;
-    }
-
-    // 存入 Item，供后续判断
-    item->setData(ROLE_NSFW_LEVEL, coverLevel);
-
-    // 1. 底模 (Base Model)
-    QString baseModel = root["baseModel"].toString();
-    if (!baseModel.isEmpty()) item->setData(ROLE_FILTER_BASE, baseModel);
-
-    // 2. 时间 (Created At)
-    QString dateStr = root["createdAt"].toString();
-    if (!dateStr.isEmpty()) {
-        QDateTime dt = QDateTime::fromString(dateStr, Qt::ISODate);
-        if (dt.isValid()) item->setData(ROLE_SORT_DATE, dt.toMSecsSinceEpoch());
-    } else {
-        // 后备：使用文件时间
-        QFileInfo fi(item->data(ROLE_FILE_PATH).toString());
-        item->setData(ROLE_SORT_DATE, fi.lastModified().toMSecsSinceEpoch());
-    }
-
-    // 3. 数据 (Stats)
-    QJsonObject stats = root["stats"].toObject();
-    item->setData(ROLE_SORT_DOWNLOADS, stats["downloadCount"].toInt());
-    item->setData(ROLE_SORT_LIKES, stats["thumbsUpCount"].toInt());
-    QJsonArray files = root["files"].toArray();
-    if (!files.isEmpty()) {
-        item->setData(ROLE_CIVITAI_SHA256, files[0].toObject()["hashes"].toObject()["SHA256"].toString());
-    }
+    // 解析（纯 I/O）与写入列表项（UI）分离，扫描时可在工作线程复用 parseModelListMetadata。
+    const ModelListMetadata m = parseModelListMetadata(item->data(ROLE_FILE_PATH).toString(), jsonPath);
+    applyModelListMetadataToItem(item, m);
 }
 
 void MainWindow::refreshModelUsageStatsAsync()
@@ -8218,12 +8240,12 @@ void MainWindow::onMenuSwitchToLibrary() {
 }
 
 void MainWindow::onMenuSwitchToSettings() {
-    ui->rootStack->setCurrentWidget(ui->pageSettings);
+    ui->rootStack->setCurrentWidget(settingsPage);
 }
 
 void MainWindow::onMenuSwitchToDownloads()
 {
-    ui->rootStack->setCurrentWidget(ui->pageDownloads);
+    ui->rootStack->setCurrentWidget(downloadsPage);
     updateDownloadModelActionButtons();
     if (downloadManager && !downloadManager->cacheLoaded()) {
         downloadsPage->setStatusText("正在恢复上次下载列表...");
@@ -11139,7 +11161,7 @@ void MainWindow::syncTreeSelection(const QString &filePath)
 
 void MainWindow::onMenuSwitchToAbout()
 {
-    ui->rootStack->setCurrentWidget(ui->pageAbout);
+    ui->rootStack->setCurrentWidget(aboutPage);
 }
 
 void MainWindow::onCheckUpdateClicked()

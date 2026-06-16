@@ -1,9 +1,12 @@
 #include "settingspage.h"
 #include "ui_settingspage.h"
+#include "styleconstants.h"
 
 #include <QCheckBox>
+#include <QColor>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QPalette>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QJsonObject>
@@ -16,6 +19,7 @@
 #include <QSlider>
 #include <QSpinBox>
 #include <QSet>
+#include <QTabWidget>
 #include <QWidget>
 
 namespace {
@@ -132,6 +136,16 @@ SettingsPage::SettingsPage(QWidget *parent)
     , ui(new Ui::SettingsPage)
 {
     ui->setupUi(this);
+
+    // 最外层 tab 移到侧边，与工具箱/启动器一致。
+    ui->tabSettings->setTabPosition(QTabWidget::West);
+    ui->tabSettings->setAutoFillBackground(true);
+    {
+        QPalette tabPalette = ui->tabSettings->palette();
+        tabPalette.setColor(QPalette::Window, QColor(AppStyle::SidebarDark));
+        ui->tabSettings->setPalette(tabPalette);
+    }
+
     initThemeComboData();
     if (ui->groupTheme) ui->groupTheme->setVisible(kThemeSettingsEnabled);
 

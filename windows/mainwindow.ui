@@ -379,7 +379,7 @@
           </widget>
           <widget class="QStackedWidget" name="mainStack">
            <property name="currentIndex">
-            <number>1</number>
+            <number>0</number>
            </property>
            <widget class="QWidget" name="pageHome">
             <layout class="QVBoxLayout" name="verticalLayout_Home">
@@ -789,7 +789,7 @@ New</string>
                 <property name="geometry">
                  <rect>
                   <x>0</x>
-                  <y>-649</y>
+                  <y>0</y>
                   <width>982</width>
                   <height>1644</height>
                  </rect>
@@ -2077,8 +2077,8 @@ Hash: ...</string>
                                  <rect>
                                   <x>0</x>
                                   <y>0</y>
-                                  <width>492</width>
-                                  <height>370</height>
+                                  <width>300</width>
+                                  <height>100</height>
                                  </rect>
                                 </property>
                                </widget>
@@ -2674,63 +2674,6 @@ Hash: ...</string>
           </widget>
          </widget>
         </item>
-       </layout>
-      </widget>
-      <widget class="QWidget" name="pageDownloads">
-       <layout class="QVBoxLayout" name="verticalLayout_DownloadsHost">
-        <property name="spacing">
-         <number>0</number>
-        </property>
-        <property name="leftMargin">
-         <number>0</number>
-        </property>
-        <property name="topMargin">
-         <number>0</number>
-        </property>
-        <property name="rightMargin">
-         <number>0</number>
-        </property>
-        <property name="bottomMargin">
-         <number>0</number>
-        </property>
-       </layout>
-      </widget>
-      <widget class="QWidget" name="pageSettings">
-       <layout class="QVBoxLayout" name="verticalLayout_SettingsHost">
-        <property name="spacing">
-         <number>0</number>
-        </property>
-        <property name="leftMargin">
-         <number>0</number>
-        </property>
-        <property name="topMargin">
-         <number>0</number>
-        </property>
-        <property name="rightMargin">
-         <number>0</number>
-        </property>
-        <property name="bottomMargin">
-         <number>0</number>
-        </property>
-       </layout>
-      </widget>
-      <widget class="QWidget" name="pageAbout">
-       <layout class="QVBoxLayout" name="verticalLayout_AboutHost">
-        <property name="spacing">
-         <number>0</number>
-        </property>
-        <property name="leftMargin">
-         <number>0</number>
-        </property>
-        <property name="topMargin">
-         <number>0</number>
-        </property>
-        <property name="rightMargin">
-         <number>0</number>
-        </property>
-        <property name="bottomMargin">
-         <number>0</number>
-        </property>
        </layout>
       </widget>
      </widget>

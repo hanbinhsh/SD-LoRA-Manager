@@ -5,6 +5,7 @@
 #include <QRunnable>
 #include <QString>
 #include <QImage>
+#include <QImageReader>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPen>
@@ -37,8 +38,32 @@ public:
             painter.setClipPath(pathObj);
         }
 
-        // 3. 加载图片
-        QImage srcImg(m_path);
+        // 3. 加载图片（按需缩放解码，避免把大图整张读进内存再缩小）
+        QImageReader reader(m_path);
+        QImage srcImg;
+        if (reader.canRead()) {
+            const QSize orig = reader.size();
+            if (orig.isValid() && !orig.isEmpty()) {
+                QSize decode = orig;
+                if (m_isFitMode) {
+                    // 适配模式：解码到刚好覆盖目标框即可
+                    decode = orig.scaled(targetSize, Qt::KeepAspectRatio);
+                } else {
+                    // 方形裁切模式：让较短边缩到 m_size，裁切与缩放结果不变
+                    const int shortSide = qMin(orig.width(), orig.height());
+                    if (shortSide > m_size) {
+                        const double f = double(m_size) / double(shortSide);
+                        decode = QSize(qMax(1, qRound(orig.width() * f)),
+                                       qMax(1, qRound(orig.height() * f)));
+                    }
+                }
+                if (decode.isValid() && !decode.isEmpty()
+                    && (decode.width() < orig.width() || decode.height() < orig.height())) {
+                    reader.setScaledSize(decode);
+                }
+            }
+            srcImg = reader.read();
+        }
 
         // === 核心逻辑：文件不存在 或 加载失败 ===
         if (srcImg.isNull()) {

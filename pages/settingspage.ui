@@ -12,19 +12,19 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_Settings">
    <property name="spacing">
-    <number>12</number>
+    <number>0</number>
    </property>
    <property name="leftMargin">
-    <number>24</number>
+    <number>0</number>
    </property>
    <property name="topMargin">
-    <number>24</number>
+    <number>0</number>
    </property>
    <property name="rightMargin">
-    <number>24</number>
+    <number>0</number>
    </property>
    <property name="bottomMargin">
-    <number>24</number>
+    <number>0</number>
    </property>
    <item>
     <widget class="QTabWidget" name="tabSettings">
@@ -162,6 +162,16 @@
           </size>
          </property>
         </spacer>
+       </item>
+       <item>
+        <widget class="QLabel" name="lblStatusSettingsPaths">
+         <property name="text">
+          <string>设置已自动保存，部分设置需重新扫描或重启生效。</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
+         </property>
+        </widget>
        </item>
       </layout>
      </widget>
@@ -309,6 +319,16 @@
           </size>
          </property>
         </spacer>
+       </item>
+       <item>
+        <widget class="QLabel" name="lblStatusSettingsNetwork">
+         <property name="text">
+          <string>设置已自动保存，部分设置需重新扫描或重启生效。</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
+         </property>
+        </widget>
        </item>
       </layout>
      </widget>
@@ -610,6 +630,16 @@
          </property>
         </spacer>
        </item>
+       <item>
+        <widget class="QLabel" name="lblStatusSettingsAppearance">
+         <property name="text">
+          <string>设置已自动保存，部分设置需重新扫描或重启生效。</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
+         </property>
+        </widget>
+       </item>
       </layout>
      </widget>
      <widget class="QWidget" name="tabScanParsing">
@@ -876,18 +906,18 @@
          </property>
         </spacer>
        </item>
+       <item>
+        <widget class="QLabel" name="lblStatusSettingsScan">
+         <property name="text">
+          <string>设置已自动保存，部分设置需重新扫描或重启生效。</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
+         </property>
+        </widget>
+       </item>
       </layout>
      </widget>
-    </widget>
-   </item>
-   <item>
-    <widget class="QLabel" name="lblStatusSettings">
-     <property name="text">
-      <string>设置已自动保存，部分设置需重新扫描或重启生效。</string>
-     </property>
-     <property name="alignment">
-      <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
-     </property>
     </widget>
    </item>
   </layout>

@@ -82,13 +82,6 @@ QString formatMemoryBytes(quint64 bytes)
     return QString::number(double(bytes) / (1024.0 * 1024.0 * 1024.0), 'f', 1) + " GB";
 }
 
-QString loadToolPageStyle()
-{
-    QFile file(":/styles/toolpage.qss");
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
-    return QString::fromUtf8(file.readAll());
-}
-
 Wd14TagScore parseScoreObject(const QJsonObject &obj)
 {
     Wd14TagScore score;
@@ -121,7 +114,7 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
     , m_translationMap(nullptr)
 {
     ui->setupUi(this);
-    setStyleSheet(loadToolPageStyle());
+    setStyleSheet(AppStyle::loadQss(":/styles/toolpage.qss"));
 
     setAcceptDrops(true);
     ui->lblImage->installEventFilter(this);
@@ -416,18 +409,7 @@ void PromptParserWidget::updateWd14ImagePreview(const QString &filePath)
 QMap<QString, int> PromptParserWidget::parsePromptToMap(const QString &rawPrompt)
 {
     QMap<QString, int> result;
-    const QString trimmedPrompt = rawPrompt.trimmed();
-    if (trimmedPrompt.isEmpty()) return result;
-    if (trimmedPrompt.startsWith('{') || trimmedPrompt.startsWith('[')) {
-        const QJsonDocument doc = QJsonDocument::fromJson(trimmedPrompt.toUtf8());
-        if (!doc.isNull()) return result;
-    }
-
-    QString processText = trimmedPrompt;
-    processText.replace("\r\n", ",");
-    processText.replace("\n", ",");
-    processText.replace("\r", ",");
-    const QStringList parts = processText.split(",", Qt::SkipEmptyParts);
+    const QStringList parts = TagUtils::splitPromptParts(rawPrompt, true);
     for (const QString &part : parts) {
         const QString clean = TagUtils::cleanPromptTag(part);
         if (!clean.isEmpty()) result[clean]++;

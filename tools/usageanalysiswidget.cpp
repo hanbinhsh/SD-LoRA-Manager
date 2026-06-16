@@ -1,5 +1,6 @@
 #include "usageanalysiswidget.h"
 #include "chartwidgets.h"
+#include "styleconstants.h"
 #include "tableviewstylehelper.h"
 #include "ui_usageanalysiswidget.h"
 
@@ -39,13 +40,6 @@ public:
 private:
     int numericValue = 0;
 };
-
-QString loadToolPageStyle()
-{
-    QFile file(":/styles/toolpage.qss");
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
-    return QString::fromUtf8(file.readAll());
-}
 
 QString humanSize(qint64 bytes)
 {
@@ -108,7 +102,7 @@ UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
     , ui(new Ui::UsageAnalysisWidget)
 {
     ui->setupUi(this);
-    setStyleSheet(loadToolPageStyle());
+    setStyleSheet(AppStyle::loadQss(":/styles/toolpage.qss"));
 
     auto setupTable = [](QTableWidget *table, bool stretchLast) {
         applyUnifiedTableRowStyle(table);
