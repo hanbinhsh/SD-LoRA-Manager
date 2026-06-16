@@ -164,3 +164,7 @@ CMakeLists.txt.user*
 
 /build*/
 
+.claude/
+
+.qtcreator/
+
