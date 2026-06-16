@@ -581,8 +581,17 @@ QMenuBar::item:pressed {
     color: #000000;
 }
 
+/* 启动器(LauncherWidget)本体背景。toolpage.qss 现在只设在两个内容页上，不再覆盖本体，
+   所以本体背景改由全局表绘制。 */
+QWidget#LauncherWidget {
+    background-color: #1b2838;
+}
+/* 启动器外层 tab(targetTabs) 必须由“全局”样式表绘制（与下面三个一致）。
+   原因：targetTabs 这个 QTabWidget 不带局部样式表，West 标签条空白区域靠 autoFillBackground+调色板绘制；
+   只要这里不给它写本体 background 规则（仅 ::pane / QTabBar 子控件），调色板就能正常画出 #1a1f29。 */
 QTabWidget#toolsTabWidget::pane,
-QTabWidget#tabSettings::pane {
+QTabWidget#tabSettings::pane,
+QTabWidget#targetTabs::pane {
     border: 1px solid #444;
     background-color: #1b2838;
     color: #dcdedf;
@@ -595,19 +604,22 @@ QTabWidget#tabDownloadsMain::pane {
 }
 QTabWidget#toolsTabWidget QTabBar,
 QTabWidget#tabSettings QTabBar,
-QTabWidget#tabDownloadsMain QTabBar {
+QTabWidget#tabDownloadsMain QTabBar,
+QTabWidget#targetTabs QTabBar {
     background-color: #1a1f29;
 }
 QTabWidget#toolsTabWidget QTabBar::tab,
 QTabWidget#tabSettings QTabBar::tab,
-QTabWidget#tabDownloadsMain QTabBar::tab {
+QTabWidget#tabDownloadsMain QTabBar::tab,
+QTabWidget#targetTabs QTabBar::tab {
     background: #1a1f29;
     color: #ccc;
     padding: 10px;
 }
 QTabWidget#toolsTabWidget QTabBar::tab:selected,
 QTabWidget#tabSettings QTabBar::tab:selected,
-QTabWidget#tabDownloadsMain QTabBar::tab:selected {
+QTabWidget#tabDownloadsMain QTabBar::tab:selected,
+QTabWidget#targetTabs QTabBar::tab:selected {
     background: #3d4450;
     color: #fff;
     font-weight: bold;

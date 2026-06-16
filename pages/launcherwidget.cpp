@@ -130,7 +130,14 @@ LauncherWidget::LauncherWidget(QWidget *parent)
     , ui(new Ui::LauncherWidget)
 {
     ui->setupUi(this);
-    setStyleSheet(AppStyle::loadQss(":/styles/toolpage.qss"));
+    // 不要把 toolpage.qss 设在 LauncherWidget 本体上——那会让子控件 targetTabs 走“局部”QStyleSheetStyle，
+    // 杀掉它的 autoFillBackground+调色板，使 West 标签条里没有 tab 按钮的空白区域回退成 Dark 配色的 #1e1e1e，
+    // 且局部 QSS 无法重绘那块本体区域（试过本体背景、QTabBar 背景都无效）。
+    // 改为只给两个内容页设样式：这样 targetTabs（QTabWidget）不带局部样式表，和工具箱的 toolsTabWidget 一致——
+    // 外层 tab 由全局 mainwindow.qss（#targetTabs 规则）+ 下面设置的调色板绘制，内容控件由 toolpage.qss 绘制。
+    const QString toolQss = AppStyle::loadQss(":/styles/toolpage.qss");
+    ui->pageA1111->setStyleSheet(toolQss);
+    ui->pageComfyUI->setStyleSheet(toolQss);
 
     // 与工具箱页保持一致：West 标签条使用深色侧栏背景。
     ui->targetTabs->setAutoFillBackground(true);

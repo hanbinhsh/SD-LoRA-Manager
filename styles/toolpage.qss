@@ -1,15 +1,11 @@
 QWidget#UsageAnalysisWidget, QWidget#TagBrowserWidget, QWidget#LlmPromptWidget,
-QWidget#PromptParserWidget, QWidget#PromptTemplateLibraryWidget, QWidget#SyncWidget,
-QWidget#LauncherWidget {
+QWidget#PromptParserWidget, QWidget#PromptTemplateLibraryWidget, QWidget#SyncWidget {
     background-color: #1b2838;
     color: #dcdedf;
 }
-/* 启动器外层 tab 与设置/下载/工具箱一致：扁平、直角（无圆角） */
-QTabWidget#targetTabs::pane {
-    background-color: #1b2838;
-    border: 1px solid #444;
-    border-radius: 0;
-}
+/* 启动器外层 tab(targetTabs) 的样式不在这里——见 mainwindow.qss。
+   toolpage.qss 现在只设在 LauncherWidget 的两个内容页(pageA1111/pageComfyUI)上，不会作用到 targetTabs
+   这个 QTabWidget 本体；外层 tab 条由全局 mainwindow.qss + 调色板绘制（与工具箱 toolsTabWidget 一致）。 */
 QTabWidget::pane {
     border: 1px solid #3d4d5d;
     background-color: #1e252f;
