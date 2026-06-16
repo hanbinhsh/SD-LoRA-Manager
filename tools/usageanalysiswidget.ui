@@ -271,6 +271,128 @@
        </item>
       </layout>
      </widget>
+     <widget class="QWidget" name="tabDiskSpace">
+      <attribute name="title">
+       <string>模型空间占用分析</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayoutDiskSpace">
+       <item>
+        <layout class="QHBoxLayout" name="layoutSpaceTop">
+         <item>
+          <widget class="QLabel" name="lblSpaceScopeLabel">
+           <property name="text">
+            <string>统计范围</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="comboSpaceScope"/>
+         </item>
+         <item>
+          <spacer name="spaceTopSpacer">
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QLabel" name="lblSpaceSummary">
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QScrollArea" name="scrollSpace">
+         <property name="widgetResizable">
+          <bool>true</bool>
+         </property>
+         <widget class="QWidget" name="spaceContainer">
+          <layout class="QVBoxLayout" name="layoutSpaceContent">
+           <item>
+            <widget class="QGroupBox" name="groupSpaceFolder">
+             <property name="title">
+              <string>按文件夹</string>
+             </property>
+             <layout class="QHBoxLayout" name="layoutSpaceFolderRow">
+              <item>
+               <widget class="QWidget" name="spaceFolderPieContainer">
+                <layout class="QVBoxLayout" name="layoutSpaceFolderPie">
+                 <property name="leftMargin"><number>0</number></property>
+                 <property name="topMargin"><number>0</number></property>
+                 <property name="rightMargin"><number>0</number></property>
+                 <property name="bottomMargin"><number>0</number></property>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <widget class="QWidget" name="spaceFolderBarContainer">
+                <layout class="QVBoxLayout" name="layoutSpaceFolderBar">
+                 <property name="leftMargin"><number>0</number></property>
+                 <property name="topMargin"><number>0</number></property>
+                 <property name="rightMargin"><number>0</number></property>
+                 <property name="bottomMargin"><number>0</number></property>
+                </layout>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QGroupBox" name="groupSpaceCategory">
+             <property name="title">
+              <string>按类别</string>
+             </property>
+             <layout class="QHBoxLayout" name="layoutSpaceCategoryRow">
+              <item>
+               <widget class="QWidget" name="spaceCategoryPieContainer">
+                <layout class="QVBoxLayout" name="layoutSpaceCategoryPie">
+                 <property name="leftMargin"><number>0</number></property>
+                 <property name="topMargin"><number>0</number></property>
+                 <property name="rightMargin"><number>0</number></property>
+                 <property name="bottomMargin"><number>0</number></property>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <widget class="QWidget" name="spaceCategoryBarContainer">
+                <layout class="QVBoxLayout" name="layoutSpaceCategoryBar">
+                 <property name="leftMargin"><number>0</number></property>
+                 <property name="topMargin"><number>0</number></property>
+                 <property name="rightMargin"><number>0</number></property>
+                 <property name="bottomMargin"><number>0</number></property>
+                </layout>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QGroupBox" name="groupLargestModels">
+             <property name="title">
+              <string>占用最大的模型</string>
+             </property>
+             <layout class="QVBoxLayout" name="layoutLargestModels">
+              <item>
+               <widget class="QTableWidget" name="tableLargestModels"/>
+              </item>
+             </layout>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+      </layout>
+     </widget>
     </widget>
    </item>
   </layout>

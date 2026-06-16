@@ -66,7 +66,7 @@
 #include "tools/promptparserwidget.h"
 #include "tools/usageanalysiswidget.h"
 #include "tools/prompttemplatelibrarywidget.h"
-#include "tools/launcherwidget.h"
+#include "pages/launcherwidget.h"
 #include "pages/downloadmanager.h"
 #include "pages/downloadspage.h"
 #include "pages/settingspage.h"
@@ -3642,6 +3642,7 @@ void MainWindow::refreshUsageAnalysisWidget()
         if (model.baseName.isEmpty()) model.baseName = QFileInfo(model.filePath).completeBaseName();
         model.rootName = item->data(ROLE_MODEL_ROOT_NAME).toString();
         model.baseModel = item->data(ROLE_FILTER_BASE).toString();
+        model.modelType = item->data(ROLE_MODEL_TYPE).toString();
         model.previewPath = item->data(ROLE_PREVIEW_PATH).toString();
         model.modelId = item->data(ROLE_CIVITAI_MODEL_ID).toInt();
         model.versionId = item->data(ROLE_CIVITAI_VERSION_ID).toInt();
@@ -3654,6 +3655,13 @@ void MainWindow::refreshUsageAnalysisWidget()
             model.jsonPath = fi.absoluteDir().filePath(fi.completeBaseName() + ".json");
             const QJsonObject failure = modelSyncFailures.value(model.filePath);
             model.syncFailure = failure["error"].toString();
+
+            // 磁盘占用：模型本体 + 附属文件（预览图 + json）。
+            if (fi.exists()) model.modelFileBytes = fi.size();
+            const QFileInfo jsonFi(model.jsonPath);
+            if (jsonFi.exists()) model.sidecarBytes += jsonFi.size();
+            const QFileInfo previewFi(model.previewPath);
+            if (!model.previewPath.isEmpty() && previewFi.exists()) model.sidecarBytes += previewFi.size();
         }
         data.models.append(model);
     }
@@ -8080,7 +8088,7 @@ void MainWindow::initMenuBar() {
         toolsTabWidget->addTab(makeToolPlaceholder("点击后加载提示词解析工具..."), "📝 提示词解析 / Prompt");
         toolsTabWidget->addTab(makeToolPlaceholder("点击后加载 Tag 浏览工具..."), "🏷️ Tag 浏览 / Tag");
         toolsTabWidget->addTab(makeToolPlaceholder("点击后加载大模型提示词工具..."), "🤖 大模型提示词 / LLM");
-        toolsTabWidget->addTab(makeToolPlaceholder("点击后加载使用分析工具..."), "📊 使用分析 / Analysis");
+        toolsTabWidget->addTab(makeToolPlaceholder("点击后加载模型分析工具..."), "📊 模型分析 / Analysis");
         toolsTabWidget->addTab(makeToolPlaceholder("点击后加载提示词模板库..."), "🧩 提示词模板 / Templates");
         toolsTabWidget->setTabPosition(QTabWidget::West);
 

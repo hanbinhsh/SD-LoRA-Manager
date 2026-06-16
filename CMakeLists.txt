@@ -61,15 +61,16 @@ qt_add_executable(SD_LoRA_Manager
     resources.qrc
     app.rc
     widgets/tagflowwidget.h
+    widgets/chartwidgets.h
     tools/syncwidget.h
     tools/syncwidget.cpp
     tools/syncwidget.ui
     tools/promptparserwidget.h
     tools/promptparserwidget.cpp
     tools/promptparserwidget.ui
-    tools/launcherwidget.h
-    tools/launcherwidget.cpp
-    tools/launcherwidget.ui
+    pages/launcherwidget.h
+    pages/launcherwidget.cpp
+    pages/launcherwidget.ui
 )
 
 target_include_directories(SD_LoRA_Manager

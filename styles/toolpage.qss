@@ -103,9 +103,15 @@ QWidget#templateImageNegativeTagsContainer,
 QWidget#scrollAreaWidgetContentsPos,
 QWidget#scrollAreaWidgetContentsNeg,
 QWidget#compareTagsAContainer,
-QWidget#compareTagsBContainer {
+QWidget#compareTagsBContainer,
+QWidget#spaceContainer {
     background-color: transparent;
     border: none;
+}
+QScrollArea#scrollSpace {
+    background: transparent;
+    border: none;
+    padding: 0;
 }
 QListWidget#listChatMessages {
     background-color: #16191e;
