@@ -259,6 +259,8 @@ private slots:
     void onHomeGalleryContextMenu(const QPoint &pos);
     void onSortIndexChanged(int index);
     void onFilterBaseModelChanged(const QString &text);
+    void rebuildSortFilterMenu();        // 重建侧栏“排序/筛选”多级菜单（底模/类型项会随扫描变化）
+    void updateSortFilterButtonText();   // 刷新侧栏“排序/筛选”按钮文案以反映当前排序与筛选
     void onUserImageClicked(QListWidgetItem *item);
     void onTagFilterChanged(const QSet<QString> &selectedTags);
     void onToggleDetailTab(); // 切换 Tab 的槽函数

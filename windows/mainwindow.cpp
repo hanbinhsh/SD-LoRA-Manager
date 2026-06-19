@@ -16,6 +16,7 @@
 #include <QScrollBar>
 #include <QScrollArea>
 #include <QMenu>
+#include <QActionGroup>
 #include <QInputDialog>
 #include <QComboBox>
 #include <QJsonArray>
@@ -28,6 +29,7 @@
 #include <QGraphicsPixmapItem>
 #include <QGraphicsBlurEffect>
 #include <QTextDocument>
+#include <QTextBoundaryFinder>
 #include <QTextEdit>
 #include <QRegularExpression>
 #include <QImage>
@@ -956,6 +958,17 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->modelList, &QListWidget::itemClicked, this, &MainWindow::onModelListClicked);
     connect(ui->comboSort, QOverload<int>::of(&QComboBox::currentIndexChanged),this, &MainWindow::onSortIndexChanged);
     connect(ui->comboBaseModel, &QComboBox::currentTextChanged,this, &MainWindow::onFilterBaseModelChanged);
+    connect(ui->comboModelType, &QComboBox::currentTextChanged, this, [this](const QString &){ onSearchTextChanged(ui->searchEdit->text()); });
+
+    // 侧栏“排序/筛选”按钮：用一个多级菜单承载 排序 / 底模 / 类型（三个原下拉框已隐藏，仅作状态存储）。
+    QMenu *sortFilterMenu = new QMenu(this);
+    ui->btnSortFilter->setMenu(sortFilterMenu);
+    connect(sortFilterMenu, &QMenu::aboutToShow, this, &MainWindow::rebuildSortFilterMenu);
+    // 三个下拉任一变化时同步刷新按钮文案。
+    connect(ui->comboSort, &QComboBox::currentTextChanged, this, [this](const QString &){ updateSortFilterButtonText(); });
+    connect(ui->comboBaseModel, &QComboBox::currentTextChanged, this, [this](const QString &){ updateSortFilterButtonText(); });
+    connect(ui->comboModelType, &QComboBox::currentTextChanged, this, [this](const QString &){ updateSortFilterButtonText(); });
+    updateSortFilterButtonText();
     connect(ui->btnModelsTab, &QPushButton::clicked, this, &MainWindow::onModelsTabButtonClicked);
     connect(ui->btnCollectionsTab, &QPushButton::clicked, this, &MainWindow::onCollectionsTabButtonClicked);
     connect(ui->collectionTree, &QTreeWidget::itemClicked, this, &MainWindow::onCollectionTreeItemClicked);
@@ -1187,13 +1200,41 @@ MainWindow::MainWindow(QWidget *parent)
 
 }
 
-QString forceWrap(const QString &text) { // 强制加入零宽空格换行
+QString forceWrap(const QString &text) { // 在“字形簇”之间插入零宽空格以允许换行
+    // 不能按 QChar(UTF-16 码元)逐个插入：星标平面的 emoji（如 🟥 U+1F7E5）由代理对组成，
+    // 在两个代理之间插入零宽空格会拆散代理对，导致渲染成 “?”。用 Grapheme 边界按整个字形簇切分，
+    // 这样代理对、ZWJ 组合 emoji、组合附加符号都不会被破坏。
+    if (text.isEmpty()) return text;
     QString result;
-    for (int i = 0; i < text.length(); ++i) {
-        result += text[i];
-        result += QChar(0x200B); // 插入零宽空格
+    result.reserve(text.size() * 2);
+    QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, text);
+    int start = 0;
+    int end;
+    while ((end = finder.toNextBoundary()) != -1) {
+        result += QStringView(text).mid(start, end - start);
+        result += QChar(0x200B); // 零宽空格
+        start = end;
     }
     return result;
+}
+
+// 把 Civitai 模型类型规范化为侧栏「类型」筛选用的类别标签；返回空表示该模型没有类型信息。
+// LoCon / DoRA / LyCORIS 等都归到 LoRA，避免下拉项过于零碎。
+static QString normalizeModelTypeForFilter(const QString &raw) {
+    const QString t = raw.trimmed().toLower();
+    if (t.isEmpty()) return QString();
+    if (t.contains("lora") || t.contains("locon") || t.contains("dora") || t.contains("lycoris")) return QStringLiteral("LoRA");
+    if (t.contains("checkpoint")) return QStringLiteral("Checkpoint");
+    if (t.contains("textualinversion") || t.contains("embedding")) return QStringLiteral("Embedding");
+    if (t.contains("vae")) return QStringLiteral("VAE");
+    if (t.contains("hypernetwork")) return QStringLiteral("Hypernetwork");
+    if (t.contains("controlnet")) return QStringLiteral("ControlNet");
+    if (t.contains("upscaler")) return QStringLiteral("Upscaler");
+    if (t.contains("motion")) return QStringLiteral("MotionModule");
+    if (t.contains("poses")) return QStringLiteral("Poses");
+    if (t.contains("wildcard")) return QStringLiteral("Wildcards");
+    if (t.contains("aestheticgradient")) return QStringLiteral("AestheticGradient");
+    return raw.trimmed(); // 其它已知类型按原样展示
 }
 
 static constexpr int USER_GALLERY_PARSER_VERSION = 4;
@@ -2074,6 +2115,7 @@ void MainWindow::refreshHomeGallery()
 
     QString searchText = ui->searchEdit->text().trimmed();
     QString targetBaseModel = ui->comboBaseModel->currentText();
+    QString targetModelType = ui->comboModelType->currentText();
 
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *sideItem = ui->modelList->item(i);
@@ -2109,6 +2151,10 @@ void MainWindow::refreshHomeGallery()
 
         if (targetBaseModel != "All") {
             if (itemBaseModel != targetBaseModel) continue;
+        }
+
+        if (targetModelType != "All") {
+            if (normalizeModelTypeForFilter(sideItem->data(ROLE_MODEL_TYPE).toString()) != targetModelType) continue;
         }
 
         if (!currentHomeAuthorFilter.isEmpty() &&
@@ -3032,6 +3078,11 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
     ui->comboBaseModel->addItem("All");
     ui->comboBaseModel->blockSignals(false);
 
+    ui->comboModelType->blockSignals(true);
+    ui->comboModelType->clear();
+    ui->comboModelType->addItem("All");
+    ui->comboModelType->blockSignals(false);
+
     ui->statusbar->showMessage("正在扫描模型...");
 
     const int token = ++modelScanToken;
@@ -3052,6 +3103,7 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
         ui->comboBaseModel->blockSignals(true);
 
         QSet<QString> foundBaseModels;
+        QSet<QString> foundModelTypes;
         int addedCount = 0;
         for (const ScannedModelEntry &e : entries) {
             const bool isNSFW = e.meta.nsfwLevel > optNSFWLevel;
@@ -3080,6 +3132,9 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
                 ui->comboBaseModel->addItem(baseModel);
             }
 
+            const QString modelType = normalizeModelTypeForFilter(item->data(ROLE_MODEL_TYPE).toString());
+            if (!modelType.isEmpty()) foundModelTypes.insert(modelType);
+
             ui->modelList->addItem(item);
             addedCount++;
             if (!e.previewPath.isEmpty()) {
@@ -3092,6 +3147,15 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
 
         ui->statusbar->showMessage(QString("扫描完成，共 %1 个模型").arg(addedCount));
         ui->comboBaseModel->blockSignals(false);
+
+        ui->comboModelType->blockSignals(true);
+        QStringList typeList = foundModelTypes.values();
+        std::sort(typeList.begin(), typeList.end());
+        ui->comboModelType->addItems(typeList);
+        ui->comboModelType->blockSignals(false);
+
+        updateSortFilterButtonText(); // 下拉框在静默状态下重建了，手动刷新按钮文案
+
         ui->modelList->setUpdatesEnabled(true);
 
         refreshModelUsageStatsAsync();
@@ -6271,6 +6335,7 @@ void MainWindow::onSearchTextChanged(const QString &text)
 {
     QString query = text.trimmed();
     QString targetBaseModel = ui->comboBaseModel->currentText();
+    QString targetModelType = ui->comboModelType->currentText();
 
     // 1. 自动重置收藏夹 (保留逻辑)
     if (!query.isEmpty() && !currentCollectionFilter.isEmpty()) {
@@ -6319,8 +6384,14 @@ void MainWindow::onSearchTextChanged(const QString &text)
             if (itemBase != targetBaseModel) baseMatch = false;
         }
 
+        // C. 类型匹配
+        bool typeMatch = true;
+        if (targetModelType != "All") {
+            if (normalizeModelTypeForFilter(item->data(ROLE_MODEL_TYPE).toString()) != targetModelType) typeMatch = false;
+        }
+
         // 综合判断：只记录过滤结果，实际显示由文件夹折叠逻辑统一处理
-        item->setData(ROLE_MODEL_FILTER_VISIBLE, nameMatch && baseMatch);
+        item->setData(ROLE_MODEL_FILTER_VISIBLE, nameMatch && baseMatch && typeMatch);
     }
     applyModelFolderVisibility();
 
@@ -6948,6 +7019,47 @@ void MainWindow::executeSort()
 
 void MainWindow::onFilterBaseModelChanged(const QString &text) {
     onSearchTextChanged(ui->searchEdit->text());
+}
+
+// 重建侧栏“排序/筛选”多级菜单。每次弹出前调用，使底模/类型项与最近一次扫描保持一致，
+// 并标记当前选中项。各项触发时只是改动隐藏下拉框的当前值，从而复用既有的排序/筛选逻辑。
+void MainWindow::rebuildSortFilterMenu() {
+    QMenu *menu = ui->btnSortFilter->menu();
+    if (!menu) return;
+    menu->clear();
+
+    auto buildSubmenu = [this, menu](const QString &title, QComboBox *combo, bool byIndex) {
+        QMenu *sub = menu->addMenu(title);
+        QActionGroup *group = new QActionGroup(sub);
+        group->setExclusive(true);
+        for (int i = 0; i < combo->count(); ++i) {
+            QAction *act = sub->addAction(combo->itemText(i));
+            act->setCheckable(true);
+            act->setChecked(i == combo->currentIndex());
+            group->addAction(act);
+            if (byIndex) {
+                connect(act, &QAction::triggered, this, [combo, i]() { combo->setCurrentIndex(i); });
+            } else {
+                const QString text = combo->itemText(i);
+                connect(act, &QAction::triggered, this, [combo, text]() { combo->setCurrentText(text); });
+            }
+        }
+    };
+
+    buildSubmenu("排序 / Sort", ui->comboSort, true);
+    menu->addSeparator();
+    buildSubmenu("底模 / Base", ui->comboBaseModel, false);
+    buildSubmenu("类型 / Type", ui->comboModelType, false);
+}
+
+// 用当前排序与已启用的筛选拼出按钮文案，方便用户不展开菜单也能看到当前状态。
+void MainWindow::updateSortFilterButtonText() {
+    QString text = "⚙ " + ui->comboSort->currentText();
+    QStringList active;
+    if (ui->comboBaseModel->currentText() != "All") active << ui->comboBaseModel->currentText();
+    if (ui->comboModelType->currentText() != "All") active << ui->comboModelType->currentText();
+    if (!active.isEmpty()) text += " · " + active.join(" · ");
+    ui->btnSortFilter->setText(text);
 }
 
 // 静态函数，运行在后台线程
@@ -9208,6 +9320,11 @@ void MainWindow::fetchMetadataForSyncJob(const MetadataSyncJob &job)
             return;
         }
         job.snapshot.currentSha256 = hash;
+        // 把刚算出的 Hash 缓存到列表项：这是文件真实的 SHA256，下面的网络匹配即便因网络问题失败，
+        // 下次再点“获取/同步元信息”也能直接走缓存 Hash 路径，无需重新计算（除非用户在设置里开启
+        // “同步元数据时重新计算已有 Hash”）。
+        if (QListWidgetItem *item = findModelItemByFilePath(job.snapshot.filePath))
+            item->setData(ROLE_CIVITAI_SHA256, hash);
         QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/model-versions/by-hash/%1").arg(hash))));
         reply->setProperty("filePath", job.snapshot.filePath);
         reply->setProperty("baseName", job.snapshot.baseName);
@@ -9374,6 +9491,10 @@ bool MainWindow::tryStartCivArchiveHashCalculation(const MetadataSyncJob &job, c
         retryJob.snapshot.modelId = watcher->property("modelId").toInt();
         retryJob.snapshot.currentVersionId = watcher->property("currentVersionId").toInt();
         retryJob.snapshot.currentSha256 = watcher->result();
+        // 同上：缓存算出的 Hash，避免后续重复计算。
+        if (QListWidgetItem *item = findModelItemByFilePath(retryJob.snapshot.filePath);
+                item && !retryJob.snapshot.currentSha256.trimmed().isEmpty())
+            item->setData(ROLE_CIVITAI_SHA256, retryJob.snapshot.currentSha256.trimmed());
         retryJob.updateExisting = watcher->property("updateExisting").toBool();
         retryJob.civArchiveOnly = watcher->property("civArchiveOnly").toBool();
         retryJob.detailFallback = watcher->property("detailFallback").toBool();
