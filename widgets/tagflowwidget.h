@@ -44,7 +44,8 @@ class TagFlowWidget : public QWidget {
 public:
     enum SortMode {
         SortByCount = 0,
-        SortAlphabetically = 1
+        SortAlphabetically = 1,
+        SortByGivenOrder = 2   // 按外部提供的顺序（如当前图提示词出现顺序）排序
     };
 
     enum DiffState {
@@ -113,6 +114,15 @@ public:
         if (m_sortMode == mode) return;
         m_sortMode = mode;
         rebuildVisibleTags();
+    }
+
+    // 提供“给定顺序”（如当前图提示词的出现顺序）；仅在 SortByGivenOrder 模式下生效。
+    void setGivenOrder(const QStringList &order) {
+        m_givenOrder.clear();
+        for (int i = 0; i < order.size(); ++i) {
+            if (!m_givenOrder.contains(order[i])) m_givenOrder.insert(order[i], i);
+        }
+        if (m_sortMode == SortByGivenOrder) rebuildVisibleTags();
     }
 
     void setPixmapCacheEnabled(bool enabled) {
@@ -189,6 +199,7 @@ protected:
     bool m_showTranslation = false;
     bool m_showCount = true;
     SortMode m_sortMode = SortByCount;
+    QHash<QString, int> m_givenOrder; // 标签 -> 给定顺序位置（SortByGivenOrder 用）
     QString m_searchText;
     bool m_loraOnly = false;
     bool m_pixmapCacheEnabled = true;
@@ -237,7 +248,15 @@ protected:
             m_tags.append(tag);
         }
 
-        if (m_sortMode == SortAlphabetically) {
+        if (m_sortMode == SortByGivenOrder) {
+            constexpr int kNoOrder = 1 << 30; // 不在给定顺序里的排到最后
+            std::sort(m_tags.begin(), m_tags.end(), [this, kNoOrder](const TagState &a, const TagState &b) {
+                const int ia = m_givenOrder.value(a.text, kNoOrder);
+                const int ib = m_givenOrder.value(b.text, kNoOrder);
+                if (ia != ib) return ia < ib;
+                return QString::compare(a.text, b.text, Qt::CaseInsensitive) < 0;
+            });
+        } else if (m_sortMode == SortAlphabetically) {
             std::sort(m_tags.begin(), m_tags.end(), [](const TagState &a, const TagState &b) {
                 const int cmp = QString::compare(a.text, b.text, Qt::CaseInsensitive);
                 if (cmp != 0) return cmp < 0;
@@ -395,27 +414,63 @@ protected:
         m_cacheDirty = false;
     }
 
+    // 规范化翻译词条的中文字段，兼容两种 autocomplete 词表格式（与表格/自动补全保持一致）：
+    //   a1111:   "一个女孩"                 -> "一个女孩"
+    //   ComfyUI: "1girl 人物-一个女孩,7968938" -> "人物-一个女孩"
+    // 即：去掉末尾的 ",数字"（优先级/使用次数），再去掉开头重复的英文 tag 前缀。
+    static QString cleanTranslationValue(const QString &tag, const QString &raw) {
+        QString display = raw.trimmed();
+
+        // 1. 去掉末尾的 ",<数字>"
+        const int lastComma = display.lastIndexOf(',');
+        if (lastComma > 0) {
+            const QString tail = display.mid(lastComma + 1).trimmed();
+            bool numeric = !tail.isEmpty();
+            for (const QChar c : tail) { if (!c.isDigit()) { numeric = false; break; } }
+            if (numeric) display = display.left(lastComma).trimmed();
+        }
+
+        // 2. 去掉开头重复的英文 tag 前缀（含 空格/下划线 变体）
+        if (!display.isEmpty() && !tag.isEmpty()) {
+            QStringList prefixes;
+            prefixes << tag;
+            QString spaced = tag; spaced.replace('_', ' '); if (spaced != tag) prefixes << spaced;
+            QString underscored = tag; underscored.replace(' ', '_'); if (underscored != tag) prefixes << underscored;
+            for (const QString &prefix : prefixes) {
+                if (display.size() > prefix.size() + 1 &&
+                    display.startsWith(prefix, Qt::CaseInsensitive) &&
+                    display.at(prefix.size()).isSpace()) {
+                    display = display.mid(prefix.size()).trimmed();
+                    break;
+                }
+            }
+            // 翻译字段与 tag 完全相同 -> 视为没有翻译
+            if (display.compare(tag, Qt::CaseInsensitive) == 0) return QString();
+        }
+        return display;
+    }
+
     // === 新增：模糊匹配查找函数 ===
     QString tryGetTranslation(const QString &key) const {
         if (!m_translationMap) return "";
 
         // 1. 尝试精确匹配 (white_hair -> white_hair)
         if (m_translationMap->contains(key)) {
-            return m_translationMap->value(key);
+            return cleanTranslationValue(key, m_translationMap->value(key));
         }
 
         // 2. 尝试将 空格 替换为 下划线 (white hair -> white_hair)
         if (key.contains(' ')) {
             QString k = key;
             k.replace(' ', '_');
-            if (m_translationMap->contains(k)) return m_translationMap->value(k);
+            if (m_translationMap->contains(k)) return cleanTranslationValue(key, m_translationMap->value(k));
         }
 
         // 3. 尝试将 下划线 替换为 空格 (white_hair -> white hair)
         if (key.contains('_')) {
             QString k = key;
             k.replace('_', ' ');
-            if (m_translationMap->contains(k)) return m_translationMap->value(k);
+            if (m_translationMap->contains(k)) return cleanTranslationValue(key, m_translationMap->value(k));
         }
 
         return ""; // 没找到

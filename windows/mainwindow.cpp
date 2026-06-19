@@ -1097,7 +1097,12 @@ MainWindow::MainWindow(QWidget *parent)
         tagFlowWidget->clearSelectedTags();
     });
     connect(ui->comboUserTagSortMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index){
-        tagFlowWidget->setSortMode(index == 1 ? TagFlowWidget::SortAlphabetically : TagFlowWidget::SortByCount);
+        TagFlowWidget::SortMode mode = TagFlowWidget::SortByCount;
+        if (index == 1) mode = TagFlowWidget::SortAlphabetically;
+        else if (index == 2) mode = TagFlowWidget::SortByGivenOrder;
+        tagFlowWidget->setSortMode(mode);
+        // “提示词顺序”依赖当前图的提示词顺序，刷新一次以重建顺序数据。
+        if (index == 2) refreshUserTagFlowStats();
     });
     connect(ui->editUserTagSearch, &QLineEdit::textChanged, this, [this](const QString &text){
         tagFlowWidget->setSearchText(text);
@@ -8055,6 +8060,15 @@ void MainWindow::refreshUserTagFlowStats()
     }
 
     tagFlowWidget->setData(tagCounts);
+
+    // 为“提示词顺序”排序提供顺序：取当前选中图的提示词出现顺序（正面在前，启用负面时追加）。
+    QStringList promptOrder;
+    if (QListWidgetItem *cur = ui->listUserImages->currentItem()) {
+        promptOrder = cur->data(ROLE_USER_IMAGE_TAGS).toStringList();
+        if (includeNegative) promptOrder += cur->data(ROLE_USER_IMAGE_NEG_TAGS).toStringList();
+    }
+    tagFlowWidget->setGivenOrder(promptOrder);
+
     onTagFilterChanged(tagFlowWidget->getSelectedTags());
 }
 
@@ -8068,7 +8082,40 @@ void MainWindow::onUserImageClicked(QListWidgetItem *item) {
 
     QString safePrompt = prompt.toHtmlEscaped();
     QString safeNeg = neg.toHtmlEscaped();
-    QString safeParams = params.toHtmlEscaped();
+    // 参数部分：让“每个参数单独成行”。先按已有换行拆，再把每行按“不在引号内的逗号”拆开。
+    // A1111 的参数是一整行逗号分隔（且 Lora hashes 的值里带引号包裹的逗号，需跳过），拆分后每项一行；
+    // ComfyUI 本就每行一个参数，二次拆分对其无影响。
+    auto splitTopLevelCommas = [](const QString &s) {
+        QStringList out;
+        QString cur;
+        bool inQuotes = false;
+        for (const QChar c : s) {
+            if (c == '"') { inQuotes = !inQuotes; cur += c; }
+            else if (c == ',' && !inQuotes) { out << cur; cur.clear(); }
+            else cur += c;
+        }
+        out << cur;
+        return out;
+    };
+    QStringList paramLines;
+    const QStringList rawParamLines = params.split('\n');
+    for (const QString &line : rawParamLines) {
+        for (const QString &seg : splitTopLevelCommas(line)) {
+            const QString t = seg.trimmed();
+            if (!t.isEmpty()) paramLines << t.toHtmlEscaped();
+        }
+    }
+    const QString paramsHtml = paramLines.join(QStringLiteral("<br>"));
+
+    // 读取图片实际分辨率（A1111/ComfyUI 都展示，原参数文本里不一定带）。
+    QString resolutionHtml;
+    {
+        QImageReader reader(path);
+        const QSize sz = reader.size();
+        if (sz.isValid())
+            resolutionHtml = QString("<b>Resolution / 分辨率:</b> %1 × %2<br>")
+                                 .arg(sz.width()).arg(sz.height());
+    }
 
     // 格式化显示
     // 使用 <hr> 分割线，参数部分使用较小的字体和灰色
@@ -8082,17 +8129,18 @@ void MainWindow::onUserImageClicked(QListWidgetItem *item) {
                        "<span class='content'>%2</span></p>"
                        "<hr style='background-color:#444; height:1px; border:none;'>"
                        "<p><b><span style='color:%6'>Parameters:</span></b><br>"
-                       "<span class='content' style='color:%7; font-size:11px; font-family:Consolas, monospace;'>%3</span></p>"
-                       ).arg(safePrompt, safeNeg, safeParams,
+                       "<span style='color:%7; font-size:11px; font-family:Consolas, monospace;'>%8%3</span></p>"
+                       ).arg(safePrompt, safeNeg, paramsHtml,
                              AppStyle::AccentBlue, AppStyle::HtmlNegative,
-                             AppStyle::HtmlSubtle, AppStyle::HtmlDim);
+                             AppStyle::HtmlSubtle, AppStyle::HtmlDim, resolutionHtml);
 
     ui->textUserPrompt->setHtml(html);
 
     // 联动更新顶部 Hero 大图
     ui->heroFrame->setProperty("fullImagePath", path);
     transitionToImage(path);
-    if (ui->chkUserTagCurrentImageOnly && ui->chkUserTagCurrentImageOnly->isChecked()) {
+    const bool promptOrderSort = ui->comboUserTagSortMode && ui->comboUserTagSortMode->currentIndex() == 2;
+    if ((ui->chkUserTagCurrentImageOnly && ui->chkUserTagCurrentImageOnly->isChecked()) || promptOrderSort) {
         refreshUserTagFlowStats();
     }
 }
