@@ -22,6 +22,9 @@ public:
     explicit LauncherWidget(QWidget *parent = nullptr);
     ~LauncherWidget() override;
 
+    // 主题切换时调用：重新给内容页套用当前调色板的 toolpage 样式，并刷新左侧 tab 条背景。
+    void applyTheme();
+
 private:
     enum class Target { A1111 = 0, ComfyUI = 1 };
 

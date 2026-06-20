@@ -23,7 +23,7 @@
 #include <QWidget>
 
 namespace {
-constexpr bool kThemeSettingsEnabled = false;
+constexpr bool kThemeSettingsEnabled = true;
 }
 
 SettingsState SettingsState::fromJson(const QJsonObject &root, const QString &defaultFilterTags)
@@ -140,11 +140,7 @@ SettingsPage::SettingsPage(QWidget *parent)
     // 最外层 tab 移到侧边，与工具箱/启动器一致。
     ui->tabSettings->setTabPosition(QTabWidget::West);
     ui->tabSettings->setAutoFillBackground(true);
-    {
-        QPalette tabPalette = ui->tabSettings->palette();
-        tabPalette.setColor(QPalette::Window, QColor(AppStyle::SidebarDark));
-        ui->tabSettings->setPalette(tabPalette);
-    }
+    applyTheme();
 
     initThemeComboData();
     if (ui->groupTheme) ui->groupTheme->setVisible(kThemeSettingsEnabled);
@@ -379,6 +375,14 @@ void SettingsPage::setUserAgentText(const QString &text)
 void SettingsPage::setThemeStatus(const QString &text)
 {
     if (ui->lblThemeStatus) ui->lblThemeStatus->setText(text);
+}
+
+void SettingsPage::applyTheme()
+{
+    if (!ui->tabSettings) return;
+    QPalette tabPalette = ui->tabSettings->palette();
+    tabPalette.setColor(QPalette::Window, AppStyle::color("sidebarBg"));
+    ui->tabSettings->setPalette(tabPalette);
 }
 
 void SettingsPage::focusTranslationPath()

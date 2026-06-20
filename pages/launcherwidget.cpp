@@ -134,16 +134,8 @@ LauncherWidget::LauncherWidget(QWidget *parent)
     // 杀掉它的 autoFillBackground+调色板，使 West 标签条里没有 tab 按钮的空白区域回退成 Dark 配色的 #1e1e1e，
     // 且局部 QSS 无法重绘那块本体区域（试过本体背景、QTabBar 背景都无效）。
     // 改为只给两个内容页设样式：这样 targetTabs（QTabWidget）不带局部样式表，和工具箱的 toolsTabWidget 一致——
-    // 外层 tab 由全局 mainwindow.qss（#targetTabs 规则）+ 下面设置的调色板绘制，内容控件由 toolpage.qss 绘制。
-    const QString toolQss = AppStyle::loadToolPageQss();
-    ui->pageA1111->setStyleSheet(toolQss);
-    ui->pageComfyUI->setStyleSheet(toolQss);
-
-    // 与工具箱页保持一致：West 标签条使用深色侧栏背景。
-    ui->targetTabs->setAutoFillBackground(true);
-    QPalette tabPalette = ui->targetTabs->palette();
-    tabPalette.setColor(QPalette::Window, QColor(AppStyle::SidebarDark));
-    ui->targetTabs->setPalette(tabPalette);
+    // 外层 tab 由全局 mainwindow.qss（#targetTabs 规则）+ applyTheme() 设置的调色板绘制，内容控件由 toolpage.qss 绘制。
+    applyTheme();
 
     m_a1111.target = Target::A1111;
     m_a1111.keyPrefix = "launcher_a1111_";
@@ -188,6 +180,19 @@ LauncherWidget::~LauncherWidget()
     killProcessTree(m_a1111);
     killProcessTree(m_comfy);
     delete ui;
+}
+
+void LauncherWidget::applyTheme()
+{
+    // 内容页用当前调色板的 toolpage 样式；West 标签条空白区用调色板侧栏色（随主题变化）。
+    const QString toolQss = AppStyle::loadToolPageQss();
+    ui->pageA1111->setStyleSheet(toolQss);
+    ui->pageComfyUI->setStyleSheet(toolQss);
+
+    ui->targetTabs->setAutoFillBackground(true);
+    QPalette tabPalette = ui->targetTabs->palette();
+    tabPalette.setColor(QPalette::Window, AppStyle::color("sidebarBg"));
+    ui->targetTabs->setPalette(tabPalette);
 }
 
 void LauncherWidget::setupTarget(TargetPanel &p)

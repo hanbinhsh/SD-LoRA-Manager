@@ -18,10 +18,10 @@ QLineEdit#editUserTagSearch:focus {
 /* Sidebar */
 #modelList { background-color: @sidebarBg; border: none; outline: none; }
 #modelList::item { height: 32px; padding-left: 5px; color: @mutedText2; border-left: 3px solid transparent; }
-#modelList::item:hover { background-color: @headerBg; color: @whiteText; }
-#modelList::item:selected { background-color: @hoverBg; color: @whiteText; border-left: 3px solid @accentBlue; }
+#modelList::item:hover { background-color: @headerBg; color: @primaryText; }
+#modelList::item:selected { background-color: @hoverBg; color: @primaryText; border-left: 3px solid @accentBlue; }
 
-#btnHome, #btnGallery { background-color: transparent; text-align: left; padding-left: 10px; font-size: 14px; font-weight: bold; color: #fff; }
+#btnHome, #btnGallery { background-color: transparent; text-align: left; padding-left: 10px; font-size: 14px; font-weight: bold; color: @primaryText; }
 #btnHome:hover, #btnGallery:hover { background-color: @hoverBg; }
 
 #btnScanLocal, #btnForceUpdate, #btnCheckModelUpdate, #btnOpenUrl, #btnFavorite, #btnShowUserGallery, #btnEditMeta, #btnCopyLoraTag {
@@ -56,9 +56,9 @@ QPushButton[class="copyBtn"]:pressed { background-color: @copyBtnPressed; }
 #btnRescanUser,
 #btnTranslate,
 #btnClearUserTagSelection {
-    background-color: @rgba(whiteText, 16);
-    color: @whiteText;
-    border: 1px solid @rgba(whiteText, 16);
+    background-color: @rgba(overlayFg, 16);
+    color: @primaryText;
+    border: 1px solid @rgba(overlayFg, 16);
     border-radius: 4px;
     font-weight: bold;
     margin: 1px;
@@ -68,15 +68,15 @@ QPushButton[class="copyBtn"]:pressed { background-color: @copyBtnPressed; }
 #btnRescanUser:hover,
 #btnTranslate:hover,
 #btnClearUserTagSelection:hover {
-    background-color: @rgba(whiteText, 42);
+    background-color: @rgba(overlayFg, 42);
 }
 #btnTranslate:checked {
-    background-color: @rgba(whiteText, 64);
-    color: @whiteText;
+    background-color: @rgba(overlayFg, 64);
+    color: @primaryText;
 }
 
 /* Hero */
-#heroFrame { background-color: #000; }
+#heroFrame { background-color: @black; }
 #lblModelName { color: #fff; background-color: @rgba(black, 120); padding: 15px; border-left: 5px solid @accentBlue; font-size: 24px; font-weight: bold; }
 #actionFrame { background-color: @rgba(panelBg, 160); }
 
@@ -84,8 +84,8 @@ QPushButton[class="copyBtn"]:pressed { background-color: @copyBtnPressed; }
 QLabel[class="tag"] { background-color: @buttonBg; color: @accentBlue; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; }
 QLabel[class="tagRed"] { background-color: @dangerBg; color: @errorRed; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; border: 1px solid @errorRed; }
 QLabel[class="tagGreen"] { background-color: @tagGreenBg; color: @successGreenBright; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; border: 1px solid @successGreenBright; }
-#label_GalleryTitle, #label_DescTitle, #label_FileTitle, #label_TriggerTitle, #label_UserNotes, #label_AuthorTitle, #label_ModelTagsTitle { color: #fff; }
-QLabel[class="sectionTitle"] { color: #fff; font-weight: bold; letter-spacing: 1px; font-size: 14px; border-bottom: 1px solid @groupBorder; padding-bottom: 5px; margin-top: 15px; }
+#label_GalleryTitle, #label_DescTitle, #label_FileTitle, #label_TriggerTitle, #label_UserNotes, #label_AuthorTitle, #label_ModelTagsTitle { color: @primaryText; }
+QLabel[class="sectionTitle"] { color: @primaryText; font-weight: bold; letter-spacing: 1px; font-size: 14px; border-bottom: 1px solid @groupBorder; padding-bottom: 5px; margin-top: 15px; }
 
 QScrollArea { border: none; background-color: @windowBg; }
 #scrollAreaWidgetContents { background-color: transparent; }
@@ -201,17 +201,17 @@ QWidget#DownloadsPage QTableWidget#tableHealth QScrollBar::sub-page {
 #homeFilterFrame {
     background-color: @panelBg;
     border: none;
-    border-top: 1px solid @rgba(whiteText, 16);
-    border-bottom: 1px solid @rgba(whiteText, 16);
+    border-top: 1px solid @rgba(overlayFg, 16);
+    border-bottom: 1px solid @rgba(overlayFg, 16);
 }
 #homeFilterFrame QLabel {
     color: @mutedText;
     font-weight: bold;
 }
 #homeFilterFrame QLineEdit {
-    background-color: @rgba(whiteText, 16);
-    color: @whiteText;
-    border: 1px solid @rgba(whiteText, 24);
+    background-color: @rgba(overlayFg, 16);
+    color: @primaryText;
+    border: 1px solid @rgba(overlayFg, 24);
     border-radius: 5px;
     padding: 5px 8px;
 }
@@ -224,9 +224,9 @@ QWidget#DownloadsPage QTableWidget#tableHealth QScrollBar::sub-page {
     border: none;
 }
 #btnHomeAddTagFilter, #btnHomeClearFilters, #btnHomeFilterToggle, #btnHomeTagSortMode, QPushButton[class="filterChip"] {
-    background-color: @rgba(whiteText, 20);
-    color: @whiteText;
-    border: 1px solid @rgba(whiteText, 28);
+    background-color: @rgba(overlayFg, 20);
+    color: @primaryText;
+    border: 1px solid @rgba(overlayFg, 28);
     border-radius: 5px;
     padding: 4px 9px;
     font-weight: bold;
@@ -299,9 +299,9 @@ QTextBrowser { background-color: @inputBg; border: 1px solid @inputBorder; color
     background-color: transparent;
 }
 #cardModelAttribution #btnShowDescriptionDetail {
-    background-color: @rgba(whiteText, 18);
-    color: @whiteText;
-    border: 1px solid @rgba(whiteText, 26);
+    background-color: @rgba(overlayFg, 18);
+    color: @primaryText;
+    border: 1px solid @rgba(overlayFg, 26);
     border-radius: 5px;
     padding: 2px 8px;
     font-weight: bold;
@@ -330,7 +330,7 @@ QTextBrowser { background-color: @inputBg; border: 1px solid @inputBorder; color
     border-radius: 3px;
     padding: 6px;
 }
-#lblLocalMetaStatus { color: @whiteText; }
+#lblLocalMetaStatus { color: @primaryText; }
 #btnLocalMetaSave, #btnLocalMetaReset { background-color: @buttonBg; border-radius: 2px; color: @accentBlue; border: none; padding: 6px 12px; }
 #btnLocalMetaSave:hover, #btnLocalMetaReset:hover { background-color: @selectionBg; color: @whiteText; }
 #listEditImages { background-color: @sidebarBg; border: 1px solid @inputBorder; color: @subtleText; }
@@ -340,14 +340,14 @@ QTextBrowser { background-color: @inputBg; border: 1px solid @inputBorder; color
 #listUserImages { background-color: transparent; }
 
 QPushButton[class="galleryThumb"] {
-    border: 2px solid #333;
+    border: 2px solid @thumbBorder;
     background-color: @sidebarBg;
     border-radius: 4px;
     padding: 4px;
     color: @subtleText;
     text-align: center;
 }
-QPushButton[class="galleryThumb"]:hover { border: 2px solid #888; }
+QPushButton[class="galleryThumb"]:hover { border: 2px solid @thumbBorderHover; }
 QPushButton[class="galleryThumb"]:checked {
     border: 2px solid @accentBlue;
     background-color: @buttonBg;
@@ -356,18 +356,18 @@ QPushButton[class="galleryThumb"]:checked:hover { border: 2px solid @accentBrigh
 
 QPushButton[class="collectionBtn"], #btnAddCollection {
     background-color: @buttonBg;
-    color: #fff;
+    color: @onButtonText;
     border-radius: 12px;
     font-size: 13px;
     border: 2px solid transparent;
 }
 QPushButton[class="collectionBtn"]:hover, #btnAddCollection:hover {
     background-color: @hoverBg;
-    border: 2px solid #888;
+    border: 2px solid @thumbBorderHover;
 }
 QPushButton[class="collectionBtn"]:checked {
     background-color: @accentBlue;
-    color: #000;
+    color: @onAccentText;
     font-weight: bold;
     border: 2px solid #fff;
 }
@@ -492,10 +492,10 @@ QWidget#SettingsPage QScrollBar::sub-page:horizontal {
 }
 QGroupBox { border: 1px solid @groupBorder; margin-top: 20px; font-weight: bold; color: @accentBlue; border-radius: 4px; }
 QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 5px; padding: 0 5px; }
-#editLoraPath, #editGalleryPath, #editTransPath { background-color: @inputBg; border: 1px solid @consoleBorder; padding: 5px; color: #fff; border-radius: 3px; }
+#editLoraPath, #editGalleryPath, #editTransPath { background-color: @inputBg; border: 1px solid @consoleBorder; padding: 5px; color: @primaryText; border-radius: 3px; }
 #btnBrowseLora, #btnBrowseGallery, #btnBrowseTrans, #btnResetUA, #btnToggleCivitaiApiKey, #btnTestCivitaiApiKey, #btnClearGalleryCache {
     background-color: @buttonBg;
-    color: #fff;
+    color: @onButtonText;
     border: none;
     padding: 6px 12px;
     border-radius: 3px;
@@ -503,10 +503,10 @@ QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; lef
 #btnBrowseLora:hover, #btnBrowseGallery:hover, #btnBrowseTrans:hover, #btnResetUA:hover, #btnToggleCivitaiApiKey:hover, #btnTestCivitaiApiKey:hover, #btnClearGalleryCache:hover {
     background-color: @selectionBg;
 }
-#lblNSFWHint { color: #666; font-size: 11px; }
-#lblStatusSettings { color: #666; font-size: 12px; }
+#lblNSFWHint { color: @hintText; font-size: 11px; }
+#lblStatusSettings { color: @hintText; font-size: 12px; }
 #lblCivitaiApiStatus { color: @mutedText; }
-#btnResetFilterTags { background-color: @buttonBg; color: #fff; border: none; border-radius: 3px; padding: 5px 10px; }
+#btnResetFilterTags { background-color: @buttonBg; color: @onButtonText; border: none; border-radius: 3px; padding: 5px 10px; }
 #btnResetFilterTags:hover { background-color: @selectionBg; }
 
 /* Sidebar tabs */
@@ -526,7 +526,7 @@ QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; lef
 }
 #sidebarTabFrame QPushButton:hover {
     background-color: @hoverBg;
-    color: @whiteText;
+    color: @primaryText;
 }
 #sidebarTabFrame QPushButton:checked,
 #btnModelsTab:checked,
@@ -550,11 +550,11 @@ QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; lef
 }
 #collectionTree::item:hover {
     background-color: @headerBg;
-    color: @whiteText;
+    color: @primaryText;
 }
 #collectionTree::item:selected {
     background-color: @hoverBg;
-    color: @whiteText;
+    color: @primaryText;
     border-left: 3px solid @accentBlue;
 }
 #collectionTree::branch:open:!has-children,
@@ -574,7 +574,7 @@ QMenuBar::item {
 }
 QMenuBar::item:selected {
     background-color: @hoverBg;
-    color: @whiteText;
+    color: @primaryText;
 }
 QMenuBar::item:pressed {
     background-color: @accentBlue;
@@ -592,13 +592,13 @@ QWidget#LauncherWidget {
 QTabWidget#toolsTabWidget::pane,
 QTabWidget#tabSettings::pane,
 QTabWidget#targetTabs::pane {
-    border: 1px solid #444;
+    border: 1px solid @paneBorder;
     background-color: @windowBg;
     color: @bodyText;
 }
 /* Downloads content area is @windowBg; match the pane so no lighter "padding" frame shows. */
 QTabWidget#tabDownloadsMain::pane {
-    border: 1px solid #444;
+    border: 1px solid @paneBorder;
     background-color: @windowBg;
     color: @bodyText;
 }
@@ -613,7 +613,7 @@ QTabWidget#tabSettings QTabBar::tab,
 QTabWidget#tabDownloadsMain QTabBar::tab,
 QTabWidget#targetTabs QTabBar::tab {
     background: @sidebarBg;
-    color: #ccc;
+    color: @tabText;
     padding: 10px;
 }
 QTabWidget#toolsTabWidget QTabBar::tab:selected,
@@ -621,7 +621,7 @@ QTabWidget#tabSettings QTabBar::tab:selected,
 QTabWidget#tabDownloadsMain QTabBar::tab:selected,
 QTabWidget#targetTabs QTabBar::tab:selected {
     background: @hoverBg;
-    color: #fff;
+    color: @primaryText;
     font-weight: bold;
 }
 
@@ -650,8 +650,8 @@ QTabWidget#targetTabs QTabBar::tab:selected {
 QWidget#DownloadsPage { background-color: @windowBg; color: @bodyText; }
 QWidget#DownloadsPage QGroupBox { border: 1px solid @groupBorder; border-radius: 4px; margin-top: 10px; padding-top: 12px; color: @bodyText; }
 QWidget#DownloadsPage QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color: @accentBlue; font-weight: bold; }
-QWidget#DownloadsPage QPushButton { background-color: @buttonBg; color: #fff; border: none; padding: 7px 12px; border-radius: 3px; }
-QWidget#DownloadsPage QPushButton:hover { background-color: @selectionBg; }
+QWidget#DownloadsPage QPushButton { background-color: @buttonBg; color: @onButtonText; border: none; padding: 7px 12px; border-radius: 3px; }
+QWidget#DownloadsPage QPushButton:hover { background-color: @selectionBg; color: @whiteText; }
 QWidget#DownloadsPage QPushButton:disabled { background-color: @disabledBg; color: @disabledText; }
 QWidget#pageDownloadsUpdates,
 QWidget#pageDownloadsCoexisting,
@@ -674,7 +674,7 @@ QWidget#downloadCardsContainerLocal { background-color: @panelBg; }
 QFrame[class="downloadCard"] { background-color: @inputBg; border: 1px solid @downloadBorder; border-radius: 8px; }
 QFrame[class="downloadCard"]:hover { border: 1px solid @downloadHoverBorder; background-color: @downloadCardHoverBg; }
 QFrame[class="downloadCard"][selected="true"] { background-color: @downloadCardSelBg; border: 1px solid @accentBlue; }
-QLabel[class="downloadTitle"] { color: @whiteText; font-size: 15px; font-weight: bold; }
+QLabel[class="downloadTitle"] { color: @primaryText; font-size: 15px; font-weight: bold; }
 QLabel[class="downloadMeta"] { color: @downloadMeta; }
 QLabel[class="downloadStatus"] { color: @accentBlue; font-weight: bold; }
 QLabel[class="downloadPreview"] { background-color: @downloadFieldBg; border: 1px solid @previewBorder; border-radius: 6px; }
@@ -706,7 +706,7 @@ QLabel#lblAboutLink a { color: @accentBlue; text-decoration: none; font-weight: 
 QLabel#lblAboutLink a:hover { text-decoration: underline; }
 QPushButton#btnCheckUpdate {
     background-color: @buttonBg;
-    color: #fff;
+    color: @onButtonText;
     border-radius: 4px;
     font-size: 14px;
     font-weight: bold;
@@ -714,5 +714,5 @@ QPushButton#btnCheckUpdate {
     border: 1px solid @groupBorder;
 }
 QPushButton#btnCheckUpdate:hover { background-color: @selectionBg; border: 1px solid @accentBlue; }
-QPushButton#btnCheckUpdate:pressed { background-color: @accentBlue; color: #000; }
+QPushButton#btnCheckUpdate:pressed { background-color: @accentBlue; color: @onAccentText; }
 QLabel#lblCopyright { color: #555; font-size: 12px; margin-top: 20px; }

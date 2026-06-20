@@ -6,11 +6,5 @@
         <file>styles/mainwindow.qss</file>
         <file>styles/toolpage.qss</file>
         <file>styles/dialog.qss</file>
-        <file>styles/themes/midnight_blue_main.qss</file>
-        <file>styles/themes/midnight_blue_tool.qss</file>
-        <file>styles/themes/light_main.qss</file>
-        <file>styles/themes/light_tool.qss</file>
-        <file>styles/themes/high_contrast_main.qss</file>
-        <file>styles/themes/high_contrast_tool.qss</file>
     </qresource>
 </RCC>

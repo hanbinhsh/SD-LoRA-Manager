@@ -14,13 +14,13 @@ QTabBar {
 
 QTabBar::tab {
     background: @sidebarBg;
-    color: #ccc;
+    color: @tabText;
     padding: 10px;
 }
 
 QTabBar::tab:selected {
     background: @hoverBg;
-    color: #fff;
+    color: @primaryText;
     font-weight: bold;
 }
 

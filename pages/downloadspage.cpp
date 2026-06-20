@@ -147,11 +147,7 @@ DownloadsPage::DownloadsPage(QWidget *parent)
     // 最外层 tab 移到侧边，与工具箱/启动器一致。
     ui->tabDownloadsMain->setTabPosition(QTabWidget::West);
     ui->tabDownloadsMain->setAutoFillBackground(true);
-    {
-        QPalette tabPalette = ui->tabDownloadsMain->palette();
-        tabPalette.setColor(QPalette::Window, QColor(AppStyle::SidebarDark));
-        ui->tabDownloadsMain->setPalette(tabPalette);
-    }
+    applyTheme();
 
     applyUnifiedTableRowStyle(ui->tableMetadataScan);
     applyUnifiedTableRowStyle(ui->tableHealth);
@@ -797,8 +793,20 @@ void DownloadsPage::initializeAppearance()
 {
     ui->lblDownloadsFilter->hide();
     ui->comboDownloadsFilter->hide();
+    applyTheme();
+}
 
-    const QColor downloadBg(AppStyle::DownloadCardBackground);
+void DownloadsPage::applyTheme()
+{
+    // West 标签条空白区背景。
+    if (ui->tabDownloadsMain) {
+        QPalette tabPalette = ui->tabDownloadsMain->palette();
+        tabPalette.setColor(QPalette::Window, AppStyle::color("sidebarBg"));
+        ui->tabDownloadsMain->setPalette(tabPalette);
+    }
+
+    // 下载卡片滚动区视口背景。
+    const QColor downloadBg = AppStyle::color("downloadCardBg");
     const QList<QScrollArea*> areas = {
         ui->scrollDownloadsCards,
         ui->scrollDownloadsCoexisting,

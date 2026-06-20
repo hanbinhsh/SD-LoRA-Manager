@@ -55,6 +55,7 @@ public:
     void setUpdateCheckButtonsEnabled(bool enabled);
     void updateSelectionSummary();
     void initializeAppearance();
+    void applyTheme(); // 主题切换时重新给 West 标签条空白区与下载卡片视口着色
     void addOrUpdateCard(const ModelUpdateInfo &info, const QString &status, bool sourceAvailable);
     void updateCardStatus(const QString &filePath, const QString &status);
     void updateCardProgress(const QString &filePath, int percent, const QString &speedText);

@@ -68,6 +68,7 @@ public:
     void setUserAgentText(const QString &text);
     void setThemeStatus(const QString &text);
     void focusTranslationPath();
+    void applyTheme(); // 主题切换时重新给左侧 West 标签条空白区着色
 
 signals:
     void loraPathsEditRequested();

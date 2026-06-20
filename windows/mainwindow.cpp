@@ -44,6 +44,7 @@
 #include <QBrush>
 #include <QStyledItemDelegate>
 #include <QApplication>
+#include <QStyleHints>
 #include <QCoreApplication>
 #include <QStyle>
 #include <QSizePolicy>
@@ -201,18 +202,14 @@ QString themeDisplayName(const QString &themeId)
 ThemeBundle loadThemeBundle(const QString &themeId, const QString &customPath)
 {
     ThemeBundle bundle;
+
+    // 先切换活动调色板，再加载/替换 QSS——base/main/tool/dialog 会直接被染成目标主题，
+    // 不再需要零散的 themes/*_main.qss / *_tool.qss 覆盖文件。
+    AppStyle::setActiveTheme(themeId);
+
     const QString baseMain = loadQssResource(":/styles/mainwindow.qss");
     const QString baseTool = AppStyle::loadToolPageQss(); // base.qss + toolpage.qss
     const QString baseDialog = loadQssResource(":/styles/dialog.qss");
-    bundle.dialogQss = baseDialog;
-
-    auto withOverrides = [&](const QString &mainOverride, const QString &toolOverride, const QString &name) {
-        bundle.mainQss = baseMain + "\n" + loadQssResource(mainOverride);
-        bundle.toolQss = baseTool + "\n" + loadQssResource(toolOverride);
-        bundle.dialogQss = baseDialog;
-        bundle.status = QString("当前主题：%1").arg(name);
-        bundle.ok = true;
-    };
 
     if (themeId == "custom_qss") {
         QFile file(customPath);
@@ -233,19 +230,11 @@ ThemeBundle loadThemeBundle(const QString &themeId, const QString &customPath)
         return bundle;
     }
 
-    if (themeId == "midnight_blue") {
-        withOverrides(":/styles/themes/midnight_blue_main.qss", ":/styles/themes/midnight_blue_tool.qss", "Midnight Blue");
-    } else if (themeId == "light") {
-        withOverrides(":/styles/themes/light_main.qss", ":/styles/themes/light_tool.qss", "Light");
-    } else if (themeId == "high_contrast") {
-        withOverrides(":/styles/themes/high_contrast_main.qss", ":/styles/themes/high_contrast_tool.qss", "High Contrast");
-    } else {
-        bundle.mainQss = baseMain;
-        bundle.toolQss = baseTool;
-        bundle.dialogQss = baseDialog;
-        bundle.status = "当前主题：Steam Dark";
-        bundle.ok = true;
-    }
+    bundle.mainQss = baseMain;
+    bundle.toolQss = baseTool;
+    bundle.dialogQss = baseDialog;
+    bundle.status = QString("当前主题：%1").arg(themeDisplayName(themeId));
+    bundle.ok = true;
     return bundle;
 }
 
@@ -1167,6 +1156,10 @@ MainWindow::MainWindow(QWidget *parent)
     QTimer::singleShot(0, this, [this]() {
         reloadTranslationMaps();
     });
+
+    // 事件循环启动后再刷一次主题：setColorScheme 的调色板传播是异步的，会重置启动期
+    // 各 West 标签条/视口在构造时钉好的 palette；这里在传播之后补钉一次，避免重启需手动切主题。
+    QTimer::singleShot(0, this, [this](){ refreshLoadedToolPageThemes(); });
 
     QTimer::singleShot(300, this, [this](){
         ui->statusbar->showMessage("正在扫描本地模型库...");
@@ -3770,7 +3763,7 @@ void MainWindow::updateLocalEditorFromMeta(const ModelMeta &meta)
 void MainWindow::setLocalMetaStatus(const ModelMeta &meta)
 {
     QString status;
-    QString color = AppStyle::WhiteText;
+    QString color = AppStyle::str("primaryText"); // 随主题（浅色下为深字）
     if (meta.isLocalOnly && meta.isLocalEdited) {
         status = "状态: 本地模型 (已编辑)";
         color = AppStyle::WarningYellow;
@@ -3779,7 +3772,7 @@ void MainWindow::setLocalMetaStatus(const ModelMeta &meta)
         color = AppStyle::WarningYellow;
     } else if (meta.isLocalOnly) {
         status = "状态: 本地模型";
-        color = AppStyle::AccentBlue;
+        color = AppStyle::str("accentBlue");
     } else {
         status = "状态: Civitai 元数据";
     }
@@ -3818,7 +3811,7 @@ void MainWindow::setLocalMetaStatus(const ModelMeta &meta)
     if (!filePath.isEmpty() && modelSyncFailures.contains(filePath)) {
         const QString error = modelSyncFailures.value(filePath)["error"].toString();
         details << (error.isEmpty() ? "同步失败缓存: 已记录" : QString("同步失败缓存: %1").arg(error));
-        color = AppStyle::SoftErrorRed;
+        color = AppStyle::str("errorRed");
     } else if (!jsonPath.isEmpty() && !QFileInfo::exists(jsonPath)) {
         details << "提示: 点击刷新模型详情可同步元数据";
     }
@@ -8273,7 +8266,7 @@ void MainWindow::initMenuBar() {
 
         toolsTabWidget->setAutoFillBackground(true);
         QPalette pal = toolsTabWidget->palette();
-        pal.setColor(QPalette::Window, QColor(AppStyle::SidebarDark));
+        pal.setColor(QPalette::Window, AppStyle::color("sidebarBg"));
         toolsTabWidget->setPalette(pal);
 
         // 核心动作：加入堆栈
@@ -10103,11 +10096,18 @@ void MainWindow::applyRandomUserAgent()
 
 void MainWindow::applyApplicationTheme(const QString &themeId, const QString &customPath, bool updateStatus)
 {
+    // 先切系统配色方案：决定原生标题栏明暗、状态栏、以及未显式设色控件(标签空白区/复选框/未样式标签)的调色板。
+    if (qApp->styleHints()) {
+        qApp->styleHints()->setColorScheme(themeId == "light" ? Qt::ColorScheme::Light
+                                                              : Qt::ColorScheme::Dark);
+    }
+
     const ThemeBundle bundle = loadThemeBundle(themeId, customPath);
     qApp->setStyleSheet(bundle.dialogQss);
     setStyleSheet(bundle.mainQss);
     currentToolPageQss = bundle.toolQss;
     refreshLoadedToolPageThemes();
+    updateBackgroundImage(); // 重新生成 Hero 模糊背景上的渐变叠加（steamBackground 已随主题变）
     if (settingsPage && updateStatus) {
         settingsPage->setThemeStatus(bundle.status);
     }
@@ -10129,7 +10129,14 @@ void MainWindow::refreshLoadedToolPageThemes()
     applyToolPageTheme(parserWidget);
     applyToolPageTheme(usageAnalysisWidget);
     applyToolPageTheme(promptTemplateLibraryWidget);
+    if (launcherWidget) launcherWidget->applyTheme();
+    if (settingsPage) settingsPage->applyTheme();
+    if (downloadsPage) downloadsPage->applyTheme();
     if (toolsTabWidget) {
+        // West 标签条空白区背景靠 palette 决定，随主题重新着色。
+        QPalette pal = toolsTabWidget->palette();
+        pal.setColor(QPalette::Window, AppStyle::color("sidebarBg"));
+        toolsTabWidget->setPalette(pal);
         for (int i = 0; i < toolsTabWidget->count(); ++i) {
             QWidget *page = toolsTabWidget->widget(i);
             if (page && page->objectName() != "toolPlaceholder") applyToolPageTheme(page);
