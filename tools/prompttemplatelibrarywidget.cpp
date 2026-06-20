@@ -665,7 +665,7 @@ PromptTemplateLibraryWidget::PromptTemplateLibraryWidget(QWidget *parent)
     , ui(new Ui::PromptTemplateLibraryWidget)
 {
     ui->setupUi(this);
-    setStyleSheet(AppStyle::loadQss(":/styles/toolpage.qss"));
+    setStyleSheet(AppStyle::loadToolPageQss());
 
     ui->splitterGenerate->setSizes({360, 760});
     ui->tableTemplateDefaults->horizontalHeader()->setStretchLastSection(true);
@@ -1294,7 +1294,7 @@ void PromptTemplateLibraryWidget::refreshFavoritesTable()
         headerLayout->setSpacing(4);
 
         auto *nameLabel = new QLabel(fav.name, header);
-        nameLabel->setStyleSheet("font-weight:bold;color:#dcdedf;");
+        nameLabel->setStyleSheet(QStringLiteral("font-weight:bold;color:%1;").arg(AppStyle::str("bodyText")));
         nameLabel->setToolTip(fav.name);
         nameLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
         headerLayout->addWidget(nameLabel);
@@ -1303,7 +1303,7 @@ void PromptTemplateLibraryWidget::refreshFavoritesTable()
         line2->setContentsMargins(0, 0, 0, 0);
         line2->setSpacing(6);
         auto *timeLabel = new QLabel(formatFavoriteTime(fav.updatedAt), header);
-        timeLabel->setStyleSheet("color:#8c96a0;");
+        timeLabel->setStyleSheet(QStringLiteral("color:%1;").arg(AppStyle::str("mutedText")));
         timeLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
         line2->addWidget(timeLabel);
         line2->addStretch(1);
@@ -1341,7 +1341,7 @@ void PromptTemplateLibraryWidget::refreshFavoritesTable()
             auto *body = new QLabel(text.trimmed().isEmpty() ? "（空）" : text, detail);
             body->setWordWrap(true);
             body->setTextInteractionFlags(Qt::TextSelectableByMouse);
-            body->setStyleSheet("color:#dcdedf;");
+            body->setStyleSheet(QStringLiteral("color:%1;").arg(AppStyle::str("bodyText")));
             detailLayout->addWidget(body);
         };
         addSection("正面", fav.positive, "#5fd38d");
@@ -2457,7 +2457,8 @@ void PromptTemplateLibraryWidget::setupPromptTagFlowView(QPlainTextEdit *edit)
     area->setWidgetResizable(true);
     area->setFrameShape(QFrame::NoFrame);
     // 与文本编辑框保持一致的背景。
-    area->setStyleSheet("QScrollArea { background-color:#16191e; border:1px solid #31363d; border-radius:3px; }");
+    area->setStyleSheet(QStringLiteral("QScrollArea { background-color:%1; border:1px solid %2; border-radius:3px; }")
+                            .arg(AppStyle::str("inputBg"), AppStyle::str("inputBorder")));
     auto *areaContents = new QWidget(area);
     areaContents->setStyleSheet("background:transparent;");
     auto *areaLayout = new QVBoxLayout(areaContents);

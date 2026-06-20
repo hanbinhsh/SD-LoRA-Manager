@@ -102,7 +102,7 @@ UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
     , ui(new Ui::UsageAnalysisWidget)
 {
     ui->setupUi(this);
-    setStyleSheet(AppStyle::loadQss(":/styles/toolpage.qss"));
+    setStyleSheet(AppStyle::loadToolPageQss());
 
     auto setupTable = [](QTableWidget *table, bool stretchLast) {
         applyUnifiedTableRowStyle(table);

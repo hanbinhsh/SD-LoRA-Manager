@@ -206,7 +206,7 @@ LlmPromptWidget::LlmPromptWidget(QWidget *parent)
     , m_netManager(new QNetworkAccessManager(this))
 {
     ui->setupUi(this);
-    setStyleSheet(AppStyle::loadQss(":/styles/toolpage.qss"));
+    setStyleSheet(AppStyle::loadToolPageQss());
 
     connect(ui->btnFetchModels, &QPushButton::clicked, this, &LlmPromptWidget::onFetchModelsClicked);
     connect(ui->btnRefreshCandidates, &QPushButton::clicked, this, &LlmPromptWidget::onRefreshCandidatesClicked);

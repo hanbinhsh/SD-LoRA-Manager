@@ -177,11 +177,8 @@ bool previewFileAlreadyHasPromptMetadata(const QString &path)
 
 QString loadQssResource(const QString &path)
 {
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return QString();
-    }
-    return QString::fromUtf8(file.readAll());
+    // 读取并完成 @token / @rgba(token, A) 替换。
+    return AppStyle::loadQss(path);
 }
 
 struct ThemeBundle {
@@ -205,7 +202,7 @@ ThemeBundle loadThemeBundle(const QString &themeId, const QString &customPath)
 {
     ThemeBundle bundle;
     const QString baseMain = loadQssResource(":/styles/mainwindow.qss");
-    const QString baseTool = loadQssResource(":/styles/toolpage.qss");
+    const QString baseTool = AppStyle::loadToolPageQss(); // base.qss + toolpage.qss
     const QString baseDialog = loadQssResource(":/styles/dialog.qss");
     bundle.dialogQss = baseDialog;
 
@@ -220,7 +217,7 @@ ThemeBundle loadThemeBundle(const QString &themeId, const QString &customPath)
     if (themeId == "custom_qss") {
         QFile file(customPath);
         if (!customPath.trimmed().isEmpty() && file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            const QString customQss = QString::fromUtf8(file.readAll());
+            const QString customQss = AppStyle::applyTokens(QString::fromUtf8(file.readAll()));
             bundle.mainQss = baseMain + "\n" + customQss;
             bundle.toolQss = baseTool + "\n" + customQss;
             bundle.dialogQss = baseDialog + "\n" + customQss;
@@ -10122,7 +10119,7 @@ void MainWindow::applyApplicationTheme(const QString &themeId, const QString &cu
 void MainWindow::applyToolPageTheme(QWidget *page)
 {
     if (!page) return;
-    page->setStyleSheet(currentToolPageQss.isEmpty() ? loadQssResource(":/styles/toolpage.qss") : currentToolPageQss);
+    page->setStyleSheet(currentToolPageQss.isEmpty() ? AppStyle::loadToolPageQss() : currentToolPageQss);
 }
 
 void MainWindow::refreshLoadedToolPageThemes()

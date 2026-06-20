@@ -135,7 +135,7 @@ LauncherWidget::LauncherWidget(QWidget *parent)
     // 且局部 QSS 无法重绘那块本体区域（试过本体背景、QTabBar 背景都无效）。
     // 改为只给两个内容页设样式：这样 targetTabs（QTabWidget）不带局部样式表，和工具箱的 toolsTabWidget 一致——
     // 外层 tab 由全局 mainwindow.qss（#targetTabs 规则）+ 下面设置的调色板绘制，内容控件由 toolpage.qss 绘制。
-    const QString toolQss = AppStyle::loadQss(":/styles/toolpage.qss");
+    const QString toolQss = AppStyle::loadToolPageQss();
     ui->pageA1111->setStyleSheet(toolQss);
     ui->pageComfyUI->setStyleSheet(toolQss);
 

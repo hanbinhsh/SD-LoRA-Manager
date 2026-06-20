@@ -2,16 +2,131 @@
 
 #include <QColor>
 #include <QFile>
+#include <QHash>
+#include <QRegularExpression>
 #include <QString>
 
 namespace AppStyle {
 
-// 读取一个 QSS 资源文件内容（失败时返回空串）。统一各工具页加载 toolpage.qss 的逻辑。
+// === 颜色调色板（单一事实源）===
+// QSS 用 @token / @rgba(token, A) 占位，加载时由 applyTokens 替换为下面的默认(Steam Dark)值。
+// Round 2 做主题时，只需提供另一套同名 token 的调色板即可整体换肤。
+inline const QHash<QString, QString> &defaultPalette()
+{
+    static const QHash<QString, QString> p = {
+        { QStringLiteral("windowBg"), QStringLiteral("#1b2838") },
+        { QStringLiteral("sidebarBg"), QStringLiteral("#1a1f29") },
+        { QStringLiteral("panelBg"), QStringLiteral("#1e252f") },
+        { QStringLiteral("headerBg"), QStringLiteral("#212831") },
+        { QStringLiteral("inputBg"), QStringLiteral("#16191e") },
+        { QStringLiteral("consoleBg"), QStringLiteral("#131519") },
+        { QStringLiteral("scrollTrack"), QStringLiteral("#12161c") },
+        { QStringLiteral("downloadFieldBg"), QStringLiteral("#0f141a") },
+        { QStringLiteral("progressBg"), QStringLiteral("#111a26") },
+        { QStringLiteral("downloadCardHoverBg"), QStringLiteral("#1b222b") },
+        { QStringLiteral("downloadCardSelBg"), QStringLiteral("#20344a") },
+        { QStringLiteral("sliderGroove"), QStringLiteral("#27313d") },
+        { QStringLiteral("disabledBg"), QStringLiteral("#2a3038") },
+        { QStringLiteral("templateHoverBg"), QStringLiteral("#2a3442") },
+        { QStringLiteral("buttonBg"), QStringLiteral("#2a3f5a") },
+        { QStringLiteral("previewBorder"), QStringLiteral("#2b3440") },
+        { QStringLiteral("inputBorder"), QStringLiteral("#31363d") },
+        { QStringLiteral("sidebarTabBg"), QStringLiteral("#313a46") },
+        { QStringLiteral("downloadBorder"), QStringLiteral("#313d49") },
+        { QStringLiteral("consoleBorder"), QStringLiteral("#363c46") },
+        { QStringLiteral("scrollHandle"), QStringLiteral("#3a4654") },
+        { QStringLiteral("dangerBg"), QStringLiteral("#3c1919") },
+        { QStringLiteral("hoverBg"), QStringLiteral("#3d4450") },
+        { QStringLiteral("groupBorder"), QStringLiteral("#3d4d5d") },
+        { QStringLiteral("selectionBg"), QStringLiteral("#3d5677") },
+        { QStringLiteral("scrollHandleHover"), QStringLiteral("#4b5a6b") },
+        { QStringLiteral("downloadHoverBorder"), QStringLiteral("#4b637a") },
+        { QStringLiteral("copyBtnPressed"), QStringLiteral("#4c6b0c") },
+        { QStringLiteral("placeholderText"), QStringLiteral("#5a6f8a") },
+        { QStringLiteral("copyBtnBg"), QStringLiteral("#5c7e10") },
+        { QStringLiteral("checkboxBorder"), QStringLiteral("#66717f") },
+        { QStringLiteral("accentBlue"), QStringLiteral("#66c0f4") },
+        { QStringLiteral("copyBtnHover"), QStringLiteral("#79a615") },
+        { QStringLiteral("successGreenBright"), QStringLiteral("#7ee081") },
+        { QStringLiteral("disabledText"), QStringLiteral("#7f8791") },
+        { QStringLiteral("mutedText2"), QStringLiteral("#8c929a") },
+        { QStringLiteral("mutedText"), QStringLiteral("#8c96a0") },
+        { QStringLiteral("accentBright"), QStringLiteral("#90d0ff") },
+        { QStringLiteral("htmlSubtle"), QStringLiteral("#aaaaaa") },
+        { QStringLiteral("subtleText"), QStringLiteral("#acb2b8") },
+        { QStringLiteral("downloadMeta"), QStringLiteral("#aeb7c2") },
+        { QStringLiteral("bodyText"), QStringLiteral("#dcdedf") },
+        { QStringLiteral("userTagChipText"), QStringLiteral("#e4ffe9") },
+        { QStringLiteral("inputBorderBright"), QStringLiteral("#eeeeee") },
+        { QStringLiteral("errorRed"), QStringLiteral("#ff4c4c") },
+        { QStringLiteral("chipMixedText"), QStringLiteral("#fff1c7") },
+        { QStringLiteral("whiteText"), QStringLiteral("#ffffff") },
+        { QStringLiteral("black"), QStringLiteral("#000000") },
+        { QStringLiteral("tagGreenBg"), QStringLiteral("#1f3520") },
+        { QStringLiteral("chipYellow"), QStringLiteral("#ffcc66") },
+        { QStringLiteral("successGreen"), QStringLiteral("#5fd38d") },
+    };
+    return p;
+}
+
+// 取 token 的字符串值 / QColor（未知 token 返回空串 / 无效色）。
+inline QString str(const QString &token) { return defaultPalette().value(token); }
+inline QColor color(const QString &token) { return QColor(defaultPalette().value(token)); }
+
+// 把 QSS 里的 @token 与 @rgba(token, A) 占位符替换成调色板里的实际颜色。
+inline QString applyTokens(QString qss)
+{
+    // 1) @rgba(token, A) -> rgba(r,g,b,A)
+    static const QRegularExpression rgbaRe(QStringLiteral("@rgba\\(\\s*(\\w+)\\s*,\\s*(\\d+)\\s*\\)"));
+    {
+        QString out;
+        out.reserve(qss.size());
+        qsizetype last = 0;
+        auto it = rgbaRe.globalMatch(qss);
+        while (it.hasNext()) {
+            const QRegularExpressionMatch m = it.next();
+            out += qss.mid(last, m.capturedStart() - last);
+            const QColor c = color(m.captured(1));
+            out += QStringLiteral("rgba(%1,%2,%3,%4)")
+                       .arg(c.red()).arg(c.green()).arg(c.blue()).arg(m.captured(2));
+            last = m.capturedEnd();
+        }
+        out += qss.mid(last);
+        qss = out;
+    }
+    // 2) @token -> value（未知 token 原样保留）
+    static const QRegularExpression tokenRe(QStringLiteral("@(\\w+)"));
+    {
+        QString out;
+        out.reserve(qss.size());
+        qsizetype last = 0;
+        auto it = tokenRe.globalMatch(qss);
+        while (it.hasNext()) {
+            const QRegularExpressionMatch m = it.next();
+            out += qss.mid(last, m.capturedStart() - last);
+            const QString val = str(m.captured(1));
+            out += val.isEmpty() ? m.captured(0) : val;
+            last = m.capturedEnd();
+        }
+        out += qss.mid(last);
+        qss = out;
+    }
+    return qss;
+}
+
+// 读取一个 QSS 资源文件内容并完成 token 替换（失败时返回空串）。
 inline QString loadQss(const QString &resourcePath)
 {
     QFile file(resourcePath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
-    return QString::fromUtf8(file.readAll());
+    return applyTokens(QString::fromUtf8(file.readAll()));
+}
+
+// 读取工具页所需的完整 QSS（公共 base + 工具页专属），均已 token 替换。
+inline QString loadToolPageQss()
+{
+    return loadQss(QStringLiteral(":/styles/base.qss")) + QChar('\n')
+         + loadQss(QStringLiteral(":/styles/toolpage.qss"));
 }
 
 inline constexpr const char *AccentBlue = "#66c0f4";

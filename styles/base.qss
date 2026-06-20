@@ -1,0 +1,208 @@
+/* === 通用 widget 样式（颜色用 token 占位符，加载时由 AppStyle::applyTokens 替换）===
+   仅经 loadToolPageQss() 与 toolpage.qss 拼接后用于工具页/启动器内容页。 */
+
+QTabWidget::pane {
+    border: 1px solid @groupBorder;
+    background-color: @panelBg;
+    border-radius: 4px;
+    border-top-left-radius: 0;
+}
+
+QTabBar {
+    background-color: @sidebarBg;
+}
+
+QTabBar::tab {
+    background: @sidebarBg;
+    color: #ccc;
+    padding: 10px;
+}
+
+QTabBar::tab:selected {
+    background: @hoverBg;
+    color: #fff;
+    font-weight: bold;
+}
+
+QGroupBox {
+    border: 1px solid @groupBorder;
+    background-color: @panelBg;
+    border-radius: 4px;
+    margin-top: 14px;
+    font-weight: bold;
+    color: @accentBlue;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 8px;
+    padding: 0 4px;
+}
+
+QLineEdit, QComboBox, QTableWidget, QTableView, QListWidget,
+QPlainTextEdit, QTextBrowser, QTextEdit, QDoubleSpinBox, QSpinBox,
+QScrollArea, QTreeWidget {
+    background-color: @inputBg;
+    border: 1px solid @inputBorder;
+    color: @bodyText;
+    border-radius: 3px;
+    padding: 4px;
+}
+
+QPushButton {
+    background-color: @buttonBg;
+    border-radius: 2px;
+    color: @accentBlue;
+    border: none;
+    padding: 6px 12px;
+}
+
+QPushButton:hover {
+    background-color: @selectionBg;
+    color: @whiteText;
+}
+
+QPushButton:disabled {
+    background-color: @disabledBg;
+    color: @disabledText;
+}
+
+QHeaderView::section {
+    background-color: @headerBg;
+    color: @bodyText;
+    padding: 6px;
+    border: none;
+    border-right: 1px solid @inputBorder;
+}
+
+QTableWidget, QTableView {
+    gridline-color: @inputBorder;
+    selection-background-color: @selectionBg;
+    selection-color: @whiteText;
+    outline: none;
+    show-decoration-selected: 1;
+}
+
+QTableWidget::item, QTableView::item {
+    border: none;
+    padding: 4px 6px;
+}
+
+QTableWidget::item:focus, QTableView::item:focus,
+QTableWidget::item:selected, QTableView::item:selected {
+    border: none;
+    outline: none;
+}
+
+QTreeWidget {
+    gridline-color: @previewBorder;
+    selection-background-color: @selectionBg;
+    outline: none;
+    show-decoration-selected: 1;
+}
+
+QTreeWidget::item {
+    min-height: 24px;
+}
+
+QScrollArea::viewport, QTextBrowser::viewport, QTextEdit::viewport {
+    background-color: transparent;
+    border: none;
+}
+
+QListWidget::item {
+    background-color: transparent;
+    border: none;
+    padding: 0px;
+    margin: 0px;
+}
+
+QListWidget::item:hover, QListWidget::item:selected {
+    background-color: transparent;
+    border: none;
+}
+
+QSlider::groove:horizontal {
+    height: 6px;
+    background: @sliderGroove;
+    border-radius: 3px;
+}
+
+QSlider::handle:horizontal {
+    width: 14px;
+    margin: -4px 0;
+    border-radius: 7px;
+    background: @accentBlue;
+}
+
+QSplitter::handle {
+    background-color: transparent;
+    border: none;
+}
+
+QLabel {
+    color: @bodyText;
+}
+
+QProgressBar {
+    background: @progressBg;
+    border: 1px solid @groupBorder;
+    border-radius: 4px;
+    color: @bodyText;
+    text-align: center;
+}
+
+QProgressBar::chunk {
+    background: @accentBlue;
+    border-radius: 3px;
+}
+
+QScrollBar:vertical {
+    background: @scrollTrack;
+    width: 4px;
+    margin: 2px 0 2px 0;
+    border-radius: 2px;
+}
+
+QScrollBar::handle:vertical {
+    background: @scrollHandle;
+    min-height: 24px;
+    border-radius: 2px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: @scrollHandleHover;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: transparent;
+}
+
+QScrollBar:horizontal {
+    background: @scrollTrack;
+    height: 4px;
+    margin: 0 2px 0 2px;
+    border-radius: 2px;
+}
+
+QScrollBar::handle:horizontal {
+    background: @scrollHandle;
+    min-width: 24px;
+    border-radius: 2px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background: @scrollHandleHover;
+}
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0px;
+}
+
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+    background: transparent;
+}

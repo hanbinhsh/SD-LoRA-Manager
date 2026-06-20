@@ -21,7 +21,7 @@ SyncWidget::SyncWidget(QWidget *parent) :
     ui(new Ui::SyncWidget)
 {
     ui->setupUi(this);
-    setStyleSheet(AppStyle::loadQss(":/styles/toolpage.qss"));
+    setStyleSheet(AppStyle::loadToolPageQss());
 
     // 初始化网络和文件监控
     tcpServer = new QTcpServer(this);

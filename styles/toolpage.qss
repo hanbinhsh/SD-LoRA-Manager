@@ -1,103 +1,13 @@
 QWidget#UsageAnalysisWidget, QWidget#TagBrowserWidget, QWidget#LlmPromptWidget,
 QWidget#PromptParserWidget, QWidget#PromptTemplateLibraryWidget, QWidget#SyncWidget {
-    background-color: #1b2838;
-    color: #dcdedf;
+    background-color: @windowBg;
+    color: @bodyText;
 }
+
 /* 启动器外层 tab(targetTabs) 的样式不在这里——见 mainwindow.qss。
    toolpage.qss 现在只设在 LauncherWidget 的两个内容页(pageA1111/pageComfyUI)上，不会作用到 targetTabs
    这个 QTabWidget 本体；外层 tab 条由全局 mainwindow.qss + 调色板绘制（与工具箱 toolsTabWidget 一致）。 */
-QTabWidget::pane {
-    border: 1px solid #3d4d5d;
-    background-color: #1e252f;
-    border-radius: 4px;
-    border-top-left-radius: 0;
-}
-QTabBar {
-    background-color: #1a1f29;
-}
-QTabBar::tab {
-    background: #1a1f29;
-    color: #ccc;
-    padding: 10px;
-}
-QTabBar::tab:selected {
-    background: #3d4450;
-    color: #fff;
-    font-weight: bold;
-}
-QGroupBox {
-    border: 1px solid #3d4d5d;
-    background-color: #1e252f;
-    border-radius: 4px;
-    margin-top: 14px;
-    font-weight: bold;
-    color: #66c0f4;
-}
-QGroupBox::title {
-    subcontrol-origin: margin;
-    left: 8px;
-    padding: 0 4px;
-}
-QLineEdit, QComboBox, QTableWidget, QTableView, QListWidget,
-QPlainTextEdit, QTextBrowser, QTextEdit, QDoubleSpinBox, QSpinBox,
-QScrollArea, QTreeWidget {
-    background-color: #16191e;
-    border: 1px solid #31363d;
-    color: #dcdedf;
-    border-radius: 3px;
-    padding: 4px;
-}
-QPushButton {
-    background-color: #2a3f5a;
-    border-radius: 2px;
-    color: #66c0f4;
-    border: none;
-    padding: 6px 12px;
-}
-QPushButton:hover {
-    background-color: #3d5677;
-    color: #ffffff;
-}
-QPushButton:disabled {
-    background-color: #2a3038;
-    color: #7f8791;
-}
-QHeaderView::section {
-    background-color: #212831;
-    color: #dcdedf;
-    padding: 6px;
-    border: none;
-    border-right: 1px solid #31363d;
-}
-QTableWidget, QTableView {
-    gridline-color: #31363d;
-    selection-background-color: #3d5677;
-    selection-color: #ffffff;
-    outline: none;
-    show-decoration-selected: 1;
-}
-QTableWidget::item, QTableView::item {
-    border: none;
-    padding: 4px 6px;
-}
-QTableWidget::item:focus, QTableView::item:focus,
-QTableWidget::item:selected, QTableView::item:selected {
-    border: none;
-    outline: none;
-}
-QTreeWidget {
-    gridline-color: #2b3440;
-    selection-background-color: #3d5677;
-    outline: none;
-    show-decoration-selected: 1;
-}
-QTreeWidget::item {
-    min-height: 24px;
-}
-QScrollArea::viewport, QTextBrowser::viewport, QTextEdit::viewport {
-    background-color: transparent;
-    border: none;
-}
+
 QWidget#placeholderInputContainer,
 QWidget#generateImagePositiveTagsContainer,
 QWidget#generateImageNegativeTagsContainer,
@@ -111,150 +21,84 @@ QWidget#spaceContainer {
     background-color: transparent;
     border: none;
 }
+
 QScrollArea#scrollSpace {
     background: transparent;
     border: none;
     padding: 0;
 }
+
 QListWidget#listChatMessages {
-    background-color: #16191e;
-    border: 1px solid #31363d;
+    background-color: @inputBg;
+    border: 1px solid @inputBorder;
     padding: 2px;
     outline: none;
 }
+
 QListWidget#listChatMessages::item {
     background-color: transparent;
     border: none;
     margin: 0px;
     padding: 0px;
 }
+
 QListWidget#listChatMessages::item:hover,
 QListWidget#listChatMessages::item:selected {
     background-color: transparent;
     color: inherit;
 }
+
 QLabel#lblStatus, QLabel#lblUserTagStatus, QLabel#lblGenerateStatus,
 QLabel#lblWd14Status, QLabel#lblWd14Elapsed, QLabel#lblWd14Memory {
-    color: #8c96a0;
+    color: @mutedText;
 }
+
 QLabel#lblImage, QLabel#lblWd14Image,
 QLabel#lblComparePreviewA, QLabel#lblComparePreviewB {
-    background-color: #16191e;
-    border: 2px dashed #363c46;
+    background-color: @inputBg;
+    border: 2px dashed @consoleBorder;
     border-radius: 8px;
-    color: #5a6f8a;
+    color: @placeholderText;
     font-size: 16px;
 }
+
 QLabel#lblImage:hover, QLabel#lblWd14Image:hover,
 QLabel#lblComparePreviewA:hover, QLabel#lblComparePreviewB:hover {
-    border: 2px dashed #66c0f4;
-    background-color: #1e252f;
-    color: #66c0f4;
+    border: 2px dashed @accentBlue;
+    background-color: @panelBg;
+    color: @accentBlue;
 }
+
 QTextBrowser#txtParams {
     font-family: Consolas, monospace;
     padding: 8px;
 }
+
 QTextEdit#logOutput {
-    background-color: #131519;
-    border: 1px solid #131519;
-    color: #acb2b8;
+    background-color: @consoleBg;
+    border: 1px solid @consoleBg;
+    color: @subtleText;
 }
-QListWidget::item {
-    background-color: transparent;
-    border: none;
-    padding: 0px;
-    margin: 0px;
-}
-QListWidget::item:hover, QListWidget::item:selected {
-    background-color: transparent;
-    border: none;
-}
+
 QWidget#rowWidget {
     background-color: transparent;
     border-radius: 4px;
     margin: 2px;
 }
+
 QWidget#rowWidget:hover {
-    background-color: #212831;
+    background-color: @headerBg;
 }
+
 QPushButton#btnStart[running="true"] {
-    background-color: #3c1919;
-    color: #ff4c4c;
-    border: 1px solid #ff4c4c;
+    background-color: @dangerBg;
+    color: @errorRed;
+    border: 1px solid @errorRed;
 }
+
 QPushButton#btnTranslate:checked {
-    background-color: #66c0f4;
-    color: #000000;
-}
-QSlider::groove:horizontal {
-    height: 6px;
-    background: #27313d;
-    border-radius: 3px;
-}
-QSlider::handle:horizontal {
-    width: 14px;
-    margin: -4px 0;
-    border-radius: 7px;
-    background: #66c0f4;
-}
-QSplitter::handle {
-    background-color: transparent;
-    border: none;
-}
-QLabel {
-    color: #dcdedf;
-}
-QProgressBar {
-    background: #111a26;
-    border: 1px solid #3d4d5d;
-    border-radius: 4px;
-    color: #dcdedf;
-    text-align: center;
-}
-QProgressBar::chunk {
-    background: #66c0f4;
-    border-radius: 3px;
-}
-QScrollBar:vertical {
-    background: #12161c;
-    width: 4px;
-    margin: 2px 0 2px 0;
-    border-radius: 2px;
-}
-QScrollBar::handle:vertical {
-    background: #3a4654;
-    min-height: 24px;
-    border-radius: 2px;
-}
-QScrollBar::handle:vertical:hover {
-    background: #4b5a6b;
-}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-    height: 0px;
-}
-QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-    background: transparent;
-}
-QScrollBar:horizontal {
-    background: #12161c;
-    height: 4px;
-    margin: 0 2px 0 2px;
-    border-radius: 2px;
-}
-QScrollBar::handle:horizontal {
-    background: #3a4654;
-    min-width: 24px;
-    border-radius: 2px;
-}
-QScrollBar::handle:horizontal:hover {
-    background: #4b5a6b;
-}
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-    width: 0px;
-}
-QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-    background: transparent;
+    background-color: @accentBlue;
+    color: @black;
 }
 
 QListWidget#listTemplates {
@@ -263,15 +107,15 @@ QListWidget#listTemplates {
 }
 
 QListWidget#listTemplates::item:hover {
-    background-color: #2a3442;
-    color: #ffffff;
+    background-color: @templateHoverBg;
+    color: @whiteText;
 }
 
 QListWidget#listTemplates::item:selected,
 QListWidget#listTemplates::item:selected:active,
 QListWidget#listTemplates::item:selected:!active {
-    background-color: #3d4450;
-    color: #ffffff;
-    border-left: 4px solid #66c0f4;
+    background-color: @hoverBg;
+    color: @whiteText;
+    border-left: 4px solid @accentBlue;
     font-weight: bold;
 }

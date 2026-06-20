@@ -433,7 +433,7 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     , m_userTagProxy(new TagSearchProxyModel(this))
 {
     ui->setupUi(this);
-    setStyleSheet(AppStyle::loadQss(":/styles/toolpage.qss"));
+    setStyleSheet(AppStyle::loadToolPageQss());
 
     m_model->setColumnCount(4);
     m_model->setHorizontalHeaderLabels({"Tag", "类别", "翻译", "优先级"});

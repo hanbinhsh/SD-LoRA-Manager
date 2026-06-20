@@ -114,7 +114,7 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
     , m_translationMap(nullptr)
 {
     ui->setupUi(this);
-    setStyleSheet(AppStyle::loadQss(":/styles/toolpage.qss"));
+    setStyleSheet(AppStyle::loadToolPageQss());
 
     setAcceptDrops(true);
     ui->lblImage->installEventFilter(this);
