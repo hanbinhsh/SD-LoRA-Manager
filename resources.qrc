@@ -3,6 +3,7 @@
         <file>logo.ico</file>
         <file>scripts/wd14_tagger.py</file>
         <file>styles/base.qss</file>
+        <file>styles/check.svg</file>
         <file>styles/mainwindow.qss</file>
         <file>styles/toolpage.qss</file>
         <file>styles/dialog.qss</file>

@@ -436,7 +436,7 @@ void LauncherWidget::enableOpenButton(TargetPanel &p, const QString &url)
         QString("QPushButton{background-color:%1;color:#10241a;font-weight:bold;}"
                 "QPushButton:hover{background-color:#74e0a0;}"
                 "QPushButton:pressed{background-color:#4cba79;}")
-            .arg(AppStyle::CustomTriggerGreen));
+            .arg(AppStyle::CustomTriggerGreen()));
     p.btnOpen->setToolTip(url);
 }
 
@@ -495,7 +495,7 @@ void LauncherWidget::setRunningUi(TargetPanel &p, bool running)
             QString("QPushButton{background-color:%1;color:%2;font-weight:bold;}"
                     "QPushButton:hover{background-color:#c24444;}"
                     "QPushButton:pressed{background-color:#8e2a2a;}")
-                .arg(AppStyle::SyncStopRed, AppStyle::WhiteText));
+                .arg(AppStyle::SyncStopRed(), AppStyle::WhiteText()));
     } else {
         p.btnStartStop->setText("启动 / Start");
         p.btnStartStop->setStyleSheet(QString());

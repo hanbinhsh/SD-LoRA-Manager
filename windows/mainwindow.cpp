@@ -772,16 +772,12 @@ public:
         if (!opt.text.isEmpty()) {
             const QRect textRect = style->subElementRect(QStyle::SE_ItemViewItemText, &opt, widget);
             const QString text = opt.fontMetrics.elidedText(opt.text, opt.textElideMode, textRect.width());
-            const QPalette::ColorRole role = (opt.state & QStyle::State_Selected)
-                                                 ? QPalette::HighlightedText
-                                                 : QPalette::Text;
-            style->drawItemText(painter,
-                                textRect,
-                                opt.displayAlignment,
-                                opt.palette,
-                                opt.state & QStyle::State_Enabled,
-                                text,
-                                role);
+            // 用主题色而非 palette 角色（QSS 设的颜色被 delegate 自绘绕过，会在浅色主题下变白看不清）。
+            const bool sel = opt.state & QStyle::State_Selected;
+            painter->save();
+            painter->setPen(sel ? AppStyle::color("primaryText") : AppStyle::color("mutedText2"));
+            painter->drawText(textRect, opt.displayAlignment, text);
+            painter->restore();
         }
     }
 };
@@ -2374,7 +2370,7 @@ void MainWindow::refreshHomeFilterChips()
 
     if (currentHomeAuthorFilter.isEmpty() && currentHomeTagFilters.isEmpty()) {
         QLabel *emptySummary = new QLabel("未启用主页作者/Tag 筛选");
-        emptySummary->setStyleSheet(AppStyle::MutedBoldLabelStyle);
+        emptySummary->setStyleSheet(AppStyle::MutedBoldLabelStyle());
         emptySummary->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
         fixSummaryWidgetSize(emptySummary);
@@ -2517,7 +2513,7 @@ void MainWindow::refreshHomeFilterChips()
 
     if (availableTagInfos.isEmpty()) {
         QLabel *emptyTags = new QLabel("当前模型库没有可用模型 Tag");
-        emptyTags->setStyleSheet(AppStyle::MutedLabelStyle);
+        emptyTags->setStyleSheet(AppStyle::MutedLabelStyle());
         emptyTags->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         availableTagsLayout->addWidget(emptyTags);
     }
@@ -3586,10 +3582,10 @@ void MainWindow::refreshTriggerWordsPanel(const ModelMeta &meta)
     }
 
     for (const QString &words : meta.trainedWordsGroups) {
-        addTriggerGroup(words, "Civitai / Metadata", AppStyle::AccentBlue);
+        addTriggerGroup(words, "Civitai / Metadata", AppStyle::AccentBlue());
     }
     for (const QString &words : customTriggerGroups) {
-        addTriggerGroup(words, "Custom / 用户自定义", AppStyle::CustomTriggerGreen);
+        addTriggerGroup(words, "Custom / 用户自定义", AppStyle::CustomTriggerGreen());
     }
 
     ui->layoutTriggerStack->addStretch(1);
@@ -3766,10 +3762,10 @@ void MainWindow::setLocalMetaStatus(const ModelMeta &meta)
     QString color = AppStyle::str("primaryText"); // 随主题（浅色下为深字）
     if (meta.isLocalOnly && meta.isLocalEdited) {
         status = "状态: 本地模型 (已编辑)";
-        color = AppStyle::WarningYellow;
+        color = AppStyle::WarningYellow();
     } else if (meta.isLocalEdited) {
         status = "状态: 已编辑 (本地元数据)";
-        color = AppStyle::WarningYellow;
+        color = AppStyle::WarningYellow();
     } else if (meta.isLocalOnly) {
         status = "状态: 本地模型";
         color = AppStyle::str("accentBlue");
@@ -4377,7 +4373,7 @@ void MainWindow::refreshModelUserNotePanel(const QString &filePath)
     clearLayout(ui->layoutUserTags);
     if (note.tags.isEmpty()) {
         QLabel *empty = new QLabel("无用户标签");
-        empty->setStyleSheet(AppStyle::MutedLabelStyle);
+        empty->setStyleSheet(AppStyle::MutedLabelStyle());
         ui->layoutUserTags->addWidget(empty);
     } else {
         for (const QString &tag : note.tags) {
@@ -4409,7 +4405,7 @@ void MainWindow::refreshModelAttributionPanel(const ModelMeta &meta)
 
     if (meta.creatorName.trimmed().isEmpty()) {
         QLabel *empty = new QLabel("暂无作者信息");
-        empty->setStyleSheet(AppStyle::MutedLabelStyle);
+        empty->setStyleSheet(AppStyle::MutedLabelStyle());
         ui->layoutModelAuthor->addWidget(empty);
     } else {
         QPushButton *author = new QPushButton(forceWrap(meta.creatorName));
@@ -4430,7 +4426,7 @@ void MainWindow::refreshModelAttributionPanel(const ModelMeta &meta)
 
     if (meta.modelTags.isEmpty()) {
         QLabel *empty = new QLabel("暂无模型标签");
-        empty->setStyleSheet(AppStyle::MutedLabelStyle);
+        empty->setStyleSheet(AppStyle::MutedLabelStyle());
         ui->layoutModelTags->addWidget(empty);
     } else {
         QWidget *tagFlowWidget = new QWidget();
@@ -6321,7 +6317,7 @@ void MainWindow::updateBackgroundImage()
     } else {
         ui->backgroundLabel->clear();
         QPixmap empty(targetSize);
-        empty.fill(QColor(AppStyle::MainBackground));
+        empty.fill(QColor(AppStyle::MainBackground()));
         ui->backgroundLabel->setPixmap(empty);
     }
 }
@@ -6842,8 +6838,8 @@ QListWidgetItem *MainWindow::createModelFolderHeader(const QString &folderName, 
     QFont font = header->font();
     font.setBold(true);
     header->setFont(font);
-    header->setForeground(QColor(AppStyle::AccentBlue));
-    header->setBackground(QColor(AppStyle::HeaderBackground));
+    header->setForeground(QColor(AppStyle::AccentBlue()));
+    header->setBackground(QColor(AppStyle::HeaderBackground()));
     return header;
 }
 
@@ -7142,7 +7138,7 @@ QPixmap MainWindow::applyBlurToImage(const QImage &srcImg, const QSize &bgSize, 
 
     // 3. 合成最终背景
     QPixmap finalBg(bgSize);
-    finalBg.fill(QColor(AppStyle::MainBackground)); // 填充底色
+    finalBg.fill(QColor(AppStyle::MainBackground())); // 填充底色
     QPainter painter(&finalBg);
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
     painter.setRenderHint(QPainter::Antialiasing);
@@ -7195,7 +7191,7 @@ void MainWindow::updateBackgroundDuringTransition()
     if (bgSize.isEmpty()) return;
 
     QPixmap canvas(bgSize);
-    canvas.fill(QColor(AppStyle::MainBackground)); // 纯色打底，防止交叉淡化时露出底色
+    canvas.fill(QColor(AppStyle::MainBackground())); // 纯色打底，防止交叉淡化时露出底色
 
     QPainter painter(&canvas);
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
@@ -8121,8 +8117,8 @@ void MainWindow::onUserImageClicked(QListWidgetItem *item) {
                        "<p><b><span style='color:%6'>Parameters:</span></b><br>"
                        "<span style='color:%7; font-size:11px; font-family:Consolas, monospace;'>%8%3</span></p>"
                        ).arg(safePrompt, safeNeg, paramsHtml,
-                             AppStyle::AccentBlue, AppStyle::HtmlNegative,
-                             AppStyle::HtmlSubtle, AppStyle::HtmlDim, resolutionHtml);
+                             AppStyle::AccentBlue(), AppStyle::HtmlNegative(),
+                             AppStyle::HtmlSubtle(), AppStyle::HtmlDim(), resolutionHtml);
 
     ui->textUserPrompt->setHtml(html);
 
@@ -8251,7 +8247,7 @@ void MainWindow::initMenuBar() {
             QVBoxLayout *layout = new QVBoxLayout(page);
             QLabel *label = new QLabel(text, page);
             label->setAlignment(Qt::AlignCenter);
-            label->setStyleSheet(AppStyle::MutedLabelStyle);
+            label->setStyleSheet(AppStyle::MutedLabelStyle());
             layout->addWidget(label);
             return page;
         };
@@ -10126,6 +10122,7 @@ void MainWindow::refreshLoadedToolPageThemes()
 {
     applyToolPageTheme(tagBrowserWidget);
     applyToolPageTheme(llmPromptWidget);
+    if (llmPromptWidget) llmPromptWidget->applyTheme(); // 重绘对话气泡内联样式
     applyToolPageTheme(parserWidget);
     applyToolPageTheme(usageAnalysisWidget);
     applyToolPageTheme(promptTemplateLibraryWidget);
@@ -10471,12 +10468,12 @@ QIcon MainWindow::generatePlaceholderIcon()
     QRect contentRect(padding, padding, contentSize, contentSize);
 
     // 绘制深色背景框 (圆角加大一点)
-    painter.setBrush(QColor(AppStyle::PanelDark));
+    painter.setBrush(QColor(AppStyle::PanelDark()));
     painter.setPen(Qt::NoPen);
     painter.drawRoundedRect(contentRect, 12, 12);
 
     // 绘制“×”符号
-    QPen pen{QColor(AppStyle::PanelBorder)}; // 线条颜色稍微调深一点，更有质感
+    QPen pen{QColor(AppStyle::PanelBorder())}; // 线条颜色稍微调深一点，更有质感
     pen.setWidth(5); // 线条加粗，适应大尺寸
     pen.setCapStyle(Qt::RoundCap); // 线条端点圆润
     painter.setPen(pen);

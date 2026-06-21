@@ -101,15 +101,15 @@ public:
         QRect card = option.rect.adjusted(child ? 26 : 4, 3, -6, -3);
 
         const QColor bg = selected
-            ? QColor("#3d4450")
-            : hover ? QColor("#2a3442")
-                    : child ? QColor("#202936") : QColor("#1f2833");
+            ? AppStyle::color("hoverBg")
+            : hover ? AppStyle::color("templateHoverBg")
+                    : child ? AppStyle::color("templateCardChild") : AppStyle::color("templateCardBg");
         painter->setPen(Qt::NoPen);
         painter->setBrush(bg);
         painter->drawRoundedRect(card, 7, 7);
 
         if (selected) {
-            painter->setBrush(QColor("#66c0f4"));
+            painter->setBrush(AppStyle::color("accentBlue"));
             painter->drawRoundedRect(QRect(card.left(), card.top(), 4, card.height()), 2, 2);
         }
 
@@ -126,11 +126,11 @@ public:
         QFont font = option.font;
         font.setBold(!child || selected);
         painter->setFont(font);
-        QColor textColor = QColor("#dcdedf");
+        QColor textColor = AppStyle::color("bodyText");
         if (const QVariant foreground = index.data(Qt::ForegroundRole); foreground.canConvert<QBrush>()) {
             textColor = foreground.value<QBrush>().color();
         }
-        if (selected) textColor = QColor("#ffffff");
+        if (selected) textColor = AppStyle::color("primaryText");
         painter->setPen(textColor);
 
         QTextOption textOption;
@@ -226,7 +226,7 @@ public:
     {
         painter->save();
         const bool selected = option.state.testFlag(QStyle::State_Selected);
-        if (selected) painter->fillRect(option.rect, QColor("#3d4450"));
+        if (selected) painter->fillRect(option.rect, AppStyle::color("hoverBg"));
 
         const QString tag = index.data(Qt::UserRole).toString();
         const QString translation = index.data(Qt::UserRole + 1).toString();
@@ -234,7 +234,7 @@ public:
         const QFontMetrics fm(option.font);
 
         painter->setFont(option.font);
-        painter->setPen(selected ? QColor("#ffffff") : QColor("#dcdedf"));
+        painter->setPen(selected ? AppStyle::color("primaryText") : AppStyle::color("bodyText"));
         const QString tagText = fm.elidedText(tag, Qt::ElideRight, r.width());
         painter->drawText(r, Qt::AlignVCenter | Qt::AlignLeft, tagText);
 
@@ -242,7 +242,7 @@ public:
             const int tagWidth = fm.horizontalAdvance(tagText) + 14;
             const QRect trRect = r.adjusted(tagWidth, 0, 0, 0);
             if (trRect.width() > 12) {
-                painter->setPen(QColor("#8c96a0"));
+                painter->setPen(AppStyle::color("mutedText"));
                 const QString trText = fm.elidedText(translation, Qt::ElideRight, trRect.width());
                 painter->drawText(trRect, Qt::AlignVCenter | Qt::AlignRight, trText);
             }
@@ -528,8 +528,8 @@ void populateModelTriggerChildren(QTreeWidgetItem *modelItem)
         }
     };
 
-    addTriggerChildren(metadataTriggers, QColor("#66c0f4"));
-    addTriggerChildren(customTriggers, QColor("#7bd88f"));
+    addTriggerChildren(metadataTriggers, AppStyle::color("accentBlue"));
+    addTriggerChildren(customTriggers, AppStyle::color("successGreenBright"));
 }
 
 void addTagCounts(const QString &prompt, QMap<QString, int> &counts)
@@ -1278,9 +1278,10 @@ void PromptTemplateLibraryWidget::refreshFavoritesTable()
     for (const PromptFavorite &fav : std::as_const(m_favorites)) {
         auto *card = new QFrame(ui->favoritesContainer);
         card->setObjectName("favoriteCard");
-        card->setStyleSheet(
-            "QFrame#favoriteCard{background:#1f2833;border:1px solid #31363d;border-radius:6px;}"
-            "QFrame#favoriteCard QLabel{background:transparent;}");
+        card->setStyleSheet(QStringLiteral(
+            "QFrame#favoriteCard{background:%1;border:1px solid %2;border-radius:6px;}"
+            "QFrame#favoriteCard QLabel{background:transparent;}")
+            .arg(AppStyle::str("templateCardBg"), AppStyle::str("inputBorder")));
         auto *cardLayout = new QVBoxLayout(card);
         cardLayout->setContentsMargins(0, 0, 0, 0);
         cardLayout->setSpacing(0);
@@ -1327,10 +1328,11 @@ void PromptTemplateLibraryWidget::refreshFavoritesTable()
         // 详情（默认隐藏）：正/负面提示词全文。
         auto *detail = new QFrame(card);
         detail->setObjectName("favoriteDetail");
-        detail->setStyleSheet(
-            "QFrame#favoriteDetail{background:#16191e;border:none;border-top:1px solid #31363d;"
+        detail->setStyleSheet(QStringLiteral(
+            "QFrame#favoriteDetail{background:%1;border:none;border-top:1px solid %2;"
             "border-bottom-left-radius:5px;border-bottom-right-radius:5px;}"
-            "QFrame#favoriteDetail QLabel{background:transparent;}");
+            "QFrame#favoriteDetail QLabel{background:transparent;}")
+            .arg(AppStyle::str("inputBg"), AppStyle::str("inputBorder")));
         auto *detailLayout = new QVBoxLayout(detail);
         detailLayout->setContentsMargins(12, 8, 12, 10);
         detailLayout->setSpacing(4);
@@ -1344,8 +1346,8 @@ void PromptTemplateLibraryWidget::refreshFavoritesTable()
             body->setStyleSheet(QStringLiteral("color:%1;").arg(AppStyle::str("bodyText")));
             detailLayout->addWidget(body);
         };
-        addSection("正面", fav.positive, "#5fd38d");
-        addSection("负面", fav.negative, "#ff6b6b");
+        addSection("正面", fav.positive, AppStyle::CustomTriggerGreen());
+        addSection("负面", fav.negative, AppStyle::SoftErrorRed());
         detail->setVisible(false);
         cardLayout->addWidget(detail);
 
@@ -1517,15 +1519,16 @@ void PromptTemplateLibraryWidget::rebuildPlaceholderInputs()
         const bool inNegative = negativeNameSet.contains(placeholder.name);
         QString accent;
         QString badgeText;
-        if (inPositive && inNegative) { accent = "#66c0f4"; badgeText = "正面 · 负面"; }
-        else if (inNegative)          { accent = "#ff6b6b"; badgeText = "负面"; }
-        else                          { accent = "#5fd38d"; badgeText = "正面"; }
+        if (inPositive && inNegative) { accent = AppStyle::AccentBlue(); badgeText = "正面 · 负面"; }
+        else if (inNegative)          { accent = AppStyle::SoftErrorRed(); badgeText = "负面"; }
+        else                          { accent = AppStyle::CustomTriggerGreen(); badgeText = "正面"; }
 
         auto *card = new QFrame(ui->placeholderInputContainer);
         card->setObjectName("placeholderCard");
         card->setStyleSheet(QString(
-            "QFrame#placeholderCard{background:#1f2833;border:1px solid #31363d;"
-            "border-left:3px solid %1;border-radius:6px;}").arg(accent));
+            "QFrame#placeholderCard{background:%2;border:1px solid %3;"
+            "border-left:3px solid %1;border-radius:6px;}")
+            .arg(accent, AppStyle::str("templateCardBg"), AppStyle::str("inputBorder")));
         auto *layout = new QVBoxLayout(card);
         layout->setContentsMargins(10, 8, 10, 10);
         layout->setSpacing(6);
@@ -1537,7 +1540,8 @@ void PromptTemplateLibraryWidget::rebuildPlaceholderInputs()
         title->setStyleSheet("background:transparent;");
         auto *badge = new QLabel(badgeText, card);
         badge->setStyleSheet(QString(
-            "color:#12161c;background:%1;border-radius:8px;padding:1px 8px;font-weight:bold;").arg(accent));
+            "color:%2;background:%1;border-radius:8px;padding:1px 8px;font-weight:bold;")
+            .arg(accent, AppStyle::str("onAccentText")));
         header->addWidget(title);
         header->addStretch(1);
         header->addWidget(badge);
@@ -2174,9 +2178,9 @@ void PromptTemplateLibraryWidget::setupModelTriggerPickerUi(ModelTriggerPickerUi
     picker.tree->setTextElideMode(Qt::ElideNone);
     picker.tree->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     picker.tree->setItemDelegate(new ModelTriggerTreeDelegate(picker.tree, picker.tree));
-    picker.tree->setStyleSheet(
+    picker.tree->setStyleSheet(QStringLiteral(
         "QTreeWidget#treeGenerateModelTriggers, QTreeWidget#treeTemplateModelTriggers {"
-        " background-color:#16191e; border:1px solid #31363d; border-radius:3px; padding:4px;"
+        " background-color:%1; border:1px solid %2; border-radius:3px; padding:4px;"
         "}"
         "QTreeWidget#treeGenerateModelTriggers::item, QTreeWidget#treeTemplateModelTriggers::item {"
         " background:transparent; border:none; padding:0; margin:0;"
@@ -2189,7 +2193,7 @@ void PromptTemplateLibraryWidget::setupModelTriggerPickerUi(ModelTriggerPickerUi
         "QTreeWidget#treeGenerateModelTriggers::branch:selected, QTreeWidget#treeTemplateModelTriggers::branch:selected,"
         "QTreeWidget#treeGenerateModelTriggers::branch:hover, QTreeWidget#treeTemplateModelTriggers::branch:hover {"
         " background:transparent; border:none; image:none;"
-        "}");
+        "}").arg(AppStyle::str("inputBg"), AppStyle::str("inputBorder")));
 
     picker.tree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
 
@@ -2642,8 +2646,9 @@ void PromptTemplateLibraryWidget::updateAutocompletePopup(QPlainTextEdit *edit)
         m_autocompletePopup->setSelectionMode(QAbstractItemView::SingleSelection);
         m_autocompletePopup->setEditTriggers(QAbstractItemView::NoEditTriggers);
         m_autocompletePopup->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        m_autocompletePopup->setStyleSheet(
-            "QListWidget { background:#1f2833; color:#dcdedf; border:1px solid #3d4450; outline:0; }");
+        m_autocompletePopup->setStyleSheet(QStringLiteral(
+            "QListWidget { background:%1; color:%2; border:1px solid %3; outline:0; }")
+            .arg(AppStyle::str("templateCardBg"), AppStyle::str("bodyText"), AppStyle::str("hoverBg")));
         m_autocompletePopup->setItemDelegate(new AutocompleteItemDelegate(m_autocompletePopup));
         connect(m_autocompletePopup, &QListWidget::itemClicked, this, [this](QListWidgetItem *) {
             acceptAutocompleteSelection();

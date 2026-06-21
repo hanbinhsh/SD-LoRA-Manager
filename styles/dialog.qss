@@ -14,7 +14,7 @@ QInputDialog QLabel {
 }
 
 QDialog QLabel#lblTitle {
-    color: @whiteText;
+    color: @primaryText;
     font-size: 16px;
     font-weight: bold;
 }
@@ -43,7 +43,7 @@ QDialog QPushButton,
 QMessageBox QPushButton,
 QInputDialog QPushButton {
     background-color: @buttonBg;
-    color: @whiteText;
+    color: @onButtonText;
     border: 1px solid @rgba(accentBlue, 48);
     border-radius: 4px;
     padding: 6px 14px;
@@ -54,6 +54,7 @@ QDialog QPushButton:hover,
 QMessageBox QPushButton:hover,
 QInputDialog QPushButton:hover {
     background-color: @selectionBg;
+    color: @whiteText;
     border-color: @rgba(accentBlue, 130);
 }
 
@@ -182,6 +183,35 @@ QMessageBox QCheckBox::indicator:checked,
 QInputDialog QCheckBox::indicator:checked {
     background-color: @accentBlue;
     border-color: @accentBright;
+    image: url(:/styles/check.svg);
+}
+
+/* 对话框内的工具栏（如 ComfyUI 工作流查看器）：按钮与其它控件统一外观，且 spacing 给搜索框/复选框留出间隙 */
+QDialog QToolBar {
+    background: transparent;
+    border: none;
+    spacing: 8px;
+    padding: 2px;
+}
+QDialog QToolButton {
+    background-color: @buttonBg;
+    color: @onButtonText;
+    border: 1px solid @rgba(accentBlue, 48);
+    border-radius: 4px;
+    padding: 4px 10px;
+}
+QDialog QToolButton:hover {
+    background-color: @selectionBg;
+    color: @whiteText;
+}
+QDialog QToolButton:pressed {
+    background-color: @accentBlue;
+    color: @onAccentText;
+}
+QDialog QToolBar::separator {
+    background: @inputBorder;
+    width: 1px;
+    margin: 4px 6px;
 }
 
 QDialog QScrollBar:vertical,

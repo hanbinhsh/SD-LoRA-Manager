@@ -68,8 +68,8 @@ public:
         opt.state &= ~QStyle::State_MouseOver;
         opt.backgroundBrush = Qt::NoBrush;
         if (selected) {
-            opt.palette.setColor(QPalette::Text, QColor(AppStyle::WhiteText));
-            opt.palette.setColor(QPalette::HighlightedText, QColor(AppStyle::WhiteText));
+            opt.palette.setColor(QPalette::Text, QColor(AppStyle::WhiteText()));
+            opt.palette.setColor(QPalette::HighlightedText, QColor(AppStyle::WhiteText()));
         }
 
         QStyledItemDelegate::paint(painter, opt, index);
@@ -109,7 +109,7 @@ private:
 
         painter->save();
         painter->setPen(Qt::NoPen);
-        painter->fillRect(rect, selected ? QColor(AppStyle::TableSelected) : AppStyle::translucentWhite(18));
+        painter->fillRect(rect, selected ? QColor(AppStyle::TableSelected()) : AppStyle::translucentWhite(18));
         painter->restore();
     }
 

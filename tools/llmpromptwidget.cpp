@@ -376,6 +376,14 @@ void LlmPromptWidget::setLibraryPaths(const QStringList &loraPaths, const QStrin
     });
 }
 
+void LlmPromptWidget::applyTheme()
+{
+    if (m_destroying) return;
+    // 对话气泡里的按钮/思考框用的是内联样式（来自 AppStyle::chat*Style），切主题后需要重建才会变色。
+    refreshConversationList();
+    updateChatView(false);
+}
+
 QString LlmPromptWidget::settingsPath() const
 {
     QString configDir = qApp->applicationDirPath() + "/config";
@@ -856,9 +864,9 @@ void LlmPromptWidget::updateChatView(bool scrollToBottom)
 
     auto appendBubbleRow = [&](const ChatMessage &message, bool pending) {
         const bool isUser = (message.role == "user");
-        const QString bubbleBg = isUser ? AppStyle::ChatUserBubbleBg : AppStyle::ChatAssistantBubbleBg;
-        const QString bubbleBorder = isUser ? AppStyle::ChatUserBubbleBorder : AppStyle::ChatAssistantBubbleBorder;
-        const QString bubbleText = isUser ? AppStyle::ChatUserText : AppStyle::BodyText;
+        const QString bubbleBg = isUser ? AppStyle::ChatUserBubbleBg() : AppStyle::ChatAssistantBubbleBg();
+        const QString bubbleBorder = isUser ? AppStyle::ChatUserBubbleBorder() : AppStyle::ChatAssistantBubbleBorder();
+        const QString bubbleText = isUser ? AppStyle::ChatUserText() : AppStyle::BodyText();
         const QString content = message.content.trimmed();
         const QString bodyHtml = markdownToHtml(escapeAnglePromptSyntax(content));
         const QString thinkingText = message.thinking.trimmed();
@@ -1029,7 +1037,7 @@ void LlmPromptWidget::updateChatView(bool scrollToBottom)
         actionLayout->setSpacing(6);
 
         QLabel *timeLabel = new QLabel(timestampText, bubble);
-        timeLabel->setStyleSheet(QString("font-size:11px; color:%1;").arg(AppStyle::MutedText));
+        timeLabel->setStyleSheet(QString("font-size:11px; color:%1;").arg(AppStyle::MutedText()));
         actionLayout->addWidget(timeLabel);
         actionLayout->addStretch(1);
 

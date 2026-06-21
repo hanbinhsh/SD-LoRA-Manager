@@ -144,7 +144,7 @@ void SyncWidget::on_btnStart_clicked() {
             startDiscoveryResponder(port);
             ui->btnStart->setText("停止服务 / Stop");
             ui->btnStart->setStyleSheet(QString("background-color: %1; color: %2; font-weight: bold;")
-                                             .arg(AppStyle::SyncStopRed, AppStyle::WhiteText));
+                                             .arg(AppStyle::SyncStopRed(), AppStyle::WhiteText()));
             logMsg(QString("服务已启动，监听端口: %1").arg(port));
         } else {
             QMessageBox::critical(this, "错误", "端口被占用或启动失败");
@@ -610,7 +610,7 @@ void SyncWidget::addFolderItem(const QString &path) {
 
     QLabel *lblPath = new QLabel(path);
     lblPath->setToolTip(path);
-    lblPath->setStyleSheet(QString("color: %1; background-color: transparent;").arg(AppStyle::MutedText));
+    lblPath->setStyleSheet(QString("color: %1; background-color: transparent;").arg(AppStyle::MutedText()));
     lblPath->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
     QPushButton *btnRemove = new QPushButton("X");
@@ -647,7 +647,7 @@ void SyncWidget::addPendingDeviceItem(const QString &deviceId, const QString &di
 
     QLabel *lblName = new QLabel(displayName);
     lblName->setToolTip(displayName);
-    lblName->setStyleSheet(QString("color: %1; font-weight: bold; background-color: transparent;").arg(AppStyle::WarningYellow));
+    lblName->setStyleSheet(QString("color: %1; font-weight: bold; background-color: transparent;").arg(AppStyle::WarningYellow()));
     lblName->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
     QPushButton *btnAllow = new QPushButton("允许");
@@ -680,7 +680,7 @@ void SyncWidget::addWhitelistItem(const QString &deviceId) {
 
     QLabel *lblId = new QLabel(deviceId);
     lblId->setToolTip(deviceId);
-    lblId->setStyleSheet(QString("color: %1; background-color: transparent;").arg(AppStyle::MutedText));
+    lblId->setStyleSheet(QString("color: %1; background-color: transparent;").arg(AppStyle::MutedText()));
     lblId->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
     QPushButton *btnRemove = new QPushButton("X");
@@ -713,7 +713,7 @@ void SyncWidget::addActiveClientItem(QTcpSocket *client, const QString &displayN
 
     QLabel *lblName = new QLabel(displayName);
     lblName->setToolTip(displayName);
-    lblName->setStyleSheet(QString("color: %1; font-weight: bold; background-color: transparent;").arg(AppStyle::AccentBlue));
+    lblName->setStyleSheet(QString("color: %1; font-weight: bold; background-color: transparent;").arg(AppStyle::AccentBlue()));
     lblName->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
     QPushButton *btnKick = new QPushButton("断开");

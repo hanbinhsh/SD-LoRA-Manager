@@ -28,7 +28,7 @@ QLineEdit#editUserTagSearch:focus {
     background-color: @buttonBg;
     border-radius: 2px;
     color: @accentBlue;
-    border: none;
+    border: 1px solid @buttonBorder;
 }
 #btnScanLocal:hover, #btnForceUpdate:hover, #btnCheckModelUpdate:hover, #btnOpenUrl:hover, #btnFavorite:hover, #btnShowUserGallery:hover, #btnEditMeta:hover, #btnCopyLoraTag:hover {
     background-color: @selectionBg;
@@ -331,7 +331,7 @@ QTextBrowser { background-color: @inputBg; border: 1px solid @inputBorder; color
     padding: 6px;
 }
 #lblLocalMetaStatus { color: @primaryText; }
-#btnLocalMetaSave, #btnLocalMetaReset { background-color: @buttonBg; border-radius: 2px; color: @accentBlue; border: none; padding: 6px 12px; }
+#btnLocalMetaSave, #btnLocalMetaReset { background-color: @buttonBg; border-radius: 2px; color: @accentBlue; border: 1px solid @buttonBorder; padding: 6px 12px; }
 #btnLocalMetaSave:hover, #btnLocalMetaReset:hover { background-color: @selectionBg; color: @whiteText; }
 #listEditImages { background-color: @sidebarBg; border: 1px solid @inputBorder; color: @subtleText; }
 
@@ -415,7 +415,7 @@ QWidget#SettingsPage QPushButton {
     background-color: @buttonBg;
     border-radius: 2px;
     color: @accentBlue;
-    border: none;
+    border: 1px solid @buttonBorder;
     padding: 6px 12px;
 }
 QWidget#SettingsPage QPushButton:hover {
@@ -496,7 +496,7 @@ QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; lef
 #btnBrowseLora, #btnBrowseGallery, #btnBrowseTrans, #btnResetUA, #btnToggleCivitaiApiKey, #btnTestCivitaiApiKey, #btnClearGalleryCache {
     background-color: @buttonBg;
     color: @onButtonText;
-    border: none;
+    border: 1px solid @buttonBorder;
     padding: 6px 12px;
     border-radius: 3px;
 }
@@ -506,7 +506,7 @@ QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; lef
 #lblNSFWHint { color: @hintText; font-size: 11px; }
 #lblStatusSettings { color: @hintText; font-size: 12px; }
 #lblCivitaiApiStatus { color: @mutedText; }
-#btnResetFilterTags { background-color: @buttonBg; color: @onButtonText; border: none; border-radius: 3px; padding: 5px 10px; }
+#btnResetFilterTags { background-color: @buttonBg; color: @onButtonText; border: 1px solid @buttonBorder; border-radius: 3px; padding: 5px 10px; }
 #btnResetFilterTags:hover { background-color: @selectionBg; }
 
 /* Sidebar tabs */
@@ -650,7 +650,7 @@ QTabWidget#targetTabs QTabBar::tab:selected {
 QWidget#DownloadsPage { background-color: @windowBg; color: @bodyText; }
 QWidget#DownloadsPage QGroupBox { border: 1px solid @groupBorder; border-radius: 4px; margin-top: 10px; padding-top: 12px; color: @bodyText; }
 QWidget#DownloadsPage QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color: @accentBlue; font-weight: bold; }
-QWidget#DownloadsPage QPushButton { background-color: @buttonBg; color: @onButtonText; border: none; padding: 7px 12px; border-radius: 3px; }
+QWidget#DownloadsPage QPushButton { background-color: @buttonBg; color: @onButtonText; border: 1px solid @buttonBorder; padding: 7px 12px; border-radius: 3px; }
 QWidget#DownloadsPage QPushButton:hover { background-color: @selectionBg; color: @whiteText; }
 QWidget#DownloadsPage QPushButton:disabled { background-color: @disabledBg; color: @disabledText; }
 QWidget#pageDownloadsUpdates,

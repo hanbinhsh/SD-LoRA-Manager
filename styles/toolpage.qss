@@ -101,21 +101,26 @@ QPushButton#btnTranslate:checked {
     color: @black;
 }
 
-QListWidget#listTemplates {
+QListWidget#listTemplates,
+QListWidget#listChatHistory {
     outline: none;
     show-decoration-selected: 0;
 }
 
-QListWidget#listTemplates::item:hover {
+QListWidget#listTemplates::item:hover,
+QListWidget#listChatHistory::item:hover {
     background-color: @templateHoverBg;
-    color: @whiteText;
+    color: @primaryText;
 }
 
 QListWidget#listTemplates::item:selected,
 QListWidget#listTemplates::item:selected:active,
-QListWidget#listTemplates::item:selected:!active {
-    background-color: @hoverBg;
-    color: @whiteText;
+QListWidget#listTemplates::item:selected:!active,
+QListWidget#listChatHistory::item:selected,
+QListWidget#listChatHistory::item:selected:active,
+QListWidget#listChatHistory::item:selected:!active {
+    background-color: @rgba(accentBlue, 40);
+    color: @primaryText;
     border-left: 4px solid @accentBlue;
     font-weight: bold;
 }

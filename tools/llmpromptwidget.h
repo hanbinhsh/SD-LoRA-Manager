@@ -29,6 +29,7 @@ public:
     ~LlmPromptWidget();
 
     void setLibraryPaths(const QStringList &loraPaths, const QStringList &galleryPaths);
+    void applyTheme(); // 主题切换时重绘对话气泡（按钮等用内联样式，需要重建才会变色）
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;

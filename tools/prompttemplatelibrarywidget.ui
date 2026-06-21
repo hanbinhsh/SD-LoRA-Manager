@@ -174,7 +174,7 @@
                      <x>0</x>
                      <y>0</y>
                      <width>504</width>
-                     <height>269</height>
+                     <height>271</height>
                     </rect>
                    </property>
                    <layout class="QVBoxLayout" name="layoutGenerateImagePositiveTags"/>
@@ -199,7 +199,7 @@
                      <x>0</x>
                      <y>0</y>
                      <width>504</width>
-                     <height>269</height>
+                     <height>270</height>
                     </rect>
                    </property>
                    <layout class="QVBoxLayout" name="layoutGenerateImageNegativeTags"/>
@@ -352,6 +352,14 @@
                <bool>true</bool>
               </property>
               <widget class="QWidget" name="favoritesContainer">
+               <property name="geometry">
+                <rect>
+                 <x>0</x>
+                 <y>0</y>
+                 <width>532</width>
+                 <height>722</height>
+                </rect>
+               </property>
                <layout class="QVBoxLayout" name="layoutFavorites">
                 <property name="spacing">
                  <number>6</number>
@@ -956,8 +964,8 @@
                    <rect>
                     <x>0</x>
                     <y>0</y>
-                    <width>31</width>
-                    <height>22</height>
+                    <width>98</width>
+                    <height>28</height>
                    </rect>
                   </property>
                   <layout class="QVBoxLayout" name="layoutTemplateImagePositiveTags"/>
@@ -983,8 +991,8 @@
                    <rect>
                     <x>0</x>
                     <y>0</y>
-                    <width>31</width>
-                    <height>22</height>
+                    <width>98</width>
+                    <height>28</height>
                    </rect>
                   </property>
                   <layout class="QVBoxLayout" name="layoutTemplateImageNegativeTags"/>
@@ -1143,6 +1151,9 @@
           </item>
           <item row="0" column="1">
            <widget class="QSpinBox" name="spinAutocompleteLimit">
+            <property name="toolTip">
+             <string>编辑提示词时自动补全弹窗最多显示的候选数量。</string>
+            </property>
             <property name="minimum">
              <number>1</number>
             </property>
@@ -1152,18 +1163,15 @@
             <property name="value">
              <number>12</number>
             </property>
-            <property name="toolTip">
-             <string>编辑提示词时自动补全弹窗最多显示的候选数量。</string>
-            </property>
            </widget>
           </item>
           <item row="1" column="0" colspan="2">
            <widget class="QLabel" name="lblAutocompleteHint">
-            <property name="wordWrap">
-             <bool>true</bool>
-            </property>
             <property name="text">
              <string>在“提示词生成”和“模板与占位管理”中编辑提示词时，输入会自动弹出候选词（含翻译）。候选来源于已加载的翻译词表，兼容 a1111 与 ComfyUI 词表格式。</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
             </property>
            </widget>
           </item>

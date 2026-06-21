@@ -2,6 +2,7 @@
 #define TAGFLOWWIDGET_H
 
 #include <QWidget>
+#include "styleconstants.h"
 #include <QPainter>
 #include <QMouseEvent>
 #include <QMap>
@@ -362,31 +363,31 @@ protected:
             const QString line1 = m_showCount ? QString("%1  %2").arg(tag.text).arg(tag.count) : tag.text;
             const QString line2 = m_showTranslation ? tryGetTranslation(tag.text) : QString();
 
-            QColor bgColor = QColor("#2a3f5a");
+            QColor bgColor = AppStyle::color("buttonBg");
             const DiffState diffState = m_diffStates.value(tag.text, DiffNone);
-            if (diffState == DiffOnlyA) bgColor = QColor("#7a4a2a");
-            else if (diffState == DiffOnlyB) bgColor = QColor("#2f6a4f");
-            else if (diffState == DiffCommon) bgColor = QColor("#314f7a");
-            if (tag.selected) bgColor = QColor("#66c0f4");
+            if (diffState == DiffOnlyA) bgColor = AppStyle::color("imgCompareA");
+            else if (diffState == DiffOnlyB) bgColor = AppStyle::color("imgCompareB");
+            else if (diffState == DiffCommon) bgColor = AppStyle::color("tagDiffCommon");
+            if (tag.selected) bgColor = AppStyle::color("accentBlue");
             p.setBrush(bgColor);
             p.setPen(Qt::NoPen);
             p.drawRoundedRect(tag.rect, 4, 4);
 
             if (m_showTranslation) {
                 p.setFont(fontEn);
-                p.setPen(tag.selected ? QColor("#000000") : QColor("#dcdedf"));
+                p.setPen(tag.selected ? AppStyle::color("onAccentText") : AppStyle::color("bodyText"));
                 QRect rectLine1(tag.rect.x(), tag.rect.y() + 2, tag.rect.width(), 20);
                 p.drawText(rectLine1, Qt::AlignCenter, line1);
 
                 if (!line2.isEmpty()) {
                     p.setFont(fontCn);
-                    p.setPen(tag.selected ? QColor("#333333") : QColor("#8c96a0"));
+                    p.setPen(tag.selected ? AppStyle::color("thumbBorder") : AppStyle::color("mutedText"));
                     QRect rectLine2(tag.rect.x(), tag.rect.y() + 20, tag.rect.width(), 18);
                     p.drawText(rectLine2, Qt::AlignCenter, line2);
                 }
             } else {
                 p.setFont(fontEn);
-                p.setPen(tag.selected ? QColor("#000000") : QColor("#dcdedf"));
+                p.setPen(tag.selected ? AppStyle::color("onAccentText") : AppStyle::color("bodyText"));
                 p.drawText(tag.rect, Qt::AlignCenter, line1);
             }
         }

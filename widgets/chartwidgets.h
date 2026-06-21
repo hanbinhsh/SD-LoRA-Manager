@@ -5,6 +5,7 @@
 // 用于「模型空间占用分析」：饼图展示占比，条形图展示具体大小。
 
 #include <QColor>
+#include "styleconstants.h"
 #include <QFont>
 #include <QFontMetrics>
 #include <QPaintEvent>
@@ -51,7 +52,7 @@ protected:
 
         const int margin = 10;
         if (m_slices.isEmpty() || m_total <= 0) {
-            p.setPen(QColor("#8c96a0"));
+            p.setPen(AppStyle::color("mutedText"));
             p.drawText(rect(), Qt::AlignCenter, "暂无数据");
             return;
         }
@@ -63,7 +64,7 @@ protected:
         for (const ChartSlice &s : m_slices) {
             if (s.value <= 0) continue;
             const double span = -(s.value / m_total) * 360.0 * 16.0;
-            p.setPen(QPen(QColor("#16191e"), 1));
+            p.setPen(QPen(AppStyle::color("inputBg"), 1));
             p.setBrush(s.color);
             p.drawPie(pieRect, qRound(startAngle), qRound(span));
             startAngle += span;
@@ -82,7 +83,7 @@ protected:
             p.setPen(Qt::NoPen);
             p.setBrush(s.color);
             p.drawRoundedRect(legendX, y + 2, 12, 12, 2, 2);
-            p.setPen(QColor("#dcdedf"));
+            p.setPen(AppStyle::color("bodyText"));
             const double pct = m_total > 0 ? s.value / m_total * 100.0 : 0.0;
             const QString text = QString("%1  %2  %3%").arg(s.label, s.valueText).arg(pct, 0, 'f', 1);
             const int textX = legendX + 18;
@@ -124,7 +125,7 @@ protected:
         p.setRenderHint(QPainter::TextAntialiasing, true);
 
         if (m_slices.isEmpty() || m_max <= 0) {
-            p.setPen(QColor("#8c96a0"));
+            p.setPen(AppStyle::color("mutedText"));
             p.drawText(rect(), Qt::AlignCenter, "暂无数据");
             return;
         }
@@ -146,12 +147,12 @@ protected:
             const int barH = 14;
             const int barY = y + (kRowH - barH) / 2;
 
-            p.setPen(QColor("#dcdedf"));
+            p.setPen(AppStyle::color("bodyText"));
             p.drawText(margin, y, labelW, kRowH, Qt::AlignVCenter | Qt::AlignLeft,
                        fm.elidedText(s.label, Qt::ElideRight, labelW));
 
             p.setPen(Qt::NoPen);
-            p.setBrush(QColor("#23303f"));
+            p.setBrush(AppStyle::color("chartBar"));
             p.drawRoundedRect(barLeft, barY, barAreaW, barH, 3, 3);
 
             const int w = qRound(barAreaW * (s.value / m_max));
@@ -160,7 +161,7 @@ protected:
                 p.drawRoundedRect(barLeft, barY, qMax(2, w), barH, 3, 3);
             }
 
-            p.setPen(QColor("#aeb6bf"));
+            p.setPen(AppStyle::color("chartAxis"));
             p.drawText(barRight + 8, y, valueW, kRowH, Qt::AlignVCenter | Qt::AlignRight, s.valueText);
             y += kRowH;
         }
