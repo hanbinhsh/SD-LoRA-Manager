@@ -75,6 +75,7 @@
 #include "pages/settingspage.h"
 #include "pages/aboutpage.h"
 #include "dialogs/modelnotedialog.h"
+#include "dialogs/themeeditordialog.h"
 #include "utils/styleconstants.h"
 #include "utils/fileutils.h"
 #include "utils/tagutils.h"
@@ -192,11 +193,8 @@ struct ThemeBundle {
 
 QString themeDisplayName(const QString &themeId)
 {
-    if (themeId == "midnight_blue") return "Midnight Blue";
-    if (themeId == "light") return "Light";
-    if (themeId == "high_contrast") return "High Contrast";
     if (themeId == "custom_qss") return "Custom QSS";
-    return "Steam Dark";
+    return AppStyle::themeDisplayName(themeId); // 内置 + 用户主题；未知返回原 id
 }
 
 ThemeBundle loadThemeBundle(const QString &themeId, const QString &customPath)
@@ -9978,6 +9976,8 @@ void MainWindow::initSettingsPage()
     connect(settingsPage, &SettingsPage::resetFilterTagsRequested, this, &MainWindow::resetFilterTagsToDefault);
     connect(settingsPage, &SettingsPage::randomUserAgentRequested, this, &MainWindow::applyRandomUserAgent);
     connect(settingsPage, &SettingsPage::stateChanged, this, &MainWindow::applySettingsState);
+    connect(settingsPage, &SettingsPage::editThemeRequested, this, &MainWindow::onEditThemeRequested);
+    connect(settingsPage, &SettingsPage::deleteThemeRequested, this, &MainWindow::onThemeDeleteRequested);
 }
 
 void MainWindow::applySettingsState(SettingsState state)
@@ -10094,8 +10094,10 @@ void MainWindow::applyApplicationTheme(const QString &themeId, const QString &cu
 {
     // 先切系统配色方案：决定原生标题栏明暗、状态栏、以及未显式设色控件(标签空白区/复选框/未样式标签)的调色板。
     if (qApp->styleHints()) {
-        qApp->styleHints()->setColorScheme(themeId == "light" ? Qt::ColorScheme::Light
-                                                              : Qt::ColorScheme::Dark);
+        const QString scheme = (themeId == "custom_qss") ? QStringLiteral("dark")
+                                                         : AppStyle::themeColorScheme(themeId);
+        qApp->styleHints()->setColorScheme(scheme == QLatin1String("light") ? Qt::ColorScheme::Light
+                                                                            : Qt::ColorScheme::Dark);
     }
 
     const ThemeBundle bundle = loadThemeBundle(themeId, customPath);
@@ -10110,6 +10112,68 @@ void MainWindow::applyApplicationTheme(const QString &themeId, const QString &cu
     if (updateStatus && ui && ui->statusbar) {
         ui->statusbar->showMessage(bundle.ok ? QString("已应用主题：%1").arg(themeDisplayName(themeId)) : bundle.status, 2500);
     }
+}
+
+void MainWindow::applyActivePaletteToUi()
+{
+    // 用「当前活动调色板」重建所有 QSS 并刷新（不切 colorScheme，供编辑器实时预览）。
+    // 活动调色板已由调用方通过 AppStyle::setActivePalette() 指定。
+    qApp->setStyleSheet(loadQssResource(":/styles/dialog.qss"));
+    setStyleSheet(loadQssResource(":/styles/mainwindow.qss"));
+    currentToolPageQss = AppStyle::loadToolPageQss();
+    refreshLoadedToolPageThemes();
+    updateBackgroundImage();
+}
+
+void MainWindow::onEditThemeRequested(const QString &baseThemeId)
+{
+    ThemeEditorDialog dlg(baseThemeId, this);
+    connect(&dlg, &ThemeEditorDialog::previewRequested, this,
+            [this](const QHash<QString, QString> &palette, bool lightScheme) {
+                // 预览也切 colorScheme，避免亮色主题下原生控件/未样式文字仍是深色。
+                if (qApp->styleHints())
+                    qApp->styleHints()->setColorScheme(lightScheme ? Qt::ColorScheme::Light
+                                                                   : Qt::ColorScheme::Dark);
+                AppStyle::setActivePalette(palette);
+                applyActivePaletteToUi();
+            });
+    connect(&dlg, &ThemeEditorDialog::saved, this, &MainWindow::onThemeSaved);
+    connect(&dlg, &ThemeEditorDialog::canceled, this, [this]() {
+        // 取消/关闭：还原到当前持久主题（完整走一遍，含 colorScheme 与 custom_qss）。
+        applyApplicationTheme(optThemeId, optCustomThemePath, false);
+    });
+    dlg.exec();
+}
+
+void MainWindow::onThemeSaved(const QString &themeId)
+{
+    AppStyle::reloadUserThemes();                 // 让新存的主题进入注册表
+    if (settingsPage) settingsPage->refreshThemeList(themeId);
+    optThemeId = themeId;
+    // 不动 optCustomThemePath：调色板主题不使用它，但保留以便日后切回 Custom QSS。
+    applyApplicationTheme(themeId, optCustomThemePath, true); // 应用注册表里的正式主题
+    saveGlobalConfig();
+}
+
+void MainWindow::onThemeDeleteRequested(const QString &themeId)
+{
+    const QString name = themeDisplayName(themeId);
+    if (QMessageBox::question(this, "删除主题 / Delete Theme",
+                              QString("确定删除自定义主题“%1”吗？此操作不可撤销。").arg(name))
+        != QMessageBox::Yes)
+        return;
+    if (!AppStyle::deleteUserTheme(themeId)) {
+        QMessageBox::warning(this, "删除主题 / Delete Theme",
+                             "删除失败：内置主题不可删，或文件无法移除。");
+        return;
+    }
+    AppStyle::reloadUserThemes();
+    QString newId = optThemeId;
+    if (optThemeId == themeId) newId = QStringLiteral("steam_dark"); // 当前主题被删 -> 回退默认
+    if (settingsPage) settingsPage->refreshThemeList(newId);
+    optThemeId = newId;
+    applyApplicationTheme(newId, optCustomThemePath, true);
+    saveGlobalConfig();
 }
 
 void MainWindow::applyToolPageTheme(QWidget *page)

@@ -103,17 +103,8 @@ QInputDialog QLineEdit:focus {
     border-color: @accentBlue;
 }
 
-QDialog QComboBox::drop-down {
-    border: none;
-    width: 22px;
-}
-
-QDialog QComboBox::down-arrow {
-    image: none;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 6px solid @bodyText;
-}
+/* 不自定义 drop-down/down-arrow：与工具页 combo（base.qss，无覆盖）一致，
+   交给 Qt 样式表默认箭头渲染——自定义 ::drop-down 会在 Win 上触发白色方块。 */
 
 QDialog QTableWidget,
 QDialog QTableView,
@@ -158,6 +149,16 @@ QDialog QHeaderView::section {
     padding: 6px;
     border: none;
     border-right: 1px solid @inputBorder;
+}
+
+/* 滚动区域：无边框、透明，露出对话框 @windowBg，避免出现非主题底色 */
+QDialog QScrollArea {
+    background: transparent;
+    border: none;
+}
+
+QDialog QScrollArea > QWidget > QWidget {
+    background: transparent;
 }
 
 QDialog QCheckBox,

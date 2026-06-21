@@ -407,6 +407,43 @@
            </widget>
           </item>
           <item row="2" column="0" colspan="4">
+           <layout class="QHBoxLayout" name="layoutThemeButtons">
+            <item>
+             <widget class="QPushButton" name="btnEditTheme">
+              <property name="toolTip">
+               <string>以当前主题为起点，打开调色板编辑器新建/修改主题。</string>
+              </property>
+              <property name="text">
+               <string>编辑 / 新建主题…</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnDeleteTheme">
+              <property name="toolTip">
+               <string>删除当前选中的用户自定义主题（内置主题不可删）。</string>
+              </property>
+              <property name="text">
+               <string>删除主题</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="spacerThemeButtons">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item row="3" column="0" colspan="4">
            <widget class="QLabel" name="lblThemeStatus">
             <property name="text">
              <string>当前使用默认主题。</string>

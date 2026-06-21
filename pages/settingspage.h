@@ -69,6 +69,8 @@ public:
     void setThemeStatus(const QString &text);
     void focusTranslationPath();
     void applyTheme(); // 主题切换时重新给左侧 West 标签条空白区着色
+    // 重新从注册表填充主题下拉，并选中指定 id（保存/删除主题后由 MainWindow 调用）。
+    void refreshThemeList(const QString &selectThemeId);
 
 signals:
     void loraPathsEditRequested();
@@ -80,6 +82,8 @@ signals:
     void blurChanged(int value, bool finalSave);
     void resetFilterTagsRequested();
     void randomUserAgentRequested();
+    void editThemeRequested(const QString &baseThemeId); // 打开主题编辑器（以当前主题为起点）
+    void deleteThemeRequested(const QString &themeId);    // 删除当前选中的用户主题
 
 private:
     void emitStateChanged();

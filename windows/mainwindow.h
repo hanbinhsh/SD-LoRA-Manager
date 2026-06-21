@@ -499,8 +499,12 @@ private:
     void resetFilterTagsToDefault();
     void applyRandomUserAgent();
     void applyApplicationTheme(const QString &themeId, const QString &customPath, bool updateStatus);
+    void applyActivePaletteToUi(); // 用当前活动调色板重建 QSS 并刷新（主题编辑器实时预览用）
     void applyToolPageTheme(QWidget *page);
     void refreshLoadedToolPageThemes();
+    void onEditThemeRequested(const QString &baseThemeId); // 打开主题编辑器
+    void onThemeSaved(const QString &themeId);             // 编辑器保存 -> 应用并持久化
+    void onThemeDeleteRequested(const QString &themeId);   // 删除用户主题
     void showModelDescriptionDialog();
     void beginGalleryBuild(const ModelMeta &meta);
     void buildGalleryBatch();

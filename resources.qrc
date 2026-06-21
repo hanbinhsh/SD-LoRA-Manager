@@ -7,5 +7,9 @@
         <file>styles/mainwindow.qss</file>
         <file>styles/toolpage.qss</file>
         <file>styles/dialog.qss</file>
+        <file>themes/steam_dark.json</file>
+        <file>themes/light.json</file>
+        <file>themes/midnight_blue.json</file>
+        <file>themes/high_contrast.json</file>
     </qresource>
 </RCC>

@@ -18,6 +18,7 @@ qt_add_executable(SD_LoRA_Manager
     windows/mainwindow.h
     windows/mainwindow.ui
     utils/styleconstants.h
+    utils/styleconstants.cpp
     utils/tagutils.h
     utils/tagutils.cpp
     utils/fileutils.h
@@ -71,6 +72,8 @@ qt_add_executable(SD_LoRA_Manager
     pages/launcherwidget.h
     pages/launcherwidget.cpp
     pages/launcherwidget.ui
+    dialogs/themeeditordialog.h
+    dialogs/themeeditordialog.cpp
 )
 
 target_include_directories(SD_LoRA_Manager

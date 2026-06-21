@@ -136,6 +136,18 @@ QHash<QString, int> duplicateHashCounts(const QVector<MetadataScanItem> &items)
     }
     return counts;
 }
+
+// 用「预先算好」的重复计数判断某项是否属于当前分类。
+// 在循环里复用同一份 dupCounts，避免每项都重算计数表（否则 duplicate 分类是 O(N^2)，会卡）。
+bool itemMatchesCategory(const MetadataScanItem &item, const QString &category,
+                         const QHash<QString, int> &dupCounts)
+{
+    if (category == QLatin1String("duplicate")) {
+        const QString hash = normalizedMetadataSha(item.sha256);
+        return !hash.isEmpty() && dupCounts.value(hash) > 1;
+    }
+    return category == QLatin1String("all") || item.category == category;
+}
 }
 
 DownloadsPage::DownloadsPage(QWidget *parent)
@@ -173,10 +185,14 @@ DownloadsPage::DownloadsPage(QWidget *parent)
         emit metadataCivArchiveRequested(checkedMetadataScanFilePaths());
     });
     connect(ui->btnMetadataToggleCurrent, &QPushButton::clicked, this, [this]() {
+        const QString category = currentMetadataCategory();
+        const QHash<QString, int> dupCounts =
+            category == QLatin1String("duplicate") ? duplicateHashCounts(m_metadataScanItems)
+                                                   : QHash<QString, int>{};
         bool allChecked = true;
         bool hasRow = false;
         for (const MetadataScanItem &item : std::as_const(m_metadataScanItems)) {
-            if (!metadataItemMatchesCurrentCategory(item)) continue;
+            if (!itemMatchesCategory(item, category, dupCounts)) continue;
             hasRow = true;
             if (!item.checked) {
                 allChecked = false;
@@ -201,7 +217,12 @@ DownloadsPage::DownloadsPage(QWidget *parent)
         emit metadataOpenFolderRequested(item->data(RoleFilePath).toString());
     });
     connect(ui->tabMetadataScanStatus, &QTabWidget::currentChanged, this, [this]() {
-        refreshMetadataScanTable();
+        // 切换分类（尤其"重复模型"）要重建表格，给个忙碌提示，避免看起来卡死。
+        QApplication::setOverrideCursor(Qt::BusyCursor);
+        ui->lblMetadataScanStatus->setText(QStringLiteral("正在加载分类视图…"));
+        ui->lblMetadataScanStatus->repaint(); // 阻塞重建前先把提示画出来
+        refreshMetadataScanTable();           // 末尾的 updateMetadataSelectionSummary 会覆盖状态文字
+        QApplication::restoreOverrideCursor();
     });
     connect(ui->tableMetadataScan, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *item) {
         if (!item || item->column() != 0) return;
@@ -842,12 +863,12 @@ QString DownloadsPage::currentMetadataCategory() const
 
 bool DownloadsPage::metadataItemMatchesCurrentCategory(const MetadataScanItem &item) const
 {
+    // 单项检查：仅 duplicate 分类需要计数表。循环场景请用 itemMatchesCategory + 预算计数。
     const QString category = currentMetadataCategory();
-    if (category == "duplicate") {
-        const QString hash = normalizedMetadataSha(item.sha256);
-        return !hash.isEmpty() && duplicateHashCounts(m_metadataScanItems).value(hash) > 1;
-    }
-    return category == "all" || item.category == category;
+    const QHash<QString, int> dupCounts =
+        category == QLatin1String("duplicate") ? duplicateHashCounts(m_metadataScanItems)
+                                               : QHash<QString, int>{};
+    return itemMatchesCategory(item, category, dupCounts);
 }
 
 void DownloadsPage::applyMetadataTableColumnLayout()
@@ -934,7 +955,7 @@ void DownloadsPage::refreshMetadataScanTable()
     const QHash<QString, int> duplicateCounts = duplicateHashCounts(m_metadataScanItems);
     int row = 0;
     for (const MetadataScanItem &item : std::as_const(m_metadataScanItems)) {
-        if (!metadataItemMatchesCurrentCategory(item)) continue;
+        if (!itemMatchesCategory(item, category, duplicateCounts)) continue;
         ui->tableMetadataScan->insertRow(row);
 
         auto *checkItem = new QTableWidgetItem();
@@ -987,8 +1008,12 @@ QStringList DownloadsPage::checkedMetadataScanFilePaths() const
 
 void DownloadsPage::setCurrentMetadataCategoryChecked(bool checked)
 {
+    const QString category = currentMetadataCategory();
+    const QHash<QString, int> dupCounts =
+        category == QLatin1String("duplicate") ? duplicateHashCounts(m_metadataScanItems)
+                                               : QHash<QString, int>{};
     for (MetadataScanItem &item : m_metadataScanItems) {
-        if (metadataItemMatchesCurrentCategory(item)) item.checked = checked;
+        if (itemMatchesCategory(item, category, dupCounts)) item.checked = checked;
     }
     refreshMetadataScanTable();
     saveMetadataResultCache();
@@ -1012,12 +1037,16 @@ void DownloadsPage::clearMetadataSelection()
 
 void DownloadsPage::updateMetadataSelectionSummary()
 {
+    const QString category = currentMetadataCategory();
+    const QHash<QString, int> dupCounts =
+        category == QLatin1String("duplicate") ? duplicateHashCounts(m_metadataScanItems)
+                                               : QHash<QString, int>{};
     int currentTotal = 0;
     int currentChecked = 0;
     int allChecked = 0;
     for (const MetadataScanItem &item : std::as_const(m_metadataScanItems)) {
         if (item.checked) ++allChecked;
-        if (metadataItemMatchesCurrentCategory(item)) {
+        if (itemMatchesCategory(item, category, dupCounts)) {
             ++currentTotal;
             if (item.checked) ++currentChecked;
         }

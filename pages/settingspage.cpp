@@ -112,15 +112,10 @@ void SettingsState::normalize()
         return;
     }
 
-    static const QSet<QString> validThemes = {
-        "steam_dark",
-        "midnight_blue",
-        "light",
-        "high_contrast",
-        "custom_qss"
-    };
+    // 有效主题 = 注册表已知 id（内置 + 用户）或 custom_qss；否则回退默认。
     themeId = themeId.trimmed();
-    if (!validThemes.contains(themeId)) themeId = "steam_dark";
+    if (themeId != QStringLiteral("custom_qss") && !AppStyle::themeExists(themeId))
+        themeId = QStringLiteral("steam_dark");
     customThemePath = customThemePath.trimmed();
 }
 
@@ -249,6 +244,15 @@ SettingsPage::SettingsPage(QWidget *parent)
         emitStateChanged();
     });
     if (ui->btnReloadTheme) connect(ui->btnReloadTheme, &QPushButton::clicked, this, &SettingsPage::emitStateChanged);
+    if (ui->btnEditTheme) connect(ui->btnEditTheme, &QPushButton::clicked, this, [this]() {
+        // custom_qss 不是调色板主题，编辑器以 steam_dark 为起点。
+        QString base = currentThemeId();
+        if (base == QStringLiteral("custom_qss")) base = QStringLiteral("steam_dark");
+        emit editThemeRequested(base);
+    });
+    if (ui->btnDeleteTheme) connect(ui->btnDeleteTheme, &QPushButton::clicked, this, [this]() {
+        emit deleteThemeRequested(currentThemeId());
+    });
     updateDependentControls();
 }
 
@@ -409,24 +413,48 @@ void SettingsPage::updateDependentControls()
     const bool customUa = ui->chkUseCustomUserAgent && ui->chkUseCustomUserAgent->isChecked();
     if (ui->editUserAgent) ui->editUserAgent->setEnabled(customUa);
 
-    const bool customTheme = currentThemeId() == "custom_qss";
+    const QString themeId = currentThemeId();
+    const bool customTheme = themeId == "custom_qss";
     if (ui->editCustomThemePath) ui->editCustomThemePath->setEnabled(customTheme);
     if (ui->btnBrowseCustomTheme) ui->btnBrowseCustomTheme->setEnabled(customTheme);
+
+    // 删除按钮仅对用户自定义主题可用（内置主题与 custom_qss 不可删）。
+    bool deletable = false;
+    if (!customTheme) {
+        const QList<AppStyle::ThemeInfo> themes = AppStyle::availableThemes();
+        for (const AppStyle::ThemeInfo &t : themes) {
+            if (t.id == themeId) { deletable = !t.builtin; break; }
+        }
+    }
+    if (ui->btnDeleteTheme) ui->btnDeleteTheme->setEnabled(deletable);
 }
 
 void SettingsPage::initThemeComboData()
 {
     if (!ui->comboTheme) return;
-    static const QStringList ids = {
-        "steam_dark",
-        "midnight_blue",
-        "light",
-        "high_contrast",
-        "custom_qss"
-    };
-    for (int i = 0; i < ui->comboTheme->count() && i < ids.size(); ++i) {
-        ui->comboTheme->setItemData(i, ids.at(i));
+    // 运行时按注册表（内置 + 用户主题）填充，末尾保留 Custom QSS（外部 .qss 覆盖）。
+    const QSignalBlocker blocker(ui->comboTheme);
+    ui->comboTheme->clear();
+    const QList<AppStyle::ThemeInfo> themes = AppStyle::availableThemes();
+    for (const AppStyle::ThemeInfo &t : themes) {
+        const QString label = t.builtin ? t.displayName
+                                        : QStringLiteral("%1（自定义）").arg(t.displayName);
+        ui->comboTheme->addItem(label, t.id);
     }
+    ui->comboTheme->addItem(QStringLiteral("Custom QSS"), QStringLiteral("custom_qss"));
+}
+
+void SettingsPage::refreshThemeList(const QString &selectThemeId)
+{
+    if (!ui->comboTheme) return;
+    m_updating = true;
+    const auto guard = qScopeGuard([this]() {
+        m_updating = false;
+        updateDependentControls();
+    });
+    initThemeComboData();
+    const int idx = themeIndexForId(selectThemeId);
+    ui->comboTheme->setCurrentIndex(idx >= 0 ? idx : 0);
 }
 
 QString SettingsPage::currentThemeId() const
@@ -439,14 +467,5 @@ QString SettingsPage::currentThemeId() const
 int SettingsPage::themeIndexForId(const QString &themeId) const
 {
     if (!ui->comboTheme) return -1;
-    const int byData = ui->comboTheme->findData(themeId);
-    if (byData >= 0) return byData;
-    static const QStringList ids = {
-        "steam_dark",
-        "midnight_blue",
-        "light",
-        "high_contrast",
-        "custom_qss"
-    };
-    return ids.indexOf(themeId);
+    return ui->comboTheme->findData(themeId);
 }
