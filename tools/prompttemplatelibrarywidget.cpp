@@ -1266,6 +1266,28 @@ void PromptTemplateLibraryWidget::refreshAllLists()
     updateGeneratedPrompt();
 }
 
+void PromptTemplateLibraryWidget::applyTheme()
+{
+    // 切主题：先刷新 QSS，再重建内联样式的卡片（占位符输入卡 + 收藏卡）。
+    // 占位符卡的选择只存在于编辑器控件里（未落库），重建会丢；先抓当前值，临时并入
+    // 模板默认值让重建显示当前选择，重建后再还原默认值（不污染已保存的默认）。
+    setStyleSheet(AppStyle::loadToolPageQss());
+
+    const int idx = templateIndexById(selectedTemplateId());
+    if (idx >= 0) {
+        const QHash<QString, QString> current = currentPlaceholderValues();
+        QHash<QString, QString> &defs = m_templates[idx].placeholderDefaults;
+        const QHash<QString, QString> backup = defs;
+        for (auto it = current.begin(); it != current.end(); ++it)
+            defs.insert(it.key(), it.value());
+        rebuildPlaceholderInputs();
+        defs = backup;
+    } else {
+        rebuildPlaceholderInputs();
+    }
+    refreshFavoritesTable();
+}
+
 void PromptTemplateLibraryWidget::refreshFavoritesTable()
 {
     if (!ui->layoutFavorites) return;

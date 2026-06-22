@@ -61,6 +61,7 @@ public:
     void updateCardProgress(const QString &filePath, int percent, const QString &speedText);
     void updateCardTargetPath(const QString &filePath, const QString &targetPath);
     void setCardPreview(const QString &filePath, const QPixmap &pixmap);
+    void setCardPreviewPlaceholder(const QString &filePath); // 预览加载失败：铺满整框的占位X（随主题着色）
     void setCardSelected(const QString &filePath, bool selected);
     void setCurrentTabSelection(bool checked);
     void clearAllCardSelection();

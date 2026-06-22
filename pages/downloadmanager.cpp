@@ -333,7 +333,11 @@ void DownloadManager::setPreview(const QString &filePath, const QString &preview
     if (!m_page) return;
     QPixmap pix;
     if (!previewPath.isEmpty() && QFile::exists(previewPath)) pix.load(previewPath);
-    if (pix.isNull()) pix = m_placeholderIcon.pixmap(96, 128);
+    if (pix.isNull()) {
+        // 预览缺失/加载失败：交给 DownloadsPage 画铺满整框、随主题着色的占位X。
+        m_page->setCardPreviewPlaceholder(filePath);
+        return;
+    }
     m_page->setCardPreview(filePath, pix);
 }
 

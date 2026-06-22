@@ -43,6 +43,7 @@ public:
 
     void setTranslationMap(const QHash<QString, QString> *map);
     void reloadTemplateLibrary();
+    void applyTheme(); // 切主题时重建内联样式卡片（占位符/收藏），保留当前选择
 
     struct TagUsageRow {
         QString tag;

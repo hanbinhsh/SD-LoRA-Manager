@@ -677,10 +677,35 @@ void DownloadsPage::updateCardTargetPath(const QString &filePath, const QString 
     m_cards[filePath] = card;
 }
 
+namespace {
+// 生成铺满整个预览框的"加载失败占位"：深色圆角底(panelDark) + 居中大叉(hoverBg)，随主题着色。
+QPixmap makeBrokenPreviewPixmap(const QSize &size)
+{
+    QPixmap pix(size);
+    pix.fill(Qt::transparent);
+    QPainter p(&pix);
+    p.setRenderHint(QPainter::Antialiasing);
+    const QRectF r(0, 0, size.width(), size.height());
+    p.setBrush(AppStyle::color("panelDark"));
+    p.setPen(Qt::NoPen);
+    p.drawRoundedRect(r, 6, 6);
+    QPen pen(AppStyle::color("mutedText")); // 与 panelDark 底在深/浅主题下都有足够对比
+    pen.setWidth(4);
+    pen.setCapStyle(Qt::RoundCap);
+    p.setPen(pen);
+    const qreal m = qMin(size.width(), size.height()) * 0.30; // 叉的内边距
+    p.drawLine(QPointF(r.left() + m, r.top() + m), QPointF(r.right() - m, r.bottom() - m));
+    p.drawLine(QPointF(r.right() - m, r.top() + m), QPointF(r.left() + m, r.bottom() - m));
+    p.end();
+    return pix;
+}
+}
+
 void DownloadsPage::setCardPreview(const QString &filePath, const QPixmap &pixmap)
 {
     const DownloadCardWidgets card = m_cards.value(filePath);
     if (!card.previewLabel || pixmap.isNull()) return;
+    m_cards[filePath].showingPlaceholder = false; // 真实预览已就绪
 
     QPixmap scaled = pixmap.scaled(card.previewLabel->size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
     const int x = qMax(0, (scaled.width() - card.previewLabel->width()) / 2);
@@ -697,6 +722,14 @@ void DownloadsPage::setCardPreview(const QString &filePath, const QPixmap &pixma
     painter.drawPixmap(0, 0, scaled);
     painter.end();
     card.previewLabel->setPixmap(rounded);
+}
+
+void DownloadsPage::setCardPreviewPlaceholder(const QString &filePath)
+{
+    const DownloadCardWidgets card = m_cards.value(filePath);
+    if (!card.previewLabel) return;
+    m_cards[filePath].showingPlaceholder = true;
+    card.previewLabel->setPixmap(makeBrokenPreviewPixmap(card.previewLabel->size()));
 }
 
 void DownloadsPage::setCardSelected(const QString &filePath, bool selected)
@@ -844,6 +877,12 @@ void DownloadsPage::applyTheme()
         QPalette pal = vp->palette();
         pal.setColor(QPalette::Window, downloadBg);
         vp->setPalette(pal);
+    }
+
+    // 显示"加载失败占位X"的卡片：用新主题颜色重绘。
+    for (auto it = m_cards.begin(); it != m_cards.end(); ++it) {
+        if (it->showingPlaceholder && it->previewLabel)
+            it->previewLabel->setPixmap(makeBrokenPreviewPixmap(it->previewLabel->size()));
     }
 }
 

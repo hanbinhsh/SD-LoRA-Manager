@@ -2080,6 +2080,7 @@ void MainWindow::refreshHomeCollectionsUI()
 
 void MainWindow::refreshHomeGallery()
 {
+    placeholderIcon = generatePlaceholderIcon(); // 用当前主题色重建，保证本次填充的占位X颜色正确
     cancelPendingTasks();
     ui->homeGalleryList->clear();
 
@@ -2204,6 +2205,7 @@ void MainWindow::refreshHomeGallery()
         item->setToolTip(formatModelUserNoteTooltip(filePath, displayName));
 
         item->setIcon(placeholderIcon);
+        item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
         ui->homeGalleryList->addItem(item);
 
         if (!filePath.isEmpty()) {
@@ -3088,6 +3090,7 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
         // 期间又触发了新的扫描：丢弃过期结果，避免把旧条目塞进已被清空的列表。
         if (token != modelScanToken) return;
 
+        smallPlaceholderIcon = generateSmallPlaceholderIcon(); // 侧边栏用带内边距的小占位X（当前主题色）
         ui->modelList->setUpdatesEnabled(false);
         ui->comboBaseModel->blockSignals(true);
 
@@ -3111,7 +3114,8 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
             const QString civitaiName = item->data(ROLE_CIVITAI_NAME).toString();
             item->setText(optUseCivitaiName && !civitaiName.isEmpty() ? civitaiName : e.baseName);
 
-            item->setIcon(placeholderIcon);
+            item->setIcon(smallPlaceholderIcon);
+            item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
             applyModelHighlightColor(item);
             applyModelUserNoteData(item);
 
@@ -6053,6 +6057,9 @@ QIcon MainWindow::getFitIcon(const QString &path)
 void MainWindow::onIconLoaded(const QString &id, const QImage &image)
 {
     if (isShuttingDown) return;
+    // 空图 = 预览缺失/加载失败：保留各项已设置的主题化占位X（含 ROLE_PREVIEW_PLACEHOLDER 标记），
+    // 不覆盖、不清标记，交给 recolorPlaceholderItems 在切主题时重染。
+    if (image.isNull()) return;
     if (id.startsWith("EDITIMG|")) {
         const QStringList parts = id.split('|');
         if (parts.size() >= 4) {
@@ -6133,6 +6140,7 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
                 } else {
                     item->setIcon(QIcon(originalPix));
                 }
+                item->setData(ROLE_PREVIEW_PLACEHOLDER, false); // 真实预览已就绪
             }
         }
     }
@@ -6154,6 +6162,7 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
                 } else {
                     item->setIcon(getSquareIcon(originalPix));
                 }
+                item->setData(ROLE_PREVIEW_PLACEHOLDER, false); // 真实预览已就绪
                 applyModelHighlightColor(item);
             }
         }
@@ -6170,6 +6179,7 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
                 } else {
                     node->setIcon(0, getSquareIcon(originalPix));
                 }
+                node->setData(0, ROLE_PREVIEW_PLACEHOLDER, false); // 真实预览已就绪
                 applyModelHighlightColor(node);
             }
             for (int j = 0; j < node->childCount(); ++j) updateTreeIcon(node->child(j));
@@ -7680,6 +7690,7 @@ void MainWindow::dispatchVisibleUserImageThumbLoad()
 
 
 void MainWindow::scanForUserImages(const QString &loraBaseName) {
+    placeholderIcon = generatePlaceholderIcon(); // 用当前主题色重建，保证占位X颜色正确
     ui->listUserImages->clear();
     ui->textUserPrompt->clear();
     tagFlowWidget->setData({}); // 清空 Tag
@@ -7992,6 +8003,7 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
             item->setData(ROLE_USER_IMAGE_TAGS, info.cleanTags);
             item->setData(ROLE_USER_IMAGE_NEG_TAGS, info.negativeCleanTags);
             item->setIcon(placeholderIcon);
+            item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
             ui->listUserImages->addItem(item);
         }
         ui->listUserImages->setUpdatesEnabled(true);
@@ -10105,6 +10117,7 @@ void MainWindow::applyApplicationTheme(const QString &themeId, const QString &cu
     setStyleSheet(bundle.mainQss);
     currentToolPageQss = bundle.toolQss;
     refreshLoadedToolPageThemes();
+    recolorPlaceholderItems(); // 重染"加载失败X"占位（列表项 + 下载卡）
     updateBackgroundImage(); // 重新生成 Hero 模糊背景上的渐变叠加（steamBackground 已随主题变）
     if (settingsPage && updateStatus) {
         settingsPage->setThemeStatus(bundle.status);
@@ -10122,6 +10135,7 @@ void MainWindow::applyActivePaletteToUi()
     setStyleSheet(loadQssResource(":/styles/mainwindow.qss"));
     currentToolPageQss = AppStyle::loadToolPageQss();
     refreshLoadedToolPageThemes();
+    recolorPlaceholderItems(); // 编辑器预览时也重染占位X
     updateBackgroundImage();
 }
 
@@ -10190,6 +10204,7 @@ void MainWindow::refreshLoadedToolPageThemes()
     applyToolPageTheme(parserWidget);
     applyToolPageTheme(usageAnalysisWidget);
     applyToolPageTheme(promptTemplateLibraryWidget);
+    if (promptTemplateLibraryWidget) promptTemplateLibraryWidget->applyTheme(); // 重建占位符/收藏卡片换色
     if (launcherWidget) launcherWidget->applyTheme();
     if (settingsPage) settingsPage->applyTheme();
     if (downloadsPage) downloadsPage->applyTheme();
@@ -10509,47 +10524,102 @@ void MainWindow::onBrowseGalleryPath() {
 
 QIcon MainWindow::generatePlaceholderIcon()
 {
-    // === 修改点 1：将基准尺寸设为 180 (适配主页大图) ===
-    int fullSize = 180;
-
-    // === 修改点 2：按比例调整内边距 ===
-    // 之前 64px 用 8px 边距 (12.5%)
-    // 现在 180px 对应约 20px 边距，这样缩小后在侧边栏看着比例才对
-    int padding = 20;
-
-    int contentSize = fullSize - (padding * 2);
-
-    // 创建透明底图
+    // 缺失/加载失败的预览占位：铺满整框的深色圆角底(panelDark) + 居中大叉(mutedText)。
+    // 颜色读当前主题调色板，切主题时由 recolorPlaceholderItems 重建并重染。
+    const int fullSize = 180;
     QPixmap finalPix(fullSize, fullSize);
     finalPix.fill(Qt::transparent);
 
     QPainter painter(&finalPix);
-    // 开启高质量抗锯齿
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
 
-    // 计算中间内容的区域
-    QRect contentRect(padding, padding, contentSize, contentSize);
-
-    // 绘制深色背景框 (圆角加大一点)
+    const QRect rect(0, 0, fullSize, fullSize);
     painter.setBrush(QColor(AppStyle::PanelDark()));
     painter.setPen(Qt::NoPen);
-    painter.drawRoundedRect(contentRect, 12, 12);
+    painter.drawRoundedRect(rect, 12, 12);
 
-    // 绘制“×”符号
-    QPen pen{QColor(AppStyle::PanelBorder())}; // 线条颜色稍微调深一点，更有质感
-    pen.setWidth(5); // 线条加粗，适应大尺寸
-    pen.setCapStyle(Qt::RoundCap); // 线条端点圆润
+    QPen pen{AppStyle::color("mutedText")}; // 深/浅主题下与 panelDark 底都有足够对比
+    pen.setWidth(5);
+    pen.setCapStyle(Qt::RoundCap);
     painter.setPen(pen);
 
-    // 画两条交叉线 (Margin 也要按比例放大)
-    int margin = 40;
-    painter.drawLine(contentRect.left() + margin, contentRect.top() + margin,
-                     contentRect.right() - margin, contentRect.bottom() - margin);
-    painter.drawLine(contentRect.right() - margin, contentRect.top() + margin,
-                     contentRect.left() + margin, contentRect.bottom() - margin);
+    const int margin = 54; // 约 0.3，叉留出边距
+    painter.drawLine(rect.left() + margin, rect.top() + margin,
+                     rect.right() - margin, rect.bottom() - margin);
+    painter.drawLine(rect.right() - margin, rect.top() + margin,
+                     rect.left() + margin, rect.bottom() - margin);
 
     return QIcon(finalPix);
+}
+
+QIcon MainWindow::generateSmallPlaceholderIcon()
+{
+    // 与 getSquareIcon 一致：64px 画布 + 8px 透明内边距（内容 48px），避免侧边栏占位比正常项大一圈。
+    const int fullSize = 64;
+    const int padding = 8;
+    const int contentSize = fullSize - padding * 2;
+    QPixmap finalPix(fullSize, fullSize);
+    finalPix.fill(Qt::transparent);
+
+    QPainter painter(&finalPix);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    const QRect rect(padding, padding, contentSize, contentSize);
+    painter.setBrush(QColor(AppStyle::PanelDark()));
+    painter.setPen(Qt::NoPen);
+    painter.drawRoundedRect(rect, 6, 6);
+
+    QPen pen{AppStyle::color("mutedText")};
+    pen.setWidth(3);
+    pen.setCapStyle(Qt::RoundCap);
+    painter.setPen(pen);
+    const int m = qRound(contentSize * 0.28);
+    painter.drawLine(rect.left() + m, rect.top() + m, rect.right() - m, rect.bottom() - m);
+    painter.drawLine(rect.right() - m, rect.top() + m, rect.left() + m, rect.bottom() - m);
+
+    return QIcon(finalPix);
+}
+
+void MainWindow::recolorPlaceholderItems()
+{
+    // 切主题后用新颜色重建占位图标，并重染所有当前显示"加载失败X"的列表项。
+    placeholderIcon = generatePlaceholderIcon();           // 主页大图
+    smallPlaceholderIcon = generateSmallPlaceholderIcon();  // 侧边栏/收藏树/用户图
+
+    auto recolorList = [this](QListWidget *list, const QIcon &icon) {
+        if (!list) return;
+        bool changed = false;
+        for (int i = 0; i < list->count(); ++i) {
+            QListWidgetItem *item = list->item(i);
+            if (item && item->data(ROLE_PREVIEW_PLACEHOLDER).toBool()) {
+                // 先清空再设：强制 setData 判定为"变化"并发 dataChanged（同名 QIcon 比较可能被判为相等而跳过）。
+                item->setIcon(QIcon());
+                item->setIcon(icon);
+                changed = true;
+            }
+        }
+        if (changed && list->viewport()) list->viewport()->update();
+    };
+    recolorList(ui->homeGalleryList, placeholderIcon);
+    recolorList(ui->modelList, smallPlaceholderIcon);
+    recolorList(ui->listUserImages, placeholderIcon); // 用户图为竖图大缩略，沿用大占位
+
+    bool treeChanged = false;
+    std::function<void(QTreeWidgetItem *)> recolorNode = [&](QTreeWidgetItem *node) {
+        if (!node) return;
+        if (node->data(0, ROLE_PREVIEW_PLACEHOLDER).toBool()) {
+            node->setIcon(0, QIcon());
+            node->setIcon(0, smallPlaceholderIcon);
+            treeChanged = true;
+        }
+        for (int j = 0; j < node->childCount(); ++j) recolorNode(node->child(j));
+    };
+    for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i)
+        recolorNode(ui->collectionTree->topLevelItem(i));
+    if (treeChanged && ui->collectionTree->viewport()) ui->collectionTree->viewport()->update();
+
+    // 下载卡片的占位由 downloadsPage->applyTheme() 自行重绘。
 }
 
 QString MainWindow::getSafetensorsInternalName(const QString &path)
@@ -11172,6 +11242,7 @@ void MainWindow::refreshCollectionTreeView()
                 child->setData(0, ROLE_USER_NOTE, sourceItem->data(ROLE_USER_NOTE));
                 child->setData(0, ROLE_USER_TAGS, sourceItem->data(ROLE_USER_TAGS));
                 child->setData(0, ROLE_USER_CUSTOM_TRIGGERS, sourceItem->data(ROLE_USER_CUSTOM_TRIGGERS));
+                child->setData(0, ROLE_PREVIEW_PLACEHOLDER, sourceItem->data(ROLE_PREVIEW_PLACEHOLDER)); // 跟随源项，切主题时重染占位X
                 child->setIcon(0, sourceItem->icon());
                 applyModelHighlightColor(child);
                 applyModelUserNoteData(child);

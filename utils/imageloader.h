@@ -67,25 +67,16 @@ public:
 
         // === 核心逻辑：文件不存在 或 加载失败 ===
         if (srcImg.isNull()) {
-            // 1. 填充深灰背景
-            painter.fillRect(QRect(QPoint(0, 0), targetSize), QColor("#25282f"));
-
-            // 2. 画边框
-            QPen pen(QColor("#3d4450"));
-            pen.setWidth(2);
-            painter.setPen(pen);
-
-            if (!m_isFitMode)
-                painter.drawRoundedRect(1, 1, targetSize.width() - 2, targetSize.height() - 2, m_radius, m_radius);
-            else
-                painter.drawRect(1, 1, targetSize.width() - 2, targetSize.height() - 2);
-
-            // 3. 画一个灰色的 "X" 代替文字 (线程安全)
-            painter.setPen(QPen(QColor("#3d4450"), 2));
-            painter.drawLine(targetSize.width() * 0.3, targetSize.height() * 0.3,
-                             targetSize.width() * 0.7, targetSize.height() * 0.7);
-            painter.drawLine(targetSize.width() * 0.7, targetSize.height() * 0.3,
-                             targetSize.width() * 0.3, targetSize.height() * 0.7);
+            // 返回空图：后台线程不画占位（颜色读不到当前主题）。改由主线程保留
+            // 主题化的 placeholderIcon（缺失占位X），切主题时随之重染。
+            painter.end();
+            if (!m_receiver.isNull()) {
+                QMetaObject::invokeMethod(m_receiver, "onIconLoaded",
+                                          Qt::QueuedConnection,
+                                          Q_ARG(QString, m_id),
+                                          Q_ARG(QImage, QImage()));
+            }
+            return;
         }
         else {
             // 图片存在，正常绘制
