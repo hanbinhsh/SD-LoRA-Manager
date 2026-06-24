@@ -3515,7 +3515,10 @@ void MainWindow::onGalleryImageClicked(int index)
     const QString sampler = img.sampler.trimmed().isEmpty()
         ? QStringLiteral("--")
         : forceWrap(img.sampler.trimmed()).toHtmlEscaped();
-    QString params = QString("Resolution: <span style='color:white'>%1</span> | Steps: <span style='color:white'>%2</span> | CFG: <span style='color:white'>%3</span><br/>Sampler: <span style='color:white'>%4</span> | Seed: <span style='color:white'>%5</span>")
+    // 数值用 primaryText（Steam 仍为白、Light 为深色），避免浅色主题下白字看不清。
+    const QString vc = AppStyle::str("primaryText");
+    QString params = QString("Resolution: <span style='color:%1'>%2</span> | Steps: <span style='color:%1'>%3</span> | CFG: <span style='color:%1'>%4</span><br/>Sampler: <span style='color:%1'>%5</span> | Seed: <span style='color:%1'>%6</span>")
+                         .arg(vc)
                          .arg(resolution.toHtmlEscaped())
                          .arg(richValue(img.steps))
                          .arg(richValue(img.cfgScale))
