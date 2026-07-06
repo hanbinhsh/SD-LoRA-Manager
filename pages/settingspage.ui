@@ -864,6 +864,19 @@
              </layout>
             </item>
             <item>
+             <widget class="QCheckBox" name="chkComfyModelNameFallback">
+              <property name="toolTip">
+               <string>默认开启。ComfyUI 图片通常只保存 Checkpoint/LoRA 名称而没有 Hash；开启后在摘要匹配或严格摘要匹配下，如果图片没有对应摘要，将允许用名称匹配该 ComfyUI 图片。</string>
+              </property>
+              <property name="text">
+               <string>ComfyUI 无摘要时允许名称匹配模型 / Allow ComfyUI name fallback when Hash is missing</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
              <widget class="QCheckBox" name="chkRecalculateKnownMetadataHash">
               <property name="toolTip">
                <string>默认关闭。关闭时如果模型已有 SHA256 缓存，元信息同步会直接复用该 Hash，避免重新读取大模型文件。</string>

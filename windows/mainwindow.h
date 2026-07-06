@@ -94,7 +94,7 @@ const int ROLE_ITEM_COUNT             = Qt::UserRole + 62;  // 存储该分类�
 const int ROLE_COLLECTION_EXPAND_KEY  = Qt::UserRole + 63;  // 存储收藏夹树展开状态键
 const int ROLE_PREVIEW_PLACEHOLDER    = Qt::UserRole + 64;  // 该项当前显示"加载失败占位X"（切主题需重染）
 
-const QString CURRENT_VERSION = "1.5.6";
+const QString CURRENT_VERSION = "1.5.7";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
@@ -642,6 +642,7 @@ private:
     bool          optUseCivitaiName                           = false;            // 使用json中的模型名称
     bool          optSuppressLocalWarnings                    = false;            // 隐藏本地模型总量提醒
     int           optUserGalleryMatchMode                     = 0;                // 0: 当前逻辑匹配, 1: 摘要值匹配(可回退), 2: 严格摘要值匹配(不回退)
+    bool          optComfyModelNameFallback                   = true;             // ComfyUI 图片缺少摘要时允许按名称匹配模型
     bool          optRecalculateKnownMetadataHash             = false;            // 元信息同步时是否重新计算已有 Hash
     bool          optTryCivArchiveOnMetadataFail              = true;             // Civitai 元信息失败时尝试 CivArchive
     bool          optConfirmCloseWhileLauncherRunning         = true;             // 启动器有进程运行时关闭软件是否弹窗确认

@@ -52,6 +52,7 @@ SettingsState SettingsState::fromJson(const QJsonObject &root, const QString &de
     state.useCivitaiName = root["use_civitai_name"].toBool(false);
     state.suppressLocalWarnings = root["suppress_local_model_warnings"].toBool(false);
     state.userGalleryMatchMode = root["user_gallery_match_mode"].toInt(0);
+    state.comfyModelNameFallback = root["comfy_model_name_fallback"].toBool(true);
     state.recalculateKnownMetadataHash = root["recalculate_known_metadata_hash"].toBool(false);
     state.tryCivArchiveOnMetadataFail = root["try_civarchive_on_metadata_fail"].toBool(true);
     state.confirmCloseWhileLauncherRunning = root["confirm_close_launcher_running"].toBool(true);
@@ -91,6 +92,7 @@ void SettingsState::writeToJson(QJsonObject &root) const
     root["use_civitai_name"] = normalized.useCivitaiName;
     root["suppress_local_model_warnings"] = normalized.suppressLocalWarnings;
     root["user_gallery_match_mode"] = normalized.userGalleryMatchMode;
+    root["comfy_model_name_fallback"] = normalized.comfyModelNameFallback;
     root["recalculate_known_metadata_hash"] = normalized.recalculateKnownMetadataHash;
     root["try_civarchive_on_metadata_fail"] = normalized.tryCivArchiveOnMetadataFail;
     root["confirm_close_launcher_running"] = normalized.confirmCloseWhileLauncherRunning;
@@ -227,6 +229,7 @@ SettingsPage::SettingsPage(QWidget *parent)
     });
     if (ui->comboModelUpdateDownloadPolicy) connect(ui->comboModelUpdateDownloadPolicy, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &SettingsPage::emitStateChanged);
     if (ui->comboUserGalleryMatchMode) connect(ui->comboUserGalleryMatchMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &SettingsPage::emitStateChanged);
+    if (ui->chkComfyModelNameFallback) connect(ui->chkComfyModelNameFallback, &QCheckBox::toggled, this, &SettingsPage::emitStateChanged);
     if (ui->spinUiScale) connect(ui->spinUiScale, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &SettingsPage::emitStateChanged);
     if (ui->comboTheme) connect(ui->comboTheme, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
         updateDependentControls();
@@ -291,6 +294,7 @@ SettingsState SettingsPage::state() const
     s.useCivitaiName = ui->chkUseCivitaiName && ui->chkUseCivitaiName->isChecked();
     s.suppressLocalWarnings = ui->chkSuppressLocalWarnings && ui->chkSuppressLocalWarnings->isChecked();
     s.userGalleryMatchMode = ui->comboUserGalleryMatchMode ? ui->comboUserGalleryMatchMode->currentIndex() : 0;
+    s.comfyModelNameFallback = !ui->chkComfyModelNameFallback || ui->chkComfyModelNameFallback->isChecked();
     s.recalculateKnownMetadataHash = ui->chkRecalculateKnownMetadataHash && ui->chkRecalculateKnownMetadataHash->isChecked();
     s.tryCivArchiveOnMetadataFail = !ui->chkTryCivArchiveOnMetadataFail || ui->chkTryCivArchiveOnMetadataFail->isChecked();
     s.confirmCloseWhileLauncherRunning = !ui->chkConfirmCloseLauncherRunning || ui->chkConfirmCloseLauncherRunning->isChecked();
@@ -334,6 +338,7 @@ void SettingsPage::setState(const SettingsState &state)
     if (ui->chkUseCivitaiName) ui->chkUseCivitaiName->setChecked(state.useCivitaiName);
     if (ui->chkSuppressLocalWarnings) ui->chkSuppressLocalWarnings->setChecked(state.suppressLocalWarnings);
     if (ui->comboUserGalleryMatchMode) ui->comboUserGalleryMatchMode->setCurrentIndex(qBound(0, state.userGalleryMatchMode, 2));
+    if (ui->chkComfyModelNameFallback) ui->chkComfyModelNameFallback->setChecked(state.comfyModelNameFallback);
     if (ui->chkRecalculateKnownMetadataHash) ui->chkRecalculateKnownMetadataHash->setChecked(state.recalculateKnownMetadataHash);
     if (ui->chkTryCivArchiveOnMetadataFail) ui->chkTryCivArchiveOnMetadataFail->setChecked(state.tryCivArchiveOnMetadataFail);
     if (ui->chkConfirmCloseLauncherRunning) ui->chkConfirmCloseLauncherRunning->setChecked(state.confirmCloseWhileLauncherRunning);

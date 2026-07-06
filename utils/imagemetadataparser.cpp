@@ -12,6 +12,8 @@
 #include <QSet>
 #include <QtEndian>
 
+#include <utility>
+
 namespace {
 
 bool looksLikeComfyPromptObject(const QJsonObject &obj);
@@ -93,9 +95,56 @@ bool isMeaningfulPromptText(const QString &text)
     return true;
 }
 
+QString normalizeClassName(QString text)
+{
+    QString normalized;
+    normalized.reserve(text.size());
+    for (const QChar ch : std::as_const(text)) {
+        if (ch.isLetterOrNumber()) normalized.append(ch.toCaseFolded());
+    }
+    return normalized;
+}
+
+bool classNameContains(const QString &className, const QString &needle)
+{
+    const QString normalizedClass = normalizeClassName(className);
+    const QString normalizedNeedle = normalizeClassName(needle);
+    return !normalizedNeedle.isEmpty() && normalizedClass.contains(normalizedNeedle);
+}
+
 bool classContains(const QJsonObject &node, const QString &needle)
 {
-    return node.value("class_type").toString().contains(needle, Qt::CaseInsensitive);
+    return classNameContains(node.value("class_type").toString(), needle);
+}
+
+QString checkpointNameFromNode(const QJsonObject &node)
+{
+    const QJsonObject inputs = node.value("inputs").toObject();
+    const QStringList keys = {"ckpt_name", "checkpoint", "checkpoint_name", "model_name"};
+    for (const QString &key : keys) {
+        const QString name = jsonValueToString(inputs.value(key)).trimmed();
+        if (!name.isEmpty()) return name;
+    }
+    return QString();
+}
+
+QStringList collectCheckpointNamesFromNodes(const QJsonObject &nodes)
+{
+    QStringList checkpoints;
+    QSet<QString> seen;
+    for (auto it = nodes.begin(); it != nodes.end(); ++it) {
+        const QJsonObject node = it.value().toObject();
+        if (!classContains(node, "CheckpointLoader")) continue;
+
+        const QString checkpoint = checkpointNameFromNode(node);
+        if (checkpoint.isEmpty()) continue;
+
+        const QString key = checkpoint.toCaseFolded();
+        if (seen.contains(key)) continue;
+        seen.insert(key);
+        checkpoints.append(checkpoint);
+    }
+    return checkpoints;
 }
 
 QString nodeTextInput(const QJsonObject &node)
@@ -137,6 +186,58 @@ QString traceTextFromNode(const QString &nodeId, const QJsonObject &nodes, QSet<
     return QString();
 }
 
+QString formatLoraDescription(const QString &name, const QString &strength)
+{
+    const QString cleanName = name.trimmed();
+    if (cleanName.isEmpty()) return QString();
+
+    const QString cleanStrength = strength.trimmed();
+    return cleanStrength.isEmpty() ? cleanName : QString("%1: %2").arg(cleanName, cleanStrength);
+}
+
+bool appendLorasFromStructuredValue(const QJsonValue &value, QStringList &loras)
+{
+    if (value.isObject()) {
+        const QJsonObject obj = value.toObject();
+        if (obj.contains("__value__")) {
+            return appendLorasFromStructuredValue(obj.value("__value__"), loras);
+        }
+    }
+
+    if (!value.isArray()) return false;
+
+    bool sawStructuredEntry = false;
+    const QJsonArray arr = value.toArray();
+    for (const QJsonValue &entryValue : arr) {
+        const QJsonObject entry = entryValue.toObject();
+        if (entry.isEmpty()) continue;
+
+        sawStructuredEntry = true;
+        if (entry.contains("active") && !entry.value("active").toBool(false)) continue;
+
+        const QString name = entry.value("name").toString().trimmed().isEmpty()
+                                 ? entry.value("lora_name").toString().trimmed()
+                                 : entry.value("name").toString().trimmed();
+        QString strength = jsonValueToString(entry.value("strength"));
+        if (strength.isEmpty()) strength = jsonValueToString(entry.value("modelStrength"));
+        if (strength.isEmpty()) strength = jsonValueToString(entry.value("strength_model"));
+
+        const QString description = formatLoraDescription(name, strength);
+        if (!description.isEmpty()) loras.append(description);
+    }
+
+    return sawStructuredEntry;
+}
+
+QJsonValue structuredLoraWidgetValue(const QJsonArray &widgets)
+{
+    for (const QJsonValue &widget : widgets) {
+        QStringList unused;
+        if (appendLorasFromStructuredValue(widget, unused)) return widget;
+    }
+    return QJsonValue();
+}
+
 void collectLorasFromNode(const QString &nodeId,
                           const QJsonObject &nodes,
                           QSet<QString> &visited,
@@ -152,19 +253,26 @@ void collectLorasFromNode(const QString &nodeId,
 
     const QJsonObject inputs = node.value("inputs").toObject();
     if (classContains(node, "LoraLoader")) {
-        const QString loraName = inputs.value("lora_name").toString().trimmed();
-        QString strength = jsonValueToString(inputs.value("strength_model"));
-        if (strength.isEmpty()) strength = jsonValueToString(inputs.value("strength"));
-        if (!loraName.isEmpty()) {
-            loras.append(strength.isEmpty() ? loraName : QString("%1: %2").arg(loraName, strength));
+        QString loraNameForHash;
+        bool handledStructured = appendLorasFromStructuredValue(inputs.value("loras"), loras);
+        if (!handledStructured) handledStructured = appendLorasFromStructuredValue(inputs.value("lora_stack"), loras);
+
+        if (!handledStructured) {
+            const QString loraName = inputs.value("lora_name").toString().trimmed();
+            loraNameForHash = loraName;
+            QString strength = jsonValueToString(inputs.value("strength_model"));
+            if (strength.isEmpty()) strength = jsonValueToString(inputs.value("strength"));
+
+            const QString description = formatLoraDescription(loraName, strength);
+            if (!description.isEmpty()) loras.append(description);
         }
 
         const QString hash = inputs.value("hash").toString().trimmed();
-        if (!loraName.isEmpty() && !hash.isEmpty()) hashes.insert(QFileInfo(loraName).completeBaseName(), hash);
+        if (!loraNameForHash.isEmpty() && !hash.isEmpty()) hashes.insert(QFileInfo(loraNameForHash).completeBaseName(), hash);
     }
 
     if (classContains(node, "CheckpointLoader") && checkpoint.isEmpty()) {
-        checkpoint = inputs.value("ckpt_name").toString().trimmed();
+        checkpoint = checkpointNameFromNode(node);
     }
 
     const QStringList linkKeys = {"model", "clip", "base_model", "lora_stack"};
@@ -289,7 +397,17 @@ ParsedImageMetadata parseComfyPromptObject(const QJsonObject &nodes)
     collectLorasFromNode(linkedNodeId(inputs.value("model")), nodes, visitedModel,
                          meta.loraDescriptions, meta.checkpoint, meta.loraHashes);
 
-    if (meta.hasContent() || !meta.loraDescriptions.isEmpty()) {
+    if (meta.checkpoint.isEmpty()) {
+        const QStringList checkpoints = collectCheckpointNamesFromNodes(nodes);
+        if (!checkpoints.isEmpty()) {
+            // Some ComfyUI exports omit or obscure the model link chain. Keep the
+            // KSampler-traced value when available, otherwise expose a stable
+            // Checkpoint: line so gallery checkpoint matching can still work.
+            meta.checkpoint = checkpoints.first();
+        }
+    }
+
+    if (meta.hasContent() || !meta.loraDescriptions.isEmpty() || !meta.checkpoint.isEmpty()) {
         meta.sourceType = "ComfyUI";
         meta.parametersText = formatComfyParameters(meta);
     }
@@ -328,9 +446,9 @@ QJsonObject promptObjectFromWorkflowGraph(const QJsonObject &workflow)
 
         QJsonObject inputs;
         const QJsonArray widgets = node.value("widgets_values").toArray();
-        if (classType.contains("CLIPTextEncode", Qt::CaseInsensitive)
-            || classType.contains("Text", Qt::CaseInsensitive)
-            || classType.contains("Prompt", Qt::CaseInsensitive)) {
+        if (classNameContains(classType, "CLIPTextEncode")
+            || classNameContains(classType, "Text")
+            || classNameContains(classType, "Prompt")) {
             for (const QJsonValue &widget : widgets) {
                 const QString text = jsonValueToString(widget);
                 if (isMeaningfulPromptText(text)) {
@@ -338,16 +456,27 @@ QJsonObject promptObjectFromWorkflowGraph(const QJsonObject &workflow)
                     break;
                 }
             }
-        } else if (classType.contains("KSampler", Qt::CaseInsensitive)) {
+        } else if (classNameContains(classType, "KSampler")) {
             const QStringList samplerKeys = {"seed", "steps", "cfg", "sampler_name", "scheduler"};
             for (int i = 0; i < samplerKeys.size() && i < widgets.size(); ++i) {
                 inputs.insert(samplerKeys.at(i), widgets.at(i));
             }
-        } else if (classType.contains("CheckpointLoader", Qt::CaseInsensitive)) {
-            if (!widgets.isEmpty()) inputs.insert("ckpt_name", widgets.first());
-        } else if (classType.contains("LoraLoader", Qt::CaseInsensitive)) {
-            if (!widgets.isEmpty()) inputs.insert("lora_name", widgets.at(0));
-            if (widgets.size() > 1) inputs.insert("strength_model", widgets.at(1));
+        } else if (classNameContains(classType, "CheckpointLoader")) {
+            for (const QJsonValue &widget : widgets) {
+                const QString checkpoint = jsonValueToString(widget);
+                if (!checkpoint.isEmpty()) {
+                    inputs.insert("ckpt_name", checkpoint);
+                    break;
+                }
+            }
+        } else if (classNameContains(classType, "LoraLoader")) {
+            const QJsonValue structured = structuredLoraWidgetValue(widgets);
+            if (!structured.isUndefined()) {
+                inputs.insert("loras", structured);
+            } else {
+                if (!widgets.isEmpty()) inputs.insert("lora_name", widgets.at(0));
+                if (widgets.size() > 1) inputs.insert("strength_model", widgets.at(1));
+            }
         }
 
         const QJsonArray graphInputs = node.value("inputs").toArray();

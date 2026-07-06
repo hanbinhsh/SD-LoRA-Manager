@@ -36,6 +36,7 @@ struct SettingsState {
     bool useCivitaiName = false;
     bool suppressLocalWarnings = false;
     int userGalleryMatchMode = 0;
+    bool comfyModelNameFallback = true;
     bool recalculateKnownMetadataHash = false;
     bool tryCivArchiveOnMetadataFail = true;
     bool confirmCloseWhileLauncherRunning = true;   // 启动器有进程运行时，关闭软件是否弹窗确认

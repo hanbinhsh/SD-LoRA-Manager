@@ -1227,7 +1227,7 @@ static QString normalizeModelTypeForFilter(const QString &raw) {
     return raw.trimmed(); // 其它已知类型按原样展示
 }
 
-static constexpr int USER_GALLERY_PARSER_VERSION = 4;
+static constexpr int USER_GALLERY_PARSER_VERSION = 6;
 
 static QStringList parsePromptsToTagsWorker(const QString &rawPrompt, bool splitOnNewline, const QStringList &filterTags)
 {
@@ -1374,6 +1374,8 @@ static QStringList extractLoraNamesFromMetadataWorker(const QString &metadata)
 }
 
 static QStringList extractCheckpointNamesFromParametersWorker(const QString &parameters);
+static void addLoraNameVariantsWorker(const QString &name, QSet<QString> &out);
+static bool nameSetsIntersectWorker(const QSet<QString> &imageNames, const QSet<QString> &targetNames);
 
 static bool promptUsesLoraWorker(const QString &prompt, const QString &parameters, const QSet<QString> &normalizedLoraNames)
 {
@@ -1382,7 +1384,13 @@ static bool promptUsesLoraWorker(const QString &prompt, const QString &parameter
     QStringList usedLoras = extractLoraNamesFromPromptWorker(prompt);
     usedLoras.append(extractLoraNamesFromMetadataWorker(parameters));
     for (const QString &usedLora : usedLoras) {
-        if (normalizedLoraNames.contains(normalizeLoraNameForMatch(usedLora))) {
+        QSet<QString> usedVariants;
+        addLoraNameVariantsWorker(usedLora, usedVariants);
+        if (usedVariants.isEmpty()) {
+            const QString normalized = normalizeLoraNameForMatch(usedLora);
+            if (!normalized.isEmpty()) usedVariants.insert(normalized);
+        }
+        if (nameSetsIntersectWorker(usedVariants, normalizedLoraNames)) {
             return true;
         }
     }
@@ -1579,6 +1587,15 @@ static QSet<QString> extractCheckpointHashValuesFromParametersWorker(const QStri
     return hashes;
 }
 
+static bool parametersAreFromComfyWorker(const QString &parameters)
+{
+    if (parameters.isEmpty()) return false;
+
+    static QRegularExpression sourceRegex("(?:^|[\\n\\r])\\s*Source\\s*:\\s*ComfyUI\\b",
+                                          QRegularExpression::CaseInsensitiveOption);
+    return sourceRegex.match(parameters).hasMatch();
+}
+
 static bool hashSetsMatchByPrefixWorker(const QSet<QString> &imageHashes, const QSet<QString> &targetHashes)
 {
     if (imageHashes.isEmpty() || targetHashes.isEmpty()) return false;
@@ -1595,11 +1612,21 @@ static bool hashSetsMatchByPrefixWorker(const QSet<QString> &imageHashes, const 
     return false;
 }
 
+static bool nameSetsIntersectWorker(const QSet<QString> &imageNames, const QSet<QString> &targetNames)
+{
+    if (imageNames.isEmpty() || targetNames.isEmpty()) return false;
+    for (const QString &name : targetNames) {
+        if (imageNames.contains(name)) return true;
+    }
+    return false;
+}
+
 struct CachedImageUsageInfo {
     QSet<QString> usedLoraNames;
     QSet<QString> loraHashes;
     QSet<QString> usedCheckpointNames;
     QSet<QString> checkpointHashes;
+    bool isComfy = false;
     qint64 lastModified = 0;
 };
 
@@ -1717,7 +1744,8 @@ static ModelUsageCandidate buildModelUsageCandidateWorker(const ModelUsageInput 
 static QList<ModelUsageStatResult> calculateModelUsageStatsWorker(
     const QList<ModelUsageInput> &models,
     const QMap<QString, UserImageInfo> &imageCache,
-    int matchMode)
+    int matchMode,
+    bool comfyModelNameFallback)
 {
     QList<CachedImageUsageInfo> imageInfos;
     imageInfos.reserve(imageCache.size());
@@ -1728,10 +1756,16 @@ static QList<ModelUsageStatResult> calculateModelUsageStatsWorker(
         QStringList usedNames = extractLoraNamesFromPromptWorker(info.prompt);
         usedNames.append(extractLoraNamesFromMetadataWorker(info.parameters));
         for (const QString &usedName : usedNames) {
-            const QString normalized = normalizeLoraNameForMatch(usedName);
-            if (!normalized.isEmpty()) cached.usedLoraNames.insert(normalized);
+            QSet<QString> usedVariants;
+            addLoraNameVariantsWorker(usedName, usedVariants);
+            if (usedVariants.isEmpty()) {
+                const QString normalized = normalizeLoraNameForMatch(usedName);
+                if (!normalized.isEmpty()) usedVariants.insert(normalized);
+            }
+            for (const QString &variant : usedVariants) cached.usedLoraNames.insert(variant);
         }
         cached.loraHashes = extractLoraHashValuesFromParametersWorker(info.parameters);
+        cached.isComfy = parametersAreFromComfyWorker(info.parameters);
         const QStringList checkpointNames = extractCheckpointNamesFromParametersWorker(info.parameters);
         for (const QString &checkpointName : checkpointNames) {
             const QString normalized = normalizeModelNameForMatch(checkpointName);
@@ -1756,12 +1790,15 @@ static QList<ModelUsageStatResult> calculateModelUsageStatsWorker(
         const QSet<QString> targetHashes = candidate.isCheckpoint ? candidate.checkpointHashes : candidate.summaryHashes;
         if (useSummary && targetHashes.isEmpty()) {
             if (strictSummary) {
-                ModelUsageStatResult empty;
-                empty.filePath = candidate.filePath;
-                results.append(empty);
-                continue;
+                if (!comfyModelNameFallback) {
+                    ModelUsageStatResult empty;
+                    empty.filePath = candidate.filePath;
+                    results.append(empty);
+                    continue;
+                }
+            } else {
+                useSummary = false;
             }
-            useSummary = false;
         }
 
         ModelUsageStatResult stat;
@@ -1770,9 +1807,17 @@ static QList<ModelUsageStatResult> calculateModelUsageStatsWorker(
         for (const CachedImageUsageInfo &image : imageInfos) {
             bool matched = false;
             if (useSummary) {
-                matched = candidate.isCheckpoint
-                              ? hashSetsMatchByPrefixWorker(image.checkpointHashes, targetHashes)
-                              : hashSetsMatchByPrefixWorker(image.loraHashes, targetHashes);
+                const QSet<QString> &imageHashes = candidate.isCheckpoint ? image.checkpointHashes : image.loraHashes;
+                matched = hashSetsMatchByPrefixWorker(imageHashes, targetHashes);
+                if (!matched && comfyModelNameFallback && image.isComfy && imageHashes.isEmpty()) {
+                    const QSet<QString> &targetNames = candidate.isCheckpoint
+                                                           ? candidate.normalizedCheckpointNames
+                                                           : candidate.normalizedLoraNames;
+                    const QSet<QString> &imageNames = candidate.isCheckpoint
+                                                          ? image.usedCheckpointNames
+                                                          : image.usedLoraNames;
+                    matched = nameSetsIntersectWorker(imageNames, targetNames);
+                }
             } else {
                 const QSet<QString> &targetNames = candidate.isCheckpoint
                                                        ? candidate.normalizedCheckpointNames
@@ -1780,12 +1825,7 @@ static QList<ModelUsageStatResult> calculateModelUsageStatsWorker(
                 const QSet<QString> &imageNames = candidate.isCheckpoint
                                                       ? image.usedCheckpointNames
                                                       : image.usedLoraNames;
-                for (const QString &name : targetNames) {
-                    if (imageNames.contains(name)) {
-                        matched = true;
-                        break;
-                    }
-                }
+                matched = nameSetsIntersectWorker(imageNames, targetNames);
             }
 
             if (matched) {
@@ -6839,10 +6879,11 @@ void MainWindow::refreshModelUsageStatsAsync()
         refreshUsageAnalysisWidget();
     });
 
+    const bool comfyModelNameFallback = optComfyModelNameFallback;
     watcher->setFuture(QtConcurrent::run(
         backgroundThreadPool,
-        [models, cacheCopy, matchMode]() {
-            return calculateModelUsageStatsWorker(models, cacheCopy, matchMode);
+        [models, cacheCopy, matchMode, comfyModelNameFallback]() {
+            return calculateModelUsageStatsWorker(models, cacheCopy, matchMode, comfyModelNameFallback);
         }));
 }
 
@@ -7897,9 +7938,10 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     auto scannedCount = QSharedPointer<std::atomic<int>>::create(0);
     auto matchedCount = QSharedPointer<std::atomic<int>>::create(0);
     // 开启异步任务
+    const bool comfyModelNameFallback = optComfyModelNameFallback;
     QFuture<QPair<QList<UserImageInfo>, QMap<QString, UserImageInfo>>> future = QtConcurrent::run(
         backgroundThreadPool,
-        [normalizedLoraNames, targetSummaryHashes, useSummaryHashMatch, isGlobalMode, selectedIsCheckpoint, recursive, splitOnNewline, filterTags, currentCacheCopy, validGalleryPaths, scannedCount, matchedCount]() {
+        [normalizedLoraNames, targetSummaryHashes, useSummaryHashMatch, isGlobalMode, selectedIsCheckpoint, recursive, splitOnNewline, filterTags, currentCacheCopy, validGalleryPaths, scannedCount, matchedCount, comfyModelNameFallback]() {
 
             QList<UserImageInfo> results;
             QMap<QString, UserImageInfo> newCacheUpdates; // 用于收集需要更新到主缓存的数据
@@ -7953,6 +7995,11 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
                                                               ? extractCheckpointHashValuesFromParametersWorker(info.parameters)
                                                               : extractLoraHashValuesFromParametersWorker(info.parameters);
                         matched = hashSetsMatchByPrefixWorker(imageHashes, targetSummaryHashes);
+                        if (!matched && comfyModelNameFallback && parametersAreFromComfyWorker(info.parameters) && imageHashes.isEmpty()) {
+                            matched = selectedIsCheckpoint
+                                          ? parametersUseCheckpointWorker(info.parameters, normalizedLoraNames)
+                                          : promptUsesLoraWorker(info.prompt, info.parameters, normalizedLoraNames);
+                        }
                     } else if (selectedIsCheckpoint) {
                         matched = parametersUseCheckpointWorker(info.parameters, normalizedLoraNames);
                     } else {
@@ -9885,6 +9932,7 @@ void MainWindow::loadGlobalConfig() {
         optUseCivitaiName = settings.useCivitaiName;
         optSuppressLocalWarnings = settings.suppressLocalWarnings;
         optUserGalleryMatchMode = settings.userGalleryMatchMode;
+        optComfyModelNameFallback = settings.comfyModelNameFallback;
         optRecalculateKnownMetadataHash = settings.recalculateKnownMetadataHash;
         optTryCivArchiveOnMetadataFail = settings.tryCivArchiveOnMetadataFail;
         optConfirmCloseWhileLauncherRunning = settings.confirmCloseWhileLauncherRunning;
@@ -10026,7 +10074,8 @@ void MainWindow::applySettingsState(SettingsState state)
         || optCollectionFolderSecondLevel != state.collectionFolderSecondLevel;
     const bool modelGroupingChanged = optModelListFolderGrouping != state.modelListFolderGrouping;
     const bool civitaiNameChanged = optUseCivitaiName != state.useCivitaiName;
-    const bool galleryMatchChanged = optUserGalleryMatchMode != state.userGalleryMatchMode;
+    const bool galleryMatchChanged = optUserGalleryMatchMode != state.userGalleryMatchMode
+        || optComfyModelNameFallback != state.comfyModelNameFallback;
     const bool uiScaleChanged = !qFuzzyCompare(optUiScale, state.uiScale);
     const bool customUaModeChanged = optUseArrangedUA != state.useCustomUserAgent;
     const bool themeChanged = optThemeId != state.themeId || optCustomThemePath != state.customThemePath;
@@ -10055,6 +10104,7 @@ void MainWindow::applySettingsState(SettingsState state)
     optUseCivitaiName = state.useCivitaiName;
     optSuppressLocalWarnings = state.suppressLocalWarnings;
     optUserGalleryMatchMode = state.userGalleryMatchMode;
+    optComfyModelNameFallback = state.comfyModelNameFallback;
     optRecalculateKnownMetadataHash = state.recalculateKnownMetadataHash;
     optTryCivArchiveOnMetadataFail = state.tryCivArchiveOnMetadataFail;
     optConfirmCloseWhileLauncherRunning = state.confirmCloseWhileLauncherRunning;
@@ -10281,6 +10331,7 @@ void MainWindow::saveGlobalConfig() {
         settings.useCivitaiName = optUseCivitaiName;
         settings.suppressLocalWarnings = optSuppressLocalWarnings;
         settings.userGalleryMatchMode = optUserGalleryMatchMode;
+        settings.comfyModelNameFallback = optComfyModelNameFallback;
         settings.recalculateKnownMetadataHash = optRecalculateKnownMetadataHash;
         settings.tryCivArchiveOnMetadataFail = optTryCivArchiveOnMetadataFail;
         settings.confirmCloseWhileLauncherRunning = optConfirmCloseWhileLauncherRunning;
