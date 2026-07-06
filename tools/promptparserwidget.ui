@@ -138,10 +138,76 @@ Click or Drag Image Here</string>
             </spacer>
            </item>
            <item>
+            <widget class="QPushButton" name="btnRefreshPrompt">
+             <property name="minimumSize">
+              <size>
+               <width>28</width>
+               <height>28</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>28</width>
+               <height>28</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>8</pointsize>
+              </font>
+             </property>
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
+             <property name="toolTip">
+              <string>用图片原始提示词覆盖当前文本（丢弃已做的修改）</string>
+             </property>
+             <property name="text">
+              <string>↻</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnOriginalOrder">
+             <property name="minimumSize">
+              <size>
+               <width>28</width>
+               <height>28</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>28</width>
+               <height>28</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>8</pointsize>
+              </font>
+             </property>
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
+             <property name="toolTip">
+              <string>按提示词原始顺序排序（关闭则按使用次数）</string>
+             </property>
+             <property name="text">
+              <string>序</string>
+             </property>
+             <property name="checkable">
+              <bool>true</bool>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
             <widget class="QPushButton" name="btnTranslate">
              <property name="minimumSize">
               <size>
-               <width>50</width>
+               <width>28</width>
                <height>28</height>
               </size>
              </property>
@@ -207,13 +273,13 @@ Click or Drag Image Here</string>
             <widget class="QPushButton" name="btnClearTagSelection">
              <property name="minimumSize">
               <size>
-               <width>32</width>
+               <width>28</width>
                <height>28</height>
               </size>
              </property>
              <property name="maximumSize">
               <size>
-               <width>32</width>
+               <width>28</width>
                <height>28</height>
               </size>
              </property>
@@ -233,6 +299,42 @@ Click or Drag Image Here</string>
              </property>
             </widget>
            </item>
+           <item>
+            <widget class="QPushButton" name="btnToggleTagText">
+             <property name="minimumSize">
+              <size>
+               <width>44</width>
+               <height>28</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>44</width>
+               <height>28</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>8</pointsize>
+              </font>
+             </property>
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
+             <property name="toolTip">
+              <string>在文本编辑与标签视图之间切换（文本视图可编辑/复制/粘贴）</string>
+             </property>
+             <property name="text">
+              <string>文本</string>
+             </property>
+             <property name="checkable">
+              <bool>true</bool>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
           </layout>
          </item>
          <item>
@@ -249,7 +351,7 @@ Click or Drag Image Here</string>
               <x>0</x>
               <y>0</y>
               <width>660</width>
-              <height>356</height>
+              <height>362</height>
              </rect>
             </property>
             <layout class="QVBoxLayout" name="layoutTagsPos">
@@ -293,7 +395,7 @@ Click or Drag Image Here</string>
               <x>0</x>
               <y>0</y>
               <width>660</width>
-              <height>355</height>
+              <height>361</height>
              </rect>
             </property>
             <layout class="QVBoxLayout" name="layoutTagsNeg">
@@ -900,7 +1002,7 @@ Click or Drag Image Here</string>
                  <x>0</x>
                  <y>0</y>
                  <width>352</width>
-                 <height>118</height>
+                 <height>111</height>
                 </rect>
                </property>
                <layout class="QVBoxLayout" name="layoutCompareTagsAContainer"/>
@@ -925,7 +1027,7 @@ Click or Drag Image Here</string>
                  <x>0</x>
                  <y>0</y>
                  <width>352</width>
-                 <height>118</height>
+                 <height>111</height>
                 </rect>
                </property>
                <layout class="QVBoxLayout" name="layoutCompareTagsBContainer"/>

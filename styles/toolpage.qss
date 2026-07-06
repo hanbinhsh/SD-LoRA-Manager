@@ -96,7 +96,19 @@ QPushButton#btnStart[running="true"] {
     border: 1px solid @errorRed;
 }
 
-QPushButton#btnTranslate:checked {
+/* 提示词解析里这一排小方按钮固定 28px 高：通用 6px×12px 内边距会把“序/文/全选/×”裁掉，
+   这里清零内边距让文字在固定尺寸内居中、不被截断，四个按钮风格统一。 */
+QPushButton#btnOriginalOrder, QPushButton#btnTranslate,
+QPushButton#btnSelectAllTags, QPushButton#btnClearTagSelection,
+QPushButton#btnToggleTagText, QPushButton#btnRefreshPrompt {
+    padding: 0px;
+    margin: 0px;       /* 覆盖全局 mainwindow.qss 的 #btnTranslate（margin:1px + border），否则“文”会小一圈 */
+    border: none;
+    border-radius: 2px;
+    text-align: center;
+}
+QPushButton#btnTranslate:checked,
+QPushButton#btnOriginalOrder:checked {
     background-color: @accentBlue;
     color: @black;
 }

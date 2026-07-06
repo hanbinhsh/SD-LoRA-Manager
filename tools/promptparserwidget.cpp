@@ -30,7 +30,11 @@
 #include <QMenu>
 #include <QPainter>
 #include <QPixmap>
+#include <QPlainTextEdit>
 #include <QProcess>
+#include <QStackedWidget>
+#include <QScrollArea>
+#include <QBoxLayout>
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QSet>
@@ -156,6 +160,9 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
         posTagWidget->setShowTranslation(checked);
         negTagWidget->setShowTranslation(checked);
     });
+    connect(ui->btnOriginalOrder, &QPushButton::toggled, this, [this](bool) {
+        applyTagSortMode();
+    });
     connect(ui->btnSelectAllTags, &QPushButton::clicked, this, [this]() {
         posTagWidget->selectAllVisibleTags();
         negTagWidget->selectAllVisibleTags();
@@ -164,6 +171,19 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
         posTagWidget->clearSelectedTags();
         negTagWidget->clearSelectedTags();
     });
+
+    // 把正/负面 tagflow 滚动区包成“文本/标签”双视图：文本视图可编辑/复制/粘贴。
+    setupPromptTextToggle();
+    connect(ui->btnToggleTagText, &QPushButton::toggled, this, [this](bool tagView) {
+        setTagViewActive(tagView);
+    });
+    // 刷新：用图片原始提示词覆盖当前（可能已被编辑的）文本。
+    connect(ui->btnRefreshPrompt, &QPushButton::clicked, this, [this]() {
+        if (m_posEdit) m_posEdit->setPlainText(m_lastParsedPositive);
+        if (m_negEdit) m_negEdit->setPlainText(m_lastParsedNegative);
+        if (m_tagViewActive) refreshTagFlowsFromText();
+    });
+    setTagViewActive(m_tagViewActive); // 同步初始可见性/页面（默认标签视图）
 
     ui->tableCompareParams->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     ui->tableCompareParams->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
@@ -417,6 +437,114 @@ QMap<QString, int> PromptParserWidget::parsePromptToMap(const QString &rawPrompt
     return result;
 }
 
+QStringList PromptParserWidget::parsePromptOrder(const QString &rawPrompt) const
+{
+    QStringList order;
+    QSet<QString> seen;
+    const QStringList parts = TagUtils::splitPromptParts(rawPrompt, true);
+    for (const QString &part : parts) {
+        const QString clean = TagUtils::cleanPromptTag(part);
+        if (clean.isEmpty() || seen.contains(clean)) continue;
+        seen.insert(clean);
+        order << clean;
+    }
+    return order;
+}
+
+void PromptParserWidget::applyTagSortMode()
+{
+    const bool original = ui->btnOriginalOrder && ui->btnOriginalOrder->isChecked();
+    if (original) {
+        posTagWidget->setGivenOrder(m_posTagOrder);
+        negTagWidget->setGivenOrder(m_negTagOrder);
+        posTagWidget->setSortMode(TagFlowWidget::SortByGivenOrder);
+        negTagWidget->setSortMode(TagFlowWidget::SortByGivenOrder);
+    } else {
+        posTagWidget->setSortMode(TagFlowWidget::SortByCount);
+        negTagWidget->setSortMode(TagFlowWidget::SortByCount);
+    }
+}
+
+// 把一个 tagflow 滚动区在其所在布局里替换为 QStackedWidget：第 0 页为可编辑文本框，第 1 页为原滚动区。
+static QStackedWidget *wrapScrollWithEditor(QBoxLayout *layout, QScrollArea *area, QPlainTextEdit *&editOut)
+{
+    if (!layout || !area) return nullptr;
+    auto *stack = new QStackedWidget(area->parentWidget());
+    stack->setSizePolicy(area->sizePolicy());
+
+    auto *edit = new QPlainTextEdit(stack);
+    edit->setSizePolicy(area->sizePolicy());
+    edit->setPlaceholderText("提示词文本（可编辑 / 复制 / 粘贴），切到“标签”视图可解析并翻译");
+
+    // 用 stack 接管滚动区在布局中的位置，再把滚动区重新父化进 stack。
+    delete layout->replaceWidget(area, stack);
+    stack->addWidget(edit);   // page 0: 文本
+    stack->addWidget(area);   // page 1: tagflow
+    stack->setCurrentIndex(1);
+    editOut = edit;
+    return stack;
+}
+
+void PromptParserWidget::setupPromptTextToggle()
+{
+    m_posStack = wrapScrollWithEditor(ui->layoutRight, ui->scrollAreaPos, m_posEdit);
+    m_negStack = wrapScrollWithEditor(ui->layoutRight, ui->scrollAreaNeg, m_negEdit);
+}
+
+void PromptParserWidget::setTagViewActive(bool tagView)
+{
+    m_tagViewActive = tagView;
+    if (m_posStack) m_posStack->setCurrentIndex(tagView ? 1 : 0);
+    if (m_negStack) m_negStack->setCurrentIndex(tagView ? 1 : 0);
+    // 标签相关按钮只在标签视图下有意义。
+    ui->btnTranslate->setVisible(tagView);
+    ui->btnSelectAllTags->setVisible(tagView);
+    ui->btnClearTagSelection->setVisible(tagView);
+    ui->btnOriginalOrder->setVisible(tagView);
+    ui->btnToggleTagText->setText(tagView ? "文本" : "标签");
+    if (tagView) refreshTagFlowsFromText(); // 切回标签时按文本框最新内容重新解析（支持手动编辑/粘贴）
+}
+
+void PromptParserWidget::refreshTagFlowsFromText()
+{
+    if (!m_posEdit || !m_negEdit) return;
+    const QString posText = m_posEdit->toPlainText();
+    const QString negText = m_negEdit->toPlainText();
+    m_posTagOrder = parsePromptOrder(posText);
+    m_negTagOrder = parsePromptOrder(negText);
+    posTagWidget->setData(parsePromptToMap(posText));
+    negTagWidget->setData(parsePromptToMap(negText));
+    applyTagSortMode();
+}
+
+// 让参数“每项单独成行”：先按已有换行拆，再把每行按“不在引号内的逗号”拆开。
+// A1111 的参数是一整行逗号分隔（且 Lora hashes 的值里带引号包裹的逗号，需跳过）；
+// ComfyUI 本就每行一个参数，二次拆分对其无影响。与图库参数展示的处理保持一致。
+static QString formatParamsPerLine(const QString &params)
+{
+    auto splitTopLevelCommas = [](const QString &s) {
+        QStringList out;
+        QString cur;
+        bool inQuotes = false;
+        for (const QChar c : s) {
+            if (c == '"') { inQuotes = !inQuotes; cur += c; }
+            else if (c == ',' && !inQuotes) { out << cur; cur.clear(); }
+            else cur += c;
+        }
+        out << cur;
+        return out;
+    };
+    QStringList lines;
+    const QStringList raw = params.split('\n');
+    for (const QString &line : raw) {
+        for (const QString &seg : splitTopLevelCommas(line)) {
+            const QString t = seg.trimmed();
+            if (!t.isEmpty()) lines << t;
+        }
+    }
+    return lines.join('\n');
+}
+
 void PromptParserWidget::processImage(const QString &filePath)
 {
     updateImagePreview(filePath);
@@ -424,14 +552,35 @@ void PromptParserWidget::processImage(const QString &filePath)
     const ParsedImageMetadata parsed = parseImageMetadataFromFile(filePath);
     if (!parsed.hasContent()) {
         ui->txtParams->setText("未找到生成参数 / No generation parameters found.");
+        m_lastParsedPositive.clear();
+        m_lastParsedNegative.clear();
+        if (m_posEdit) m_posEdit->clear();
+        if (m_negEdit) m_negEdit->clear();
+        m_posTagOrder.clear();
+        m_negTagOrder.clear();
         posTagWidget->setData({});
         negTagWidget->setData({});
         return;
     }
 
-    ui->txtParams->setText(parsed.parametersText);
-    posTagWidget->setData(parsePromptToMap(parsed.positivePrompt));
-    negTagWidget->setData(parsePromptToMap(parsed.negativePrompt));
+    // 分辨率放在第一行：直接读图片实际尺寸（ComfyUI 的元信息里可能没有分辨率），与图库一致。
+    QString paramsText = formatParamsPerLine(parsed.parametersText);
+    {
+        QImageReader reader(filePath);
+        const QSize sz = reader.size();
+        if (sz.isValid()) {
+            const QString resLine = QString("Resolution / 分辨率: %1 × %2").arg(sz.width()).arg(sz.height());
+            paramsText = paramsText.isEmpty() ? resLine : resLine + '\n' + paramsText;
+        }
+    }
+    ui->txtParams->setPlainText(paramsText);
+    // 记住原始提示词，供“刷新”按钮覆盖回填。
+    m_lastParsedPositive = parsed.positivePrompt;
+    m_lastParsedNegative = parsed.negativePrompt;
+    // 文本框是数据源：填入解析出的提示词文本（用户可编辑/复制/粘贴），tagflow 从文本框派生。
+    if (m_posEdit) m_posEdit->setPlainText(parsed.positivePrompt);
+    if (m_negEdit) m_negEdit->setPlainText(parsed.negativePrompt);
+    if (m_tagViewActive) refreshTagFlowsFromText();
 }
 
 void PromptParserWidget::processCompareImage(bool imageA, const QString &filePath)

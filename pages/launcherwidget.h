@@ -25,6 +25,9 @@ public:
     // 主题切换时调用：重新给内容页套用当前调色板的 toolpage 样式，并刷新左侧 tab 条背景。
     void applyTheme();
 
+    // 是否有任一目标（A1111 / ComfyUI）的进程正在运行。
+    bool hasRunningProcess() const;
+
 private:
     enum class Target { A1111 = 0, ComfyUI = 1 };
 

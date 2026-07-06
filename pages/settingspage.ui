@@ -590,6 +590,19 @@
               </property>
              </widget>
             </item>
+            <item row="5" column="0" colspan="2">
+             <widget class="QCheckBox" name="chkConfirmCloseLauncherRunning">
+              <property name="toolTip">
+               <string>默认开启。当启动器中有 A1111/ComfyUI 进程正在运行时，关闭软件会弹窗确认（关闭软件会一并结束这些进程）。</string>
+              </property>
+              <property name="text">
+               <string>启动器运行时关闭软件需确认 / Confirm on close while launcher is running</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
             <item row="6" column="0" colspan="2">
              <widget class="QCheckBox" name="chkSuppressLocalWarnings">
               <property name="toolTip">

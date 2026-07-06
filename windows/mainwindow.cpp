@@ -3,6 +3,7 @@
 
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QCloseEvent>
 #include <QDateTime>
 #include <QDebug>
 #include <QClipboard>
@@ -1813,6 +1814,24 @@ static void parsePngInfoWorker(const QString &path, UserImageInfo &info, bool sp
     info.parameters = parsed.parametersText.trimmed();
     info.cleanTags = parsePromptsToTagsWorker(info.prompt, splitOnNewline, filterTags);
     info.negativeCleanTags = parsePromptsToTagsWorker(info.negativePrompt, splitOnNewline, filterTags);
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    // 启动器中有 A1111/ComfyUI 进程在运行时，关闭软件会一并结束它们，先弹窗确认（可在设置里关闭此提醒）。
+    if (optConfirmCloseWhileLauncherRunning && launcherWidget && launcherWidget->hasRunningProcess()) {
+        const QMessageBox::StandardButton choice = QMessageBox::question(
+            this,
+            "确认退出 / Confirm Exit",
+            "启动器中仍有 A1111/ComfyUI 进程正在运行，关闭软件会一并结束它们。\n确定要退出吗？",
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No);
+        if (choice != QMessageBox::Yes) {
+            event->ignore();
+            return;
+        }
+    }
+    QMainWindow::closeEvent(event);
 }
 
 MainWindow::~MainWindow()
@@ -9868,6 +9887,7 @@ void MainWindow::loadGlobalConfig() {
         optUserGalleryMatchMode = settings.userGalleryMatchMode;
         optRecalculateKnownMetadataHash = settings.recalculateKnownMetadataHash;
         optTryCivArchiveOnMetadataFail = settings.tryCivArchiveOnMetadataFail;
+        optConfirmCloseWhileLauncherRunning = settings.confirmCloseWhileLauncherRunning;
         optModelUpdateDownloadPolicy = settings.modelUpdateDownloadPolicy;
         optAutoCheckUpdatesOnStartup = settings.autoCheckUpdatesOnStartup;
         optThemeId = settings.themeId;
@@ -10037,6 +10057,7 @@ void MainWindow::applySettingsState(SettingsState state)
     optUserGalleryMatchMode = state.userGalleryMatchMode;
     optRecalculateKnownMetadataHash = state.recalculateKnownMetadataHash;
     optTryCivArchiveOnMetadataFail = state.tryCivArchiveOnMetadataFail;
+    optConfirmCloseWhileLauncherRunning = state.confirmCloseWhileLauncherRunning;
     optUiScale = state.uiScale;
     optThemeId = state.themeId;
     optCustomThemePath = state.customThemePath;
@@ -10262,6 +10283,7 @@ void MainWindow::saveGlobalConfig() {
         settings.userGalleryMatchMode = optUserGalleryMatchMode;
         settings.recalculateKnownMetadataHash = optRecalculateKnownMetadataHash;
         settings.tryCivArchiveOnMetadataFail = optTryCivArchiveOnMetadataFail;
+        settings.confirmCloseWhileLauncherRunning = optConfirmCloseWhileLauncherRunning;
         settings.uiScale = optUiScale;
         settings.themeId = optThemeId;
         settings.customThemePath = optCustomThemePath;

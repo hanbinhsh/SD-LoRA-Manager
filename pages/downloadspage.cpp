@@ -539,6 +539,7 @@ void DownloadsPage::addOrUpdateCard(const ModelUpdateInfo &info, const QString &
         ignoreButton->setCursor(Qt::PointingHandCursor);
         ignoreButton->setMinimumWidth(110);
         for (QPushButton *button : {sourceButton, civitaiButton, downloadButton, ignoreButton}) {
+            button->setProperty("class", "downloadCardButton"); // 固定高 26px，需要更小的纵向内边距，否则文字被裁切
             button->setFixedHeight(26);
         }
         buttonLayout->addWidget(sourceButton);

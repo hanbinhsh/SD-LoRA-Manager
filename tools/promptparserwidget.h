@@ -18,6 +18,8 @@ class PromptParserWidget;
 class QLabel;
 class QListWidget;
 class QProcess;
+class QPlainTextEdit;
+class QStackedWidget;
 
 struct Wd14TagScore
 {
@@ -61,6 +63,14 @@ private:
     // 两个流式布局控件
     TagFlowWidget *posTagWidget;
     TagFlowWidget *negTagWidget;
+    // 文本/标签双视图：每侧用 QStackedWidget 在“可编辑文本框”与“tagflow 滚动区”之间切换。
+    QPlainTextEdit *m_posEdit = nullptr;
+    QPlainTextEdit *m_negEdit = nullptr;
+    QStackedWidget *m_posStack = nullptr;
+    QStackedWidget *m_negStack = nullptr;
+    bool m_tagViewActive = true;
+    QString m_lastParsedPositive;   // 最近一次解析图片得到的正面提示词原文（供“刷新”覆盖）
+    QString m_lastParsedNegative;   // 最近一次解析图片得到的负面提示词原文
     TagFlowWidget *compareTagWidgetA = nullptr;
     TagFlowWidget *compareTagWidgetB = nullptr;
     QProcess *wd14Process = nullptr;
@@ -113,6 +123,14 @@ private:
 
     // 解析辅助函数
     QMap<QString, int> parsePromptToMap(const QString &rawPrompt);
+    QStringList parsePromptOrder(const QString &rawPrompt) const;  // 提示词中 tag 的出现顺序（去重、保留首次）
+    void applyTagSortMode();                                       // 根据“原顺序”开关切换正/负面 tagflow 的排序
+    void setupPromptTextToggle();                                  // 把正/负面 tagflow 滚动区包成“文本/标签”双视图
+    void setTagViewActive(bool tagView);                          // 切换文本/标签视图（正负面同步）
+    void refreshTagFlowsFromText();                               // 从两个文本框内容重新解析 tagflow
+
+    QStringList m_posTagOrder;  // 当前图正面提示词的原始顺序（供 SortByGivenOrder）
+    QStringList m_negTagOrder;  // 当前图负面提示词的原始顺序
     QString normalizeCompareTag(QString tag) const;
     void fillCompareList(QListWidget *list, const QStringList &tags);
     void fillCompareParams();

@@ -653,6 +653,8 @@ QWidget#DownloadsPage QGroupBox::title { subcontrol-origin: margin; left: 10px; 
 QWidget#DownloadsPage QPushButton { background-color: @buttonBg; color: @onButtonText; border: 1px solid @buttonBorder; padding: 7px 12px; border-radius: 3px; }
 QWidget#DownloadsPage QPushButton:hover { background-color: @selectionBg; color: @whiteText; }
 QWidget#DownloadsPage QPushButton:disabled { background-color: @disabledBg; color: @disabledText; }
+/* 模型卡片里的四个按钮固定高 26px：默认 7px 纵向内边距会把文字下部裁掉，这里改小。 */
+QWidget#DownloadsPage QPushButton[class="downloadCardButton"] { padding: 2px 10px; }
 QWidget#pageDownloadsUpdates,
 QWidget#pageDownloadsCoexisting,
 QWidget#pageDownloadsIgnored,

@@ -195,6 +195,14 @@ void LauncherWidget::applyTheme()
     ui->targetTabs->setPalette(tabPalette);
 }
 
+bool LauncherWidget::hasRunningProcess() const
+{
+    auto running = [](const TargetPanel &p) {
+        return p.process && p.process->state() != QProcess::NotRunning;
+    };
+    return running(m_a1111) || running(m_comfy);
+}
+
 void LauncherWidget::setupTarget(TargetPanel &p)
 {
     TargetPanel *pp = &p;

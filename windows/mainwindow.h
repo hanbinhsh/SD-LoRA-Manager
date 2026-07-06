@@ -94,7 +94,7 @@ const int ROLE_ITEM_COUNT             = Qt::UserRole + 62;  // 存储该分类�
 const int ROLE_COLLECTION_EXPAND_KEY  = Qt::UserRole + 63;  // 存储收藏夹树展开状态键
 const int ROLE_PREVIEW_PLACEHOLDER    = Qt::UserRole + 64;  // 该项当前显示"加载失败占位X"（切主题需重染）
 
-const QString CURRENT_VERSION = "1.5.5";
+const QString CURRENT_VERSION = "1.5.6";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
@@ -235,6 +235,7 @@ public:
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
 
 private slots:
     void onModelListClicked(QListWidgetItem *item);
@@ -643,6 +644,7 @@ private:
     int           optUserGalleryMatchMode                     = 0;                // 0: 当前逻辑匹配, 1: 摘要值匹配(可回退), 2: 严格摘要值匹配(不回退)
     bool          optRecalculateKnownMetadataHash             = false;            // 元信息同步时是否重新计算已有 Hash
     bool          optTryCivArchiveOnMetadataFail              = true;             // Civitai 元信息失败时尝试 CivArchive
+    bool          optConfirmCloseWhileLauncherRunning         = true;             // 启动器有进程运行时关闭软件是否弹窗确认
     int           optModelUpdateDownloadPolicy                = 0;                // 0: 每次询问, 1: 保留旧版, 2: 覆盖当前文件
     bool          optAutoCheckUpdatesOnStartup                = true;             // 启动时自动检查软件更新
     double        optUiScale                                  = 1.0;              // 缩放比率
