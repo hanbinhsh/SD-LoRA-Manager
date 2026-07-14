@@ -907,7 +907,22 @@ Click or Drag Image Here</string>
              </column>
              <column>
               <property name="text">
+               <string>类别</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
                <string>翻译</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>优先级</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>使用次数</string>
               </property>
              </column>
             </widget>

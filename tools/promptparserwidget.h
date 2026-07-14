@@ -5,6 +5,7 @@
 
 #include <QWidget>
 #include <QHash>
+#include <QFutureWatcher>
 #include <QMap>
 #include <QString>
 #include <QStringList>
@@ -27,6 +28,8 @@ struct Wd14TagScore
     QString category;
     float confidence = 0.0f;
     QString translation;
+    QString priority;
+    int usageCount = 0;
 };
 
 struct Wd14InferenceResult
@@ -76,6 +79,9 @@ private:
     QProcess *wd14Process = nullptr;
     QString wd14ImagePath;
     QString wd14LastTagsText;
+    QHash<QString, int> m_wd14TagUsageCounts;
+    QFutureWatcher<QHash<QString, int>> *m_wd14UsageWatcher = nullptr;
+    qint64 m_wd14UsageCacheModified = -1;
     ParsedImageMetadata compareMetaA;
     ParsedImageMetadata compareMetaB;
     QString compareImagePathA;
@@ -117,7 +123,8 @@ private:
     void applyWd14Result(const Wd14InferenceResult &result);
     void updateWd14MemoryLabel(quint64 totalBytes, quint64 availableBytes);
     Wd14InferenceResult parseWd14ProcessOutput(const QByteArray &stdoutBytes, const QByteArray &stderrBytes, int exitCode) const;
-    QString translateTag(const QString &tag) const;
+    void loadWd14TagUsageCounts();
+    void updateWd14TagUsageColumn();
     QString formatWd14Tag(const QString &tag) const;
     QStringList splitWd14TagList(const QString &text) const;
 

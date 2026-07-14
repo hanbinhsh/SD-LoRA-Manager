@@ -94,7 +94,7 @@ const int ROLE_ITEM_COUNT             = Qt::UserRole + 62;  // 存储该分类�
 const int ROLE_COLLECTION_EXPAND_KEY  = Qt::UserRole + 63;  // 存储收藏夹树展开状态键
 const int ROLE_PREVIEW_PLACEHOLDER    = Qt::UserRole + 64;  // 该项当前显示"加载失败占位X"（切主题需重染）
 
-const QString CURRENT_VERSION = "1.5.7";
+const QString CURRENT_VERSION = "1.5.8";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";

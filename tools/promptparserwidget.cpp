@@ -47,6 +47,7 @@
 #include <QTreeWidget>
 #include <QUrl>
 #include <QtEndian>
+#include <QtConcurrent/QtConcurrent>
 
 #include <algorithm>
 
@@ -95,6 +96,131 @@ Wd14TagScore parseScoreObject(const QJsonObject &obj)
     return score;
 }
 
+struct Wd14TranslationInfo
+{
+    QString category;
+    QString translation;
+    QString priority;
+};
+
+QString normalizedWd14TagKey(QString tag)
+{
+    tag = TagUtils::cleanPromptTag(tag, false).toCaseFolded().trimmed();
+    tag.replace(' ', '_');
+    static const QRegularExpression separators("_+");
+    tag.replace(separators, "_");
+    return tag;
+}
+
+QString translationValueForTag(const QString &tag, const QHash<QString, QString> *translations)
+{
+    if (!translations) return QString();
+    if (translations->contains(tag)) return translations->value(tag);
+
+    QString swapped = tag;
+    swapped.replace(' ', '_');
+    if (translations->contains(swapped)) return translations->value(swapped);
+
+    swapped = tag;
+    swapped.replace('_', ' ');
+    if (translations->contains(swapped)) return translations->value(swapped);
+    return QString();
+}
+
+QString stripBalancedCsvQuotes(QString text)
+{
+    text = text.trimmed();
+    if (text.size() >= 2 && text.startsWith('"') && text.endsWith('"')) {
+        text = text.mid(1, text.size() - 2);
+        text.replace("\"\"", "\"");
+    }
+    return text.trimmed();
+}
+
+Wd14TranslationInfo parseWd14TranslationInfo(const QString &tag, QString raw)
+{
+    Wd14TranslationInfo info;
+    raw = raw.trimmed();
+    if (raw.isEmpty()) return info;
+
+    // ComfyUI-Custom-Scripts autocomplete CSV 会被全局翻译映射保存为：
+    // "tag 类别-翻译",优先级。这里保留优先级并拆开展示字段。
+    const int lastComma = raw.lastIndexOf(',');
+    if (lastComma > 0) {
+        const QString tail = raw.mid(lastComma + 1).trimmed();
+        bool numeric = !tail.isEmpty();
+        for (const QChar ch : tail) {
+            if (!ch.isDigit()) {
+                numeric = false;
+                break;
+            }
+        }
+        if (numeric) {
+            info.priority = tail;
+            raw = raw.left(lastComma).trimmed();
+        }
+    }
+    raw = stripBalancedCsvQuotes(raw);
+
+    QStringList prefixes{tag};
+    QString spaced = tag;
+    spaced.replace('_', ' ');
+    if (!prefixes.contains(spaced)) prefixes.append(spaced);
+    QString underscored = tag;
+    underscored.replace(' ', '_');
+    if (!prefixes.contains(underscored)) prefixes.append(underscored);
+    std::sort(prefixes.begin(), prefixes.end(), [](const QString &a, const QString &b) {
+        return a.size() > b.size();
+    });
+    for (const QString &prefix : prefixes) {
+        if (raw.size() > prefix.size()
+            && raw.startsWith(prefix, Qt::CaseInsensitive)
+            && raw.at(prefix.size()).isSpace()) {
+            raw = raw.mid(prefix.size()).trimmed();
+            break;
+        }
+    }
+
+    int dash = raw.indexOf('-');
+    if (dash < 0) dash = raw.indexOf(QChar(0xFF0D));
+    if (dash < 0) dash = raw.indexOf(QChar(0x2014));
+    if (dash < 0) dash = raw.indexOf(QChar(0x2013));
+    if (dash > 0) {
+        info.category = raw.left(dash).trimmed();
+        info.translation = raw.mid(dash + 1).trimmed();
+    } else {
+        info.translation = raw.trimmed();
+    }
+    return info;
+}
+
+QHash<QString, int> readWd14TagUsageCountsWorker(const QString &cachePath)
+{
+    QHash<QString, int> counts;
+    QFile file(cachePath);
+    if (!file.open(QIODevice::ReadOnly)) return counts;
+
+    const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+    for (auto it = root.constBegin(); it != root.constEnd(); ++it) {
+        if (it.key().startsWith("__") || !it.value().isObject()) continue;
+        const QJsonObject image = it.value().toObject();
+        QSet<QString> tagsInImage;
+        const auto collect = [&tagsInImage](QString prompt) {
+            prompt.replace("\r\n", ",");
+            prompt.replace('\n', ',');
+            prompt.replace('\r', ',');
+            for (const QString &part : prompt.split(',', Qt::SkipEmptyParts)) {
+                const QString key = normalizedWd14TagKey(part);
+                if (!key.isEmpty()) tagsInImage.insert(key);
+            }
+        };
+        collect(image.value("p").toString());
+        collect(image.value("np").toString());
+        for (const QString &key : tagsInImage) counts[key] += 1;
+    }
+    return counts;
+}
+
 class Wd14ScoreItem : public QTreeWidgetItem
 {
 public:
@@ -105,6 +231,9 @@ public:
         const int column = treeWidget() ? treeWidget()->sortColumn() : 0;
         if (column == 1) {
             return data(column, Qt::UserRole).toFloat() < other.data(column, Qt::UserRole).toFloat();
+        }
+        if (column == 4 || column == 5) {
+            return data(column, Qt::UserRole).toLongLong() < other.data(column, Qt::UserRole).toLongLong();
         }
         return QString::localeAwareCompare(text(column), other.text(column)) < 0;
     }
@@ -282,6 +411,19 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
     ui->treeWd14Tags->setContextMenuPolicy(Qt::CustomContextMenu);
     ui->treeWd14Tags->setSortingEnabled(true);
     ui->treeWd14Tags->header()->setSectionsClickable(true);
+    ui->treeWd14Tags->header()->setStretchLastSection(false);
+    ui->treeWd14Tags->header()->setSectionResizeMode(0, QHeaderView::Interactive);
+    ui->treeWd14Tags->header()->setSectionResizeMode(1, QHeaderView::Fixed);
+    ui->treeWd14Tags->header()->setSectionResizeMode(2, QHeaderView::Fixed);
+    ui->treeWd14Tags->header()->setSectionResizeMode(3, QHeaderView::Stretch);
+    ui->treeWd14Tags->header()->setSectionResizeMode(4, QHeaderView::Fixed);
+    ui->treeWd14Tags->header()->setSectionResizeMode(5, QHeaderView::Fixed);
+    ui->treeWd14Tags->header()->resizeSection(0, 210);
+    ui->treeWd14Tags->header()->resizeSection(1, 86);
+    ui->treeWd14Tags->header()->resizeSection(2, 90);
+    ui->treeWd14Tags->header()->resizeSection(4, 82);
+    ui->treeWd14Tags->header()->resizeSection(5, 88);
+    ui->treeWd14Tags->header()->setSortIndicatorShown(true);
     connect(ui->treeWd14Tags, &QWidget::customContextMenuRequested,
             this, &PromptParserWidget::showWd14TagContextMenu);
     auto *copyWd14SelectedTagsAction = new QAction("复制选中 Tag", ui->treeWd14Tags);
@@ -296,6 +438,7 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
             ui->scrollAreaWidgetContentsNeg, [this]() { ui->scrollAreaWidgetContentsNeg->update(); });
 
     loadWd14Settings();
+    loadWd14TagUsageCounts();
 }
 
 PromptParserWidget::~PromptParserWidget()
@@ -314,6 +457,19 @@ void PromptParserWidget::setTranslationMap(const QHash<QString, QString> *map)
     negTagWidget->setTranslationMap(map);
     if (compareTagWidgetA) compareTagWidgetA->setTranslationMap(map);
     if (compareTagWidgetB) compareTagWidgetB->setTranslationMap(map);
+
+
+    // 翻译表可能在工具页打开后被重新排序/保存，立即刷新已有 WD14 行。
+    for (int i = 0; i < ui->treeWd14Tags->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *item = ui->treeWd14Tags->topLevelItem(i);
+        const QString sourceTag = item->data(0, Qt::UserRole).toString();
+        const Wd14TranslationInfo info = parseWd14TranslationInfo(
+            sourceTag, translationValueForTag(sourceTag, m_translationMap));
+        item->setText(2, info.category);
+        item->setText(3, info.translation);
+        item->setText(4, info.priority);
+        item->setData(4, Qt::UserRole, info.priority.toLongLong());
+    }
 }
 
 bool PromptParserWidget::eventFilter(QObject *watched, QEvent *event)
@@ -1144,6 +1300,7 @@ void PromptParserWidget::setWd14Running(bool running)
 void PromptParserWidget::runWd14Tagger()
 {
     if (wd14Process->state() != QProcess::NotRunning) return;
+    loadWd14TagUsageCounts();
     if (wd14ImagePath.isEmpty() || !QFile::exists(wd14ImagePath)) {
         ui->lblWd14Status->setText("请先选择需要反推的图片。");
         return;
@@ -1251,17 +1408,35 @@ QString PromptParserWidget::formatWd14Tag(const QString &tag) const
     return formatted;
 }
 
-QString PromptParserWidget::translateTag(const QString &tag) const
+void PromptParserWidget::loadWd14TagUsageCounts()
 {
-    if (!m_translationMap) return "";
-    if (m_translationMap->contains(tag)) return m_translationMap->value(tag);
-    QString swapped = tag;
-    swapped.replace(' ', '_');
-    if (m_translationMap->contains(swapped)) return m_translationMap->value(swapped);
-    swapped = tag;
-    swapped.replace('_', ' ');
-    if (m_translationMap->contains(swapped)) return m_translationMap->value(swapped);
-    return "";
+    const QString cachePath = qApp->applicationDirPath() + "/config/user_gallery_cache.json";
+    const qint64 modified = QFileInfo(cachePath).lastModified().toMSecsSinceEpoch();
+    if (m_wd14UsageWatcher || modified == m_wd14UsageCacheModified) return;
+
+    m_wd14UsageCacheModified = modified;
+    m_wd14UsageWatcher = new QFutureWatcher<QHash<QString, int>>(this);
+    connect(m_wd14UsageWatcher, &QFutureWatcher<QHash<QString, int>>::finished, this, [this]() {
+        if (!m_wd14UsageWatcher) return;
+        m_wd14TagUsageCounts = m_wd14UsageWatcher->result();
+        m_wd14UsageWatcher->deleteLater();
+        m_wd14UsageWatcher = nullptr;
+        updateWd14TagUsageColumn();
+    });
+    m_wd14UsageWatcher->setFuture(QtConcurrent::run([cachePath]() {
+        return readWd14TagUsageCountsWorker(cachePath);
+    }));
+}
+
+void PromptParserWidget::updateWd14TagUsageColumn()
+{
+    for (int i = 0; i < ui->treeWd14Tags->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *item = ui->treeWd14Tags->topLevelItem(i);
+        const QString sourceTag = item->data(0, Qt::UserRole).toString();
+        const int count = m_wd14TagUsageCounts.value(normalizedWd14TagKey(sourceTag));
+        item->setText(5, QString::number(count));
+        item->setData(5, Qt::UserRole, count);
+    }
 }
 
 void PromptParserWidget::applyWd14Result(const Wd14InferenceResult &result)
@@ -1284,7 +1459,12 @@ void PromptParserWidget::applyWd14Result(const Wd14InferenceResult &result)
     visibleTags.reserve(result.tags.size());
     for (Wd14TagScore score : result.tags) {
         if (excluded.contains(score.tag)) continue;
-        score.translation = translateTag(score.tag);
+        const Wd14TranslationInfo info = parseWd14TranslationInfo(
+            score.tag, translationValueForTag(score.tag, m_translationMap));
+        score.category = info.category;
+        score.translation = info.translation;
+        score.priority = info.priority;
+        score.usageCount = m_wd14TagUsageCounts.value(normalizedWd14TagKey(score.tag));
         visibleTags.append(score);
     }
 
@@ -1309,8 +1489,14 @@ void PromptParserWidget::applyWd14Result(const Wd14InferenceResult &result)
         auto *item = new Wd14ScoreItem(ui->treeWd14Tags);
         item->setText(0, formatted);
         item->setText(1, QString::number(score.confidence * 100.0f, 'f', 2) + "%");
-        item->setText(2, score.translation);
+        item->setText(2, score.category);
+        item->setText(3, score.translation);
+        item->setText(4, score.priority);
+        item->setText(5, QString::number(score.usageCount));
+        item->setData(0, Qt::UserRole, score.tag);
         item->setData(1, Qt::UserRole, score.confidence);
+        item->setData(4, Qt::UserRole, score.priority.toLongLong());
+        item->setData(5, Qt::UserRole, score.usageCount);
     }
 
     for (const QString &extraTag : splitWd14TagList(ui->editWd14AdditionalTags->text())) {
