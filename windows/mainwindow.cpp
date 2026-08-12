@@ -5841,19 +5841,18 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
     const QString downloadedFileName = QFileInfo(savePath).fileName();
     const bool isCoverPreview = (downloadedFileName == localBaseName + ".preview.png");
 
-    QIcon fitIcon = getFitIcon(savePath);
-    bool modelListUpdated = false;
+    QSet<QString> sidebarModelPaths;
+    QSet<QString> homeModelPaths;
+    bool needsDetailThumbnail = false;
 
     if (isCoverPreview) {
-        QIcon newIcon = getSquareIcon(QPixmap(savePath));
-
         for (int i = 0; i < ui->modelList->count(); ++i) {
             QListWidgetItem *item = ui->modelList->item(i);
             if (item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
                 item->setData(ROLE_PREVIEW_PATH, savePath);
-                item->setIcon(newIcon);
                 applyModelHighlightColor(item);
-                modelListUpdated = true;
+                const QString modelPath = item->data(ROLE_FILE_PATH).toString();
+                if (!modelPath.isEmpty()) sidebarModelPaths.insert(modelPath);
             }
         }
 
@@ -5863,28 +5862,23 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
             QFileInfo fi(itemPath);
             if (fi.completeBaseName() == localBaseName) {
                 item->setData(ROLE_PREVIEW_PATH, savePath);
-                item->setIcon(newIcon);
+                if (!itemPath.isEmpty()) homeModelPaths.insert(itemPath);
             }
         }
 
-        if (modelListUpdated) {
-            std::function<void(QTreeWidgetItem*)> updateTreeNode = [&](QTreeWidgetItem *node) {
-                if (!node) return;
-                if (node->data(0, ROLE_MODEL_NAME).toString() == localBaseName) {
-                    node->setData(0, ROLE_PREVIEW_PATH, savePath);
-                    node->setIcon(0, newIcon);
-                    applyModelHighlightColor(node);
-                }
-                for (int i = 0; i < node->childCount(); ++i) updateTreeNode(node->child(i));
-            };
-            for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
-                updateTreeNode(ui->collectionTree->topLevelItem(i));
+        std::function<void(QTreeWidgetItem*)> updateTreeNode = [&](QTreeWidgetItem *node) {
+            if (!node) return;
+            if (node->data(0, ROLE_MODEL_NAME).toString() == localBaseName) {
+                node->setData(0, ROLE_PREVIEW_PATH, savePath);
+                applyModelHighlightColor(node);
+                const QString modelPath = node->data(0, ROLE_FILE_PATH).toString();
+                if (!modelPath.isEmpty()) sidebarModelPaths.insert(modelPath);
             }
-            ui->modelList->viewport()->update();
-            ui->modelList->update();
-            ui->collectionTree->viewport()->update();
+            for (int i = 0; i < node->childCount(); ++i) updateTreeNode(node->child(i));
+        };
+        for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
+            updateTreeNode(ui->collectionTree->topLevelItem(i));
         }
-        ui->homeGalleryList->viewport()->update();
     }
 
     if (ui->layoutGallery) {
@@ -5894,9 +5888,8 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
                     QString btnPath = QFileInfo(btn->property("savePath").toString()).absoluteFilePath();
                     if (btnPath == savePath) {
                         btn->setProperty("fullImagePath", savePath);
-                        btn->setIcon(fitIcon);
-                        btn->setIconSize(QSize(90, 135));
                         btn->setText("");
+                        needsDetailThumbnail = true;
                     }
                 }
             }
@@ -5908,8 +5901,26 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
         if (isCoverPreview) {
             currentMeta.previewPath = savePath;
             currentHeroPath = "";
-            transitionToImage(savePath);
+            needsDetailThumbnail = true;
         }
+    }
+
+    // Reading and scaling a newly downloaded 4K preview can take noticeable time.
+    // Keep the GUI update above lightweight and let the existing image workers do it.
+    for (const QString &modelPath : std::as_const(sidebarModelPaths)) {
+        auto *task = new IconLoaderTask(savePath, 64, 8, this, "SIDEBAR:" + modelPath);
+        task->setAutoDelete(true);
+        backgroundThreadPool->start(task);
+    }
+    for (const QString &modelPath : std::as_const(homeModelPaths)) {
+        auto *task = new IconLoaderTask(savePath, 180, 12, this, "HOME:" + modelPath);
+        task->setAutoDelete(true);
+        backgroundThreadPool->start(task);
+    }
+    if (needsDetailThumbnail) {
+        auto *task = new IconLoaderTask(savePath, 100, 0, this, savePath, true);
+        task->setAutoDelete(true);
+        backgroundThreadPool->start(task);
     }
 }
 
@@ -7572,27 +7583,42 @@ void MainWindow::processNextDownload()
             }
 
             QByteArray data = reply->readAll();
-            if (!data.isEmpty()) {
-                const bool saved = savePreviewImageWithMetadata(data, cleanedSavePath, task.previewMeta);
+            if (data.isEmpty()) {
+                if (task.countForMetadataSync) markMetadataPreviewTaskFinished();
+                QTimer::singleShot(0, this, &MainWindow::processNextDownload);
+                return;
+            }
+
+            // Decoding and re-encoding a large preview as metadata-bearing PNG is
+            // expensive. Keep the serial download queue, but perform that work off
+            // the GUI thread so one completed image cannot freeze the window.
+            auto *saveWatcher = new QFutureWatcher<bool>(this);
+            connect(saveWatcher, &QFutureWatcher<bool>::finished, this,
+                    [this, saveWatcher, task, cleanedSavePath]() {
+                const bool saved = saveWatcher->result();
+                saveWatcher->deleteLater();
+
                 if (saved) {
                     applyDownloadedPreviewToUi(task.localBaseName, cleanedSavePath);
-
-                    if (task.button) {
-                        QString currentBtnPath = QFileInfo(task.button->property("fullImagePath").toString()).absoluteFilePath();
-                        QString savePathProp = QFileInfo(task.button->property("savePath").toString()).absoluteFilePath();
-                        if (currentBtnPath == cleanedSavePath || savePathProp == cleanedSavePath) {
-                            IconLoaderTask *iconTask = new IconLoaderTask(cleanedSavePath, 100, 0, this, cleanedSavePath, true);
-                            iconTask->setAutoDelete(true);
-                            threadPool->start(iconTask);
-                            task.button->setText("");
-                        }
-                    }
                 } else {
-                    ui->statusbar->showMessage("预览图已保存，但未能写入可解析元信息: " + QFileInfo(cleanedSavePath).fileName(), 5000);
+                    ui->statusbar->showMessage(
+                        "预览图已保存，但未能写入可解析元信息: "
+                            + QFileInfo(cleanedSavePath).fileName(),
+                        5000);
                 }
-            }
-            if (task.countForMetadataSync) markMetadataPreviewTaskFinished();
-            QTimer::singleShot(500, this, &MainWindow::processNextDownload);
+
+                if (task.button) task.button->setText("");
+                if (task.countForMetadataSync) markMetadataPreviewTaskFinished();
+                QTimer::singleShot(0, this, &MainWindow::processNextDownload);
+            });
+            saveWatcher->setFuture(QtConcurrent::run(
+                backgroundThreadPool,
+                [this,
+                 data = std::move(data),
+                 savePath = cleanedSavePath,
+                 payload = task.previewMeta]() {
+                    return savePreviewImageWithMetadata(data, savePath, payload);
+                }));
         });
 
         return; // 成功发送请求并等待回调，退出 while 循环
