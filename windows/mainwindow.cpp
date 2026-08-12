@@ -83,6 +83,20 @@
 #include "utils/tagutils.h"
 
 namespace {
+QVector<TagTranslationSource> buildTagTranslationSources(const QStringList &paths,
+                                                         const QSet<QString> &disabledPaths)
+{
+    QVector<TagTranslationSource> sources;
+    sources.reserve(paths.size());
+    for (const QString &path : paths) {
+        TagTranslationSource source;
+        source.path = QFileInfo(path).absoluteFilePath();
+        source.enabled = !disabledPaths.contains(source.path);
+        sources.append(source);
+    }
+    return sources;
+}
+
 QString normalizedHomeTagKey(const QString &tag)
 {
     return tag.trimmed().toCaseFolded();
@@ -8510,15 +8524,12 @@ void MainWindow::ensureToolTabLoaded(int index)
             break;
         case 2:
             tagBrowserWidget = new TagBrowserWidget(toolsTabWidget);
-            tagBrowserWidget->setCsvPath(translationCsvPath);
+            tagBrowserWidget->setTranslationSources(
+                buildTagTranslationSources(translationCsvPaths, disabledTranslationCsvPaths));
             tagBrowserWidget->setMergedTranslationMap(&translationMap);
             connect(tagBrowserWidget, &TagBrowserWidget::csvSaved, this, [this](const QString &path){
-                const QString normalized = QFileInfo(path).absoluteFilePath();
-                if (!translationCsvPaths.contains(normalized)) translationCsvPaths.prepend(normalized);
-                translationCsvPath = normalized;
+                Q_UNUSED(path);
                 reloadTranslationMaps();
-                applyPathListsToUi();
-                saveGlobalConfig();
             });
             newPage = tagBrowserWidget;
             break;
@@ -8673,6 +8684,14 @@ void MainWindow::initDownloadsPage()
         if (downloadManager) downloadManager->ignoreSelectedUpdates();
     });
     connect(downloadsPage->retryButton(), &QPushButton::clicked, this, [this]() {
+        QList<QListWidgetItem*> failedCheckItems;
+        for (const QString &filePath : downloadsPage->failedUpdateCheckFilePaths()) {
+            if (QListWidgetItem *item = findModelItemByFilePath(filePath)) failedCheckItems << item;
+        }
+        if (!failedCheckItems.isEmpty()) {
+            checkUpdatesForItems(failedCheckItems);
+            return;
+        }
         if (downloadManager) downloadManager->retryFailedDownloads();
     });
     connect(downloadsPage->openFolderButton(), &QPushButton::clicked, this, [this]() {
@@ -8920,12 +8939,12 @@ void MainWindow::checkUpdateForSnapshot(const UpdateCheckSnapshot &snapshot)
 
 void MainWindow::dispatchQueuedUpdateChecks()
 {
-    constexpr int kMaxConcurrentUpdateChecks = 6;
-    while (activeUpdateNetworkChecks < kMaxConcurrentUpdateChecks && !pendingUpdateChecksQueue.isEmpty()) {
-        const UpdateCheckSnapshot snapshot = pendingUpdateChecksQueue.dequeue();
-        ++activeUpdateNetworkChecks;
-        checkUpdateForSnapshot(snapshot);
-    }
+    // Civitai rate-limits bursts aggressively. Keep model checks serial; the next
+    // item is dispatched after a short cooldown in markUpdateCheckFinished().
+    if (activeUpdateNetworkChecks > 0 || pendingUpdateChecksQueue.isEmpty()) return;
+    const UpdateCheckSnapshot snapshot = pendingUpdateChecksQueue.dequeue();
+    ++activeUpdateNetworkChecks;
+    checkUpdateForSnapshot(snapshot);
 }
 
 void MainWindow::enqueueUpdateHashCheck(const UpdateCheckSnapshot &snapshot)
@@ -9036,7 +9055,8 @@ void MainWindow::markUpdateCheckFinished()
         }
         return;
     }
-    QTimer::singleShot(0, this, &MainWindow::dispatchQueuedUpdateChecks);
+    constexpr int kUpdateCheckIntervalMs = 1200;
+    QTimer::singleShot(kUpdateCheckIntervalMs, this, &MainWindow::dispatchQueuedUpdateChecks);
 }
 
 void MainWindow::handleModelUpdateReply(QNetworkReply *reply)
@@ -9071,14 +9091,18 @@ void MainWindow::handleModelUpdateReply(QNetworkReply *reply)
             markUpdateCheckFinished();
             return;
         }
-        QNetworkReply *detailReply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/models/%1").arg(modelId))));
-        detailReply->setProperty("filePath", filePath);
-        detailReply->setProperty("baseName", baseName);
-        detailReply->setProperty("modelDir", modelDir);
-        detailReply->setProperty("currentVersionId", root["id"].toInt());
-        detailReply->setProperty("currentSha256", currentSha256);
-        detailReply->setProperty("token", updateCheckToken);
-        connect(detailReply, &QNetworkReply::finished, this, [this, detailReply]() { handleModelUpdateReply(detailReply); });
+        const int matchedVersionId = root["id"].toInt();
+        QTimer::singleShot(600, this, [this, modelId, matchedVersionId, filePath, baseName, modelDir, currentSha256, token]() {
+            if (token > 0 && token != updateCheckToken) return;
+            QNetworkReply *detailReply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/models/%1").arg(modelId))));
+            detailReply->setProperty("filePath", filePath);
+            detailReply->setProperty("baseName", baseName);
+            detailReply->setProperty("modelDir", modelDir);
+            detailReply->setProperty("currentVersionId", matchedVersionId);
+            detailReply->setProperty("currentSha256", currentSha256);
+            detailReply->setProperty("token", token);
+            connect(detailReply, &QNetworkReply::finished, this, [this, detailReply]() { handleModelUpdateReply(detailReply); });
+        });
         return;
     }
 
@@ -9174,10 +9198,20 @@ ModelUpdateInfo MainWindow::parseModelUpdateInfo(QListWidgetItem *item, const QJ
     if (info.sha256.isEmpty()) info.sha256 = currentSha;
     info.sizeMB = selectedFile["sizeKB"].toDouble() / 1024.0;
     info.hasUpdate = info.latestVersionId > 0 && info.latestVersionId != info.currentVersionId && !info.downloadUrl.isEmpty();
-    if (info.hasUpdate && !info.downloadFileName.isEmpty()) {
-        const QString latestLocalPath = QFileInfo(QDir(info.modelDir).filePath(info.downloadFileName)).absoluteFilePath();
-        info.latestFileExistsLocally = QFile::exists(latestLocalPath)
-                                      && latestLocalPath.compare(info.filePath, Qt::CaseInsensitive) != 0;
+    if (info.hasUpdate) {
+        // Local files are commonly renamed after download. Determine coexistence from the
+        // stable Civitai model/version IDs instead of the server-side file name.
+        for (int i = 0; i < ui->modelList->count(); ++i) {
+            QListWidgetItem *localItem = ui->modelList->item(i);
+            if (!isModelListItem(localItem) || localItem == item) continue;
+            if (localItem->data(ROLE_CIVITAI_MODEL_ID).toInt() != info.modelId) continue;
+            if (localItem->data(ROLE_CIVITAI_VERSION_ID).toInt() != info.latestVersionId) continue;
+            const QString localPath = localItem->data(ROLE_FILE_PATH).toString();
+            if (QFileInfo::exists(localPath)) {
+                info.latestFileExistsLocally = true;
+                break;
+            }
+        }
     }
     return info;
 }
@@ -10613,7 +10647,8 @@ void MainWindow::applyPathListsToUi()
             formatPathListForEdit(activeTranslationPaths));
     }
     if (tagBrowserWidget) {
-        tagBrowserWidget->setCsvPath(translationCsvPath);
+        tagBrowserWidget->setTranslationSources(
+            buildTagTranslationSources(translationCsvPaths, disabledTranslationCsvPaths));
         tagBrowserWidget->setMergedTranslationMap(&translationMap);
     }
     if (llmPromptWidget) llmPromptWidget->setLibraryPaths(activeLoraPaths, activeGalleryPaths);
@@ -10915,7 +10950,6 @@ void MainWindow::reloadTranslationMaps(bool notifyWidgets)
     if (parserWidget) parserWidget->setTranslationMap(&translationMap);
     if (promptTemplateLibraryWidget) promptTemplateLibraryWidget->setTranslationMap(&translationMap);
     if (tagBrowserWidget) {
-        tagBrowserWidget->setCsvPath(translationCsvPath);
         tagBrowserWidget->setMergedTranslationMap(&translationMap);
     }
     if (tagFlowWidget) tagFlowWidget->setTranslationMap(&translationMap);

@@ -36,13 +36,6 @@
        <item>
         <layout class="QHBoxLayout" name="layoutActions">
          <item>
-          <widget class="QLineEdit" name="editSearchModels">
-           <property name="placeholderText">
-            <string>搜索模型、底模、路径...</string>
-           </property>
-          </widget>
-         </item>
-         <item>
           <widget class="QPushButton" name="btnRefreshAnalysis">
            <property name="text">
             <string>刷新分析</string>
@@ -216,6 +209,16 @@
            <string>所有模型</string>
           </attribute>
           <layout class="QVBoxLayout" name="verticalLayoutAllModels">
+           <item>
+            <widget class="QLineEdit" name="editSearchModels">
+             <property name="placeholderText">
+              <string>搜索模型、底模、路径...</string>
+             </property>
+             <property name="clearButtonEnabled">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
            <item>
             <widget class="QTableWidget" name="tableModels">
              <property name="selectionBehavior">

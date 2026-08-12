@@ -51,6 +51,7 @@ struct DownloadCardWidgets {
     QString targetPath;
     QString category;
     QString displayName;
+    QString searchText;
     bool selected = false;
     bool hasUpdate = false;
     bool showingPlaceholder = false; // 当前预览是"加载失败占位X"，切主题时需要重绘

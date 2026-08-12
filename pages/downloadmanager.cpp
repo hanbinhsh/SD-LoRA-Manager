@@ -492,11 +492,14 @@ void DownloadManager::retryFailedDownloads()
     bool queued = false;
     const QStringList keys = m_infos.keys();
     for (const QString &filePath : keys) {
-        if (!cardStatusText(filePath).contains("失败")) continue;
+        const QString status = cardStatusText(filePath);
+        const bool legacyDownloadFailure = status.startsWith(QStringLiteral("失败:"))
+                                           && !status.startsWith(QStringLiteral("检查失败:"));
+        if (!status.startsWith(QStringLiteral("下载失败:")) && !legacyDownloadFailure) continue;
         enqueueModelDownload(m_infos.value(filePath));
         queued = true;
     }
-    if (!queued) emit statusMessageChanged("当前没有失败任务可重试。");
+    if (!queued) emit statusMessageChanged("当前没有下载失败任务可重试。");
 }
 
 void DownloadManager::processNextModelDownload()
@@ -519,7 +522,7 @@ void DownloadManager::processNextModelDownload()
 
     m_activeFile = new QFile(m_activeTask.tempPath, this);
     if (!m_activeFile->open(QIODevice::WriteOnly)) {
-        updateStatus(m_activeTask.info.filePath, "失败: 无法写入目标路径");
+        updateStatus(m_activeTask.info.filePath, "下载失败: 无法写入目标路径");
         m_activeFile->deleteLater();
         m_activeFile = nullptr;
         QTimer::singleShot(0, this, &DownloadManager::processNextModelDownload);
@@ -533,7 +536,7 @@ void DownloadManager::processNextModelDownload()
     const QUrl downloadUrl(m_activeTask.info.downloadUrl);
     const bool downloadHasToken = QUrlQuery(downloadUrl).hasQueryItem("token");
     if (!m_network || !m_makeRequest) {
-        updateStatus(m_activeTask.info.filePath, "失败: 下载器未初始化");
+        updateStatus(m_activeTask.info.filePath, "下载失败: 下载器未初始化");
         QTimer::singleShot(0, this, &DownloadManager::processNextModelDownload);
         return;
     }
@@ -574,7 +577,7 @@ void DownloadManager::processNextModelDownload()
                 return;
             }
             QFile::remove(m_activeTask.tempPath);
-            updateStatus(m_activeTask.info.filePath, "失败: " + (m_replyError ? m_replyError(reply) : reply->errorString()));
+            updateStatus(m_activeTask.info.filePath, "下载失败: " + (m_replyError ? m_replyError(reply) : reply->errorString()));
             QTimer::singleShot(0, this, &DownloadManager::processNextModelDownload);
             return;
         }
@@ -584,7 +587,7 @@ void DownloadManager::processNextModelDownload()
             const QString actual = m_hash ? m_hash(m_activeTask.tempPath) : FileUtils::calculateSha256Hex(m_activeTask.tempPath);
             if (!actual.isEmpty() && actual.compare(expected, Qt::CaseInsensitive) != 0) {
                 QFile::remove(m_activeTask.tempPath);
-                updateStatus(m_activeTask.info.filePath, "失败: SHA256 校验失败");
+                updateStatus(m_activeTask.info.filePath, "下载失败: SHA256 校验失败");
                 QTimer::singleShot(0, this, &DownloadManager::processNextModelDownload);
                 return;
             }
@@ -600,11 +603,11 @@ void DownloadManager::finishModelDownload(const ModelFileDownloadTask &task)
     if (task.overwrite && QFile::exists(task.targetPath)) QFile::remove(task.targetPath);
     if (QFile::exists(task.targetPath) && task.targetPath != task.tempPath) {
         QFile::remove(task.tempPath);
-        updateStatus(task.info.filePath, "失败: 目标文件已存在");
+        updateStatus(task.info.filePath, "下载失败: 目标文件已存在");
         return;
     }
     if (!QFile::rename(task.tempPath, task.targetPath)) {
-        updateStatus(task.info.filePath, "失败: 无法移动下载文件");
+        updateStatus(task.info.filePath, "下载失败: 无法移动下载文件");
         return;
     }
 

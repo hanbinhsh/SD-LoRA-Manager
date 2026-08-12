@@ -45,11 +45,14 @@ public:
     QString currentCategory() const;
     QStringList selectedFilePaths() const;
     QStringList filePathsForCategory(const QString &category) const;
+    QStringList visibleFilePathsForCategory(const QString &category) const;
     QStringList sortedFilePathsForCategory(const QString &category) const;
     QString categoryForStatus(const QString &status) const;
     QString cardStatusText(const QString &filePath) const;
     QString cardTargetPath(const QString &filePath) const;
     bool containsCard(const QString &filePath) const;
+    QStringList failedUpdateCheckFilePaths() const;
+    bool hasRetryableFailures() const;
     void setStatusText(const QString &text);
     void setModelSelectionAvailability(bool hasCurrentModel, bool hasSelectedModels);
     void setUpdateCheckButtonsEnabled(bool enabled);
@@ -66,11 +69,11 @@ public:
     void setCurrentTabSelection(bool checked);
     void clearAllCardSelection();
     void toggleCurrentTabSelection();
-    bool hasErrorCards() const;
     void placeCardInCategory(const QString &filePath, const QString &category, bool deferSort = false);
     void sortCardsInCategory(const QString &category);
     void sortAllCards();
     void removeCard(const QString &filePath);
+    void applyCardSearchFilter();
 
     void setMetadataScanRunning(bool running);
     void setMetadataScanItems(const QVector<MetadataScanItem> &items);
@@ -102,6 +105,7 @@ protected:
 
 private:
     void updateVersionActionButtons();
+    bool cardMatchesSearch(const DownloadCardWidgets &card) const;
     void updateSelectionSummary(int selectedCurrent, int currentTotal, int selectedTotal);
     QString currentMetadataCategory() const;
     bool metadataItemMatchesCurrentCategory(const MetadataScanItem &item) const;

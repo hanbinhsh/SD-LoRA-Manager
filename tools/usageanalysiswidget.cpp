@@ -18,6 +18,7 @@
 #include <QSaveFile>
 #include <QTableWidget>
 #include <QTextStream>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <algorithm>
 
@@ -138,6 +139,20 @@ UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
     setupTable(ui->tableLargestModels, true);
     ui->tableLargestModels->setColumnCount(4);
     ui->tableLargestModels->setHorizontalHeaderLabels({"模型", "类别", "文件夹", "占用"});
+    QHeaderView *largestHeader = ui->tableLargestModels->horizontalHeader();
+    largestHeader->setStretchLastSection(false);
+    largestHeader->setSectionResizeMode(0, QHeaderView::Interactive);
+    largestHeader->setSectionResizeMode(1, QHeaderView::Interactive);
+    largestHeader->setSectionResizeMode(2, QHeaderView::Interactive);
+    largestHeader->setSectionResizeMode(3, QHeaderView::Fixed);
+    largestHeader->resizeSection(3, 110);
+    QTimer::singleShot(0, this, [this]() {
+        const int available = qMax(300, ui->tableLargestModels->viewport()->width() - 110);
+        const int shared = available / 3;
+        ui->tableLargestModels->horizontalHeader()->resizeSection(0, shared);
+        ui->tableLargestModels->horizontalHeader()->resizeSection(1, shared);
+        ui->tableLargestModels->horizontalHeader()->resizeSection(2, available - shared * 2);
+    });
 
     connect(ui->btnRefreshAnalysis, &QPushButton::clicked, this, &UsageAnalysisWidget::requestRefresh);
     connect(ui->editSearchModels, &QLineEdit::textChanged, this, &UsageAnalysisWidget::onSearchTextChanged);
@@ -184,20 +199,44 @@ void UsageAnalysisWidget::refreshSummary()
 
 void UsageAnalysisWidget::refreshCharts()
 {
-    QVector<QPair<QString, int>> usedRows;
+    QVector<const UsageAnalysisModel *> usedModels;
     QMap<QString, int> baseCounts;
     for (const UsageAnalysisModel &model : analysisData.models) {
-        if (model.usageCount > 0) usedRows.append(qMakePair(model.displayName, model.usageCount));
+        if (model.usageCount > 0) usedModels.append(&model);
         const QString base = model.baseModel.trimmed().isEmpty() ? "Unknown" : model.baseModel.trimmed();
         baseCounts[base] += 1;
     }
 
-    std::sort(usedRows.begin(), usedRows.end(), [](const auto &a, const auto &b) {
-        if (a.second != b.second) return a.second > b.second;
-        return QString::localeAwareCompare(a.first, b.first) < 0;
+    std::sort(usedModels.begin(), usedModels.end(), [](const auto *a, const auto *b) {
+        if (a->usageCount != b->usageCount) return a->usageCount > b->usageCount;
+        return QString::localeAwareCompare(a->displayName, b->displayName) < 0;
     });
-    if (usedRows.size() > 20) usedRows.resize(20);
-    fillTopTable(ui->tableTopUsed, usedRows, "LoRA");
+    if (usedModels.size() > 20) usedModels.resize(20);
+
+    ui->tableTopUsed->setSortingEnabled(false);
+    ui->tableTopUsed->clear();
+    ui->tableTopUsed->setColumnCount(4);
+    ui->tableTopUsed->setHorizontalHeaderLabels({"模型", "类别", "数量", "占比"});
+    ui->tableTopUsed->setRowCount(usedModels.size());
+    int maxUsage = 1;
+    for (const UsageAnalysisModel *model : std::as_const(usedModels))
+        maxUsage = qMax(maxUsage, model->usageCount);
+    for (int row = 0; row < usedModels.size(); ++row) {
+        const UsageAnalysisModel &model = *usedModels.at(row);
+        ui->tableTopUsed->setItem(row, 0, new QTableWidgetItem(model.displayName));
+        ui->tableTopUsed->setItem(row, 1, new QTableWidgetItem(normalizeCategory(model.modelType, model.rootName)));
+        ui->tableTopUsed->setItem(row, 2, new NumericTableItem(model.usageCount));
+        auto *ratioItem = new NumericTableItem(model.usageCount);
+        ui->tableTopUsed->setItem(row, 3, ratioItem);
+        auto *bar = new QProgressBar(ui->tableTopUsed);
+        bar->setRange(0, maxUsage);
+        bar->setValue(model.usageCount);
+        bar->setTextVisible(true);
+        bar->setFormat(QString("%1%").arg(model.usageCount * 100 / maxUsage));
+        ui->tableTopUsed->setCellWidget(row, 3, bar);
+    }
+    ui->tableTopUsed->setSortingEnabled(true);
+    ui->tableTopUsed->sortItems(2, Qt::DescendingOrder);
 
     QVector<QPair<QString, int>> tagRows;
     for (auto it = analysisData.positiveTagCounts.cbegin(); it != analysisData.positiveTagCounts.cend(); ++it) {
@@ -295,6 +334,8 @@ void UsageAnalysisWidget::refreshDiskSpace()
         ui->tableLargestModels->setItem(i, 3, new SizeTableItem(bytesOf(m)));
     }
     ui->tableLargestModels->setSortingEnabled(true);
+    ui->tableLargestModels->sortItems(3, Qt::DescendingOrder);
+    ui->tableLargestModels->horizontalHeader()->resizeSection(3, 110);
 }
 
 void UsageAnalysisWidget::fillTopTable(QTableWidget *table, const QVector<QPair<QString, int>> &rows, const QString &nameHeader)

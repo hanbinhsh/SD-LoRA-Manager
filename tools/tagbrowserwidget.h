@@ -41,6 +41,12 @@ struct TagTranslationInfo
     QString priority;
 };
 
+struct TagTranslationSource
+{
+    QString path;
+    bool enabled = true;
+};
+
 class TagSearchProxyModel : public QSortFilterProxyModel
 {
     Q_OBJECT
@@ -78,8 +84,7 @@ public:
     explicit TagBrowserWidget(QWidget *parent = nullptr);
     ~TagBrowserWidget();
 
-    void setCsvPath(const QString &path);
-    QString csvPath() const;
+    void setTranslationSources(const QVector<TagTranslationSource> &sources);
     void setMergedTranslationMap(const QHash<QString, QString> *map);
 
 protected:
@@ -101,6 +106,7 @@ private slots:
     void onReloadClicked();
     void onSaveClicked();
     void onModelChanged();
+    void onTranslationSourceChanged(int index);
 
 private:
     Ui::TagBrowserWidget *ui;
@@ -109,6 +115,9 @@ private:
     QStandardItemModel *m_userTagModel;
     TagSearchProxyModel *m_userTagProxy;
     QString m_csvPath;
+    QVector<TagTranslationSource> m_translationSources;
+    int m_translationSourceIndex = 0;
+    bool m_mergedSource = true;
     bool m_csvLoaded = false;
     bool m_dirty = false;
     bool m_loading = false;
@@ -117,11 +126,14 @@ private:
     int m_pendingRowIndex = 0;
     QTimer *m_batchAppendTimer = nullptr;
     QFutureWatcher<QVector<TagTranslationRow>> *m_loadWatcher = nullptr;
+    QFutureWatcher<QHash<QString, TagTranslationInfo>> *m_effectiveInfoWatcher = nullptr;
+    int m_effectiveInfoGeneration = 0;
     QFutureWatcher<QVector<UserTagUsageRow>> *m_userTagWatcher = nullptr;
     bool m_userTagsLoaded = false;
     bool m_userTagsLoading = false;
     int m_userTagLoadGeneration = 0;
     const QHash<QString, QString> *m_mergedTranslationMap = nullptr;
+    QHash<QString, TagTranslationInfo> m_effectiveTranslationInfos;
 
     QString escapeCsvField(const QString &value) const;
     void ensureCsvLoadedForEditing();
@@ -132,7 +144,6 @@ private:
     void loadUserTags();
     void updateUserTagTranslations();
     void updateUserTagStatusLabel();
-    QHash<QString, TagTranslationInfo> currentTranslationInfoMap() const;
     QString translatedTextForTag(const QString &tag, const QHash<QString, QString> &translations) const;
     QString escapeUserTagCsvField(const QString &value) const;
     QVector<UserTagUsageRow> selectedUserTagRows() const;
@@ -144,6 +155,11 @@ private:
     Qt::SortOrder m_tagSortOrder = Qt::AscendingOrder;
 
     void resetTagSort();
+    bool saveCurrentCsv();
+    bool confirmDiscardOrSaveChanges(int restoreIndex);
+    void applyTranslationSourceIndex(int index);
+    void updateTranslationEditingState();
+    void reloadEffectiveTranslationInfos();
 };
 
 #endif // TAGBROWSERWIDGET_H

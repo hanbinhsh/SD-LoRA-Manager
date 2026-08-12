@@ -217,7 +217,25 @@
         </widget>
        </item>
        <item>
-        <widget class="QTabWidget" name="tabDownloadsStatus">
+        <layout class="QVBoxLayout" name="verticalLayout_DownloadVersionContent">
+         <property name="spacing">
+          <number>8</number>
+         </property>
+         <item>
+          <widget class="QLineEdit" name="editDownloadsSearch">
+           <property name="clearButtonEnabled">
+            <bool>true</bool>
+           </property>
+           <property name="placeholderText">
+            <string>搜索模型名称、版本、状态或路径...</string>
+           </property>
+           <property name="toolTip">
+            <string>搜索当前下载列表中的模型名称、版本、状态、Model ID 或文件路径</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QTabWidget" name="tabDownloadsStatus">
          <property name="currentIndex">
           <number>0</number>
          </property>
@@ -635,7 +653,9 @@
            </item>
           </layout>
          </widget>
-        </widget>
+          </widget>
+         </item>
+        </layout>
        </item>
       </layout>
      </widget>

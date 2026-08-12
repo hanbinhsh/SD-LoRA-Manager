@@ -17,6 +17,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -261,6 +262,9 @@ DownloadsPage::DownloadsPage(QWidget *parent)
     connect(ui->tableHealth, &QTableWidget::itemSelectionChanged, this, [this]() {
         updateHealthActionButtons();
     });
+    connect(ui->editDownloadsSearch, &QLineEdit::textChanged, this, [this]() {
+        applyCardSearchFilter();
+    });
 
     loadMetadataResultCache();
     updateVersionActionButtons();
@@ -345,7 +349,7 @@ void DownloadsPage::updateVersionActionButtons()
     ui->btnDownloadsDownloadSelected->setEnabled(hasSelectedDownloadable);
     ui->btnDownloadsIgnoreSelected->setEnabled(hasSelectedCards);
     ui->btnDownloadsClearSelection->setEnabled(hasSelectedCards);
-    ui->btnDownloadsRetry->setEnabled(hasErrorCards());
+    ui->btnDownloadsRetry->setEnabled(!m_updateCheckBusy && hasRetryableFailures());
     ui->btnDownloadsOpenFolder->setEnabled(hasSelectedCards);
 }
 
@@ -376,6 +380,15 @@ QStringList DownloadsPage::filePathsForCategory(const QString &category) const
     QStringList filePaths;
     for (auto it = m_cards.cbegin(); it != m_cards.cend(); ++it) {
         if (it.value().category == category) filePaths << it.key();
+    }
+    return filePaths;
+}
+
+QStringList DownloadsPage::visibleFilePathsForCategory(const QString &category) const
+{
+    QStringList filePaths;
+    for (auto it = m_cards.cbegin(); it != m_cards.cend(); ++it) {
+        if (it.value().category == category && cardMatchesSearch(it.value())) filePaths << it.key();
     }
     return filePaths;
 }
@@ -413,9 +426,39 @@ bool DownloadsPage::containsCard(const QString &filePath) const
     return m_cards.contains(filePath);
 }
 
+QStringList DownloadsPage::failedUpdateCheckFilePaths() const
+{
+    QStringList filePaths;
+    for (auto it = m_cards.cbegin(); it != m_cards.cend(); ++it) {
+        const QString status = it.value().statusText;
+        if (status.startsWith(QStringLiteral("检查失败:"))
+            || status.startsWith(QStringLiteral("无法从 Hash 匹配"))
+            || status.startsWith(QStringLiteral("无法计算 Hash"))) {
+            filePaths << it.key();
+        }
+    }
+    return filePaths;
+}
+
+bool DownloadsPage::hasRetryableFailures() const
+{
+    for (auto it = m_cards.cbegin(); it != m_cards.cend(); ++it) {
+        const QString status = it.value().statusText;
+        if (status.startsWith(QStringLiteral("检查失败:"))
+            || status.startsWith(QStringLiteral("无法从 Hash 匹配"))
+            || status.startsWith(QStringLiteral("无法计算 Hash"))
+            || status.startsWith(QStringLiteral("下载失败:"))
+            || (status.startsWith(QStringLiteral("失败:"))
+                && !status.startsWith(QStringLiteral("检查失败:")))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void DownloadsPage::updateSelectionSummary()
 {
-    const QStringList currentPaths = filePathsForCategory(currentCategory());
+    const QStringList currentPaths = visibleFilePathsForCategory(currentCategory());
     int selectedCurrent = 0;
     for (const QString &filePath : currentPaths) {
         if (m_cards.value(filePath).selected) ++selectedCurrent;
@@ -586,6 +629,16 @@ void DownloadsPage::addOrUpdateCard(const ModelUpdateInfo &info, const QString &
 
     card = m_cards.value(info.filePath);
     card.displayName = info.displayName.isEmpty() ? QFileInfo(info.filePath).completeBaseName() : info.displayName;
+    card.searchText = QStringList({card.displayName,
+                                   info.baseName,
+                                   info.currentVersion,
+                                   info.latestVersion,
+                                   QString::number(info.modelId),
+                                   QString::number(info.currentVersionId),
+                                   QString::number(info.latestVersionId),
+                                   info.downloadFileName,
+                                   info.filePath})
+                          .join(QLatin1Char('\n'));
     card.hasUpdate = info.hasUpdate;
     const QString sizeText = info.sizeMB > 0 ? QString::number(info.sizeMB, 'f', 1) + " MB" : "--";
     const QString targetPath = info.downloadFileName.isEmpty() ? info.filePath : QDir(info.modelDir).filePath(info.downloadFileName);
@@ -656,6 +709,7 @@ void DownloadsPage::updateCardStatus(const QString &filePath, const QString &sta
     }
     m_cards[filePath] = card;
     placeCardInCategory(filePath, categoryForStatus(status));
+    applyCardSearchFilter();
     updateSelectionSummary();
 }
 
@@ -749,7 +803,7 @@ void DownloadsPage::setCardSelected(const QString &filePath, bool selected)
 
 void DownloadsPage::setCurrentTabSelection(bool checked)
 {
-    for (const QString &filePath : filePathsForCategory(currentCategory())) {
+    for (const QString &filePath : visibleFilePathsForCategory(currentCategory())) {
         setCardSelected(filePath, checked);
     }
     updateSelectionSummary();
@@ -767,7 +821,7 @@ void DownloadsPage::clearAllCardSelection()
 
 void DownloadsPage::toggleCurrentTabSelection()
 {
-    const QStringList paths = filePathsForCategory(currentCategory());
+    const QStringList paths = visibleFilePathsForCategory(currentCategory());
     bool allChecked = !paths.isEmpty();
     for (const QString &filePath : paths) {
         if (!m_cards.value(filePath).selected) {
@@ -778,12 +832,21 @@ void DownloadsPage::toggleCurrentTabSelection()
     setCurrentTabSelection(!allChecked);
 }
 
-bool DownloadsPage::hasErrorCards() const
+bool DownloadsPage::cardMatchesSearch(const DownloadCardWidgets &card) const
+{
+    const QString query = ui->editDownloadsSearch->text().trimmed();
+    if (query.isEmpty()) return true;
+    return card.searchText.contains(query, Qt::CaseInsensitive)
+           || card.statusText.contains(query, Qt::CaseInsensitive)
+           || card.targetPath.contains(query, Qt::CaseInsensitive);
+}
+
+void DownloadsPage::applyCardSearchFilter()
 {
     for (auto it = m_cards.cbegin(); it != m_cards.cend(); ++it) {
-        if (it.value().category == "errors" || it.value().statusText.contains("失败")) return true;
+        if (it.value().card) it.value().card->setVisible(cardMatchesSearch(it.value()));
     }
-    return false;
+    updateSelectionSummary();
 }
 
 void DownloadsPage::placeCardInCategory(const QString &filePath, const QString &category, bool deferSort)

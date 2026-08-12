@@ -186,6 +186,36 @@ QVector<TagTranslationRow> readCsvRowsWorker(const QString &csvPath)
     return rows;
 }
 
+QVector<TagTranslationRow> readMergedCsvRowsWorker(const QStringList &csvPaths)
+{
+    QVector<TagTranslationRow> merged;
+    QSet<QString> seen;
+    for (const QString &path : csvPaths) {
+        const QVector<TagTranslationRow> rows = readCsvRowsWorker(path);
+        for (const TagTranslationRow &row : rows) {
+            const QString key = row.tag.trimmed().toCaseFolded();
+            if (key.isEmpty() || seen.contains(key)) continue;
+            seen.insert(key);
+            merged.append(row);
+        }
+    }
+    return merged;
+}
+
+QHash<QString, TagTranslationInfo> readMergedTranslationInfosWorker(const QStringList &csvPaths)
+{
+    QHash<QString, TagTranslationInfo> infos;
+    const QVector<TagTranslationRow> rows = readMergedCsvRowsWorker(csvPaths);
+    for (const TagTranslationRow &row : rows) {
+        TagTranslationInfo info;
+        info.category = row.category;
+        info.translation = row.translation;
+        info.priority = row.count;
+        infos.insert(row.tag, info);
+    }
+    return infos;
+}
+
 QString cleanUserTagTextWorker(QString tag)
 {
     tag = tag.trimmed();
@@ -550,6 +580,8 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     connect(ui->btnResetSort, &QPushButton::clicked, this, &TagBrowserWidget::onResetSortClicked);
     connect(ui->btnReload, &QPushButton::clicked, this, &TagBrowserWidget::onReloadClicked);
     connect(ui->btnSave, &QPushButton::clicked, this, &TagBrowserWidget::onSaveClicked);
+    connect(ui->comboTranslationSource, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &TagBrowserWidget::onTranslationSourceChanged);
     connect(m_model, &QStandardItemModel::itemChanged, this, &TagBrowserWidget::onModelChanged);
 
     m_batchAppendTimer = new QTimer(this);
@@ -571,6 +603,14 @@ TagBrowserWidget::~TagBrowserWidget()
         delete m_loadWatcher;
         m_loadWatcher = nullptr;
     }
+    ++m_effectiveInfoGeneration;
+    if (m_effectiveInfoWatcher) {
+        m_effectiveInfoWatcher->disconnect(this);
+        m_effectiveInfoWatcher->cancel();
+        m_effectiveInfoWatcher->waitForFinished();
+        delete m_effectiveInfoWatcher;
+        m_effectiveInfoWatcher = nullptr;
+    }
     ++m_userTagLoadGeneration;
     if (m_userTagWatcher) {
         m_userTagWatcher->disconnect(this);
@@ -582,34 +622,31 @@ TagBrowserWidget::~TagBrowserWidget()
     delete ui;
 }
 
-void TagBrowserWidget::setCsvPath(const QString &path)
+void TagBrowserWidget::setTranslationSources(const QVector<TagTranslationSource> &sources)
 {
-    const QString normalized = path.trimmed();
-    const bool pathChanged = (m_csvPath != normalized);
-    m_csvPath = normalized;
-    ui->editCsvPath->setText(normalized);
+    if (m_dirty && !m_mergedSource && !confirmDiscardOrSaveChanges(m_translationSourceIndex)) return;
+    const QString previousPath = m_mergedSource ? QString() : m_csvPath;
+    m_translationSources = sources;
+    reloadEffectiveTranslationInfos();
 
-    if (pathChanged) {
-        m_dirty = false;
-        m_loading = false;
-        m_csvLoaded = false;
-        m_pendingRows.clear();
-        m_pendingRowIndex = 0;
-        if (m_batchAppendTimer) m_batchAppendTimer->stop();
-        m_model->removeRows(0, m_model->rowCount());
-        if (m_proxy) m_proxy->invalidate();
+    QSignalBlocker blocker(ui->comboTranslationSource);
+    ui->comboTranslationSource->clear();
+    ui->comboTranslationSource->addItem("合并结果", QString());
+    int selectedIndex = 0;
+    for (int i = 0; i < m_translationSources.size(); ++i) {
+        const TagTranslationSource &source = m_translationSources.at(i);
+        const QFileInfo info(source.path);
+        QString label = QString("%1. %2").arg(i + 1).arg(info.fileName().isEmpty() ? source.path : info.fileName());
+        if (!source.enabled) label += "（已停用）";
+        ui->comboTranslationSource->addItem(label, source.path);
+        ui->comboTranslationSource->setItemData(i + 1, source.path, Qt::ToolTipRole);
+        if (!previousPath.isEmpty()
+            && QFileInfo(previousPath).absoluteFilePath() == QFileInfo(source.path).absoluteFilePath()) {
+            selectedIndex = i + 1;
+        }
     }
-
-    if (isVisible()) {
-        loadCsv();
-    } else {
-        updateStatusLabel();
-    }
-}
-
-QString TagBrowserWidget::csvPath() const
-{
-    return m_csvPath;
+    ui->comboTranslationSource->setCurrentIndex(selectedIndex);
+    applyTranslationSourceIndex(selectedIndex);
 }
 
 void TagBrowserWidget::setMergedTranslationMap(const QHash<QString, QString> *map)
@@ -675,7 +712,16 @@ void TagBrowserWidget::loadCsv()
     m_proxy->setSearchText(QString());
     m_proxy->sort(-1);
 
-    if (m_csvPath.isEmpty() || !QFile::exists(m_csvPath)) {
+    QStringList sourcePaths;
+    if (m_mergedSource) {
+        for (const TagTranslationSource &source : std::as_const(m_translationSources)) {
+            if (source.enabled && QFile::exists(source.path)) sourcePaths.append(source.path);
+        }
+    } else if (!m_csvPath.isEmpty() && QFile::exists(m_csvPath)) {
+        sourcePaths.append(m_csvPath);
+    }
+
+    if (sourcePaths.isEmpty()) {
         m_loading = false;
         m_dirty = false;
         if (m_proxy) m_proxy->invalidate();
@@ -685,6 +731,7 @@ void TagBrowserWidget::loadCsv()
 
     setLoadingState(true, "正在加载词表，请稍候...");
     const QString csvPath = m_csvPath;
+    const bool mergedSource = m_mergedSource;
 
     if (m_loadWatcher) {
         m_loadWatcher->disconnect(this);
@@ -695,13 +742,13 @@ void TagBrowserWidget::loadCsv()
     }
 
     m_loadWatcher = new QFutureWatcher<QVector<TagTranslationRow>>(this);
-    connect(m_loadWatcher, &QFutureWatcher<QVector<TagTranslationRow>>::finished, this, [this, generation, csvPath]() {
+    connect(m_loadWatcher, &QFutureWatcher<QVector<TagTranslationRow>>::finished, this, [this, generation, csvPath, mergedSource]() {
         if (!m_loadWatcher) return;
         const QVector<TagTranslationRow> rows = m_loadWatcher->result();
         m_loadWatcher->deleteLater();
         m_loadWatcher = nullptr;
 
-        if (generation != m_loadGeneration || csvPath != m_csvPath) {
+        if (generation != m_loadGeneration || csvPath != m_csvPath || mergedSource != m_mergedSource) {
             return;
         }
 
@@ -716,8 +763,8 @@ void TagBrowserWidget::loadCsv()
         }
     });
 
-    m_loadWatcher->setFuture(QtConcurrent::run([csvPath]() {
-        return readCsvRowsWorker(csvPath);
+    m_loadWatcher->setFuture(QtConcurrent::run([sourcePaths, mergedSource]() {
+        return mergedSource ? readMergedCsvRowsWorker(sourcePaths) : readCsvRowsWorker(sourcePaths.value(0));
     }));
 }
 
@@ -788,17 +835,24 @@ void TagBrowserWidget::updateStatusLabel()
     }
 
     QString status;
-    if (m_csvPath.isEmpty()) {
+    if (m_mergedSource && m_translationSources.isEmpty()) {
         status = "未配置翻译表路径";
-        ui->lblEmptyState->setText("未配置 Tag 翻译表路径。请先在设置页选择 CSV，或点击“新增”手动创建。");
-    } else if (!QFile::exists(m_csvPath)) {
+        ui->lblEmptyState->setText("未配置 Tag 翻译表路径。请先在设置页配置词表。");
+    } else if (m_mergedSource && !m_csvLoaded) {
+        status = "合并词表未加载";
+        ui->lblEmptyState->setText("为提升启动速度，合并词表将在进入本页面时后台加载。");
+    } else if (m_mergedSource && m_model->rowCount() == 0) {
+        status = "没有启用且可读取的翻译表";
+        ui->lblEmptyState->setText("当前没有启用且可读取的 Tag 翻译表，请在设置页检查词表状态。");
+    } else if (!m_mergedSource && !QFile::exists(m_csvPath)) {
         status = "CSV 文件不存在";
         ui->lblEmptyState->setText("找不到当前 CSV 文件。请检查路径，或点击“新增”手动创建后保存。");
     } else if (!m_csvLoaded) {
         status = "词表未加载";
         ui->lblEmptyState->setText("为提升启动速度，词表将于进入/操作本页面时自动加载。");
     } else {
-        status = QString("共 %1 条 Tag 记录%2")
+        status = QString("%1 · 共 %2 条 Tag 记录%3")
+                     .arg(m_mergedSource ? "合并结果（只读）" : QFileInfo(m_csvPath).fileName())
                      .arg(m_model->rowCount())
                      .arg(m_dirty ? "  |  未保存修改" : "");
         ui->lblEmptyState->setText("CSV 已加载，但当前没有任何 Tag 记录。可点击“新增”开始编辑。");
@@ -807,6 +861,7 @@ void TagBrowserWidget::updateStatusLabel()
     bool empty = (m_model->rowCount() == 0);
     ui->lblEmptyState->setVisible(empty);
     ui->tableTags->setMinimumHeight(empty ? 220 : 0);
+    updateTranslationEditingState();
 }
 
 TagTranslationInfo translatedInfoForTag(const QString &tag, const QHash<QString, TagTranslationInfo> &infos)
@@ -828,27 +883,6 @@ TagTranslationInfo translatedInfoForTag(const QString &tag, const QHash<QString,
     return info;
 }
 
-QHash<QString, TagTranslationInfo> TagBrowserWidget::currentTranslationInfoMap() const
-{
-    QHash<QString, TagTranslationInfo> out;
-
-    for (int row = 0; row < m_model->rowCount(); ++row) {
-        const QString tag = m_model->item(row, 0) ? m_model->item(row, 0)->text().trimmed() : QString();
-        if (tag.isEmpty()) continue;
-
-        TagTranslationInfo info;
-        info.category = m_model->item(row, 1) ? m_model->item(row, 1)->text().trimmed() : QString();
-        info.translation = m_model->item(row, 2) ? m_model->item(row, 2)->text().trimmed() : QString();
-        info.priority = m_model->item(row, 3) ? m_model->item(row, 3)->text().trimmed() : QString();
-
-        if (!info.category.isEmpty() || !info.translation.isEmpty() || !info.priority.isEmpty()) {
-            out.insert(tag, info);
-        }
-    }
-
-    return out;
-}
-
 QString TagBrowserWidget::translatedTextForTag(const QString &tag, const QHash<QString, QString> &translations) const
 {
     QString translated = translations.value(tag);
@@ -867,11 +901,9 @@ QString TagBrowserWidget::translatedTextForTag(const QString &tag, const QHash<Q
 
 void TagBrowserWidget::updateUserTagTranslations()
 {
-    const QHash<QString, TagTranslationInfo> infos = currentTranslationInfoMap();
-
     for (int row = 0; row < m_userTagModel->rowCount(); ++row) {
         const QString tag = m_userTagModel->item(row, 0) ? m_userTagModel->item(row, 0)->text() : QString();
-        TagTranslationInfo info = translatedInfoForTag(tag, infos);
+        TagTranslationInfo info = translatedInfoForTag(tag, m_effectiveTranslationInfos);
         if (info.translation.isEmpty() && m_mergedTranslationMap) {
             info.translation = translatedTextForTag(tag, *m_mergedTranslationMap);
         }
@@ -952,13 +984,14 @@ void TagBrowserWidget::loadUserTags()
         m_userTagWatcher = nullptr;
         if (generation != m_userTagLoadGeneration) return;
 
-        const QHash<QString, TagTranslationInfo> infos = currentTranslationInfoMap();
         m_userTagModel->removeRows(0, m_userTagModel->rowCount());
 
         for (const auto &rowData : rows) {
             const QString tag = rowData.tag;
             const int count = rowData.count;
-            const TagTranslationInfo info = translatedInfoForTag(tag, infos);
+            TagTranslationInfo info = translatedInfoForTag(tag, m_effectiveTranslationInfos);
+            if (info.translation.isEmpty() && m_mergedTranslationMap)
+                info.translation = translatedTextForTag(tag, *m_mergedTranslationMap);
 
             QList<QStandardItem*> row;
 
@@ -1352,7 +1385,7 @@ void TagBrowserWidget::onResetSortClicked()
 
 void TagBrowserWidget::onAddRowClicked()
 {
-    if (m_loading) return;
+    if (m_loading || m_mergedSource) return;
     ensureCsvLoadedForEditing();
 
     QStandardItem *tagItem = new QStandardItem();
@@ -1381,7 +1414,7 @@ void TagBrowserWidget::onAddRowClicked()
 
 void TagBrowserWidget::onDeleteRowsClicked()
 {
-    if (m_loading) return;
+    if (m_loading || m_mergedSource) return;
     ensureCsvLoadedForEditing();
     QModelIndexList rows = ui->tableTags->selectionModel()->selectedRows();
     if (rows.isEmpty()) return;
@@ -1406,14 +1439,20 @@ void TagBrowserWidget::onReloadClicked()
 
 void TagBrowserWidget::onSaveClicked()
 {
+    saveCurrentCsv();
+}
+
+bool TagBrowserWidget::saveCurrentCsv()
+{
+    if (m_mergedSource) return false;
     if (m_loading) {
         QMessageBox::information(nullptr, "提示", "词表仍在加载，请稍候再保存。");
-        return;
+        return false;
     }
     ensureCsvLoadedForEditing();
     if (m_csvPath.isEmpty()) {
         QMessageBox::information(nullptr, "提示", "请先在设置中配置 Tag 翻译表 CSV 路径。");
-        return;
+        return false;
     }
 
     QFileInfo info(m_csvPath);
@@ -1422,7 +1461,7 @@ void TagBrowserWidget::onSaveClicked()
     QFile file(m_csvPath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         QMessageBox::warning(nullptr, "错误", "无法保存 Tag 翻译表。");
-        return;
+        return false;
     }
 
     file.write("\xEF\xBB\xBF", 3);
@@ -1480,7 +1519,88 @@ void TagBrowserWidget::onSaveClicked()
     updateStatusLabel();
     updateUserTagTranslations();
     updateUserTagStatusLabel();
+    reloadEffectiveTranslationInfos();
     emit csvSaved(m_csvPath);
+    return true;
+}
+
+bool TagBrowserWidget::confirmDiscardOrSaveChanges(int restoreIndex)
+{
+    if (!m_dirty || m_mergedSource) return true;
+    QMessageBox box(QMessageBox::Question, "未保存修改",
+                    "当前词表有未保存修改，切换前要保存吗？",
+                    QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, this);
+    box.setDefaultButton(QMessageBox::Save);
+    const int result = box.exec();
+    if (result == QMessageBox::Save) return saveCurrentCsv();
+    if (result == QMessageBox::Discard) return true;
+
+    QSignalBlocker blocker(ui->comboTranslationSource);
+    ui->comboTranslationSource->setCurrentIndex(restoreIndex);
+    return false;
+}
+
+void TagBrowserWidget::onTranslationSourceChanged(int index)
+{
+    if (index == m_translationSourceIndex) return;
+    const int previousIndex = m_translationSourceIndex;
+    if (!confirmDiscardOrSaveChanges(previousIndex)) return;
+    applyTranslationSourceIndex(index);
+}
+
+void TagBrowserWidget::applyTranslationSourceIndex(int index)
+{
+    m_translationSourceIndex = qBound(0, index, ui->comboTranslationSource->count() - 1);
+    m_mergedSource = m_translationSourceIndex == 0;
+    m_csvPath = m_mergedSource ? QString() : ui->comboTranslationSource->itemData(m_translationSourceIndex).toString();
+    m_dirty = false;
+    m_loading = false;
+    m_csvLoaded = false;
+    m_pendingRows.clear();
+    m_pendingRowIndex = 0;
+    if (m_batchAppendTimer) m_batchAppendTimer->stop();
+    m_model->removeRows(0, m_model->rowCount());
+    if (m_proxy) m_proxy->invalidate();
+    updateTranslationEditingState();
+    if (isVisible()) loadCsv();
+    else updateStatusLabel();
+}
+
+void TagBrowserWidget::updateTranslationEditingState()
+{
+    const bool editable = !m_mergedSource && !m_loading;
+    ui->tableTags->setEditTriggers(editable
+        ? QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed | QAbstractItemView::SelectedClicked
+        : QAbstractItemView::NoEditTriggers);
+    ui->btnAdd->setEnabled(editable);
+    ui->btnDelete->setEnabled(editable);
+    ui->btnSave->setEnabled(editable);
+}
+
+void TagBrowserWidget::reloadEffectiveTranslationInfos()
+{
+    QStringList activePaths;
+    for (const TagTranslationSource &source : std::as_const(m_translationSources)) {
+        if (source.enabled && QFile::exists(source.path)) activePaths.append(source.path);
+    }
+    const int generation = ++m_effectiveInfoGeneration;
+    if (m_effectiveInfoWatcher) {
+        m_effectiveInfoWatcher->disconnect(this);
+        m_effectiveInfoWatcher->cancel();
+        m_effectiveInfoWatcher->deleteLater();
+    }
+    m_effectiveInfoWatcher = new QFutureWatcher<QHash<QString, TagTranslationInfo>>(this);
+    connect(m_effectiveInfoWatcher, &QFutureWatcher<QHash<QString, TagTranslationInfo>>::finished,
+            this, [this, generation]() {
+        if (!m_effectiveInfoWatcher || generation != m_effectiveInfoGeneration) return;
+        m_effectiveTranslationInfos = m_effectiveInfoWatcher->result();
+        m_effectiveInfoWatcher->deleteLater();
+        m_effectiveInfoWatcher = nullptr;
+        updateUserTagTranslations();
+    });
+    m_effectiveInfoWatcher->setFuture(QtConcurrent::run([activePaths]() {
+        return readMergedTranslationInfosWorker(activePaths);
+    }));
 }
 
 void TagBrowserWidget::onModelChanged()
