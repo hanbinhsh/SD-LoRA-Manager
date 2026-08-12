@@ -905,6 +905,8 @@ MainWindow::MainWindow(QWidget *parent)
         updateBackgroundDuringTransition();
     });
     placeholderIcon = generatePlaceholderIcon();
+    noPreviewIcon = generateNoPreviewIcon(false);
+    smallNoPreviewIcon = generateNoPreviewIcon(true);
 
     netManager = new QNetworkAccessManager(this);
 
@@ -2155,6 +2157,7 @@ void MainWindow::refreshHomeCollectionsUI()
 void MainWindow::refreshHomeGallery()
 {
     placeholderIcon = generatePlaceholderIcon(); // 用当前主题色重建，保证本次填充的占位X颜色正确
+    noPreviewIcon = generateNoPreviewIcon(false);
     cancelPendingTasks();
     ui->homeGalleryList->clear();
 
@@ -2276,9 +2279,12 @@ void MainWindow::refreshHomeGallery()
         item->setData(ROLE_USER_NOTE, sideItem->data(ROLE_USER_NOTE));
         item->setData(ROLE_USER_TAGS, sideItem->data(ROLE_USER_TAGS));
         item->setData(ROLE_USER_CUSTOM_TRIGGERS, sideItem->data(ROLE_USER_CUSTOM_TRIGGERS));
+        item->setData(ROLE_MODEL_PREVIEW_STATE, sideItem->data(ROLE_MODEL_PREVIEW_STATE));
         item->setToolTip(formatModelUserNoteTooltip(filePath, displayName));
 
-        item->setIcon(placeholderIcon);
+        const ModelPreviewState previewState = static_cast<ModelPreviewState>(
+            sideItem->data(ROLE_MODEL_PREVIEW_STATE).toInt());
+        item->setIcon(previewState == ModelPreviewState::KnownNoPreview ? noPreviewIcon : placeholderIcon);
         item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
         ui->homeGalleryList->addItem(item);
 
@@ -2973,6 +2979,7 @@ struct ModelListMetadata {
     QString modelType;
     QStringList trainedWords;
     QString civitaiName; // 为空表示不覆盖已有的 ROLE_CIVITAI_NAME
+    ModelPreviewState previewState = ModelPreviewState::MissingOrUnknown;
 };
 
 // 工作线程函数：读取并解析单个模型的 .json，填充 ModelListMetadata（纯 I/O，无 UI 依赖）。
@@ -2991,7 +2998,13 @@ ModelListMetadata parseModelListMetadata(const QString &filePath, const QString 
         return m;
     }
 
-    const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        m.sortDate = fi.lastModified().toMSecsSinceEpoch();
+        return m;
+    }
+    const QJsonObject root = document.object();
     m.creator = jsonModelCreator(root);
     m.modelTags = jsonModelTags(root);
     m.modelType = root["model"].toObject()["type"].toString();
@@ -3010,8 +3023,31 @@ ModelListMetadata parseModelListMetadata(const QString &filePath, const QString 
         m.civitaiName = fullName;
     }
     m.localEdited = root["localEdited"].toBool(false) || root["localOnly"].toBool(false);
-    m.modelId = root["modelId"].toInt();
+    m.modelId = root["modelId"].toInt(root.value("model").toObject().value("id").toInt());
     m.versionId = root["id"].toInt();
+
+    bool hasUsableImage = false;
+    for (const QJsonValue &value : root.value("images").toArray()) {
+        const QJsonObject image = value.toObject();
+        const QString type = image.value("type").toString();
+        const QString url = image.value("url").toString();
+        if (type.compare("video", Qt::CaseInsensitive) == 0
+            || url.endsWith(".mp4", Qt::CaseInsensitive)
+            || url.endsWith(".webm", Qt::CaseInsensitive)) {
+            continue;
+        }
+        if (!url.trimmed().isEmpty()) {
+            hasUsableImage = true;
+            break;
+        }
+    }
+    const bool localOnly = root.value("localOnly").toBool(false);
+    const bool knownSynced = localOnly
+                             || m.modelId > 0
+                             || m.versionId > 0
+                             || !root.value("metadataSource").toString().trimmed().isEmpty()
+                             || !root.value("syncedAt").toString().trimmed().isEmpty();
+    if (knownSynced && !hasUsableImage) m.previewState = ModelPreviewState::KnownNoPreview;
 
     int coverLevel = 1; // 默认 Safe
     const QJsonArray images = root["images"].toArray();
@@ -3073,6 +3109,7 @@ void applyModelListMetadataToItem(QListWidgetItem *item, const ModelListMetadata
     item->setData(ROLE_MODEL_TAGS, m.modelTags);
     item->setData(ROLE_MODEL_TYPE, m.modelType);
     item->setData(ROLE_MODEL_TRAINED_WORDS, m.trainedWords);
+    item->setData(ROLE_MODEL_PREVIEW_STATE, static_cast<int>(m.previewState));
     if (!m.civitaiName.isEmpty()) item->setData(ROLE_CIVITAI_NAME, m.civitaiName);
 }
 
@@ -3121,6 +3158,14 @@ QList<ScannedModelEntry> scanModelsWorker(const QStringList &paths, bool recursi
 
             const QString jsonPath = currentFileDir.filePath(e.baseName + ".json");
             e.meta = parseModelListMetadata(e.fullPath, jsonPath);
+            if (!e.previewPath.isEmpty()) {
+                QImageReader reader(e.previewPath);
+                if (reader.canRead()) e.meta.previewState = ModelPreviewState::RealPreview;
+                else {
+                    e.previewPath.clear();
+                    e.meta.previewState = ModelPreviewState::MissingOrUnknown;
+                }
+            }
             entries.append(e);
         }
     }
@@ -3165,6 +3210,7 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
         if (token != modelScanToken) return;
 
         smallPlaceholderIcon = generateSmallPlaceholderIcon(); // 侧边栏用带内边距的小占位X（当前主题色）
+        smallNoPreviewIcon = generateNoPreviewIcon(true);
         ui->modelList->setUpdatesEnabled(false);
         ui->comboBaseModel->blockSignals(true);
 
@@ -3188,7 +3234,11 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
             const QString civitaiName = item->data(ROLE_CIVITAI_NAME).toString();
             item->setText(optUseCivitaiName && !civitaiName.isEmpty() ? civitaiName : e.baseName);
 
-            item->setIcon(smallPlaceholderIcon);
+            const ModelPreviewState previewState = static_cast<ModelPreviewState>(
+                item->data(ROLE_MODEL_PREVIEW_STATE).toInt());
+            item->setIcon(previewState == ModelPreviewState::KnownNoPreview
+                              ? smallNoPreviewIcon
+                              : smallPlaceholderIcon);
             item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
             applyModelHighlightColor(item);
             applyModelUserNoteData(item);
@@ -5821,6 +5871,13 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
 
     // 保存并更新UI
     saveLocalMetadata(modelDir, localBaseName, root);
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (item && item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
+            preloadItemMetadata(item, QDir(modelDir).filePath(localBaseName + ".json"));
+            break;
+        }
+    }
     if (!m_skipPreviewSync && m_forceResyncPreview && !meta.images.isEmpty()) {
         const QString coverPath = QFileInfo(QDir(modelDir).filePath(localBaseName + ".preview.png")).absoluteFilePath();
         const ImageInfo &cover = meta.images.first();
@@ -5865,6 +5922,7 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
             QListWidgetItem *item = ui->modelList->item(i);
             if (item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
                 item->setData(ROLE_PREVIEW_PATH, savePath);
+                item->setData(ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
                 applyModelHighlightColor(item);
                 const QString modelPath = item->data(ROLE_FILE_PATH).toString();
                 if (!modelPath.isEmpty()) sidebarModelPaths.insert(modelPath);
@@ -5877,6 +5935,7 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
             QFileInfo fi(itemPath);
             if (fi.completeBaseName() == localBaseName) {
                 item->setData(ROLE_PREVIEW_PATH, savePath);
+                item->setData(ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
                 if (!itemPath.isEmpty()) homeModelPaths.insert(itemPath);
             }
         }
@@ -5885,6 +5944,7 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
             if (!node) return;
             if (node->data(0, ROLE_MODEL_NAME).toString() == localBaseName) {
                 node->setData(0, ROLE_PREVIEW_PATH, savePath);
+                node->setData(0, ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
                 applyModelHighlightColor(node);
                 const QString modelPath = node->data(0, ROLE_FILE_PATH).toString();
                 if (!modelPath.isEmpty()) sidebarModelPaths.insert(modelPath);
@@ -6304,6 +6364,7 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
                     item->setIcon(QIcon(originalPix));
                 }
                 item->setData(ROLE_PREVIEW_PLACEHOLDER, false); // 真实预览已就绪
+                item->setData(ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
             }
         }
     }
@@ -6326,6 +6387,7 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
                     item->setIcon(getSquareIcon(originalPix));
                 }
                 item->setData(ROLE_PREVIEW_PLACEHOLDER, false); // 真实预览已就绪
+                item->setData(ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
                 applyModelHighlightColor(item);
             }
         }
@@ -6343,6 +6405,7 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
                     node->setIcon(0, getSquareIcon(originalPix));
                 }
                 node->setData(0, ROLE_PREVIEW_PLACEHOLDER, false); // 真实预览已就绪
+                node->setData(0, ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
                 applyModelHighlightColor(node);
             }
             for (int j = 0; j < node->childCount(); ++j) updateTreeIcon(node->child(j));
@@ -6902,6 +6965,66 @@ void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonP
     // 解析（纯 I/O）与写入列表项（UI）分离，扫描时可在工作线程复用 parseModelListMetadata。
     const ModelListMetadata m = parseModelListMetadata(item->data(ROLE_FILE_PATH).toString(), jsonPath);
     applyModelListMetadataToItem(item, m);
+
+    ModelPreviewState state = m.previewState;
+    const QString previewPath = item->data(ROLE_PREVIEW_PATH).toString();
+    if (!previewPath.isEmpty() && QFileInfo::exists(previewPath)) {
+        QImageReader reader(previewPath);
+        state = reader.canRead() ? ModelPreviewState::RealPreview
+                                 : ModelPreviewState::MissingOrUnknown;
+    }
+    item->setData(ROLE_MODEL_PREVIEW_STATE, static_cast<int>(state));
+    if (state != ModelPreviewState::RealPreview) {
+        item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
+        item->setIcon(state == ModelPreviewState::KnownNoPreview
+                          ? smallNoPreviewIcon
+                          : smallPlaceholderIcon);
+    }
+    syncModelPreviewStateToViews(item);
+}
+
+void MainWindow::syncModelPreviewStateToViews(QListWidgetItem *sourceItem)
+{
+    if (!sourceItem) return;
+    const QString sourcePath = sourceItem->data(ROLE_FILE_PATH).toString();
+    if (sourcePath.isEmpty()) return;
+    const QString filePath = QFileInfo(sourcePath).absoluteFilePath();
+
+    const QVariant state = sourceItem->data(ROLE_MODEL_PREVIEW_STATE);
+    const ModelPreviewState previewState = static_cast<ModelPreviewState>(state.toInt());
+    if (previewState == ModelPreviewState::RealPreview) return;
+
+    for (int i = 0; i < ui->homeGalleryList->count(); ++i) {
+        QListWidgetItem *item = ui->homeGalleryList->item(i);
+        if (!item || QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath() != filePath) continue;
+        item->setData(ROLE_MODEL_PREVIEW_STATE, state);
+        item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
+        item->setIcon(previewState == ModelPreviewState::KnownNoPreview
+                          ? noPreviewIcon
+                          : placeholderIcon);
+    }
+
+    std::function<void(QTreeWidgetItem *)> updateTreeItem = [&](QTreeWidgetItem *node) {
+        if (!node) return;
+        if (QFileInfo(node->data(0, ROLE_FILE_PATH).toString()).absoluteFilePath() == filePath) {
+            node->setData(0, ROLE_MODEL_PREVIEW_STATE, state);
+            node->setData(0, ROLE_PREVIEW_PLACEHOLDER, true);
+            node->setIcon(0, previewState == ModelPreviewState::KnownNoPreview
+                                 ? smallNoPreviewIcon
+                                 : smallPlaceholderIcon);
+        }
+        for (int i = 0; i < node->childCount(); ++i) updateTreeItem(node->child(i));
+    };
+    for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
+        updateTreeItem(ui->collectionTree->topLevelItem(i));
+    }
+
+    if (downloadManager && downloadManager->containsInfo(sourcePath)) {
+        ModelUpdateInfo info = downloadManager->info(sourcePath);
+        info.previewState = previewState;
+        downloadManager->setInfo(info);
+        downloadManager->setPreview(sourcePath);
+    }
 }
 
 void MainWindow::refreshModelUsageStatsAsync()
@@ -8887,6 +9010,8 @@ void MainWindow::checkUpdatesForItems(const QList<QListWidgetItem*> &items, bool
         snapshot.currentVersionId = item->data(ROLE_CIVITAI_VERSION_ID).toInt();
         snapshot.currentSha256 = item->data(ROLE_CIVITAI_SHA256).toString();
         snapshot.localEdited = item->data(ROLE_LOCAL_EDITED).toBool();
+        snapshot.previewState = static_cast<ModelPreviewState>(
+            item->data(ROLE_MODEL_PREVIEW_STATE).toInt());
         pendingUpdateChecksQueue.enqueue(snapshot);
     }
     pendingUpdateChecks = pendingUpdateChecksQueue.size();
@@ -8915,6 +9040,7 @@ void MainWindow::checkUpdateForSnapshot(const UpdateCheckSnapshot &snapshot)
     pending.displayName = snapshot.displayName;
     pending.modelId = snapshot.modelId;
     pending.currentVersionId = snapshot.currentVersionId;
+    pending.previewState = snapshot.previewState;
     if (snapshot.localEdited) {
         addOrUpdateDownloadCard(pending, "本地/已编辑模型，已跳过");
         markUpdateCheckFinished();
@@ -8930,6 +9056,7 @@ void MainWindow::checkUpdateForSnapshot(const UpdateCheckSnapshot &snapshot)
         reply->setProperty("currentVersionId", pending.currentVersionId);
         reply->setProperty("currentSha256", snapshot.currentSha256);
         reply->setProperty("token", updateCheckToken);
+        reply->setProperty("previewState", static_cast<int>(snapshot.previewState));
         connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleModelUpdateReply(reply); });
         return;
     }
@@ -8955,6 +9082,7 @@ void MainWindow::enqueueUpdateHashCheck(const UpdateCheckSnapshot &snapshot)
     pending.modelDir = snapshot.modelDir;
     pending.baseName = snapshot.baseName;
     pending.displayName = snapshot.displayName;
+    pending.previewState = snapshot.previewState;
     addOrUpdateDownloadCard(pending, "计算 Hash 中...");
     dispatchUpdateHashChecks();
 }
@@ -8971,6 +9099,7 @@ void MainWindow::dispatchUpdateHashChecks()
         watcher->setProperty("baseName", snapshot.baseName);
         watcher->setProperty("modelDir", snapshot.modelDir);
         watcher->setProperty("displayName", snapshot.displayName);
+        watcher->setProperty("previewState", static_cast<int>(snapshot.previewState));
         connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher]() {
             const int token = watcher->property("token").toInt();
             UpdateCheckSnapshot snapshot;
@@ -8978,6 +9107,8 @@ void MainWindow::dispatchUpdateHashChecks()
             snapshot.baseName = watcher->property("baseName").toString();
             snapshot.modelDir = watcher->property("modelDir").toString();
             snapshot.displayName = watcher->property("displayName").toString();
+            snapshot.previewState = static_cast<ModelPreviewState>(
+                watcher->property("previewState").toInt());
             const QString hash = watcher->result();
             watcher->deleteLater();
             activeUpdateHashChecks = qMax(0, activeUpdateHashChecks - 1);
@@ -8992,6 +9123,7 @@ void MainWindow::dispatchUpdateHashChecks()
             pending.modelDir = snapshot.modelDir;
             pending.baseName = snapshot.baseName;
             pending.displayName = snapshot.displayName;
+            pending.previewState = snapshot.previewState;
             if (hash.isEmpty()) {
                 addOrUpdateDownloadCard(pending, "无法计算 Hash，无法判断");
                 markUpdateCheckFinished();
@@ -9006,6 +9138,7 @@ void MainWindow::dispatchUpdateHashChecks()
             reply->setProperty("currentSha256", hash);
             reply->setProperty("byHash", true);
             reply->setProperty("token", updateCheckToken);
+            reply->setProperty("previewState", static_cast<int>(snapshot.previewState));
             connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleModelUpdateReply(reply); });
             dispatchUpdateHashChecks();
         });
@@ -9068,6 +9201,8 @@ void MainWindow::handleModelUpdateReply(QNetworkReply *reply)
     const int currentVersionId = reply->property("currentVersionId").toInt();
     const QString currentSha256 = reply->property("currentSha256").toString();
     const bool byHash = reply->property("byHash").toBool();
+    const ModelPreviewState previewState = static_cast<ModelPreviewState>(
+        reply->property("previewState").toInt());
     reply->deleteLater();
     if (token > 0 && token != updateCheckToken) return;
 
@@ -9076,6 +9211,7 @@ void MainWindow::handleModelUpdateReply(QNetworkReply *reply)
     fallback.baseName = baseName;
     fallback.modelDir = modelDir;
     fallback.displayName = QFileInfo(filePath).completeBaseName();
+    fallback.previewState = previewState;
 
     if (reply->error() != QNetworkReply::NoError) {
         addOrUpdateDownloadCard(fallback, "检查失败: " + civitaiNetworkErrorMessage(reply));
@@ -9092,7 +9228,7 @@ void MainWindow::handleModelUpdateReply(QNetworkReply *reply)
             return;
         }
         const int matchedVersionId = root["id"].toInt();
-        QTimer::singleShot(600, this, [this, modelId, matchedVersionId, filePath, baseName, modelDir, currentSha256, token]() {
+        QTimer::singleShot(600, this, [this, modelId, matchedVersionId, filePath, baseName, modelDir, currentSha256, token, previewState]() {
             if (token > 0 && token != updateCheckToken) return;
             QNetworkReply *detailReply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/models/%1").arg(modelId))));
             detailReply->setProperty("filePath", filePath);
@@ -9101,6 +9237,7 @@ void MainWindow::handleModelUpdateReply(QNetworkReply *reply)
             detailReply->setProperty("currentVersionId", matchedVersionId);
             detailReply->setProperty("currentSha256", currentSha256);
             detailReply->setProperty("token", token);
+            detailReply->setProperty("previewState", static_cast<int>(previewState));
             connect(detailReply, &QNetworkReply::finished, this, [this, detailReply]() { handleModelUpdateReply(detailReply); });
         });
         return;
@@ -9151,6 +9288,8 @@ ModelUpdateInfo MainWindow::parseModelUpdateInfo(QListWidgetItem *item, const QJ
     const QString currentSha = item->data(ROLE_CIVITAI_SHA256).toString();
     info.metadataSource = modelRoot.value("metadataSource").toString();
     info.sourceUrl = modelRoot.value("sourceUrl").toString();
+    info.previewState = static_cast<ModelPreviewState>(
+        item->data(ROLE_MODEL_PREVIEW_STATE).toInt());
 
     QJsonArray versions = modelRoot["modelVersions"].toArray();
     QJsonObject currentVersionObj;
@@ -9334,6 +9473,8 @@ UpdateCheckSnapshot MainWindow::snapshotForModelItem(QListWidgetItem *item) cons
     snapshot.currentVersionId = item->data(ROLE_CIVITAI_VERSION_ID).toInt();
     snapshot.currentSha256 = item->data(ROLE_CIVITAI_SHA256).toString();
     snapshot.localEdited = item->data(ROLE_LOCAL_EDITED).toBool();
+    snapshot.previewState = static_cast<ModelPreviewState>(
+        item->data(ROLE_MODEL_PREVIEW_STATE).toInt());
     return snapshot;
 }
 
@@ -10794,13 +10935,43 @@ QIcon MainWindow::generateSmallPlaceholderIcon()
     return QIcon(finalPix);
 }
 
+QIcon MainWindow::generateNoPreviewIcon(bool small) const
+{
+    const int fullSize = small ? 64 : 180;
+    const int padding = small ? 8 : 0;
+    const int contentSize = fullSize - padding * 2;
+    QPixmap finalPix(fullSize, fullSize);
+    finalPix.fill(Qt::transparent);
+
+    QPainter painter(&finalPix);
+    painter.setRenderHint(QPainter::Antialiasing);
+    const QRectF rect(padding, padding, contentSize, contentSize);
+    painter.setBrush(QColor(AppStyle::PanelDark()));
+    painter.setPen(Qt::NoPen);
+    painter.drawRoundedRect(rect, small ? 6 : 12, small ? 6 : 12);
+
+    QPen pen(AppStyle::color("mutedText"));
+    pen.setWidth(small ? 3 : 5);
+    painter.setPen(pen);
+    const qreal diameter = contentSize * 0.36;
+    const QPointF center = rect.center();
+    painter.setBrush(Qt::NoBrush);
+    painter.drawEllipse(QRectF(center.x() - diameter / 2.0,
+                               center.y() - diameter / 2.0,
+                               diameter,
+                               diameter));
+    return QIcon(finalPix);
+}
+
 void MainWindow::recolorPlaceholderItems()
 {
-    // 切主题后用新颜色重建占位图标，并重染所有当前显示"加载失败X"的列表项。
+    // 切主题后重建缺失叉号与明确无预览圆圈，并重染当前可见占位项。
     placeholderIcon = generatePlaceholderIcon();           // 主页大图
     smallPlaceholderIcon = generateSmallPlaceholderIcon();  // 侧边栏/收藏树/用户图
+    noPreviewIcon = generateNoPreviewIcon(false);
+    smallNoPreviewIcon = generateNoPreviewIcon(true);
 
-    auto recolorList = [this](QListWidget *list, const QIcon &icon) {
+    auto recolorList = [this](QListWidget *list, const QIcon &missingIcon, const QIcon &knownNoPreviewIcon) {
         if (!list) return;
         bool changed = false;
         for (int i = 0; i < list->count(); ++i) {
@@ -10808,22 +10979,30 @@ void MainWindow::recolorPlaceholderItems()
             if (item && item->data(ROLE_PREVIEW_PLACEHOLDER).toBool()) {
                 // 先清空再设：强制 setData 判定为"变化"并发 dataChanged（同名 QIcon 比较可能被判为相等而跳过）。
                 item->setIcon(QIcon());
-                item->setIcon(icon);
+                const ModelPreviewState state = static_cast<ModelPreviewState>(
+                    item->data(ROLE_MODEL_PREVIEW_STATE).toInt());
+                item->setIcon(state == ModelPreviewState::KnownNoPreview
+                                  ? knownNoPreviewIcon
+                                  : missingIcon);
                 changed = true;
             }
         }
         if (changed && list->viewport()) list->viewport()->update();
     };
-    recolorList(ui->homeGalleryList, placeholderIcon);
-    recolorList(ui->modelList, smallPlaceholderIcon);
-    recolorList(ui->listUserImages, placeholderIcon); // 用户图为竖图大缩略，沿用大占位
+    recolorList(ui->homeGalleryList, placeholderIcon, noPreviewIcon);
+    recolorList(ui->modelList, smallPlaceholderIcon, smallNoPreviewIcon);
+    recolorList(ui->listUserImages, placeholderIcon, placeholderIcon); // 非模型图片始终使用叉
 
     bool treeChanged = false;
     std::function<void(QTreeWidgetItem *)> recolorNode = [&](QTreeWidgetItem *node) {
         if (!node) return;
         if (node->data(0, ROLE_PREVIEW_PLACEHOLDER).toBool()) {
             node->setIcon(0, QIcon());
-            node->setIcon(0, smallPlaceholderIcon);
+            const ModelPreviewState state = static_cast<ModelPreviewState>(
+                node->data(0, ROLE_MODEL_PREVIEW_STATE).toInt());
+            node->setIcon(0, state == ModelPreviewState::KnownNoPreview
+                                 ? smallNoPreviewIcon
+                                 : smallPlaceholderIcon);
             treeChanged = true;
         }
         for (int j = 0; j < node->childCount(); ++j) recolorNode(node->child(j));
@@ -11458,7 +11637,8 @@ void MainWindow::refreshCollectionTreeView()
                 child->setData(0, ROLE_USER_NOTE, sourceItem->data(ROLE_USER_NOTE));
                 child->setData(0, ROLE_USER_TAGS, sourceItem->data(ROLE_USER_TAGS));
                 child->setData(0, ROLE_USER_CUSTOM_TRIGGERS, sourceItem->data(ROLE_USER_CUSTOM_TRIGGERS));
-                child->setData(0, ROLE_PREVIEW_PLACEHOLDER, sourceItem->data(ROLE_PREVIEW_PLACEHOLDER)); // 跟随源项，切主题时重染占位X
+                child->setData(0, ROLE_PREVIEW_PLACEHOLDER, sourceItem->data(ROLE_PREVIEW_PLACEHOLDER));
+                child->setData(0, ROLE_MODEL_PREVIEW_STATE, sourceItem->data(ROLE_MODEL_PREVIEW_STATE));
                 child->setIcon(0, sourceItem->icon());
                 applyModelHighlightColor(child);
                 applyModelUserNoteData(child);

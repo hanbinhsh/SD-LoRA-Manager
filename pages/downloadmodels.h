@@ -12,6 +12,12 @@ class QLabel;
 class QProgressBar;
 class QPushButton;
 
+enum class ModelPreviewState : int {
+    MissingOrUnknown = 0,
+    RealPreview = 1,
+    KnownNoPreview = 2,
+};
+
 struct ModelUpdateInfo {
     QString filePath;
     QString modelDir;
@@ -31,6 +37,7 @@ struct ModelUpdateInfo {
     double sizeMB = 0.0;
     bool hasUpdate = false;
     bool latestFileExistsLocally = false;
+    ModelPreviewState previewState = ModelPreviewState::MissingOrUnknown;
 };
 
 struct DownloadCardWidgets {
@@ -54,7 +61,8 @@ struct DownloadCardWidgets {
     QString searchText;
     bool selected = false;
     bool hasUpdate = false;
-    bool showingPlaceholder = false; // 当前预览是"加载失败占位X"，切主题时需要重绘
+    bool showingPlaceholder = false; // 当前预览为缺图占位，切主题时需要重绘
+    ModelPreviewState previewState = ModelPreviewState::MissingOrUnknown;
 };
 
 struct ModelFileDownloadTask {

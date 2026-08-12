@@ -238,6 +238,8 @@ void DownloadManager::ensureCacheLoaded()
         info.sizeMB = obj.value("sizeMB").toDouble();
         info.hasUpdate = obj.value("hasUpdate").toBool(false);
         info.latestFileExistsLocally = obj.value("latestFileExistsLocally").toBool(false);
+        info.previewState = static_cast<ModelPreviewState>(
+            obj.value("previewState").toInt(static_cast<int>(ModelPreviewState::MissingOrUnknown)));
 
         const QString status = obj.value("status").toString(info.hasUpdate ? "发现新版本" : "已是最新");
         addOrUpdateCard(info, status, QFile::exists(info.filePath));
@@ -283,6 +285,7 @@ void DownloadManager::saveCache() const
             obj["sizeMB"] = info.sizeMB;
             obj["hasUpdate"] = info.hasUpdate;
             obj["latestFileExistsLocally"] = info.latestFileExistsLocally;
+            obj["previewState"] = static_cast<int>(info.previewState);
             obj["status"] = status;
             items.append(obj);
         }
@@ -334,10 +337,16 @@ void DownloadManager::setPreview(const QString &filePath, const QString &preview
     QPixmap pix;
     if (!previewPath.isEmpty() && QFile::exists(previewPath)) pix.load(previewPath);
     if (pix.isNull()) {
-        // 预览缺失/加载失败：交给 DownloadsPage 画铺满整框、随主题着色的占位X。
-        m_page->setCardPreviewPlaceholder(filePath);
+        // 预览缺失/加载失败：由 DownloadsPage 按模型状态绘制圆圈或叉号。
+        ModelPreviewState state = m_infos.contains(filePath)
+            ? m_infos.value(filePath).previewState
+            : ModelPreviewState::MissingOrUnknown;
+        if (state == ModelPreviewState::RealPreview) state = ModelPreviewState::MissingOrUnknown;
+        if (m_infos.contains(filePath)) m_infos[filePath].previewState = state;
+        m_page->setCardPreviewPlaceholder(filePath, state);
         return;
     }
+    if (m_infos.contains(filePath)) m_infos[filePath].previewState = ModelPreviewState::RealPreview;
     m_page->setCardPreview(filePath, pix);
 }
 
@@ -371,6 +380,13 @@ void DownloadManager::processPreviewLoadBatch()
                                                      &DownloadManager::processPreviewTask,
                                                      filePath,
                                                      previewPath));
+            } else {
+                ModelPreviewState state = m_infos.value(filePath).previewState;
+                if (state == ModelPreviewState::RealPreview) {
+                    state = ModelPreviewState::MissingOrUnknown;
+                    m_infos[filePath].previewState = state;
+                }
+                m_page->setCardPreviewPlaceholder(filePath, state);
             }
         }
         ++processed;
@@ -416,8 +432,18 @@ void DownloadManager::onPreviewLoaded()
     watcher->deleteLater();
     m_activePreviewLoads.remove(result.filePath);
 
-    if (!m_shuttingDown && result.valid && m_page && m_page->containsCard(result.filePath)) {
-        m_page->setCardPreview(result.filePath, QPixmap::fromImage(result.image));
+    if (!m_shuttingDown && m_page && m_page->containsCard(result.filePath)) {
+        if (result.valid) {
+            if (m_infos.contains(result.filePath)) {
+                m_infos[result.filePath].previewState = ModelPreviewState::RealPreview;
+            }
+            m_page->setCardPreview(result.filePath, QPixmap::fromImage(result.image));
+        } else {
+            if (m_infos.contains(result.filePath)) {
+                m_infos[result.filePath].previewState = ModelPreviewState::MissingOrUnknown;
+            }
+            m_page->setCardPreviewPlaceholder(result.filePath, ModelPreviewState::MissingOrUnknown);
+        }
     }
 
     if (m_previewTimer && (!m_pendingPreviewLoads.isEmpty() || !m_activePreviewLoads.isEmpty())) {

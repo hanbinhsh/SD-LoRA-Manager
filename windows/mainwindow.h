@@ -92,7 +92,8 @@ const int ROLE_IS_COLLECTION_NODE     = Qt::UserRole + 60;  // 标记这是一�
 const int ROLE_COLLECTION_NAME        = Qt::UserRole + 61;  // 存储收藏夹名称
 const int ROLE_ITEM_COUNT             = Qt::UserRole + 62;  // 存储该分类下的模型数量
 const int ROLE_COLLECTION_EXPAND_KEY  = Qt::UserRole + 63;  // 存储收藏夹树展开状态键
-const int ROLE_PREVIEW_PLACEHOLDER    = Qt::UserRole + 64;  // 该项当前显示"加载失败占位X"（切主题需重染）
+const int ROLE_PREVIEW_PLACEHOLDER    = Qt::UserRole + 64;  // 该项当前显示占位图（切主题需重染）
+const int ROLE_MODEL_PREVIEW_STATE    = Qt::UserRole + 65;  // ModelPreviewState，区分明确无预览与缺失/未知
 
 const QString CURRENT_VERSION = "1.5.9";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
@@ -130,6 +131,7 @@ struct UpdateCheckSnapshot {
     int modelId = 0;
     int currentVersionId = 0;
     bool localEdited = false;
+    ModelPreviewState previewState = ModelPreviewState::MissingOrUnknown;
 };
 
 struct ImageLoadResult {
@@ -545,6 +547,8 @@ private:
     QThreadPool *backgroundThreadPool = nullptr; // 【新增】用于侧边栏、主页列表 (不可被 cancel)
     QIcon placeholderIcon;       // 主页大图：铺满整框的占位X
     QIcon smallPlaceholderIcon;  // 侧边栏/收藏树：带内边距的小占位X（与 getSquareIcon 视觉一致）
+    QIcon noPreviewIcon;         // 已同步/本地模型明确无预览：空心圆
+    QIcon smallNoPreviewIcon;    // 侧边栏/收藏树用空心圆
 
     QTimer *bgResizeTimer = nullptr;
     QTimer *detailGalleryBuildTimer = nullptr;
@@ -588,7 +592,9 @@ private:
 
     QIcon generatePlaceholderIcon();
     QIcon generateSmallPlaceholderIcon(); // 侧边栏/收藏树用：64px + 8px 内边距，匹配 getSquareIcon
-    void recolorPlaceholderItems(); // 切主题时重染所有"加载失败占位X"的列表项
+    QIcon generateNoPreviewIcon(bool small) const;
+    void recolorPlaceholderItems(); // 切主题时重染模型缺图状态和普通损坏占位
+    void syncModelPreviewStateToViews(QListWidgetItem *sourceItem);
 
     // 定义一个特殊的字符串标识“未分类”
     const QString FILTER_UNCATEGORIZED = "__UNCATEGORIZED__";

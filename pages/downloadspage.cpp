@@ -628,6 +628,7 @@ void DownloadsPage::addOrUpdateCard(const ModelUpdateInfo &info, const QString &
     }
 
     card = m_cards.value(info.filePath);
+    card.previewState = info.previewState;
     card.displayName = info.displayName.isEmpty() ? QFileInfo(info.filePath).completeBaseName() : info.displayName;
     card.searchText = QStringList({card.displayName,
                                    info.baseName,
@@ -733,8 +734,8 @@ void DownloadsPage::updateCardTargetPath(const QString &filePath, const QString 
 }
 
 namespace {
-// 生成铺满整个预览框的"加载失败占位"：深色圆角底(panelDark) + 居中大叉(hoverBg)，随主题着色。
-QPixmap makeBrokenPreviewPixmap(const QSize &size)
+// 生成铺满预览框的缺图占位：明确无预览用圆圈，其余使用叉号。
+QPixmap makePreviewPlaceholderPixmap(const QSize &size, ModelPreviewState state)
 {
     QPixmap pix(size);
     pix.fill(Qt::transparent);
@@ -748,9 +749,19 @@ QPixmap makeBrokenPreviewPixmap(const QSize &size)
     pen.setWidth(4);
     pen.setCapStyle(Qt::RoundCap);
     p.setPen(pen);
-    const qreal m = qMin(size.width(), size.height()) * 0.30; // 叉的内边距
-    p.drawLine(QPointF(r.left() + m, r.top() + m), QPointF(r.right() - m, r.bottom() - m));
-    p.drawLine(QPointF(r.right() - m, r.top() + m), QPointF(r.left() + m, r.bottom() - m));
+    const qreal side = qMin(size.width(), size.height());
+    if (state == ModelPreviewState::KnownNoPreview) {
+        const qreal diameter = side * 0.36;
+        p.setBrush(Qt::NoBrush);
+        p.drawEllipse(QRectF(r.center().x() - diameter / 2.0,
+                             r.center().y() - diameter / 2.0,
+                             diameter,
+                             diameter));
+    } else {
+        const qreal m = side * 0.30;
+        p.drawLine(QPointF(r.left() + m, r.top() + m), QPointF(r.right() - m, r.bottom() - m));
+        p.drawLine(QPointF(r.right() - m, r.top() + m), QPointF(r.left() + m, r.bottom() - m));
+    }
     p.end();
     return pix;
 }
@@ -761,6 +772,7 @@ void DownloadsPage::setCardPreview(const QString &filePath, const QPixmap &pixma
     const DownloadCardWidgets card = m_cards.value(filePath);
     if (!card.previewLabel || pixmap.isNull()) return;
     m_cards[filePath].showingPlaceholder = false; // 真实预览已就绪
+    m_cards[filePath].previewState = ModelPreviewState::RealPreview;
 
     QPixmap scaled = pixmap.scaled(card.previewLabel->size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
     const int x = qMax(0, (scaled.width() - card.previewLabel->width()) / 2);
@@ -779,12 +791,13 @@ void DownloadsPage::setCardPreview(const QString &filePath, const QPixmap &pixma
     card.previewLabel->setPixmap(rounded);
 }
 
-void DownloadsPage::setCardPreviewPlaceholder(const QString &filePath)
+void DownloadsPage::setCardPreviewPlaceholder(const QString &filePath, ModelPreviewState state)
 {
     const DownloadCardWidgets card = m_cards.value(filePath);
     if (!card.previewLabel) return;
     m_cards[filePath].showingPlaceholder = true;
-    card.previewLabel->setPixmap(makeBrokenPreviewPixmap(card.previewLabel->size()));
+    m_cards[filePath].previewState = state;
+    card.previewLabel->setPixmap(makePreviewPlaceholderPixmap(card.previewLabel->size(), state));
 }
 
 void DownloadsPage::setCardSelected(const QString &filePath, bool selected)
@@ -943,10 +956,10 @@ void DownloadsPage::applyTheme()
         vp->setPalette(pal);
     }
 
-    // 显示"加载失败占位X"的卡片：用新主题颜色重绘。
+    // 当前显示占位图的卡片需要用新主题颜色重绘。
     for (auto it = m_cards.begin(); it != m_cards.end(); ++it) {
         if (it->showingPlaceholder && it->previewLabel)
-            it->previewLabel->setPixmap(makeBrokenPreviewPixmap(it->previewLabel->size()));
+            it->previewLabel->setPixmap(makePreviewPlaceholderPixmap(it->previewLabel->size(), it->previewState));
     }
 }
 
