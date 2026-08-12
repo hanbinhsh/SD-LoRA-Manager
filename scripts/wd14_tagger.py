@@ -23,18 +23,22 @@ def emit(payload: dict, exit_code: int = 0) -> None:
     raise SystemExit(exit_code)
 
 
+def emit_line(payload: dict) -> None:
+    print(json.dumps(payload, ensure_ascii=False, allow_nan=False), flush=True)
+
+
 def fail(message: str, exit_code: int = 1) -> None:
     emit({"ok": False, "error": message, "elapsed_sec": 0.0, "ratings": [], "tags": []}, exit_code)
 
 
 def load_labels(csv_path: Path) -> list[dict]:
     if not csv_path.exists():
-        fail(f"selected_tags.csv not found: {csv_path}")
+        raise RuntimeError(f"selected_tags.csv not found: {csv_path}")
 
     with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
         if not reader.fieldnames or "name" not in reader.fieldnames or "category" not in reader.fieldnames:
-            fail("selected_tags.csv must contain name and category columns")
+            raise RuntimeError("selected_tags.csv must contain name and category columns")
 
         labels: list[dict] = []
         for row in reader:
@@ -74,13 +78,13 @@ def preprocess(image_path: Path, width: int, height: int, nchw: bool):
         import numpy as np
         from PIL import Image, ImageOps
     except Exception as exc:
-        fail(f"Missing Python dependency: {exc}. Please install pillow and numpy in the selected Python environment.")
+        raise RuntimeError(f"Missing Python dependency: {exc}. Please install pillow and numpy in the selected Python environment.")
 
     try:
         image = Image.open(image_path)
         image = ImageOps.exif_transpose(image).convert("RGB")
     except Exception as exc:
-        fail(f"Failed to read image: {exc}")
+        raise RuntimeError(f"Failed to read image: {exc}")
 
     image.thumbnail((width, height), Image.Resampling.LANCZOS)
     canvas = Image.new("RGB", (width, height), (255, 255, 255))
@@ -95,52 +99,49 @@ def preprocess(image_path: Path, width: int, height: int, nchw: bool):
     return array[None, ...]
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Run WD14 ONNX tagger and emit JSON.")
-    parser.add_argument("--image", required=True)
-    parser.add_argument("--model-dir", required=True)
-    parser.add_argument("--threshold", type=float, default=0.35)
-    args = parser.parse_args()
-
-    started = time.perf_counter()
-    image_path = Path(args.image)
-    model_dir = Path(args.model_dir)
+def create_runtime(model_dir: Path):
     model_path = model_dir / "model.onnx"
     csv_path = model_dir / "selected_tags.csv"
-
-    if not image_path.exists():
-        fail(f"Image not found: {image_path}")
     if not model_path.exists():
-        fail(f"model.onnx not found: {model_path}")
-
+        raise RuntimeError(f"model.onnx not found: {model_path}")
+    if not csv_path.exists():
+        raise RuntimeError(f"selected_tags.csv not found: {csv_path}")
     try:
         import onnxruntime as ort
+        import numpy  # noqa: F401 - validate dependencies before the batch starts.
+        from PIL import Image  # noqa: F401
     except Exception as exc:
-        fail(f"Missing Python dependency: {exc}. Please install onnxruntime in the selected Python environment.")
+        raise RuntimeError(
+            f"Missing Python dependency: {exc}. Please install onnxruntime in the selected Python environment."
+        ) from exc
 
     labels = load_labels(csv_path)
-    try:
-        session_options = ort.SessionOptions()
-        session_options.log_severity_level = 3
-        providers = ort.get_available_providers()
-        if "CUDAExecutionProvider" in providers and os.environ.get("SDLM_WD14_USE_CUDA", "1") != "0":
-            selected_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        else:
-            selected_providers = ["CPUExecutionProvider"]
-        session = ort.InferenceSession(str(model_path), sess_options=session_options, providers=selected_providers)
-        input_info = session.get_inputs()[0]
-        output_info = session.get_outputs()[0]
-        width, height, nchw = resolve_hw(list(input_info.shape))
-        input_tensor = preprocess(image_path, width, height, nchw)
-        scores = session.run([output_info.name], {input_info.name: input_tensor})[0]
-    except Exception as exc:
-        fail(f"WD14 inference failed: {exc}")
+    session_options = ort.SessionOptions()
+    session_options.log_severity_level = 3
+    providers = ort.get_available_providers()
+    selected_providers = (
+        ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        if "CUDAExecutionProvider" in providers and os.environ.get("SDLM_WD14_USE_CUDA", "1") != "0"
+        else ["CPUExecutionProvider"]
+    )
+    session = ort.InferenceSession(str(model_path), sess_options=session_options, providers=selected_providers)
+    input_info = session.get_inputs()[0]
+    output_info = session.get_outputs()[0]
+    width, height, nchw = resolve_hw(list(input_info.shape))
+    return session, input_info, output_info, width, height, nchw, labels
 
+
+def infer_image(image_path: Path, threshold: float, runtime) -> dict:
+    session, input_info, output_info, width, height, nchw, labels = runtime
+    started = time.perf_counter()
+    if not image_path.exists():
+        raise RuntimeError(f"Image not found: {image_path}")
+    input_tensor = preprocess(image_path, width, height, nchw)
+    scores = session.run([output_info.name], {input_info.name: input_tensor})[0]
     flat_scores = scores.reshape(-1).tolist()
     usable_count = min(len(flat_scores), len(labels))
     ratings: list[dict] = []
     tags: list[dict] = []
-
     for index in range(usable_count):
         label = labels[index]
         confidence = float(flat_scores[index])
@@ -154,21 +155,70 @@ def main() -> None:
         }
         if category == 9:
             ratings.append(item)
-        elif confidence >= args.threshold:
+        elif confidence >= threshold:
             tags.append(item)
-
     ratings.sort(key=lambda item: item["confidence"], reverse=True)
     tags.sort(key=lambda item: (-item["confidence"], item["tag"].casefold()))
+    return {
+        "ok": True,
+        "error": "",
+        "elapsed_sec": round(time.perf_counter() - started, 4),
+        "ratings": ratings,
+        "tags": tags,
+    }
 
-    emit(
-        {
-            "ok": True,
-            "error": "",
-            "elapsed_sec": round(time.perf_counter() - started, 4),
-            "ratings": ratings,
-            "tags": tags,
-        }
-    )
+
+def run_batch(manifest_path: Path, model_dir: Path, threshold: float) -> None:
+    try:
+        paths = [Path(line.rstrip("\r\n")) for line in manifest_path.read_text(encoding="utf-8-sig").splitlines() if line.strip()]
+    except Exception as exc:
+        emit({"event": "fatal", "ok": False, "error": f"Failed to read manifest: {exc}"}, 1)
+    try:
+        runtime = create_runtime(model_dir)
+    except Exception as exc:
+        emit({"event": "fatal", "ok": False, "error": str(exc)}, 1)
+
+    emit_line({"event": "started", "ok": True, "total": len(paths)})
+    succeeded = 0
+    failed = 0
+    for image_path in paths:
+        try:
+            result = infer_image(image_path, threshold, runtime)
+            result.update({"event": "item", "image": str(image_path)})
+            succeeded += 1
+        except Exception as exc:
+            result = {
+                "event": "item",
+                "ok": False,
+                "image": str(image_path),
+                "error": str(exc),
+                "elapsed_sec": 0.0,
+                "ratings": [],
+                "tags": [],
+            }
+            failed += 1
+        emit_line(result)
+    emit({"event": "done", "ok": True, "total": len(paths), "succeeded": succeeded, "failed": failed})
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run WD14 ONNX tagger and emit JSON.")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--image")
+    source.add_argument("--manifest")
+    parser.add_argument("--model-dir", required=True)
+    parser.add_argument("--threshold", type=float, default=0.35)
+    args = parser.parse_args()
+    model_dir = Path(args.model_dir)
+    if args.manifest:
+        run_batch(Path(args.manifest), model_dir, args.threshold)
+        return
+    try:
+        runtime = create_runtime(model_dir)
+        result = infer_image(Path(args.image), args.threshold, runtime)
+    except Exception as exc:
+        fail(f"WD14 inference failed: {exc}")
+    emit(result)
 
 
 if __name__ == "__main__":

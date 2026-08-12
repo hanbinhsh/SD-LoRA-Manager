@@ -1050,6 +1050,301 @@ Click or Drag Image Here</string>
        </item>
       </layout>
      </widget>
+     <widget class="QWidget" name="tabWd14Batch">
+      <attribute name="title">
+       <string>批量 WD14 打标</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="layoutWd14BatchRoot" stretch="0,0,0,0,0,1,0">
+       <property name="spacing">
+        <number>10</number>
+       </property>
+       <property name="leftMargin">
+        <number>12</number>
+       </property>
+       <property name="topMargin">
+        <number>12</number>
+       </property>
+       <property name="rightMargin">
+        <number>12</number>
+       </property>
+       <property name="bottomMargin">
+        <number>12</number>
+       </property>
+       <item>
+        <layout class="QHBoxLayout" name="layoutWd14BatchFolder">
+         <item>
+          <widget class="QLabel" name="lblWd14BatchFolderTitle">
+           <property name="text">
+            <string>图片文件夹</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="editWd14BatchFolder">
+           <property name="readOnly">
+            <bool>true</bool>
+           </property>
+           <property name="placeholderText">
+            <string>选择需要批量打标的图片文件夹</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnWd14BatchBrowse">
+           <property name="text">
+            <string>浏览</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QCheckBox" name="chkWd14BatchRecursive">
+           <property name="text">
+            <string>递归扫描子目录</string>
+           </property>
+           <property name="checked">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupWd14BatchSettings">
+         <property name="title">
+          <string>当前 WD14 设置</string>
+         </property>
+         <layout class="QHBoxLayout" name="layoutWd14BatchSettings">
+          <item>
+           <widget class="QLabel" name="lblWd14BatchSettingsSummary">
+            <property name="text">
+             <string>模型: 未设置 | 预设: default.json | 阈值: 0.35</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btnWd14BatchEditSettings">
+            <property name="text">
+             <string>修改设置</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupWd14BatchCaption">
+         <property name="title">
+          <string>训练 Caption 输出</string>
+         </property>
+         <layout class="QGridLayout" name="gridWd14BatchCaption">
+          <item row="0" column="0">
+           <widget class="QLabel" name="lblWd14BatchPrefixTitle">
+            <property name="text">
+             <string>自定义前缀（原样）</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="editWd14BatchPrefix">
+            <property name="placeholderText">
+             <string>例如：my_trigger, </string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="lblWd14BatchSuffixTitle">
+            <property name="text">
+             <string>自定义后缀（原样）</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="editWd14BatchSuffix">
+            <property name="placeholderText">
+             <string>例如：, best quality</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="2">
+           <widget class="QLabel" name="lblWd14BatchExistingTitle">
+            <property name="text">
+             <string>已有 TXT</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="3">
+           <widget class="QComboBox" name="comboWd14BatchExistingPolicy">
+            <item>
+             <property name="text">
+              <string>跳过</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>覆盖</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>追加并去重</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="1" column="2" colspan="2">
+           <widget class="QLabel" name="lblWd14BatchAffixHint">
+            <property name="text">
+             <string>前后缀不会自动补逗号或空格。</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="lblWd14BatchPreviewTitle">
+            <property name="text">
+             <string>输出示例</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1" colspan="3">
+           <widget class="QLineEdit" name="editWd14BatchCaptionPreview">
+            <property name="readOnly">
+             <bool>true</bool>
+            </property>
+            <property name="text">
+             <string>1girl, solo, sample_tag</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="layoutWd14BatchActions">
+         <item>
+          <widget class="QPushButton" name="btnWd14BatchScan">
+           <property name="text">
+            <string>扫描图片</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnWd14BatchStart">
+           <property name="text">
+            <string>开始打标</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnWd14BatchStop">
+           <property name="text">
+            <string>停止</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnWd14BatchRetry">
+           <property name="text">
+            <string>继续失败/未完成项</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnWd14BatchClear">
+           <property name="text">
+            <string>清空列表</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="spacerWd14BatchActions">
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size><width>40</width><height>20</height></size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnWd14BatchOpenImage">
+           <property name="text">
+            <string>打开图片位置</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnWd14BatchOpenTxt">
+           <property name="text">
+            <string>打开 TXT 位置</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="layoutWd14BatchProgress">
+         <item>
+          <widget class="QProgressBar" name="progressWd14Batch">
+           <property name="value"><number>0</number></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="lblWd14BatchCounts">
+           <property name="text">
+            <string>成功 0 | 跳过 0 | 失败 0 | 未处理 0</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+       <widget class="QSplitter" name="splitterWd14Batch">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+           <horstretch>0</horstretch>
+           <verstretch>1</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+         <widget class="QListView" name="listWd14Batch">
+          <property name="mouseTracking"><bool>true</bool></property>
+          <property name="verticalScrollMode">
+           <enum>QAbstractItemView::ScrollMode::ScrollPerPixel</enum>
+          </property>
+          <property name="uniformItemSizes"><bool>true</bool></property>
+         </widget>
+         <widget class="QGroupBox" name="groupWd14BatchDetail">
+          <property name="title"><string>任务详情</string></property>
+          <layout class="QVBoxLayout" name="layoutWd14BatchDetail">
+           <item>
+            <widget class="QLabel" name="lblWd14BatchSelectedPath">
+             <property name="text"><string>未选择任务</string></property>
+             <property name="wordWrap"><bool>true</bool></property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPlainTextEdit" name="textWd14BatchSelectedTags">
+             <property name="readOnly"><bool>true</bool></property>
+             <property name="placeholderText"><string>选择任务后显示标签或错误信息。</string></property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="lblWd14BatchStatus">
+         <property name="text"><string>请选择图片文件夹并扫描。</string></property>
+         <property name="wordWrap"><bool>true</bool></property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
      <widget class="QWidget" name="tabImageCompare">
       <attribute name="title">
        <string>图片对比</string>

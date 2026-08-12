@@ -3,6 +3,7 @@
 
 #include "imagemetadataparser.h"
 #include "wd14historymodel.h"
+#include "wd14batchmodel.h"
 
 #include <QWidget>
 #include <QHash>
@@ -56,6 +57,7 @@ private:
     TagFlowWidget *compareTagWidgetA = nullptr;
     TagFlowWidget *compareTagWidgetB = nullptr;
     QProcess *wd14Process = nullptr;
+    QProcess *m_wd14BatchProcess = nullptr;
     QString wd14ImagePath;
     QString wd14LastTagsText;
     QHash<QString, int> m_wd14TagUsageCounts;
@@ -66,6 +68,16 @@ private:
     bool m_wd14HistoryLoaded = false;
     QVector<Wd14HistoryEntry> m_pendingWd14HistoryEntries;
     Wd14RenderSettings m_activeWd14Settings;
+    Wd14RenderSettings m_activeWd14BatchSettings;
+    Wd14BatchModel *m_wd14BatchModel = nullptr;
+    QFutureWatcher<QVector<Wd14BatchItem>> *m_wd14BatchScanWatcher = nullptr;
+    QByteArray m_wd14BatchStdoutBuffer;
+    QString m_wd14BatchManifestPath;
+    QString m_wd14BatchFatalError;
+    QString m_activeWd14BatchPrefix;
+    QString m_activeWd14BatchSuffix;
+    int m_activeWd14BatchExistingPolicy = 0;
+    bool m_wd14BatchStopRequested = false;
     ParsedImageMetadata compareMetaA;
     ParsedImageMetadata compareMetaB;
     QString compareImagePathA;
@@ -123,6 +135,22 @@ private:
     void applyWd14HistorySettings();
     void deleteSelectedWd14History();
     void clearWd14History();
+    void browseWd14BatchFolder();
+    void scanWd14BatchFolder();
+    void startWd14Batch(bool retryOnly = false);
+    void stopWd14Batch();
+    void clearWd14Batch();
+    void setWd14BatchRunning(bool running);
+    void updateWd14BatchSettingsSummary();
+    void updateWd14BatchCaptionPreview();
+    void updateWd14BatchCounts();
+    void updateWd14BatchSelection();
+    void applyWd14BatchExistingPolicy();
+    void processWd14BatchOutput();
+    void processWd14BatchEvent(const QJsonObject &event);
+    QString renderWd14TagText(const Wd14InferenceResult &result, const Wd14RenderSettings &settings) const;
+    QString buildWd14BatchCaption(const QString &newTags, const QString &existingText = QString()) const;
+    bool writeWd14BatchTxt(Wd14BatchItem &item, const QString &newTags, QString *error);
 
     // 解析辅助函数
     QMap<QString, int> parsePromptToMap(const QString &rawPrompt);

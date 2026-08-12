@@ -4,6 +4,7 @@
 #include "imagemetadataparser.h"
 #include "tableviewstylehelper.h"
 #include "styleconstants.h"
+#include "fileutils.h"
 
 #include <QAbstractItemView>
 #include <QAction>
@@ -37,6 +38,7 @@
 #include <QStackedWidget>
 #include <QScrollArea>
 #include <QBoxLayout>
+#include <QProgressBar>
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QSet>
@@ -44,6 +46,7 @@
 #include <QSlider>
 #include <QStandardPaths>
 #include <QSaveFile>
+#include <QTemporaryFile>
 #include <QTableWidgetItem>
 #include <QTreeWidgetItem>
 #include <QTreeWidget>
@@ -372,6 +375,53 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
         ui->lblWd14Status->setText("WD14 Python 进程启动失败: " + wd14Process->errorString());
     });
 
+    m_wd14BatchProcess = new QProcess(this);
+    m_wd14BatchProcess->setProcessChannelMode(QProcess::SeparateChannels);
+    connect(m_wd14BatchProcess, &QProcess::readyReadStandardOutput,
+            this, &PromptParserWidget::processWd14BatchOutput);
+    connect(m_wd14BatchProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this](int exitCode, QProcess::ExitStatus) {
+        processWd14BatchOutput();
+        const QString stderrText = QString::fromUtf8(m_wd14BatchProcess->readAllStandardError()).trimmed();
+        for (Wd14BatchItem &item : m_wd14BatchModel->items()) {
+            if (item.status == Wd14BatchStatus::Running || item.status == Wd14BatchStatus::Waiting) {
+                item.status = m_wd14BatchStopRequested ? Wd14BatchStatus::Stopped : Wd14BatchStatus::Failed;
+                if (!m_wd14BatchStopRequested && item.error.isEmpty())
+                    item.error = stderrText.isEmpty() ? QString("批量进程异常结束 (exit %1)。").arg(exitCode) : stderrText.left(1000);
+            }
+        }
+        m_wd14BatchModel->notifyAll();
+        setWd14BatchRunning(false);
+        updateWd14BatchCounts();
+        if (m_wd14BatchStopRequested) ui->lblWd14BatchStatus->setText("批量任务已停止，可继续失败/未完成项。");
+        else if (!m_wd14BatchFatalError.isEmpty()) ui->lblWd14BatchStatus->setText(m_wd14BatchFatalError);
+        else if (exitCode != 0 && !stderrText.isEmpty()) ui->lblWd14BatchStatus->setText(stderrText.left(1000));
+        else if (exitCode != 0) ui->lblWd14BatchStatus->setText(QString("批量进程异常结束 (exit %1)。").arg(exitCode));
+        else ui->lblWd14BatchStatus->setText("批量打标完成。");
+        if (!m_wd14BatchManifestPath.isEmpty()) QFile::remove(m_wd14BatchManifestPath);
+        m_wd14BatchManifestPath.clear();
+        m_wd14BatchFatalError.clear();
+        m_wd14BatchStopRequested = false;
+    });
+    connect(m_wd14BatchProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        const QString message = "WD14 批量 Python 进程启动失败: " + m_wd14BatchProcess->errorString();
+        if (error == QProcess::FailedToStart) {
+            m_wd14BatchFatalError = message;
+            for (Wd14BatchItem &item : m_wd14BatchModel->items()) {
+                if (item.status == Wd14BatchStatus::Waiting || item.status == Wd14BatchStatus::Running) {
+                    item.status = Wd14BatchStatus::Failed;
+                    item.error = message;
+                }
+            }
+            m_wd14BatchModel->notifyAll();
+            if (!m_wd14BatchManifestPath.isEmpty()) QFile::remove(m_wd14BatchManifestPath);
+            m_wd14BatchManifestPath.clear();
+            updateWd14BatchCounts();
+        }
+        setWd14BatchRunning(false);
+        ui->lblWd14BatchStatus->setText(message);
+    });
+
     connect(ui->btnWd14Run, &QPushButton::clicked, this, &PromptParserWidget::runWd14Tagger);
     connect(ui->btnWd14Copy, &QPushButton::clicked, this, [this]() {
         if (wd14LastTagsText.trimmed().isEmpty()) {
@@ -391,7 +441,10 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
     connect(ui->spinWd14Threshold, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, &PromptParserWidget::updateWd14ThresholdFromSpin);
 
-    const auto saveSettingsLater = [this]() { saveWd14Settings(); };
+    const auto saveSettingsLater = [this]() {
+        saveWd14Settings();
+        updateWd14BatchSettingsSummary();
+    };
     connect(ui->editWd14ModelPath, &QLineEdit::editingFinished, this, saveSettingsLater);
     connect(ui->editWd14PythonPath, &QLineEdit::editingFinished, this, saveSettingsLater);
     connect(ui->editWd14ScriptPath, &QLineEdit::editingFinished, this, saveSettingsLater);
@@ -471,17 +524,60 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
     connect(ui->btnWd14HistoryClear, &QPushButton::clicked,
             this, &PromptParserWidget::clearWd14History);
 
+    m_wd14BatchModel = new Wd14BatchModel(this);
+    ui->listWd14Batch->setModel(m_wd14BatchModel);
+    ui->listWd14Batch->setItemDelegate(new Wd14BatchDelegate(ui->listWd14Batch));
+    ui->splitterWd14Batch->setSizes({760, 300});
+    connect(ui->btnWd14BatchBrowse, &QPushButton::clicked, this, &PromptParserWidget::browseWd14BatchFolder);
+    connect(ui->btnWd14BatchScan, &QPushButton::clicked, this, &PromptParserWidget::scanWd14BatchFolder);
+    connect(ui->btnWd14BatchStart, &QPushButton::clicked, this, [this]() { startWd14Batch(false); });
+    connect(ui->btnWd14BatchRetry, &QPushButton::clicked, this, [this]() { startWd14Batch(true); });
+    connect(ui->btnWd14BatchStop, &QPushButton::clicked, this, &PromptParserWidget::stopWd14Batch);
+    connect(ui->btnWd14BatchClear, &QPushButton::clicked, this, &PromptParserWidget::clearWd14Batch);
+    connect(ui->btnWd14BatchEditSettings, &QPushButton::clicked, this, [this]() {
+        ui->tabPromptParser->setCurrentWidget(ui->tabWd14);
+        ui->tabWd14Left->setCurrentWidget(ui->tabWd14Settings);
+    });
+    connect(ui->editWd14BatchPrefix, &QLineEdit::textChanged,
+            this, &PromptParserWidget::updateWd14BatchCaptionPreview);
+    connect(ui->editWd14BatchSuffix, &QLineEdit::textChanged,
+            this, &PromptParserWidget::updateWd14BatchCaptionPreview);
+    connect(ui->comboWd14BatchExistingPolicy, &QComboBox::currentIndexChanged,
+            this, [this]() { applyWd14BatchExistingPolicy(); });
+    connect(ui->listWd14Batch->selectionModel(), &QItemSelectionModel::currentChanged,
+            this, [this]() { updateWd14BatchSelection(); });
+    connect(ui->btnWd14BatchOpenImage, &QPushButton::clicked, this, [this]() {
+        const Wd14BatchItem *item = m_wd14BatchModel->itemAt(ui->listWd14Batch->currentIndex().row());
+        if (item) FileUtils::showFileInFolder(item->imagePath, this);
+    });
+    connect(ui->btnWd14BatchOpenTxt, &QPushButton::clicked, this, [this]() {
+        const Wd14BatchItem *item = m_wd14BatchModel->itemAt(ui->listWd14Batch->currentIndex().row());
+        if (item) FileUtils::showFileInFolder(QFile::exists(item->txtPath) ? item->txtPath : item->imagePath, this);
+    });
+    connect(ui->tabPromptParser, &QTabWidget::currentChanged, this, [this](int) {
+        if (ui->tabPromptParser->currentWidget() == ui->tabWd14Batch) updateWd14BatchSettingsSummary();
+    });
+    updateWd14BatchCaptionPreview();
+    setWd14BatchRunning(false);
+    updateWd14BatchCounts();
+    updateWd14BatchSelection();
+
     connect(ui->scrollAreaPos->verticalScrollBar(), &QScrollBar::valueChanged,
             ui->scrollAreaWidgetContentsPos, [this]() { ui->scrollAreaWidgetContentsPos->update(); });
     connect(ui->scrollAreaNeg->verticalScrollBar(), &QScrollBar::valueChanged,
             ui->scrollAreaWidgetContentsNeg, [this]() { ui->scrollAreaWidgetContentsNeg->update(); });
 
     loadWd14Settings();
+    updateWd14BatchSettingsSummary();
     loadWd14TagUsageCounts();
 }
 
 PromptParserWidget::~PromptParserWidget()
 {
+    if (m_wd14BatchProcess && m_wd14BatchProcess->state() != QProcess::NotRunning) {
+        m_wd14BatchProcess->kill();
+        m_wd14BatchProcess->waitForFinished(1000);
+    }
     if (wd14Process && wd14Process->state() != QProcess::NotRunning) {
         wd14Process->kill();
         wd14Process->waitForFinished(1000);
@@ -1334,11 +1430,29 @@ void PromptParserWidget::setWd14Running(bool running)
     ui->btnWd14DeletePreset->setEnabled(!running);
     ui->comboWd14Preset->setEnabled(!running);
     ui->lblWd14Image->setEnabled(!running);
+    if (m_wd14BatchModel) {
+        const bool batchIdle = m_wd14BatchProcess->state() == QProcess::NotRunning;
+        bool hasWaiting = false;
+        bool hasRetryable = false;
+        for (const Wd14BatchItem &item : m_wd14BatchModel->items()) {
+            hasWaiting = hasWaiting || item.status == Wd14BatchStatus::Waiting;
+            hasRetryable = hasRetryable || item.status == Wd14BatchStatus::Waiting
+                || item.status == Wd14BatchStatus::Failed
+                || item.status == Wd14BatchStatus::Stopped;
+        }
+        ui->btnWd14BatchStart->setEnabled(!running && batchIdle && hasWaiting);
+        ui->btnWd14BatchRetry->setEnabled(!running && batchIdle && hasRetryable);
+        ui->btnWd14BatchEditSettings->setEnabled(!running && batchIdle);
+    }
 }
 
 void PromptParserWidget::runWd14Tagger()
 {
     if (wd14Process->state() != QProcess::NotRunning) return;
+    if (m_wd14BatchProcess && m_wd14BatchProcess->state() != QProcess::NotRunning) {
+        ui->lblWd14Status->setText("批量 WD14 正在运行，请先停止或等待完成。");
+        return;
+    }
     loadWd14TagUsageCounts();
     if (wd14ImagePath.isEmpty() || !QFile::exists(wd14ImagePath)) {
         ui->lblWd14Status->setText("请先选择需要反推的图片。");
@@ -1483,6 +1597,7 @@ void PromptParserWidget::updateWd14TagUsageColumn()
 
 void PromptParserWidget::applyWd14Result(const Wd14InferenceResult &result, const Wd14RenderSettings *settings)
 {
+    const Wd14RenderSettings effectiveSettings = settings ? *settings : currentWd14Settings();
     ui->treeWd14Ratings->clear();
     ui->treeWd14Tags->clear();
 
@@ -1494,15 +1609,15 @@ void PromptParserWidget::applyWd14Result(const Wd14InferenceResult &result, cons
     }
 
     QSet<QString> excluded;
-    const QString excludeText = settings ? settings->excludeTags : ui->editWd14ExcludeTags->text();
-    const QString defaultExcludeText = settings ? settings->defaultExclude : ui->editWd14DefaultExclude->text();
-    for (const QString &tag : splitWd14TagList(excludeText)) excluded.insert(tag);
-    for (const QString &tag : splitWd14TagList(defaultExcludeText)) excluded.insert(tag);
+    for (const QString &tag : splitWd14TagList(effectiveSettings.excludeTags))
+        excluded.insert(normalizedWd14TagKey(tag));
+    for (const QString &tag : splitWd14TagList(effectiveSettings.defaultExclude))
+        excluded.insert(normalizedWd14TagKey(tag));
 
     QVector<Wd14TagScore> visibleTags;
     visibleTags.reserve(result.tags.size());
     for (Wd14TagScore score : result.tags) {
-        if (excluded.contains(score.tag)) continue;
+        if (excluded.contains(normalizedWd14TagKey(score.tag))) continue;
         const Wd14TranslationInfo info = parseWd14TranslationInfo(
             score.tag, translationValueForTag(score.tag, m_translationMap));
         score.category = info.category;
@@ -1512,25 +1627,19 @@ void PromptParserWidget::applyWd14Result(const Wd14InferenceResult &result, cons
         visibleTags.append(score);
     }
 
-    const bool sortAlphabetically = settings ? settings->sortAlphabetically : ui->chkWd14SortAlphabetically->isChecked();
-    const bool includeConfidence = settings ? settings->includeConfidence : ui->chkWd14IncludeConfidence->isChecked();
+    const bool sortAlphabetically = effectiveSettings.sortAlphabetically;
     if (sortAlphabetically) {
         std::sort(visibleTags.begin(), visibleTags.end(), [](const Wd14TagScore &a, const Wd14TagScore &b) {
             return QString::compare(a.tag, b.tag, Qt::CaseInsensitive) < 0;
         });
     }
 
-    QStringList finalTags;
     QSet<QString> seen;
     for (const Wd14TagScore &score : visibleTags) {
         const QString formatted = formatWd14Tag(score.tag, settings);
-        if (formatted.isEmpty() || seen.contains(formatted)) continue;
-        seen.insert(formatted);
-        if (includeConfidence) {
-            finalTags.append(QString("%1 (%2%)").arg(formatted).arg(score.confidence * 100.0f, 0, 'f', 2));
-        } else {
-            finalTags.append(formatted);
-        }
+        const QString key = normalizedWd14TagKey(formatted);
+        if (formatted.isEmpty() || seen.contains(key)) continue;
+        seen.insert(key);
 
         auto *item = new Wd14ScoreItem(ui->treeWd14Tags);
         item->setText(0, formatted);
@@ -1545,16 +1654,7 @@ void PromptParserWidget::applyWd14Result(const Wd14InferenceResult &result, cons
         item->setData(5, Qt::UserRole, score.usageCount);
     }
 
-    const QString additionalText = settings ? settings->additionalTags : ui->editWd14AdditionalTags->text();
-    for (const QString &extraTag : splitWd14TagList(additionalText)) {
-        if (excluded.contains(extraTag)) continue;
-        const QString formatted = formatWd14Tag(extraTag, settings);
-        if (formatted.isEmpty() || seen.contains(formatted)) continue;
-        seen.insert(formatted);
-        finalTags.append(formatted);
-    }
-
-    wd14LastTagsText = finalTags.join(", ");
+    wd14LastTagsText = renderWd14TagText(result, effectiveSettings);
     ui->txtWd14FinalTags->setPlainText(wd14LastTagsText);
     ui->btnWd14Copy->setEnabled(!wd14LastTagsText.isEmpty());
     ui->treeWd14Ratings->resizeColumnToContents(0);
@@ -1784,4 +1884,395 @@ void PromptParserWidget::clearWd14History()
         QMessageBox::warning(this, "保存失败", "无法清空历史文件，历史记录未删除。");
     }
     updateWd14HistoryActions();
+}
+
+void PromptParserWidget::browseWd14BatchFolder()
+{
+    const QString folder = QFileDialog::getExistingDirectory(
+        this, "选择批量 WD14 图片文件夹", ui->editWd14BatchFolder->text());
+    if (folder.isEmpty()) return;
+    ui->editWd14BatchFolder->setText(QFileInfo(folder).absoluteFilePath());
+    scanWd14BatchFolder();
+}
+
+void PromptParserWidget::scanWd14BatchFolder()
+{
+    if (m_wd14BatchScanWatcher || m_wd14BatchProcess->state() != QProcess::NotRunning) return;
+    const QString folder = ui->editWd14BatchFolder->text().trimmed();
+    if (!QDir(folder).exists()) {
+        ui->lblWd14BatchStatus->setText("请选择有效的图片文件夹。");
+        return;
+    }
+    ui->btnWd14BatchScan->setEnabled(false);
+    ui->btnWd14BatchStart->setEnabled(false);
+    ui->lblWd14BatchStatus->setText("正在后台扫描图片...");
+    const bool recursive = ui->chkWd14BatchRecursive->isChecked();
+    m_wd14BatchScanWatcher = new QFutureWatcher<QVector<Wd14BatchItem>>(this);
+    setWd14BatchRunning(false);
+    connect(m_wd14BatchScanWatcher, &QFutureWatcher<QVector<Wd14BatchItem>>::finished, this, [this]() {
+        if (!m_wd14BatchScanWatcher) return;
+        m_wd14BatchModel->setItems(m_wd14BatchScanWatcher->result());
+        m_wd14BatchScanWatcher->deleteLater();
+        m_wd14BatchScanWatcher = nullptr;
+        applyWd14BatchExistingPolicy();
+        setWd14BatchRunning(false);
+        updateWd14BatchCounts();
+        ui->lblWd14BatchStatus->setText(QString("扫描完成，共找到 %1 张图片。").arg(m_wd14BatchModel->rowCount()));
+    });
+    m_wd14BatchScanWatcher->setFuture(QtConcurrent::run([folder, recursive]() {
+        return ::scanWd14BatchFolder(folder, recursive);
+    }));
+}
+
+void PromptParserWidget::applyWd14BatchExistingPolicy()
+{
+    if (!m_wd14BatchModel || m_wd14BatchProcess->state() != QProcess::NotRunning) return;
+    const bool skipExisting = ui->comboWd14BatchExistingPolicy->currentIndex() == 0;
+    for (Wd14BatchItem &item : m_wd14BatchModel->items()) {
+        if (item.status == Wd14BatchStatus::Conflict || item.status == Wd14BatchStatus::Success) continue;
+        if (skipExisting && QFile::exists(item.txtPath)) {
+            item.status = Wd14BatchStatus::Skipped;
+            item.error.clear();
+        } else if (item.status == Wd14BatchStatus::Skipped) {
+            item.status = Wd14BatchStatus::Waiting;
+        }
+    }
+    m_wd14BatchModel->notifyAll();
+    updateWd14BatchCounts();
+}
+
+void PromptParserWidget::startWd14Batch(bool retryOnly)
+{
+    if (m_wd14BatchProcess->state() != QProcess::NotRunning || wd14Process->state() != QProcess::NotRunning) {
+        ui->lblWd14BatchStatus->setText("单图或批量 WD14 正在运行，请等待或先停止。");
+        return;
+    }
+    if (m_wd14BatchModel->items().isEmpty()) {
+        ui->lblWd14BatchStatus->setText("请先扫描图片文件夹。");
+        return;
+    }
+    const QString modelDir = ui->editWd14ModelPath->text().trimmed();
+    const QString scriptPath = selectedWd14ScriptPath();
+    if (modelDir.isEmpty() || !QFile::exists(QDir(modelDir).filePath("model.onnx"))) {
+        ui->lblWd14BatchStatus->setText("请先在 WD14 设置中选择有效模型目录。");
+        return;
+    }
+    if (!QFile::exists(scriptPath)) {
+        ui->lblWd14BatchStatus->setText("未找到 WD14 脚本: " + scriptPath);
+        return;
+    }
+
+    applyWd14BatchExistingPolicy();
+    QStringList paths;
+    for (Wd14BatchItem &item : m_wd14BatchModel->items()) {
+        const bool retryCandidate = item.status == Wd14BatchStatus::Failed
+            || item.status == Wd14BatchStatus::Stopped
+            || item.status == Wd14BatchStatus::Waiting;
+        const bool startCandidate = item.status == Wd14BatchStatus::Waiting;
+        if ((retryOnly && retryCandidate) || (!retryOnly && startCandidate)) {
+            item.status = Wd14BatchStatus::Waiting;
+            item.error.clear();
+            item.finalTags.clear();
+            item.tagCount = 0;
+            item.elapsedSec = 0.0;
+            paths.append(item.imagePath);
+        }
+    }
+    if (paths.isEmpty()) {
+        ui->lblWd14BatchStatus->setText("没有需要处理的图片。");
+        updateWd14BatchCounts();
+        return;
+    }
+
+    QTemporaryFile manifest(QDir::tempPath() + "/sdlm_wd14_batch_XXXXXX.txt");
+    manifest.setAutoRemove(false);
+    if (!manifest.open()) {
+        ui->lblWd14BatchStatus->setText("无法创建批量图片清单: " + manifest.errorString());
+        return;
+    }
+    for (const QString &path : paths) {
+        manifest.write(path.toUtf8());
+        manifest.write("\n");
+    }
+    m_wd14BatchManifestPath = manifest.fileName();
+    manifest.close();
+
+    m_activeWd14BatchSettings = currentWd14Settings();
+    m_activeWd14BatchPrefix = ui->editWd14BatchPrefix->text();
+    m_activeWd14BatchSuffix = ui->editWd14BatchSuffix->text();
+    m_activeWd14BatchExistingPolicy = ui->comboWd14BatchExistingPolicy->currentIndex();
+    m_wd14BatchStdoutBuffer.clear();
+    m_wd14BatchFatalError.clear();
+    m_wd14BatchStopRequested = false;
+    setWd14BatchRunning(true);
+    m_wd14BatchModel->notifyAll();
+    updateWd14BatchCounts();
+    ui->lblWd14BatchStatus->setText(QString("正在启动批量打标，共 %1 张图片...").arg(paths.size()));
+    QStringList arguments;
+    arguments << scriptPath
+              << "--manifest" << m_wd14BatchManifestPath
+              << "--model-dir" << modelDir
+              << "--threshold" << QString::number(m_activeWd14BatchSettings.threshold, 'f', 4);
+    m_wd14BatchProcess->start(selectedPythonPath(), arguments);
+}
+
+void PromptParserWidget::stopWd14Batch()
+{
+    if (m_wd14BatchProcess->state() == QProcess::NotRunning) return;
+    m_wd14BatchStopRequested = true;
+    ui->lblWd14BatchStatus->setText("正在停止批量任务...");
+    m_wd14BatchProcess->kill();
+}
+
+void PromptParserWidget::clearWd14Batch()
+{
+    if (m_wd14BatchProcess->state() != QProcess::NotRunning || m_wd14BatchScanWatcher) return;
+    m_wd14BatchModel->clear();
+    ui->listWd14Batch->setCurrentIndex(QModelIndex());
+    updateWd14BatchCounts();
+    updateWd14BatchSelection();
+    ui->lblWd14BatchStatus->setText("任务列表已清空。");
+}
+
+void PromptParserWidget::setWd14BatchRunning(bool running)
+{
+    const bool hasItems = m_wd14BatchModel && !m_wd14BatchModel->items().isEmpty();
+    bool hasWaiting = false;
+    bool hasRetryable = false;
+    if (m_wd14BatchModel) {
+        for (const Wd14BatchItem &item : m_wd14BatchModel->items()) {
+            hasWaiting = hasWaiting || item.status == Wd14BatchStatus::Waiting;
+            hasRetryable = hasRetryable || item.status == Wd14BatchStatus::Waiting
+                || item.status == Wd14BatchStatus::Failed
+                || item.status == Wd14BatchStatus::Stopped;
+        }
+    }
+    const bool scanning = m_wd14BatchScanWatcher != nullptr;
+    const bool idle = !running && !scanning;
+    ui->btnWd14BatchBrowse->setEnabled(idle);
+    ui->btnWd14BatchScan->setEnabled(idle);
+    ui->btnWd14BatchStart->setEnabled(idle && hasWaiting);
+    ui->btnWd14BatchRetry->setEnabled(idle && hasRetryable);
+    ui->btnWd14BatchStop->setEnabled(running);
+    ui->btnWd14BatchClear->setEnabled(idle && hasItems);
+    ui->btnWd14BatchEditSettings->setEnabled(idle);
+    ui->comboWd14BatchExistingPolicy->setEnabled(idle);
+    ui->chkWd14BatchRecursive->setEnabled(idle);
+    ui->editWd14BatchPrefix->setEnabled(idle);
+    ui->editWd14BatchSuffix->setEnabled(idle);
+    ui->btnWd14Run->setEnabled(!running && wd14Process->state() == QProcess::NotRunning);
+}
+
+void PromptParserWidget::updateWd14BatchSettingsSummary()
+{
+    const Wd14RenderSettings settings = currentWd14Settings();
+    const QString model = QFileInfo(settings.modelDir).fileName();
+    ui->lblWd14BatchSettingsSummary->setText(
+        QString("模型: %1 | 预设: %2 | 阈值: %3 | 附加: %4 | 排除: %5 | %6 / %7 / %8 / %9")
+            .arg(model.isEmpty() ? "未设置" : model,
+                 settings.presetName.isEmpty() ? "-" : settings.presetName)
+            .arg(settings.threshold, 0, 'f', 2)
+            .arg(settings.additionalTags.isEmpty() ? "无" : settings.additionalTags)
+            .arg(settings.excludeTags.isEmpty() ? "无" : settings.excludeTags)
+            .arg(settings.sortAlphabetically ? "字母排序" : "置信度顺序")
+            .arg(settings.includeConfidence ? "包含置信度" : "仅标签")
+            .arg(settings.replaceUnderscore ? "空格化" : "保留下划线")
+            .arg(settings.escapeBrackets ? "括号转义" : "括号原样"));
+    ui->lblWd14BatchSettingsSummary->setToolTip(settings.modelDir);
+}
+
+void PromptParserWidget::updateWd14BatchCaptionPreview()
+{
+    ui->editWd14BatchCaptionPreview->setText(
+        ui->editWd14BatchPrefix->text() + "1girl, solo, sample_tag" + ui->editWd14BatchSuffix->text());
+}
+
+void PromptParserWidget::updateWd14BatchCounts()
+{
+    int success = 0, skipped = 0, failed = 0, remaining = 0, completed = 0;
+    for (const Wd14BatchItem &item : m_wd14BatchModel->items()) {
+        switch (item.status) {
+        case Wd14BatchStatus::Success: ++success; ++completed; break;
+        case Wd14BatchStatus::Skipped: ++skipped; ++completed; break;
+        case Wd14BatchStatus::Conflict: ++skipped; ++completed; break;
+        case Wd14BatchStatus::Failed: ++failed; ++completed; break;
+        default: ++remaining; break;
+        }
+    }
+    ui->lblWd14BatchCounts->setText(
+        QString("成功 %1 | 跳过 %2 | 失败 %3 | 未处理 %4").arg(success).arg(skipped).arg(failed).arg(remaining));
+    ui->progressWd14Batch->setRange(0, qMax(1, m_wd14BatchModel->rowCount()));
+    ui->progressWd14Batch->setValue(completed);
+    setWd14BatchRunning(m_wd14BatchProcess && m_wd14BatchProcess->state() != QProcess::NotRunning);
+}
+
+void PromptParserWidget::updateWd14BatchSelection()
+{
+    const Wd14BatchItem *item = m_wd14BatchModel->itemAt(ui->listWd14Batch->currentIndex().row());
+    ui->btnWd14BatchOpenImage->setEnabled(item != nullptr);
+    ui->btnWd14BatchOpenTxt->setEnabled(item != nullptr);
+    if (!item) {
+        ui->lblWd14BatchSelectedPath->setText("未选择任务");
+        ui->textWd14BatchSelectedTags->clear();
+        return;
+    }
+    ui->lblWd14BatchSelectedPath->setText(item->imagePath + "\n" + item->txtPath);
+    ui->textWd14BatchSelectedTags->setPlainText(item->error.isEmpty() ? item->finalTags : item->error);
+}
+
+QString PromptParserWidget::renderWd14TagText(const Wd14InferenceResult &result,
+                                               const Wd14RenderSettings &settings) const
+{
+    QSet<QString> excluded;
+    for (const QString &tag : splitWd14TagList(settings.excludeTags)) excluded.insert(normalizedWd14TagKey(tag));
+    for (const QString &tag : splitWd14TagList(settings.defaultExclude)) excluded.insert(normalizedWd14TagKey(tag));
+    QVector<Wd14TagScore> tags;
+    for (const Wd14TagScore &tag : result.tags) {
+        if (!excluded.contains(normalizedWd14TagKey(tag.tag))) tags.append(tag);
+    }
+    if (settings.sortAlphabetically) {
+        std::sort(tags.begin(), tags.end(), [](const Wd14TagScore &a, const Wd14TagScore &b) {
+            return QString::compare(a.tag, b.tag, Qt::CaseInsensitive) < 0;
+        });
+    }
+    QStringList output;
+    QSet<QString> seen;
+    for (const Wd14TagScore &tag : tags) {
+        const QString formatted = formatWd14Tag(tag.tag, &settings);
+        const QString key = normalizedWd14TagKey(formatted);
+        if (formatted.isEmpty() || seen.contains(key)) continue;
+        seen.insert(key);
+        output.append(settings.includeConfidence
+            ? QString("%1 (%2%)").arg(formatted).arg(tag.confidence * 100.0f, 0, 'f', 2)
+            : formatted);
+    }
+    for (const QString &extra : splitWd14TagList(settings.additionalTags)) {
+        if (excluded.contains(normalizedWd14TagKey(extra))) continue;
+        const QString formatted = formatWd14Tag(extra, &settings);
+        const QString key = normalizedWd14TagKey(formatted);
+        if (!formatted.isEmpty() && !seen.contains(key)) {
+            seen.insert(key);
+            output.append(formatted);
+        }
+    }
+    return output.join(", ");
+}
+
+QString PromptParserWidget::buildWd14BatchCaption(const QString &newTags, const QString &existingText) const
+{
+    const QString &prefix = m_activeWd14BatchPrefix;
+    const QString &suffix = m_activeWd14BatchSuffix;
+    QString middle = existingText;
+    if (!prefix.isEmpty() && middle.startsWith(prefix)) middle.remove(0, prefix.size());
+    if (!suffix.isEmpty() && middle.endsWith(suffix)) middle.chop(suffix.size());
+    QStringList combined;
+    QSet<QString> seen;
+    const auto appendParts = [&](const QString &text) {
+        for (const QString &part : text.split(',', Qt::SkipEmptyParts)) {
+            const QString tag = part.trimmed();
+            QString key = normalizedWd14TagKey(tag);
+            if (tag.isEmpty() || seen.contains(key)) continue;
+            seen.insert(key);
+            combined.append(tag);
+        }
+    };
+    appendParts(middle);
+    appendParts(newTags);
+    return prefix + combined.join(", ") + suffix;
+}
+
+bool PromptParserWidget::writeWd14BatchTxt(Wd14BatchItem &item, const QString &newTags, QString *error)
+{
+    QString existing;
+    if (m_activeWd14BatchExistingPolicy == 2 && QFile::exists(item.txtPath)) {
+        QFile input(item.txtPath);
+        if (!input.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            if (error) *error = "无法读取已有 TXT: " + input.errorString();
+            return false;
+        }
+        existing = QString::fromUtf8(input.readAll());
+        while (existing.endsWith('\n') || existing.endsWith('\r')) existing.chop(1);
+    }
+    const QString caption = buildWd14BatchCaption(newTags, existing);
+    QSaveFile output(item.txtPath);
+    if (!output.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        if (error) *error = "无法写入 TXT: " + output.errorString();
+        return false;
+    }
+    output.write(caption.toUtf8());
+    output.write("\n");
+    if (!output.commit()) {
+        if (error) *error = "提交 TXT 失败: " + output.errorString();
+        return false;
+    }
+    item.finalTags = caption;
+    return true;
+}
+
+void PromptParserWidget::processWd14BatchOutput()
+{
+    m_wd14BatchStdoutBuffer += m_wd14BatchProcess->readAllStandardOutput();
+    qsizetype newline = -1;
+    while ((newline = m_wd14BatchStdoutBuffer.indexOf('\n')) >= 0) {
+        const QByteArray line = m_wd14BatchStdoutBuffer.left(newline).trimmed();
+        m_wd14BatchStdoutBuffer.remove(0, newline + 1);
+        if (line.isEmpty()) continue;
+        QJsonParseError error;
+        const QJsonDocument document = QJsonDocument::fromJson(line, &error);
+        if (error.error == QJsonParseError::NoError && document.isObject())
+            processWd14BatchEvent(document.object());
+    }
+}
+
+void PromptParserWidget::processWd14BatchEvent(const QJsonObject &event)
+{
+    const QString type = event.value("event").toString();
+    if (type == "started") {
+        for (Wd14BatchItem &item : m_wd14BatchModel->items()) {
+            if (item.status == Wd14BatchStatus::Waiting) item.status = Wd14BatchStatus::Running;
+        }
+        m_wd14BatchModel->notifyAll();
+        ui->lblWd14BatchStatus->setText(QString("模型已加载，正在处理 %1 张图片...").arg(event.value("total").toInt()));
+        return;
+    }
+    if (type == "fatal") {
+        m_wd14BatchFatalError = event.value("error").toString("WD14 批量初始化失败。");
+        ui->lblWd14BatchStatus->setText(m_wd14BatchFatalError);
+        return;
+    }
+    if (type == "done") {
+        ui->lblWd14BatchStatus->setText("Python 推理完成，正在整理结果...");
+        return;
+    }
+    if (type != "item") return;
+    const QString path = QFileInfo(event.value("image").toString()).absoluteFilePath();
+    const int row = m_wd14BatchModel->rowForPath(path);
+    if (row < 0) return;
+    Wd14BatchItem &item = m_wd14BatchModel->items()[row];
+    item.elapsedSec = event.value("elapsed_sec").toDouble();
+    if (!event.value("ok").toBool(false)) {
+        item.status = Wd14BatchStatus::Failed;
+        item.error = event.value("error").toString("图片推理失败。");
+    } else {
+        Wd14InferenceResult result;
+        result.ok = true;
+        result.elapsedSec = item.elapsedSec;
+        for (const QJsonValue &value : event.value("tags").toArray()) {
+            const Wd14TagScore score = parseScoreObject(value.toObject());
+            if (!score.tag.isEmpty()) result.tags.append(score);
+        }
+        const QString tags = renderWd14TagText(result, m_activeWd14BatchSettings);
+        QString writeError;
+        if (writeWd14BatchTxt(item, tags, &writeError)) {
+            item.status = Wd14BatchStatus::Success;
+            item.tagCount = tags.split(',', Qt::SkipEmptyParts).size();
+            item.error.clear();
+        } else {
+            item.status = Wd14BatchStatus::Failed;
+            item.error = writeError;
+        }
+    }
+    m_wd14BatchModel->notifyRow(row);
+    updateWd14BatchCounts();
+    if (ui->listWd14Batch->currentIndex().row() == row) updateWd14BatchSelection();
 }

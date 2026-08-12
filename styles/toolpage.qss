@@ -127,6 +127,25 @@ QListView#listWd14History {
     padding: 2px;
 }
 
+QListView#listWd14Batch {
+    background-color: @inputBg;
+    border: 1px solid @inputBorder;
+    border-radius: 4px;
+    outline: none;
+    padding: 2px;
+}
+
+QListView#listWd14Batch::item {
+    background: transparent;
+    border: none;
+}
+
+QLabel#lblWd14BatchStatus,
+QLabel#lblWd14BatchCounts,
+QLabel#lblWd14BatchAffixHint {
+    color: @mutedText;
+}
+
 QListView#listWd14History::item {
     background: transparent;
     border: none;
