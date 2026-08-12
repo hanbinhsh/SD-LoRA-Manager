@@ -161,6 +161,27 @@ QDialog QScrollArea > QWidget > QWidget {
     background: transparent;
 }
 
+QDialog QGraphicsView#imageViewerView {
+    background-color: @windowBg;
+    border: 1px solid @inputBorder;
+    border-radius: 4px;
+}
+
+QDialog QLabel#lblFileName {
+    color: @primaryText;
+    font-weight: bold;
+    padding: 2px 4px;
+}
+
+QDialog QLabel#lblZoom,
+QDialog QLabel#lblPosition {
+    color: @mutedText;
+    background-color: @inputBg;
+    border: 1px solid @inputBorder;
+    border-radius: 4px;
+    padding: 5px 8px;
+}
+
 QDialog QCheckBox,
 QMessageBox QCheckBox,
 QInputDialog QCheckBox {

@@ -76,6 +76,7 @@
 #include "pages/settingspage.h"
 #include "pages/aboutpage.h"
 #include "dialogs/modelnotedialog.h"
+#include "dialogs/imageviewerdialog.h"
 #include "dialogs/themeeditordialog.h"
 #include "utils/styleconstants.h"
 #include "utils/fileutils.h"
@@ -1040,7 +1041,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (!item) return;
         QString path = item->data(ROLE_USER_IMAGE_PATH).toString(); // 取出全路径
         if (!path.isEmpty()) {
-            showFullImageDialog(path); // 调用已有的显示大图函数
+            openImageViewer(visibleUserGalleryImagePaths(), path);
         }
     });
     // 3. 信号连接
@@ -2872,7 +2873,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
             if (mouseEvent->button() == Qt::LeftButton) {
                 if (!currentHeroPath.isEmpty() && QFile::exists(currentHeroPath)) {
-                    showFullImageDialog(currentHeroPath); // 使用新封装的函数
+                    openImageViewerForPath(currentHeroPath);
                     return true;
                 }
             }
@@ -2897,7 +2898,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             // 获取我们之前绑定的 fullImagePath 属性
             QString path = btn->property("fullImagePath").toString();
             if (!path.isEmpty() && QFile::exists(path)) {
-                showFullImageDialog(path); // 打开大图
+                openImageViewer(currentModelPreviewPaths(), path);
                 return true; // 消费事件
             }
         }
@@ -6071,29 +6072,104 @@ void MainWindow::downloadThumbnail(const QString &url, const QString &savePath, 
     });
 }
 
-void MainWindow::showFullImageDialog(const QString &imagePath)
+QStringList MainWindow::currentModelPreviewPaths() const
 {
-    if (imagePath.isEmpty() || !QFile::exists(imagePath)) return;
+    QStringList result;
+    QSet<QString> seen;
 
-    QDialog *dlg = new QDialog(this);
-    dlg->setWindowTitle("Preview (Esc to close)");
-    dlg->resize(1200, 900);
+    QString modelDir = QFileInfo(currentMeta.filePath).absolutePath();
+    QString baseName = QFileInfo(currentMeta.filePath).completeBaseName();
+    if (QListWidgetItem *item = ui->modelList->currentItem(); isModelListItem(item)) {
+        const QString filePath = item->data(ROLE_FILE_PATH).toString();
+        if (!filePath.isEmpty()) modelDir = QFileInfo(filePath).absolutePath();
+        const QString roleName = item->data(ROLE_MODEL_NAME).toString();
+        if (!roleName.isEmpty()) baseName = roleName;
+    }
 
-    // 使用黑色背景
-    QVBoxLayout *layout = new QVBoxLayout(dlg);
-    layout->setContentsMargins(0,0,0,0);
+    for (int index = 0; index < currentMeta.images.size(); ++index) {
+        const ImageInfo &image = currentMeta.images.at(index);
+        if (optFilterNSFW && image.nsfwLevel > optNSFWLevel && optNSFWMode == 0) continue;
 
-    QLabel *imgLabel = new QLabel;
-    imgLabel->setStyleSheet("background-color: black;");
-    imgLabel->setAlignment(Qt::AlignCenter);
+        QString path = findLocalPreviewPath(modelDir, baseName, currentMeta.fileNameServer, index);
+        if (index == 0 && !QFileInfo::exists(path)
+            && !currentMeta.previewPath.isEmpty() && QFileInfo::exists(currentMeta.previewPath)) {
+            path = QFileInfo(currentMeta.previewPath).absoluteFilePath();
+        }
+        const QFileInfo info(path);
+        if (!info.exists() || !info.isFile()) continue;
 
-    QPixmap pix(imagePath);
-    // 缩放以适应屏幕/窗口
-    imgLabel->setPixmap(pix.scaled(dlg->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        QImageReader reader(info.absoluteFilePath());
+        if (!reader.canRead()) continue;
+        const QString absolutePath = info.absoluteFilePath();
+        const QString key = QDir::cleanPath(absolutePath).toCaseFolded();
+        if (seen.contains(key)) continue;
+        seen.insert(key);
+        result.append(absolutePath);
+    }
 
-    layout->addWidget(imgLabel);
-    dlg->setAttribute(Qt::WA_DeleteOnClose);
-    dlg->exec();
+    if (result.isEmpty() && !currentMeta.previewPath.isEmpty()) {
+        const QFileInfo fallback(currentMeta.previewPath);
+        if (fallback.exists() && fallback.isFile()) result.append(fallback.absoluteFilePath());
+    }
+    return result;
+}
+
+QStringList MainWindow::visibleUserGalleryImagePaths() const
+{
+    QStringList result;
+    QSet<QString> seen;
+    if (!ui || !ui->listUserImages) return result;
+
+    for (int index = 0; index < ui->listUserImages->count(); ++index) {
+        QListWidgetItem *item = ui->listUserImages->item(index);
+        if (!item || item->isHidden()) continue;
+        const QFileInfo info(item->data(ROLE_USER_IMAGE_PATH).toString());
+        if (!info.exists() || !info.isFile()) continue;
+        const QString absolutePath = info.absoluteFilePath();
+        const QString key = QDir::cleanPath(absolutePath).toCaseFolded();
+        if (seen.contains(key)) continue;
+        seen.insert(key);
+        result.append(absolutePath);
+    }
+    return result;
+}
+
+void MainWindow::openImageViewer(const QStringList &paths, const QString &currentPath)
+{
+    QStringList normalizedPaths;
+    QSet<QString> seen;
+    for (const QString &path : paths) {
+        const QFileInfo info(path);
+        if (!info.exists() || !info.isFile()) continue;
+        const QString absolutePath = info.absoluteFilePath();
+        const QString key = QDir::cleanPath(absolutePath).toCaseFolded();
+        if (seen.contains(key)) continue;
+        seen.insert(key);
+        normalizedPaths.append(absolutePath);
+    }
+    if (normalizedPaths.isEmpty()) return;
+
+    const QString requested = QFileInfo(currentPath).absoluteFilePath();
+    int initialIndex = 0;
+    for (int i = 0; i < normalizedPaths.size(); ++i) {
+        if (QDir::cleanPath(normalizedPaths.at(i)).compare(QDir::cleanPath(requested), Qt::CaseInsensitive) == 0) {
+            initialIndex = i;
+            break;
+        }
+    }
+
+    ImageViewerDialog dialog(normalizedPaths, initialIndex, this);
+    dialog.exec();
+}
+
+void MainWindow::openImageViewerForPath(const QString &currentPath)
+{
+    const QString requested = QFileInfo(currentPath).absoluteFilePath();
+    if (ui->detailContentStack->currentIndex() == 1) {
+        openImageViewer(visibleUserGalleryImagePaths(), requested);
+        return;
+    }
+    openImageViewer(currentModelPreviewPaths(), requested);
 }
 
 // 新增：适应比例图标 (Fit 模式)
@@ -10862,7 +10938,8 @@ void MainWindow::onUserGalleryContextMenu(const QPoint &pos)
     QAction *actCopyGenParams = menu.addAction("复制生成参数 / Copy Gen Params");
     actCopyGenParams->setToolTip("复制符合SD WebUI格式的完整参数，\n粘贴进提示词框后可直接点击↙️按钮读取。");
     menu.addSeparator(); // 分隔线
-    QAction *actOpenImg = menu.addAction("打开图片 / Open Image");
+    QAction *actOpenImg = menu.addAction("内置图片浏览器 / Image Viewer");
+    QAction *actOpenSystem = menu.addAction("使用系统程序打开 / Open with System");
     QAction *actOpenDir = menu.addAction("打开文件位置 / Show in Folder");
     QAction *actShowComfyWorkflow = menu.addAction("查看 ComfyUI Workflow / View Workflow");
     QAction *actShowRawMetadata = menu.addAction("显示原始 Metadata / Raw Metadata");
@@ -10899,6 +10976,9 @@ void MainWindow::onUserGalleryContextMenu(const QPoint &pos)
         ui->statusbar->showMessage("已复制 SD 生成参数到剪贴板", 2000);
     }
     else if (selected == actOpenImg) {
+        openImageViewer(visibleUserGalleryImagePaths(), filePath);
+    }
+    else if (selected == actOpenSystem) {
         QDesktopServices::openUrl(QUrl::fromLocalFile(filePath));
     }
     else if (selected == actOpenDir) {

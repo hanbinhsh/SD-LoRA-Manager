@@ -55,6 +55,9 @@ qt_add_executable(SD_LoRA_Manager
     dialogs/modelnotedialog.h
     dialogs/modelnotedialog.cpp
     dialogs/modelnotedialog.ui
+    dialogs/imageviewerdialog.h
+    dialogs/imageviewerdialog.cpp
+    dialogs/imageviewerdialog.ui
     tools/usageanalysiswidget.h
     tools/usageanalysiswidget.cpp
     tools/usageanalysiswidget.ui
