@@ -2,6 +2,7 @@
 #define PROMPTPARSERWIDGET_H
 
 #include "imagemetadataparser.h"
+#include "wd14historymodel.h"
 
 #include <QWidget>
 #include <QHash>
@@ -21,28 +22,6 @@ class QListWidget;
 class QProcess;
 class QPlainTextEdit;
 class QStackedWidget;
-
-struct Wd14TagScore
-{
-    QString tag;
-    QString category;
-    float confidence = 0.0f;
-    QString translation;
-    QString priority;
-    int usageCount = 0;
-};
-
-struct Wd14InferenceResult
-{
-    bool ok = false;
-    QString error;
-    QString finalTags;
-    QVector<Wd14TagScore> ratings;
-    QVector<Wd14TagScore> tags;
-    double elapsedSec = 0.0;
-    quint64 totalMemory = 0;
-    quint64 availableMemory = 0;
-};
 
 class PromptParserWidget : public QWidget
 {
@@ -82,6 +61,11 @@ private:
     QHash<QString, int> m_wd14TagUsageCounts;
     QFutureWatcher<QHash<QString, int>> *m_wd14UsageWatcher = nullptr;
     qint64 m_wd14UsageCacheModified = -1;
+    Wd14HistoryModel *m_wd14HistoryModel = nullptr;
+    QFutureWatcher<QVector<Wd14HistoryEntry>> *m_wd14HistoryWatcher = nullptr;
+    bool m_wd14HistoryLoaded = false;
+    QVector<Wd14HistoryEntry> m_pendingWd14HistoryEntries;
+    Wd14RenderSettings m_activeWd14Settings;
     ParsedImageMetadata compareMetaA;
     ParsedImageMetadata compareMetaB;
     QString compareImagePathA;
@@ -120,13 +104,25 @@ private:
     QString selectedPythonPath() const;
     void updateWd14ThresholdFromSlider(int value);
     void updateWd14ThresholdFromSpin(double value);
-    void applyWd14Result(const Wd14InferenceResult &result);
+    void applyWd14Result(const Wd14InferenceResult &result, const Wd14RenderSettings *settings = nullptr);
     void updateWd14MemoryLabel(quint64 totalBytes, quint64 availableBytes);
     Wd14InferenceResult parseWd14ProcessOutput(const QByteArray &stdoutBytes, const QByteArray &stderrBytes, int exitCode) const;
     void loadWd14TagUsageCounts();
     void updateWd14TagUsageColumn();
-    QString formatWd14Tag(const QString &tag) const;
+    QString formatWd14Tag(const QString &tag, const Wd14RenderSettings *settings = nullptr) const;
     QStringList splitWd14TagList(const QString &text) const;
+    Wd14RenderSettings currentWd14Settings() const;
+    QString wd14HistoryPath() const;
+    void loadWd14History();
+    void appendWd14History(const Wd14InferenceResult &result, const Wd14RenderSettings &settings);
+    bool rewriteWd14History() const;
+    void updateWd14HistoryActions();
+    const Wd14HistoryEntry *currentWd14HistoryEntry() const;
+    void previewWd14HistoryEntry(const QModelIndex &index);
+    void restoreWd14HistoryEntry();
+    void applyWd14HistorySettings();
+    void deleteSelectedWd14History();
+    void clearWd14History();
 
     // 解析辅助函数
     QMap<QString, int> parsePromptToMap(const QString &rawPrompt);

@@ -25,6 +25,8 @@
 #include <QJsonObject>
 #include <QKeySequence>
 #include <QHeaderView>
+#include <QItemSelectionModel>
+#include <QListView>
 #include <QMessageBox>
 #include <QMimeData>
 #include <QMenu>
@@ -46,6 +48,7 @@
 #include <QTreeWidgetItem>
 #include <QTreeWidget>
 #include <QUrl>
+#include <QUuid>
 #include <QtEndian>
 #include <QtConcurrent/QtConcurrent>
 
@@ -360,8 +363,9 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
             return;
         }
 
-        applyWd14Result(result);
+        applyWd14Result(result, &m_activeWd14Settings);
         ui->lblWd14Status->setText(QString("WD14 反推完成，共 %1 个标签。").arg(result.tags.size()));
+        appendWd14History(result, m_activeWd14Settings);
     });
     connect(wd14Process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
         setWd14Running(false);
@@ -431,6 +435,41 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
     copyWd14SelectedTagsAction->setShortcutContext(Qt::WidgetShortcut);
     ui->treeWd14Tags->addAction(copyWd14SelectedTagsAction);
     connect(copyWd14SelectedTagsAction, &QAction::triggered, this, &PromptParserWidget::copySelectedWd14Tags);
+
+    m_wd14HistoryModel = new Wd14HistoryModel(this);
+    ui->listWd14History->setModel(m_wd14HistoryModel);
+    ui->listWd14History->setItemDelegate(new Wd14HistoryDelegate(ui->listWd14History));
+    ui->btnWd14HistoryRestore->setEnabled(false);
+    ui->btnWd14HistoryApplySettings->setEnabled(false);
+    ui->btnWd14HistoryDelete->setEnabled(false);
+    ui->btnWd14HistoryClear->setEnabled(false);
+    connect(ui->tabWd14Left, &QTabWidget::currentChanged, this, [this](int index) {
+        if (ui->tabWd14Left->widget(index) == ui->tabWd14History) loadWd14History();
+    });
+    connect(ui->editWd14HistorySearch, &QLineEdit::textChanged, this, [this](const QString &text) {
+        m_wd14HistoryModel->setSearchText(text);
+        updateWd14HistoryActions();
+    });
+    connect(ui->comboWd14HistorySort, &QComboBox::currentIndexChanged, this, [this](int index) {
+        m_wd14HistoryModel->setNewestFirst(index == 0);
+        updateWd14HistoryActions();
+    });
+    connect(ui->listWd14History->selectionModel(), &QItemSelectionModel::selectionChanged,
+            this, [this]() { updateWd14HistoryActions(); });
+    connect(ui->listWd14History, &QListView::clicked,
+            this, &PromptParserWidget::previewWd14HistoryEntry);
+    connect(ui->listWd14History, &QListView::doubleClicked, this, [this](const QModelIndex &index) {
+        previewWd14HistoryEntry(index);
+        restoreWd14HistoryEntry();
+    });
+    connect(ui->btnWd14HistoryRestore, &QPushButton::clicked,
+            this, &PromptParserWidget::restoreWd14HistoryEntry);
+    connect(ui->btnWd14HistoryApplySettings, &QPushButton::clicked,
+            this, &PromptParserWidget::applyWd14HistorySettings);
+    connect(ui->btnWd14HistoryDelete, &QPushButton::clicked,
+            this, &PromptParserWidget::deleteSelectedWd14History);
+    connect(ui->btnWd14HistoryClear, &QPushButton::clicked,
+            this, &PromptParserWidget::clearWd14History);
 
     connect(ui->scrollAreaPos->verticalScrollBar(), &QScrollBar::valueChanged,
             ui->scrollAreaWidgetContentsPos, [this]() { ui->scrollAreaWidgetContentsPos->update(); });
@@ -1325,6 +1364,7 @@ void PromptParserWidget::runWd14Tagger()
          << "--threshold" << QString::number(ui->spinWd14Threshold->value(), 'f', 4);
 
     saveWd14Settings();
+    m_activeWd14Settings = currentWd14Settings();
     setWd14Running(true);
     ui->lblWd14Status->setText("WD14 Python 反推运行中...");
     ui->lblWd14Elapsed->setText("用时: 计算中...");
@@ -1396,13 +1436,15 @@ QStringList PromptParserWidget::splitWd14TagList(const QString &text) const
     return result;
 }
 
-QString PromptParserWidget::formatWd14Tag(const QString &tag) const
+QString PromptParserWidget::formatWd14Tag(const QString &tag, const Wd14RenderSettings *settings) const
 {
     QString formatted = tag.trimmed();
-    if (ui->chkWd14ReplaceUnderscore->isChecked()) {
+    const bool replaceUnderscore = settings ? settings->replaceUnderscore : ui->chkWd14ReplaceUnderscore->isChecked();
+    const bool escapeBrackets = settings ? settings->escapeBrackets : ui->chkWd14EscapeBrackets->isChecked();
+    if (replaceUnderscore) {
         formatted.replace("_", " ");
     }
-    if (ui->chkWd14EscapeBrackets->isChecked()) {
+    if (escapeBrackets) {
         formatted = escapeParentheses(formatted);
     }
     return formatted;
@@ -1439,21 +1481,23 @@ void PromptParserWidget::updateWd14TagUsageColumn()
     }
 }
 
-void PromptParserWidget::applyWd14Result(const Wd14InferenceResult &result)
+void PromptParserWidget::applyWd14Result(const Wd14InferenceResult &result, const Wd14RenderSettings *settings)
 {
     ui->treeWd14Ratings->clear();
     ui->treeWd14Tags->clear();
 
     for (Wd14TagScore rating : result.ratings) {
         auto *item = new Wd14ScoreItem(ui->treeWd14Ratings);
-        item->setText(0, formatWd14Tag(rating.tag));
+        item->setText(0, formatWd14Tag(rating.tag, settings));
         item->setText(1, QString::number(rating.confidence * 100.0f, 'f', 2) + "%");
         item->setData(1, Qt::UserRole, rating.confidence);
     }
 
     QSet<QString> excluded;
-    for (const QString &tag : splitWd14TagList(ui->editWd14ExcludeTags->text())) excluded.insert(tag);
-    for (const QString &tag : splitWd14TagList(ui->editWd14DefaultExclude->text())) excluded.insert(tag);
+    const QString excludeText = settings ? settings->excludeTags : ui->editWd14ExcludeTags->text();
+    const QString defaultExcludeText = settings ? settings->defaultExclude : ui->editWd14DefaultExclude->text();
+    for (const QString &tag : splitWd14TagList(excludeText)) excluded.insert(tag);
+    for (const QString &tag : splitWd14TagList(defaultExcludeText)) excluded.insert(tag);
 
     QVector<Wd14TagScore> visibleTags;
     visibleTags.reserve(result.tags.size());
@@ -1468,7 +1512,9 @@ void PromptParserWidget::applyWd14Result(const Wd14InferenceResult &result)
         visibleTags.append(score);
     }
 
-    if (ui->chkWd14SortAlphabetically->isChecked()) {
+    const bool sortAlphabetically = settings ? settings->sortAlphabetically : ui->chkWd14SortAlphabetically->isChecked();
+    const bool includeConfidence = settings ? settings->includeConfidence : ui->chkWd14IncludeConfidence->isChecked();
+    if (sortAlphabetically) {
         std::sort(visibleTags.begin(), visibleTags.end(), [](const Wd14TagScore &a, const Wd14TagScore &b) {
             return QString::compare(a.tag, b.tag, Qt::CaseInsensitive) < 0;
         });
@@ -1477,10 +1523,10 @@ void PromptParserWidget::applyWd14Result(const Wd14InferenceResult &result)
     QStringList finalTags;
     QSet<QString> seen;
     for (const Wd14TagScore &score : visibleTags) {
-        const QString formatted = formatWd14Tag(score.tag);
+        const QString formatted = formatWd14Tag(score.tag, settings);
         if (formatted.isEmpty() || seen.contains(formatted)) continue;
         seen.insert(formatted);
-        if (ui->chkWd14IncludeConfidence->isChecked()) {
+        if (includeConfidence) {
             finalTags.append(QString("%1 (%2%)").arg(formatted).arg(score.confidence * 100.0f, 0, 'f', 2));
         } else {
             finalTags.append(formatted);
@@ -1499,9 +1545,10 @@ void PromptParserWidget::applyWd14Result(const Wd14InferenceResult &result)
         item->setData(5, Qt::UserRole, score.usageCount);
     }
 
-    for (const QString &extraTag : splitWd14TagList(ui->editWd14AdditionalTags->text())) {
+    const QString additionalText = settings ? settings->additionalTags : ui->editWd14AdditionalTags->text();
+    for (const QString &extraTag : splitWd14TagList(additionalText)) {
         if (excluded.contains(extraTag)) continue;
-        const QString formatted = formatWd14Tag(extraTag);
+        const QString formatted = formatWd14Tag(extraTag, settings);
         if (formatted.isEmpty() || seen.contains(formatted)) continue;
         seen.insert(formatted);
         finalTags.append(formatted);
@@ -1532,4 +1579,209 @@ void PromptParserWidget::updateWd14MemoryLabel(quint64 totalBytes, quint64 avail
             .arg(formatMemoryBytes(usedBytes))
             .arg(formatMemoryBytes(totalBytes))
             .arg(usage, 0, 'f', 1));
+}
+
+Wd14RenderSettings PromptParserWidget::currentWd14Settings() const
+{
+    Wd14RenderSettings settings;
+    settings.modelDir = ui->editWd14ModelPath->text().trimmed();
+    settings.presetName = ui->comboWd14Preset->currentText().trimmed();
+    settings.threshold = ui->spinWd14Threshold->value();
+    settings.additionalTags = ui->editWd14AdditionalTags->text().trimmed();
+    settings.excludeTags = ui->editWd14ExcludeTags->text().trimmed();
+    settings.defaultExclude = ui->editWd14DefaultExclude->text().trimmed();
+    settings.sortAlphabetically = ui->chkWd14SortAlphabetically->isChecked();
+    settings.includeConfidence = ui->chkWd14IncludeConfidence->isChecked();
+    settings.replaceUnderscore = ui->chkWd14ReplaceUnderscore->isChecked();
+    settings.escapeBrackets = ui->chkWd14EscapeBrackets->isChecked();
+    return settings;
+}
+
+QString PromptParserWidget::wd14HistoryPath() const
+{
+    const QString configDir = qApp->applicationDirPath() + "/config";
+    QDir().mkpath(configDir);
+    return configDir + "/wd14_history.jsonl";
+}
+
+void PromptParserWidget::loadWd14History()
+{
+    if (m_wd14HistoryLoaded || m_wd14HistoryWatcher) return;
+    ui->lblWd14HistoryStatus->setText("正在加载 WD14 反推历史...");
+    m_wd14HistoryWatcher = new QFutureWatcher<QVector<Wd14HistoryEntry>>(this);
+    connect(m_wd14HistoryWatcher, &QFutureWatcher<QVector<Wd14HistoryEntry>>::finished, this, [this]() {
+        if (!m_wd14HistoryWatcher) return;
+        QVector<Wd14HistoryEntry> entries = m_wd14HistoryWatcher->result();
+        QSet<QString> ids;
+        for (const Wd14HistoryEntry &entry : std::as_const(entries)) ids.insert(entry.id);
+        for (const Wd14HistoryEntry &entry : std::as_const(m_pendingWd14HistoryEntries)) {
+            if (!ids.contains(entry.id)) entries.append(entry);
+        }
+        m_pendingWd14HistoryEntries.clear();
+        m_wd14HistoryWatcher->deleteLater();
+        m_wd14HistoryWatcher = nullptr;
+        m_wd14HistoryLoaded = true;
+        m_wd14HistoryModel->setEntries(std::move(entries));
+        ui->listWd14History->setCurrentIndex(QModelIndex());
+        updateWd14HistoryActions();
+    });
+    const QString path = wd14HistoryPath();
+    m_wd14HistoryWatcher->setFuture(QtConcurrent::run([path]() {
+        return loadWd14HistoryFile(path);
+    }));
+}
+
+void PromptParserWidget::appendWd14History(const Wd14InferenceResult &result,
+                                           const Wd14RenderSettings &settings)
+{
+    Wd14HistoryEntry entry;
+    entry.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    entry.createdAt = QDateTime::currentDateTimeUtc();
+    entry.imagePath = QFileInfo(wd14ImagePath).absoluteFilePath();
+    entry.settings = settings;
+    entry.result = result;
+    entry.finalTags = wd14LastTagsText;
+    entry.result.finalTags = entry.finalTags;
+
+    QFile file(wd14HistoryPath());
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        ui->lblWd14Status->setText("WD14 反推完成，但历史记录保存失败: " + file.errorString());
+        return;
+    }
+    file.write(QJsonDocument(wd14HistoryEntryToJson(entry)).toJson(QJsonDocument::Compact));
+    file.write("\n");
+    file.close();
+
+    if (m_wd14HistoryLoaded) {
+        m_wd14HistoryModel->prependEntry(entry);
+    } else if (m_wd14HistoryWatcher) {
+        m_pendingWd14HistoryEntries.append(entry);
+    }
+    updateWd14HistoryActions();
+}
+
+bool PromptParserWidget::rewriteWd14History() const
+{
+    QSaveFile file(wd14HistoryPath());
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    for (const Wd14HistoryEntry &entry : m_wd14HistoryModel->allEntries()) {
+        file.write(QJsonDocument(wd14HistoryEntryToJson(entry)).toJson(QJsonDocument::Compact));
+        file.write("\n");
+    }
+    return file.commit();
+}
+
+const Wd14HistoryEntry *PromptParserWidget::currentWd14HistoryEntry() const
+{
+    return m_wd14HistoryModel->entryAt(ui->listWd14History->currentIndex().row());
+}
+
+void PromptParserWidget::updateWd14HistoryActions()
+{
+    const int visibleCount = m_wd14HistoryModel ? m_wd14HistoryModel->rowCount() : 0;
+    const int totalCount = m_wd14HistoryModel ? m_wd14HistoryModel->allEntries().size() : 0;
+    const int selectedCount = ui->listWd14History->selectionModel()
+        ? ui->listWd14History->selectionModel()->selectedRows().size() : 0;
+    const bool hasCurrent = currentWd14HistoryEntry() != nullptr;
+    ui->btnWd14HistoryRestore->setEnabled(hasCurrent);
+    ui->btnWd14HistoryApplySettings->setEnabled(hasCurrent);
+    ui->btnWd14HistoryDelete->setEnabled(selectedCount > 0);
+    ui->btnWd14HistoryClear->setEnabled(totalCount > 0);
+    if (!m_wd14HistoryLoaded && m_wd14HistoryWatcher) return;
+    ui->lblWd14HistoryStatus->setText(totalCount == 0
+        ? "暂无 WD14 反推历史。"
+        : QString("显示 %1 / %2 条历史，已选择 %3 条。").arg(visibleCount).arg(totalCount).arg(selectedCount));
+}
+
+void PromptParserWidget::previewWd14HistoryEntry(const QModelIndex &index)
+{
+    const Wd14HistoryEntry *entry = m_wd14HistoryModel->entryAt(index.row());
+    if (!entry) return;
+    applyWd14Result(entry->result, &entry->settings);
+    ui->lblWd14Elapsed->setText(QString("用时: %1 sec.").arg(entry->result.elapsedSec, 0, 'f', 2));
+    updateWd14MemoryLabel(entry->result.totalMemory, entry->result.availableMemory);
+    ui->lblWd14Status->setText(QString("正在预览 %1 的历史结果。").arg(QFileInfo(entry->imagePath).fileName()));
+    updateWd14HistoryActions();
+}
+
+void PromptParserWidget::restoreWd14HistoryEntry()
+{
+    const Wd14HistoryEntry *entry = currentWd14HistoryEntry();
+    if (!entry) return;
+    applyWd14Result(entry->result, &entry->settings);
+    ui->lblWd14Elapsed->setText(QString("用时: %1 sec.").arg(entry->result.elapsedSec, 0, 'f', 2));
+    updateWd14MemoryLabel(entry->result.totalMemory, entry->result.availableMemory);
+    if (QFile::exists(entry->imagePath)) {
+        wd14ImagePath = entry->imagePath;
+        updateWd14ImagePreview(entry->imagePath);
+        ui->lblWd14Status->setText("已恢复历史结果，不会重新运行反推。");
+    } else {
+        wd14ImagePath.clear();
+        ui->lblWd14Image->clear();
+        ui->lblWd14Image->setText("历史图片已移动或删除\n请重新选择图片");
+        ui->lblWd14Status->setText("已恢复历史结果，但原图片不存在。");
+    }
+    ui->tabWd14Left->setCurrentWidget(ui->tabWd14Image);
+}
+
+void PromptParserWidget::applyWd14HistorySettings()
+{
+    const Wd14HistoryEntry *entry = currentWd14HistoryEntry();
+    if (!entry) return;
+    const Wd14RenderSettings &settings = entry->settings;
+    const QSignalBlocker thresholdBlocker(ui->spinWd14Threshold);
+    const QSignalBlocker sliderBlocker(ui->sliderWd14Threshold);
+    const QSignalBlocker sortBlocker(ui->chkWd14SortAlphabetically);
+    const QSignalBlocker confidenceBlocker(ui->chkWd14IncludeConfidence);
+    const QSignalBlocker underscoreBlocker(ui->chkWd14ReplaceUnderscore);
+    const QSignalBlocker bracketBlocker(ui->chkWd14EscapeBrackets);
+    ui->editWd14ModelPath->setText(settings.modelDir);
+    ui->spinWd14Threshold->setValue(settings.threshold);
+    ui->sliderWd14Threshold->setValue(qRound(settings.threshold * 100.0));
+    ui->editWd14AdditionalTags->setText(settings.additionalTags);
+    ui->editWd14ExcludeTags->setText(settings.excludeTags);
+    ui->editWd14DefaultExclude->setText(settings.defaultExclude);
+    ui->chkWd14SortAlphabetically->setChecked(settings.sortAlphabetically);
+    ui->chkWd14IncludeConfidence->setChecked(settings.includeConfidence);
+    ui->chkWd14ReplaceUnderscore->setChecked(settings.replaceUnderscore);
+    ui->chkWd14EscapeBrackets->setChecked(settings.escapeBrackets);
+    const int presetIndex = ui->comboWd14Preset->findText(settings.presetName);
+    if (presetIndex >= 0) {
+        const QSignalBlocker presetBlocker(ui->comboWd14Preset);
+        ui->comboWd14Preset->setCurrentIndex(presetIndex);
+    }
+    saveWd14Settings();
+    ui->lblWd14HistoryStatus->setText("已应用该历史记录的模型与反推设置。");
+}
+
+void PromptParserWidget::deleteSelectedWd14History()
+{
+    const QModelIndexList rows = ui->listWd14History->selectionModel()->selectedRows();
+    if (rows.isEmpty()) return;
+    if (QMessageBox::question(this, "删除反推历史",
+                              QString("确定删除选中的 %1 条 WD14 反推历史吗？").arg(rows.size()))
+        != QMessageBox::Yes) return;
+    QSet<QString> ids;
+    for (const QModelIndex &index : rows) ids.insert(index.data(Wd14HistoryModel::EntryIdRole).toString());
+    const QVector<Wd14HistoryEntry> previousEntries = m_wd14HistoryModel->allEntries();
+    m_wd14HistoryModel->removeIds(ids);
+    if (!rewriteWd14History()) {
+        m_wd14HistoryModel->setEntries(previousEntries);
+        QMessageBox::warning(this, "保存失败", "无法写入 wd14_history.jsonl，历史记录未删除。");
+    }
+    updateWd14HistoryActions();
+}
+
+void PromptParserWidget::clearWd14History()
+{
+    if (!m_wd14HistoryModel || m_wd14HistoryModel->allEntries().isEmpty()) return;
+    if (QMessageBox::question(this, "清空反推历史", "确定清空全部 WD14 反推历史吗？此操作无法撤销。")
+        != QMessageBox::Yes) return;
+    const QVector<Wd14HistoryEntry> previousEntries = m_wd14HistoryModel->allEntries();
+    m_wd14HistoryModel->clear();
+    if (!rewriteWd14History()) {
+        m_wd14HistoryModel->setEntries(previousEntries);
+        QMessageBox::warning(this, "保存失败", "无法清空历史文件，历史记录未删除。");
+    }
+    updateWd14HistoryActions();
 }

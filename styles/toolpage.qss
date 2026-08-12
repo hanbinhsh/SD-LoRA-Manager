@@ -119,6 +119,23 @@ QListWidget#listChatHistory {
     show-decoration-selected: 0;
 }
 
+QListView#listWd14History {
+    background-color: @inputBg;
+    border: 1px solid @inputBorder;
+    border-radius: 4px;
+    outline: none;
+    padding: 2px;
+}
+
+QListView#listWd14History::item {
+    background: transparent;
+    border: none;
+}
+
+QLabel#lblWd14HistoryStatus {
+    color: @mutedText;
+}
+
 QListWidget#listTemplates::item:hover,
 QListWidget#listChatHistory::item:hover {
     background-color: @templateHoverBg;

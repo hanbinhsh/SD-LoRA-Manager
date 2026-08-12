@@ -72,6 +72,8 @@ qt_add_executable(SD_LoRA_Manager
     tools/promptparserwidget.h
     tools/promptparserwidget.cpp
     tools/promptparserwidget.ui
+    tools/wd14historymodel.h
+    tools/wd14historymodel.cpp
     pages/launcherwidget.h
     pages/launcherwidget.cpp
     pages/launcherwidget.ui

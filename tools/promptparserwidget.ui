@@ -877,6 +877,123 @@ Click or Drag Image Here</string>
            </item>
           </layout>
          </widget>
+         <widget class="QWidget" name="tabWd14History">
+          <attribute name="title">
+           <string>历史</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="layoutWd14History">
+           <property name="spacing">
+            <number>8</number>
+           </property>
+           <property name="leftMargin">
+            <number>8</number>
+           </property>
+           <property name="topMargin">
+            <number>8</number>
+           </property>
+           <property name="rightMargin">
+            <number>8</number>
+           </property>
+           <property name="bottomMargin">
+            <number>8</number>
+           </property>
+           <item>
+            <layout class="QHBoxLayout" name="layoutWd14HistoryFilter">
+             <property name="spacing">
+              <number>6</number>
+             </property>
+             <item>
+              <widget class="QLineEdit" name="editWd14HistorySearch">
+               <property name="placeholderText">
+                <string>搜索图片名、路径、模型或 Tag</string>
+               </property>
+               <property name="clearButtonEnabled">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QComboBox" name="comboWd14HistorySort">
+               <item>
+                <property name="text">
+                 <string>时间：最新优先</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>时间：最早优先</string>
+                </property>
+               </item>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QListView" name="listWd14History">
+             <property name="mouseTracking">
+              <bool>true</bool>
+             </property>
+             <property name="selectionMode">
+              <enum>QAbstractItemView::SelectionMode::ExtendedSelection</enum>
+             </property>
+             <property name="verticalScrollMode">
+              <enum>QAbstractItemView::ScrollMode::ScrollPerPixel</enum>
+             </property>
+             <property name="uniformItemSizes">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="lblWd14HistoryStatus">
+             <property name="text">
+              <string>首次进入时加载反推历史。</string>
+             </property>
+             <property name="wordWrap">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QGridLayout" name="layoutWd14HistoryActions">
+             <property name="horizontalSpacing">
+              <number>6</number>
+             </property>
+             <property name="verticalSpacing">
+              <number>6</number>
+             </property>
+             <item row="0" column="0">
+              <widget class="QPushButton" name="btnWd14HistoryRestore">
+               <property name="text">
+                <string>恢复结果</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QPushButton" name="btnWd14HistoryApplySettings">
+               <property name="text">
+                <string>应用当时设置</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QPushButton" name="btnWd14HistoryDelete">
+               <property name="text">
+                <string>删除选中</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QPushButton" name="btnWd14HistoryClear">
+               <property name="text">
+                <string>清空历史</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </widget>
         </widget>
        </item>
        <item>
