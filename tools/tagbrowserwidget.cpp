@@ -1,6 +1,7 @@
 #include "tagbrowserwidget.h"
 #include "styleconstants.h"
 #include "tableviewstylehelper.h"
+#include "tagutils.h"
 #include "ui_tagbrowserwidget.h"
 
 #include <QtConcurrent/QtConcurrent>
@@ -262,19 +263,27 @@ QStringList parseUserPromptTagsWorker(const QString &prompt)
     return tags;
 }
 
-void addPromptTagCounts(const QString &prompt, QMap<QString, int> &counts)
+void addPromptTagCounts(const QString &prompt, QMap<QString, int> &counts,
+                        QHash<QString, QString> &displayTags)
 {
     if (prompt.trimmed().isEmpty()) return;
+    QSet<QString> tagsInImage;
     for (const QString &tag : parseUserPromptTagsWorker(prompt)) {
-        counts[tag]++;
+        const QString key = TagUtils::normalizedPromptTagKey(tag);
+        if (key.isEmpty() || tagsInImage.contains(key)) continue;
+        tagsInImage.insert(key);
+        if (!displayTags.contains(key)) displayTags.insert(key, tag);
+        counts[key]++;
     }
 }
 
-void appendUserTagRows(const QMap<QString, int> &counts, const QString &kind, QVector<UserTagUsageRow> &rows)
+void appendUserTagRows(const QMap<QString, int> &counts,
+                       const QHash<QString, QString> &displayTags,
+                       const QString &kind, QVector<UserTagUsageRow> &rows)
 {
     for (auto it = counts.constBegin(); it != counts.constEnd(); ++it) {
         UserTagUsageRow row;
-        row.tag = it.key();
+        row.tag = displayTags.value(it.key(), it.key());
         row.kind = kind;
         row.count = it.value();
         rows.append(row);
@@ -290,18 +299,25 @@ QVector<UserTagUsageRow> readUserTagRowsWorker(const QString &cachePath, int sco
     const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
     QMap<QString, int> positiveCounts;
     QMap<QString, int> negativeCounts;
+    QHash<QString, QString> positiveDisplayTags;
+    QHash<QString, QString> negativeDisplayTags;
     for (auto it = root.constBegin(); it != root.constEnd(); ++it) {
+        if (it.key().startsWith("__")) continue;
         const QJsonObject obj = it.value().toObject();
         if (scope == 0 || scope == 2) {
-            addPromptTagCounts(obj["p"].toString(), positiveCounts);
+            addPromptTagCounts(obj["p"].toString(), positiveCounts, positiveDisplayTags);
         }
         if (scope == 1 || scope == 2) {
-            addPromptTagCounts(obj["np"].toString(), negativeCounts);
+            addPromptTagCounts(obj["np"].toString(), negativeCounts, negativeDisplayTags);
         }
     }
 
-    if (scope == 0 || scope == 2) appendUserTagRows(positiveCounts, "正面", rows);
-    if (scope == 1 || scope == 2) appendUserTagRows(negativeCounts, "负面", rows);
+    if (scope == 0 || scope == 2) {
+        appendUserTagRows(positiveCounts, positiveDisplayTags, "正面", rows);
+    }
+    if (scope == 1 || scope == 2) {
+        appendUserTagRows(negativeCounts, negativeDisplayTags, "负面", rows);
+    }
 
     std::sort(rows.begin(), rows.end(), [](const auto &a, const auto &b) {
         if (a.count != b.count) return a.count > b.count;

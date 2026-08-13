@@ -8,6 +8,10 @@ namespace TagUtils {
 
 QString cleanPromptTag(QString text, bool preserveEmoticons = true);
 
+// Stable key used for counting, deduplication and matching across tool pages.
+// Whitespace, underscores and hyphens are equivalent and matching is case-insensitive.
+QString normalizedPromptTagKey(QString text);
+
 // 把一段 prompt 文本切分成原始 tag 片段（未做 cleanPromptTag 清洗）。
 // 处理逻辑：trim -> 疑似 JSON（ComfyUI 工作流等）直接返回空 -> 可选换行转逗号 -> 逗号切分。
 // 调用方再自行决定 cleanPromptTag 的参数、过滤与去重。

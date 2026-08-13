@@ -293,8 +293,9 @@ QStringList parsePromptTags(const QString &prompt)
                 break;
             }
         }
-        if (blocked || seenInImage.contains(tag)) continue;
-        seenInImage.insert(tag);
+        const QString key = TagUtils::normalizedPromptTagKey(tag);
+        if (blocked || key.isEmpty() || seenInImage.contains(key)) continue;
+        seenInImage.insert(key);
         tags.append(tag);
     }
     return tags;
@@ -533,10 +534,14 @@ void populateModelTriggerChildren(QTreeWidgetItem *modelItem)
     addTriggerChildren(customTriggers, AppStyle::color("successGreenBright"));
 }
 
-void addTagCounts(const QString &prompt, QMap<QString, int> &counts)
+void addTagCounts(const QString &prompt, QMap<QString, int> &counts,
+                  QHash<QString, QString> &displayTags)
 {
     for (const QString &tag : parsePromptTags(prompt)) {
-        counts[tag] += 1;
+        const QString key = TagUtils::normalizedPromptTagKey(tag);
+        if (key.isEmpty()) continue;
+        if (!displayTags.contains(key)) displayTags.insert(key, tag);
+        counts[key] += 1;
     }
 }
 
@@ -608,24 +613,32 @@ QVector<PromptTemplateLibraryWidget::TagUsageRow> readTagRowsWorker(const QStrin
     const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
     QMap<QString, int> positiveCounts;
     QMap<QString, int> negativeCounts;
+    QHash<QString, QString> positiveDisplayTags;
+    QHash<QString, QString> negativeDisplayTags;
     for (auto it = root.constBegin(); it != root.constEnd(); ++it) {
         if (it.key().startsWith("__")) continue;
         const QJsonObject obj = it.value().toObject();
-        if (scope == 0 || scope == 2) addTagCounts(obj["p"].toString(), positiveCounts);
-        if (scope == 1 || scope == 2) addTagCounts(obj["np"].toString(), negativeCounts);
+        if (scope == 0 || scope == 2) {
+            addTagCounts(obj["p"].toString(), positiveCounts, positiveDisplayTags);
+        }
+        if (scope == 1 || scope == 2) {
+            addTagCounts(obj["np"].toString(), negativeCounts, negativeDisplayTags);
+        }
     }
 
-    auto appendRows = [&rows](const QMap<QString, int> &counts, const QString &kind) {
+    auto appendRows = [&rows](const QMap<QString, int> &counts,
+                              const QHash<QString, QString> &displayTags,
+                              const QString &kind) {
         for (auto it = counts.constBegin(); it != counts.constEnd(); ++it) {
             PromptTemplateLibraryWidget::TagUsageRow row;
-            row.tag = it.key();
+            row.tag = displayTags.value(it.key(), it.key());
             row.kind = kind;
             row.count = it.value();
             rows.append(row);
         }
     };
-    if (scope == 0 || scope == 2) appendRows(positiveCounts, "正面");
-    if (scope == 1 || scope == 2) appendRows(negativeCounts, "负面");
+    if (scope == 0 || scope == 2) appendRows(positiveCounts, positiveDisplayTags, "正面");
+    if (scope == 1 || scope == 2) appendRows(negativeCounts, negativeDisplayTags, "负面");
 
     std::sort(rows.begin(), rows.end(), [](const auto &a, const auto &b) {
         if (a.count != b.count) return a.count > b.count;

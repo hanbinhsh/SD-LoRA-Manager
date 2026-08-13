@@ -412,13 +412,38 @@ void SyncWidget::onClientReadyRead() {
             return;
         }
 
+        if (plaintext.size() < 8) {
+            logMsg("⚠️ 警告: 同步数据包明文头不完整，已断开客户端。");
+            client->disconnectFromHost();
+            return;
+        }
+
         QDataStream plainIn(plaintext);
         plainIn.setByteOrder(QDataStream::BigEndian);
-        quint32 plainTotalLen, jsonLen;
+        quint32 plainTotalLen = 0;
+        quint32 jsonLen = 0;
         plainIn >> plainTotalLen >> jsonLen;
 
+        // plainTotalLen is encoded as sizeof(jsonLen) + JSON + optional data.
+        const quint64 actualPayloadLength = static_cast<quint64>(plaintext.size() - 4);
+        const quint64 jsonEnd = 8ull + static_cast<quint64>(jsonLen);
+        if (plainIn.status() != QDataStream::Ok
+            || static_cast<quint64>(plainTotalLen) != actualPayloadLength
+            || jsonEnd > static_cast<quint64>(plaintext.size())) {
+            logMsg("⚠️ 警告: 同步数据包长度字段无效，已断开客户端。");
+            client->disconnectFromHost();
+            return;
+        }
+
         QByteArray jsonBytes = plaintext.mid(8, jsonLen);
-        QJsonObject json = QJsonDocument::fromJson(jsonBytes).object();
+        QJsonParseError jsonError;
+        const QJsonDocument jsonDocument = QJsonDocument::fromJson(jsonBytes, &jsonError);
+        if (jsonError.error != QJsonParseError::NoError || !jsonDocument.isObject()) {
+            logMsg("⚠️ 警告: 同步数据包 JSON 无效，已断开客户端。");
+            client->disconnectFromHost();
+            return;
+        }
+        QJsonObject json = jsonDocument.object();
         QString cmd = json["cmd"].toString();
 
         if (cmd == "AUTH") {
@@ -459,10 +484,25 @@ void SyncWidget::onClientReadyRead() {
 
 // ======================= 文件与目录管理 =======================
 QString SyncWidget::findRootForPath(const QString &path) {
+    const QString normalizedPath = QDir::cleanPath(
+        QDir::fromNativeSeparators(QFileInfo(path).absoluteFilePath()));
+    QString bestMatch;
+#ifdef Q_OS_WIN
+    constexpr Qt::CaseSensitivity pathCaseSensitivity = Qt::CaseInsensitive;
+#else
+    constexpr Qt::CaseSensitivity pathCaseSensitivity = Qt::CaseSensitive;
+#endif
     for (const QString &root : m_rootPaths) {
-        if (path.startsWith(root)) return root;
+        const QString normalizedRoot = QDir::cleanPath(
+            QDir::fromNativeSeparators(QFileInfo(root).absoluteFilePath()));
+        if (normalizedRoot.isEmpty()) continue;
+        const bool exactMatch = normalizedPath.compare(normalizedRoot, pathCaseSensitivity) == 0;
+        const bool childMatch = normalizedPath.startsWith(normalizedRoot + '/', pathCaseSensitivity);
+        if ((exactMatch || childMatch) && normalizedRoot.size() > bestMatch.size()) {
+            bestMatch = root;
+        }
     }
-    return QString();
+    return bestMatch;
 }
 QString SyncWidget::getRelativePathWithRoot(const QString &fullPath, const QString &rootPath) {
     QDir rootDir(rootPath);
@@ -520,16 +560,22 @@ void SyncWidget::addPathRecursive(const QString &rootPath, const QString &path) 
     if (!m_watchedPathsMap.contains(rootPath)) m_watchedPathsMap[rootPath] = QSet<QString>();
     QDirIterator it(path, QDir::Dirs | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
     if(!m_watchedPathsMap[rootPath].contains(path)) {
-        watcher->addPath(path);
-        m_watchedPathsMap[rootPath].insert(path);
-        updateDirState(path);
+        if (watcher->addPath(path)) {
+            m_watchedPathsMap[rootPath].insert(path);
+            updateDirState(path);
+        } else {
+            logMsg("⚠️ 无法监控目录: " + path);
+        }
     }
     while (it.hasNext()) {
         QString subDir = it.next();
         if(!m_watchedPathsMap[rootPath].contains(subDir)) {
-            watcher->addPath(subDir);
-            m_watchedPathsMap[rootPath].insert(subDir);
-            updateDirState(subDir);
+            if (watcher->addPath(subDir)) {
+                m_watchedPathsMap[rootPath].insert(subDir);
+                updateDirState(subDir);
+            } else {
+                logMsg("⚠️ 无法监控目录: " + subDir);
+            }
         }
     }
 }

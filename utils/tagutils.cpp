@@ -23,6 +23,16 @@ QString cleanPromptTag(QString text, bool preserveEmoticons)
     return text.trimmed();
 }
 
+QString normalizedPromptTagKey(QString text)
+{
+    text = cleanPromptTag(text, false).toCaseFolded().trimmed();
+    text.replace('_', ' ');
+    text.replace('-', ' ');
+    static const QRegularExpression separators(QStringLiteral("\\s+"));
+    text.replace(separators, QStringLiteral(" "));
+    return text;
+}
+
 QStringList splitPromptParts(const QString &rawPrompt, bool splitOnNewline)
 {
     const QString trimmed = rawPrompt.trimmed();
