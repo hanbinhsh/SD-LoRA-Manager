@@ -736,7 +736,6 @@ void SyncWidget::removeFolderByPath(const QString &path) {
     m_rootPaths.removeAll(path);
     removePathRecursive(path);
     saveSettings();
-    sendFolderDeleteNotification(QFileInfo(path).fileName());
     logMsg("已移除监控文件夹: " + path);
 }
 

@@ -24,6 +24,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <QSet>
 #include <QStringConverter>
 #include <QTextStream>
@@ -1458,7 +1459,7 @@ bool TagBrowserWidget::saveCurrentCsv()
     QFileInfo info(m_csvPath);
     QDir().mkpath(info.absolutePath());
 
-    QFile file(m_csvPath);
+    QSaveFile file(m_csvPath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         QMessageBox::warning(nullptr, "错误", "无法保存 Tag 翻译表。");
         return false;
@@ -1513,7 +1514,11 @@ bool TagBrowserWidget::saveCurrentCsv()
             << "\n";
         }
     }
-    file.close();
+    out.flush();
+    if (out.status() != QTextStream::Ok || !file.commit()) {
+        QMessageBox::warning(nullptr, "错误", "无法完整保存 Tag 翻译表，原文件未修改。");
+        return false;
+    }
 
     m_dirty = false;
     updateStatusLabel();

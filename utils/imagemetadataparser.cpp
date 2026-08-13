@@ -20,6 +20,7 @@ bool looksLikeComfyPromptObject(const QJsonObject &obj);
 
 QMap<QString, QString> readPngTextChunks(const QString &filePath)
 {
+    constexpr qint64 kMaxMetadataChunkBytes = 64LL * 1024LL * 1024LL;
     QMap<QString, QString> chunks;
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) return chunks;
@@ -36,8 +37,20 @@ QMap<QString, QString> readPngTextChunks(const QString &filePath)
         const quint32 length = qFromBigEndian<quint32>(lenData.constData());
         const QByteArray type = file.read(4);
         if (type.size() < 4) break;
-        const QByteArray data = file.read(length);
-        if (data.size() < static_cast<int>(length)) break;
+
+        const qint64 chunkLength = static_cast<qint64>(length);
+        const qint64 remaining = file.size() - file.pos();
+        if (remaining < chunkLength + 4) break; // payload + CRC must both exist
+
+        const bool isMetadataChunk = type == "tEXt" || type == "iTXt" || type == "zTXt";
+        if (!isMetadataChunk || chunkLength > kMaxMetadataChunkBytes) {
+            if (!file.seek(file.pos() + chunkLength + 4)) break;
+            if (type == "IEND") break;
+            continue;
+        }
+
+        const QByteArray data = file.read(chunkLength);
+        if (data.size() != chunkLength) break;
 
         if (type == "tEXt") {
             const int nullPos = data.indexOf('\0');
@@ -49,19 +62,23 @@ QMap<QString, QString> readPngTextChunks(const QString &filePath)
             int pos = data.indexOf('\0');
             if (pos > 0 && pos + 5 < data.size()) {
                 const QString keyword = QString::fromLatin1(data.left(pos));
+                const uchar compressionFlag = static_cast<uchar>(data.at(pos + 1));
+                pos += 1; // keyword terminator
                 pos += 1; // compression flag
                 pos += 1; // compression method
                 const int languageEnd = data.indexOf('\0', pos);
                 if (languageEnd != -1) {
                     const int translatedEnd = data.indexOf('\0', languageEnd + 1);
-                    if (translatedEnd != -1) {
+                    // Compressed iTXt is not interpreted as UTF-8. QImageReader
+                    // remains available as a fallback for supported plugins.
+                    if (translatedEnd != -1 && compressionFlag == 0) {
                         chunks.insert(keyword, QString::fromUtf8(data.mid(translatedEnd + 1)));
                     }
                 }
             }
         }
 
-        file.seek(file.pos() + 4); // CRC
+        if (file.read(4).size() != 4) break; // CRC
     }
 
     return chunks;
@@ -346,6 +363,30 @@ QJsonObject parseJsonObject(const QString &text)
     return doc.object();
 }
 
+bool isOrLooksLikeJsonContainer(const QString &text)
+{
+    const QString trimmed = text.trimmed();
+    if (trimmed.isEmpty()) return false;
+
+    QJsonParseError error;
+    const QJsonDocument doc = QJsonDocument::fromJson(trimmed.toUtf8(), &error);
+    if (error.error == QJsonParseError::NoError && !doc.isNull()) return true;
+
+    // Broken/incomplete workflow JSON must not fall through to prompt tags.
+    return trimmed.startsWith('{') || trimmed.startsWith('[');
+}
+
+bool looksLikeA1111Parameters(const QString &text)
+{
+    static const QRegularExpression stepsLine(
+        QStringLiteral("(?:^|\\n)Steps\\s*:\\s*[^\\n,]+"),
+        QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression generationField(
+        QStringLiteral("(?:Sampler|CFG scale|Seed|Size|Model)\\s*:"),
+        QRegularExpression::CaseInsensitiveOption);
+    return stepsLine.match(text).hasMatch() && generationField.match(text).hasMatch();
+}
+
 QJsonObject comfyPromptNodesFromRoot(const QJsonObject &root)
 {
     if (looksLikeComfyPromptObject(root)) return root;
@@ -412,6 +453,41 @@ ParsedImageMetadata parseComfyPromptObject(const QJsonObject &nodes)
         meta.parametersText = formatComfyParameters(meta);
     }
     return meta;
+}
+
+void mergeComfyMetadata(ParsedImageMetadata &target, const ParsedImageMetadata &supplement)
+{
+    auto fillMissing = [](QString &value, const QString &fallback) {
+        if (value.trimmed().isEmpty() && !fallback.trimmed().isEmpty()) value = fallback;
+    };
+
+    fillMissing(target.positivePrompt, supplement.positivePrompt);
+    fillMissing(target.negativePrompt, supplement.negativePrompt);
+    fillMissing(target.seed, supplement.seed);
+    fillMissing(target.steps, supplement.steps);
+    fillMissing(target.cfg, supplement.cfg);
+    fillMissing(target.sampler, supplement.sampler);
+    fillMissing(target.scheduler, supplement.scheduler);
+    fillMissing(target.checkpoint, supplement.checkpoint);
+
+    QSet<QString> seenLoras;
+    for (const QString &description : std::as_const(target.loraDescriptions)) {
+        seenLoras.insert(description.trimmed().toCaseFolded());
+    }
+    for (const QString &description : supplement.loraDescriptions) {
+        const QString key = description.trimmed().toCaseFolded();
+        if (key.isEmpty() || seenLoras.contains(key)) continue;
+        seenLoras.insert(key);
+        target.loraDescriptions.append(description);
+    }
+    for (auto it = supplement.loraHashes.constBegin(); it != supplement.loraHashes.constEnd(); ++it) {
+        if (!target.loraHashes.contains(it.key())) target.loraHashes.insert(it.key(), it.value());
+    }
+
+    if (target.hasContent() || !target.loraDescriptions.isEmpty() || !target.checkpoint.isEmpty()) {
+        target.sourceType = "ComfyUI";
+        target.parametersText = formatComfyParameters(target);
+    }
 }
 
 QJsonObject promptObjectFromWorkflowGraph(const QJsonObject &workflow)
@@ -502,13 +578,13 @@ QJsonObject promptObjectFromWorkflowGraph(const QJsonObject &workflow)
 ParsedImageMetadata parseComfyMetadata(const QString &promptJson, const QString &workflowJson)
 {
     ParsedImageMetadata meta = parseComfyPromptObject(comfyPromptNodesFromRoot(parseJsonObject(promptJson)));
-    if (meta.hasContent()) return meta;
 
     const QJsonObject workflow = parseJsonObject(workflowJson);
-    meta = parseComfyPromptObject(comfyPromptNodesFromRoot(workflow));
-    if (meta.hasContent()) return meta;
+    const ParsedImageMetadata workflowPrompt = parseComfyPromptObject(comfyPromptNodesFromRoot(workflow));
+    mergeComfyMetadata(meta, workflowPrompt);
 
-    meta = parseComfyPromptObject(promptObjectFromWorkflowGraph(workflow));
+    const ParsedImageMetadata workflowGraph = parseComfyPromptObject(promptObjectFromWorkflowGraph(workflow));
+    mergeComfyMetadata(meta, workflowGraph);
     return meta;
 }
 
@@ -557,14 +633,17 @@ ParsedImageMetadata parseImageMetadataFromFile(const QString &filePath)
     if (!parameters.trimmed().isEmpty()) {
         const QJsonObject parametersJson = parseJsonObject(parameters);
         if (!parametersJson.isEmpty()) {
-            ParsedImageMetadata comfy = parseComfyPromptObject(comfyPromptNodesFromRoot(parametersJson));
-            if (!comfy.hasContent()) {
-                comfy = parseComfyMetadata(parameters, workflowJson);
-            }
+            ParsedImageMetadata comfy = parseComfyMetadata(promptJson, workflowJson);
+            const ParsedImageMetadata parametersMeta =
+                parseComfyPromptObject(comfyPromptNodesFromRoot(parametersJson));
+            mergeComfyMetadata(comfy, parametersMeta);
             if (comfy.hasContent()) return comfy;
-            return ParsedImageMetadata();
+            // Some exporters put an unrelated JSON object in `parameters` but
+            // keep the real ComfyUI graph in `prompt`/`workflow`.
+            // Continue probing those chunks instead of treating JSON as tags.
+        } else if (!isOrLooksLikeJsonContainer(parameters) || looksLikeA1111Parameters(parameters)) {
+            return parseA1111Text(parameters);
         }
-        return parseA1111Text(parameters);
     }
 
     ParsedImageMetadata comfy = parseComfyMetadata(promptJson, workflowJson);
@@ -572,7 +651,9 @@ ParsedImageMetadata parseImageMetadataFromFile(const QString &filePath)
 
     ParsedImageMetadata fallback;
     const QString plainPrompt = promptJson.trimmed();
-    if (!plainPrompt.isEmpty() && parseJsonObject(plainPrompt).isEmpty() && isMeaningfulPromptText(plainPrompt)) {
+    if (!plainPrompt.isEmpty()
+        && !isOrLooksLikeJsonContainer(plainPrompt)
+        && isMeaningfulPromptText(plainPrompt)) {
         fallback.sourceType = "Prompt";
         fallback.positivePrompt = plainPrompt;
     }

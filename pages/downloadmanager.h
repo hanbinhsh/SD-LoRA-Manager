@@ -99,6 +99,9 @@ private:
     static QString uniqueFilePath(const QString &dirPath, const QString &fileName);
 
     QString chooseTargetPath(const ModelUpdateInfo &info, bool *overwrite) const;
+    bool writeActiveReplyData(QNetworkReply *reply);
+    void closeActiveFile();
+    void verifyAndFinishDownload(const ModelFileDownloadTask &task);
     void finishModelDownload(const ModelFileDownloadTask &task);
 
     DownloadsPage *m_page = nullptr;
@@ -126,10 +129,13 @@ private:
     QTimer *m_previewTimer = nullptr;
 
     QQueue<ModelFileDownloadTask> m_downloadQueue;
+    QSet<QString> m_queuedDownloadPaths;
     QSet<QString> m_canceledPaths;
     QPointer<QNetworkReply> m_activeReply;
     ModelFileDownloadTask m_activeTask;
     QFile *m_activeFile = nullptr;
+    bool m_activeWriteFailed = false;
+    QString m_activeWriteError;
     bool m_downloading = false;
     QElapsedTimer m_downloadTimer;
 };

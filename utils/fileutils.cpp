@@ -22,9 +22,15 @@ QString calculateSha256Hex(const QString &filePath, bool uppercase)
 
     while (!file.atEnd()) {
         const qint64 size = file.read(buffer.data(), buffer.size());
-        if (size <= 0) break;
+        if (size < 0) return QString();
+        if (size == 0) {
+            if (!file.atEnd() || file.error() != QFileDevice::NoError) return QString();
+            break;
+        }
         hash.addData(buffer.constData(), size);
     }
+
+    if (file.error() != QFileDevice::NoError) return QString();
 
     QString result = QString::fromLatin1(hash.result().toHex());
     return uppercase ? result.toUpper() : result;

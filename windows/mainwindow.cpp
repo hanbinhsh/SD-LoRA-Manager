@@ -52,10 +52,12 @@
 #include <QProgressBar>
 #include <QSaveFile>
 #include <QUrlQuery>
+#include <QUuid>
 #include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <utility>
 #include <QElapsedTimer>
 #include <QSharedPointer>
@@ -102,6 +104,12 @@ QString normalizedHomeTagKey(const QString &tag)
     return tag.trimmed().toCaseFolded();
 }
 
+QString normalizedPromptTagKey(QString tag)
+{
+    tag.replace('_', ' ');
+    return tag.simplified().toCaseFolded();
+}
+
 PreviewMetadataPayload previewPayloadFromImageInfo(const ImageInfo &img)
 {
     PreviewMetadataPayload payload;
@@ -146,6 +154,40 @@ QVector<ImageInfo> imageInfosFromVersionJson(const QJsonObject &root)
         result.append(img);
     }
     return result;
+}
+
+QJsonObject selectVersionFileForLocalModel(const QJsonArray &files,
+                                           const QString &localFilePath,
+                                           const QString &preferredSha256 = QString())
+{
+    const QString normalizedHash = preferredSha256.trimmed();
+    if (!normalizedHash.isEmpty()) {
+        for (const QJsonValue &value : files) {
+            const QJsonObject file = value.toObject();
+            const QString sha256 = file.value("hashes").toObject().value("SHA256").toString();
+            if (!sha256.isEmpty() && sha256.compare(normalizedHash, Qt::CaseInsensitive) == 0) {
+                return file;
+            }
+        }
+    }
+
+    const QString localFileName = QFileInfo(localFilePath).fileName();
+    if (!localFileName.isEmpty()) {
+        for (const QJsonValue &value : files) {
+            const QJsonObject file = value.toObject();
+            if (file.value("name").toString().compare(localFileName, Qt::CaseInsensitive) == 0) {
+                return file;
+            }
+        }
+    }
+
+    QJsonObject fallback;
+    for (const QJsonValue &value : files) {
+        const QJsonObject file = value.toObject();
+        if (fallback.isEmpty()) fallback = file;
+        if (file.value("primary").toBool() || file.value("is_primary").toBool()) return file;
+    }
+    return fallback;
 }
 
 bool writePreviewMetadataToPath(const QString &path,
@@ -1244,7 +1286,7 @@ static QString normalizeModelTypeForFilter(const QString &raw) {
     return raw.trimmed(); // 其它已知类型按原样展示
 }
 
-static constexpr int USER_GALLERY_PARSER_VERSION = 6;
+static constexpr int USER_GALLERY_PARSER_VERSION = 7;
 
 static QStringList parsePromptsToTagsWorker(const QString &rawPrompt, bool splitOnNewline, const QStringList &filterTags)
 {
@@ -1859,10 +1901,16 @@ static QList<ModelUsageStatResult> calculateModelUsageStatsWorker(
 
 static void parsePngInfoWorker(const QString &path, UserImageInfo &info, bool splitOnNewline, const QStringList &filterTags)
 {
-    info.parserVersion = USER_GALLERY_PARSER_VERSION;
     const ParsedImageMetadata parsed = parseImageMetadataFromFile(path);
-    if (!parsed.hasContent()) return;
+    if (!parsed.hasContent()) {
+        // A readable image without metadata is a stable result. Incomplete,
+        // locked, or damaged files stay retryable on the next scan.
+        QImageReader reader(path);
+        if (reader.canRead()) info.parserVersion = USER_GALLERY_PARSER_VERSION;
+        return;
+    }
 
+    info.parserVersion = USER_GALLERY_PARSER_VERSION;
     info.prompt = parsed.positivePrompt.trimmed();
     info.negativePrompt = parsed.negativePrompt.trimmed();
     if (info.negativePrompt.isEmpty() && !info.prompt.isEmpty()) {
@@ -1974,9 +2022,12 @@ void MainWindow::saveCollections()
 
     QString configDir = qApp->applicationDirPath() + "/config";
     QDir().mkpath(configDir);
-    QFile file(configDir + "/collections.json");
-    if (file.open(QIODevice::WriteOnly)) {
-        file.write(QJsonDocument(root).toJson());
+    QSaveFile file(configDir + "/collections.json");
+    const QByteArray payload = QJsonDocument(root).toJson();
+    if (!file.open(QIODevice::WriteOnly)
+        || file.write(payload) != payload.size()
+        || !file.commit()) {
+        qWarning() << "Unable to save collections atomically:" << file.errorString();
     }
     refreshHomeCollectionsUI();
 }
@@ -2014,9 +2065,12 @@ void MainWindow::saveModelHighlightColors()
         }
     }
 
-    QFile file(configDir + "/model_colors.json");
-    if (file.open(QIODevice::WriteOnly)) {
-        file.write(QJsonDocument(root).toJson());
+    QSaveFile file(configDir + "/model_colors.json");
+    const QByteArray payload = QJsonDocument(root).toJson();
+    if (!file.open(QIODevice::WriteOnly)
+        || file.write(payload) != payload.size()
+        || !file.commit()) {
+        qWarning() << "Unable to save model highlight colors atomically:" << file.errorString();
     }
 }
 
@@ -3084,7 +3138,8 @@ ModelListMetadata parseModelListMetadata(const QString &filePath, const QString 
     m.likes = stats["thumbsUpCount"].toInt();
     const QJsonArray files = root["files"].toArray();
     if (!files.isEmpty()) {
-        m.civitaiSha256 = files[0].toObject()["hashes"].toObject()["SHA256"].toString();
+        const QJsonObject selectedFile = selectVersionFileForLocalModel(files, filePath);
+        m.civitaiSha256 = selectedFile["hashes"].toObject()["SHA256"].toString();
     }
 
     return m;
@@ -4113,8 +4168,10 @@ bool MainWindow::saveImageToPreviewPath(const QString &srcPath, const QString &d
 
     QFileInfo destInfo(destPath);
     QDir().mkpath(destInfo.absolutePath());
-    if (QFile::exists(destPath)) QFile::remove(destPath);
-    return img.save(destPath, "PNG");
+    QSaveFile output(destPath);
+    if (!output.open(QIODevice::WriteOnly)) return false;
+    if (!img.save(&output, "PNG")) return false;
+    return output.commit();
 }
 
 void MainWindow::applyParametersToImage(const QString &params, ImageInfo &img)
@@ -4796,7 +4853,7 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
     QString modelDir = QFileInfo(filePath).absolutePath();
     ui->modelList->setProperty("current_model_dir", modelDir);
 
-    if (currentMeta.filePath == filePath && !currentMeta.name.isEmpty()) {
+    if (currentMeta.filePath == filePath && !currentMeta.name.isEmpty() && !userGalleryGlobalMode) {
         // 如果当前不在详情页（比如在主页），则只切换页面，不重新加载数据
         if (ui->mainStack->currentIndex() != 1) {
             ui->mainStack->setCurrentIndex(1);
@@ -4805,6 +4862,17 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
         // 无论是否切换了页面，都直接返回，不再执行后续繁重的 JSON 解析
         return;
     }
+
+    userGalleryGlobalMode = false;
+    ++userGalleryGeneration;
+    ++userGalleryLayoutGeneration;
+    resetUserImageThumbLoading();
+    pendingHashSyncPath.clear();
+    pendingHashSyncBaseName.clear();
+    pendingHashSyncForceRefresh = false;
+    m_forceResyncPreview = false;
+    m_skipPreviewSync = false;
+    ui->btnForceUpdate->setEnabled(true);
 
     // 1. 如果正在计算上一个，先取消或忽略
     if (hashWatcher->isRunning()) {
@@ -5329,17 +5397,57 @@ void MainWindow::onEditRemoveImageClicked()
 
     commitEditImageFields();
 
-    QString pathToRemove = editPreviewPathForIndex(row);
-    if (QFile::exists(pathToRemove)) QFile::remove(pathToRemove);
-
-    // 重新编号后续图片文件
-    for (int i = row + 1; i < currentMeta.images.size(); ++i) {
-        QString oldPath = editPreviewPathForIndex(i);
-        QString newPath = editPreviewPathForIndex(i - 1);
-        if (QFile::exists(oldPath)) {
-            if (QFile::exists(newPath)) QFile::remove(newPath);
-            QFile::rename(oldPath, newPath);
+    const QString transactionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    QMap<int, QPair<QString, QString>> stagedFiles;
+    for (int i = row; i < currentMeta.images.size(); ++i) {
+        const QString originalPath = editPreviewPathForIndex(i);
+        if (!QFile::exists(originalPath)) continue;
+        const QString stagedPath = originalPath + ".edit-backup-" + transactionId;
+        if (!QFile::rename(originalPath, stagedPath)) {
+            auto it = stagedFiles.constEnd();
+            while (it != stagedFiles.constBegin()) {
+                --it;
+                QFile::rename(it.value().second, it.value().first);
+            }
+            QMessageBox::warning(this, "删除失败", "无法安全暂存预览图，原文件未删除。");
+            return;
         }
+        stagedFiles.insert(i, qMakePair(originalPath, stagedPath));
+    }
+
+    QList<int> movedIndexes;
+    bool moveFailed = false;
+    for (int i = row + 1; i < currentMeta.images.size(); ++i) {
+        if (!stagedFiles.contains(i)) continue;
+        const QString destination = editPreviewPathForIndex(i - 1);
+        if (!QFile::rename(stagedFiles.value(i).second, destination)) {
+            moveFailed = true;
+            break;
+        }
+        movedIndexes.append(i);
+    }
+    if (moveFailed) {
+        for (auto it = movedIndexes.crbegin(); it != movedIndexes.crend(); ++it) {
+            const int index = *it;
+            QFile::rename(editPreviewPathForIndex(index - 1), stagedFiles.value(index).second);
+        }
+        bool restored = true;
+        auto it = stagedFiles.constEnd();
+        while (it != stagedFiles.constBegin()) {
+            --it;
+            if (QFile::exists(it.value().second)
+                && !QFile::rename(it.value().second, it.value().first)) {
+                restored = false;
+            }
+        }
+        QMessageBox::critical(this, "删除失败",
+                              restored ? "预览图重新编号失败，原文件已恢复。"
+                                       : "预览图重新编号失败，部分备份文件无法恢复，请检查模型目录。");
+        return;
+    }
+
+    if (stagedFiles.contains(row) && !QFile::remove(stagedFiles.value(row).second)) {
+        qWarning() << "Unable to remove staged preview image:" << stagedFiles.value(row).second;
     }
 
     currentMeta.images.removeAt(row);
@@ -5360,16 +5468,34 @@ void MainWindow::onEditSetCoverClicked()
 
     commitEditImageFields();
 
-    qSwap(currentMeta.images[0], currentMeta.images[row]);
-
     QString path0 = editPreviewPathForIndex(0);
     QString pathN = editPreviewPathForIndex(row);
-    QString tempPath = path0 + ".swap";
+    if (!QFile::exists(path0) || !QFile::exists(pathN)) {
+        QMessageBox::warning(this, "设置封面失败", "封面或目标预览图文件不存在，未修改图片顺序。");
+        return;
+    }
 
-    if (QFile::exists(tempPath)) QFile::remove(tempPath);
-    if (QFile::exists(path0)) QFile::rename(path0, tempPath);
-    if (QFile::exists(pathN)) QFile::rename(pathN, path0);
-    if (QFile::exists(tempPath)) QFile::rename(tempPath, pathN);
+    QString tempPath = path0 + ".swap-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
+    if (!QFile::rename(path0, tempPath)) {
+        QMessageBox::warning(this, "设置封面失败", "无法暂存当前封面，原文件未修改。");
+        return;
+    }
+    if (!QFile::rename(pathN, path0)) {
+        QFile::rename(tempPath, path0);
+        QMessageBox::warning(this, "设置封面失败", "无法移动目标预览图，原封面已恢复。");
+        return;
+    }
+    if (!QFile::rename(tempPath, pathN)) {
+        const bool restoredTarget = QFile::rename(path0, pathN);
+        const bool restoredCover = QFile::rename(tempPath, path0);
+        QMessageBox::critical(this, "设置封面失败",
+                              restoredTarget && restoredCover
+                                  ? "无法完成封面交换，原文件已恢复。"
+                                  : "无法完成封面交换，自动恢复失败，请检查模型目录。");
+        return;
+    }
+
+    qSwap(currentMeta.images[0], currentMeta.images[row]);
 
     currentMeta.previewPath = editPreviewPathForIndex(0);
     refreshEditImages(currentMeta);
@@ -5517,7 +5643,12 @@ bool MainWindow::readLocalJson(const QString &dirPath, const QString &baseName, 
     QFile file(jsonPath);
     if (!file.exists() || !file.open(QIODevice::ReadOnly)) return false;
 
-    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        qWarning() << "Invalid model metadata JSON:" << jsonPath << parseError.errorString();
+        return false;
+    }
     QJsonObject root = doc.object();
 
     // 1. 基础名称
@@ -5600,8 +5731,7 @@ bool MainWindow::readLocalJson(const QString &dirPath, const QString &baseName, 
 
     QJsonArray files = root["files"].toArray();
     if(!files.isEmpty()) {
-        // 通常取第一个文件信息
-        QJsonObject f = files[0].toObject();
+        const QJsonObject f = selectVersionFileForLocalModel(files, meta.filePath);
         meta.fileSizeMB = f["sizeKB"].toDouble() / 1024.0;
         meta.fileNameServer = f["name"].toString();
         meta.sha256 = f["hashes"].toObject()["SHA256"].toString();
@@ -5632,8 +5762,6 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     QString filePath = reply->property("filePath").toString();
     QString currentSha256 = reply->property("currentSha256").toString();
     reply->deleteLater();
-    ui->btnForceUpdate->setEnabled(true);
-    currentHashSyncForceRefresh = false;
 
     if (modelDir.isEmpty() && !filePath.isEmpty()) {
         modelDir = QFileInfo(filePath).absolutePath();
@@ -5643,11 +5771,12 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     if (QListWidgetItem *currentItem = ui->modelList->currentItem()) {
         currentSelectedPath = currentItem->data(ROLE_FILE_PATH).toString();
     }
-    if (!filePath.isEmpty() && !currentSelectedPath.isEmpty() && currentSelectedPath != filePath) {
-        m_forceResyncPreview = false;
-        m_skipPreviewSync = false;
+    if (filePath.isEmpty() || currentSelectedPath != filePath) {
         return;
     }
+
+    ui->btnForceUpdate->setEnabled(true);
+    currentHashSyncForceRefresh = false;
 
     const QByteArray versionJsonBytes = reply->property("versionJson").toByteArray();
     if (reply->error() != QNetworkReply::NoError) {
@@ -5736,25 +5865,30 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     meta.creatorName = readModelCreatorFromJson(root);
     meta.creatorAvatarUrl = readModelCreatorAvatarFromJson(root);
     meta.modelTags = readModelTagsFromJson(root);
+    meta.modelId = root["modelId"].toInt();
+    meta.versionId = root["id"].toInt();
+    if (meta.modelId > 0) meta.modelUrl = QString("https://civitai.com/models/%1").arg(meta.modelId);
+    meta.baseModel = root["baseModel"].toString();
+    meta.type = root["model"].toObject()["type"].toString();
+    meta.nsfw = root["model"].toObject()["nsfw"].toBool();
+    meta.description = root["description"].toString();
+    meta.createdAt = root["createdAt"].toString();
+
+    const QJsonObject stats = root["stats"].toObject();
+    meta.downloadCount = stats["downloadCount"].toInt();
+    meta.thumbsUpCount = stats["thumbsUpCount"].toInt();
+
+    QListWidgetItem *targetItem = findModelItemByFilePath(filePath);
 
     // 更新 UI 列表项
-    // 找到对应的 Item (可能通过 localBaseName 查找)
-    for(int i = 0; i < ui->modelList->count(); ++i) {
-        QListWidgetItem *item = ui->modelList->item(i);
-        if (item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
-            item->setData(ROLE_CIVITAI_NAME, fullName); // 更新缓存的名称
-            item->setData(ROLE_LOCAL_EDITED, false);
-            item->setData(ROLE_CIVITAI_MODEL_ID, root["modelId"].toInt());
-            item->setData(ROLE_CIVITAI_VERSION_ID, root["id"].toInt());
-            item->setData(ROLE_MODEL_TYPE, meta.type);
-            applyCivitaiAttributionToItem(item, meta.creatorName, meta.modelTags);
-
-            // 如果开启了选项，立即更新显示文本
-            if (optUseCivitaiName) {
-                item->setText(fullName);
-            }
-            break;
-        }
+    if (targetItem) {
+        targetItem->setData(ROLE_CIVITAI_NAME, fullName);
+        targetItem->setData(ROLE_LOCAL_EDITED, false);
+        targetItem->setData(ROLE_CIVITAI_MODEL_ID, meta.modelId);
+        targetItem->setData(ROLE_CIVITAI_VERSION_ID, meta.versionId);
+        targetItem->setData(ROLE_MODEL_TYPE, meta.type);
+        applyCivitaiAttributionToItem(targetItem, meta.creatorName, meta.modelTags);
+        if (optUseCivitaiName) targetItem->setText(fullName);
     }
 
     // 2. 触发词 (保存为列表)
@@ -5765,43 +5899,16 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
         if(w.endsWith(",")) w.chop(1);
         if(!w.isEmpty()) meta.trainedWordsGroups.append(w);
     }
-    for (int i = 0; i < ui->modelList->count(); ++i) {
-        QListWidgetItem *item = ui->modelList->item(i);
-        if (item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
-            item->setData(ROLE_MODEL_TRAINED_WORDS, meta.trainedWordsGroups);
-            break;
-        }
-    }
-
-    int modelId = root["modelId"].toInt();
-    meta.modelId = modelId;
-    meta.versionId = root["id"].toInt();
-    if (modelId > 0) meta.modelUrl = QString("https://civitai.com/models/%1").arg(modelId);
-
-    meta.baseModel = root["baseModel"].toString();
-    meta.type = root["model"].toObject()["type"].toString();
-    meta.nsfw = root["model"].toObject()["nsfw"].toBool();
-    meta.description = root["description"].toString();
-    meta.createdAt = root["createdAt"].toString();
-
-    QJsonObject stats = root["stats"].toObject();
-    meta.downloadCount = stats["downloadCount"].toInt();
-    meta.thumbsUpCount = stats["thumbsUpCount"].toInt();
+    if (targetItem) targetItem->setData(ROLE_MODEL_TRAINED_WORDS, meta.trainedWordsGroups);
 
     // 3. 文件信息 (计算大小, Hash)
     QJsonArray files = root["files"].toArray();
     if (!files.isEmpty()) {
-        QJsonObject f = files[0].toObject(); // 默认取第一个
+        const QJsonObject f = selectVersionFileForLocalModel(files, filePath, currentSha256);
         meta.fileSizeMB = f["sizeKB"].toDouble() / 1024.0;
         meta.sha256 = f["hashes"].toObject()["SHA256"].toString();
         meta.fileNameServer = f["name"].toString();
-        for(int i = 0; i < ui->modelList->count(); ++i) {
-            QListWidgetItem *item = ui->modelList->item(i);
-            if (item && item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
-                item->setData(ROLE_CIVITAI_SHA256, meta.sha256);
-                break;
-            }
-        }
+        if (targetItem) targetItem->setData(ROLE_CIVITAI_SHA256, meta.sha256);
     }
 
     // 4. 图片信息 (非常重要)
@@ -5860,24 +5967,14 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     }
     meta.isLocalEdited = root["localEdited"].toBool(false);
     meta.isLocalOnly = root["localOnly"].toBool(false);
-    for (int i = 0; i < ui->modelList->count(); ++i) {
-        QListWidgetItem *item = ui->modelList->item(i);
-        if (item && item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
-            item->setData(ROLE_LOCAL_EDITED, meta.isLocalEdited || meta.isLocalOnly);
-            applyCivitaiAttributionToItem(item, meta.creatorName, meta.modelTags);
-            break;
-        }
+    if (targetItem) {
+        targetItem->setData(ROLE_LOCAL_EDITED, meta.isLocalEdited || meta.isLocalOnly);
+        applyCivitaiAttributionToItem(targetItem, meta.creatorName, meta.modelTags);
     }
 
     // 保存并更新UI
     saveLocalMetadata(modelDir, localBaseName, root);
-    for (int i = 0; i < ui->modelList->count(); ++i) {
-        QListWidgetItem *item = ui->modelList->item(i);
-        if (item && item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
-            preloadItemMetadata(item, QDir(modelDir).filePath(localBaseName + ".json"));
-            break;
-        }
-    }
+    if (targetItem) preloadItemMetadata(targetItem, QDir(modelDir).filePath(localBaseName + ".json"));
     if (!m_skipPreviewSync && m_forceResyncPreview && !meta.images.isEmpty()) {
         const QString coverPath = QFileInfo(QDir(modelDir).filePath(localBaseName + ".preview.png")).absoluteFilePath();
         const ImageInfo &cover = meta.images.first();
@@ -5910,8 +6007,15 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
 {
     if (localBaseName.isEmpty() || savePath.isEmpty()) return;
 
-    const QString downloadedFileName = QFileInfo(savePath).fileName();
+    const QFileInfo downloadedInfo(savePath);
+    const QString downloadedFileName = downloadedInfo.fileName();
+    const QString downloadedDirectory = QDir::cleanPath(downloadedInfo.absolutePath());
     const bool isCoverPreview = (downloadedFileName == localBaseName + ".preview.png");
+    auto belongsToDownloadedModel = [&](const QString &modelPath) {
+        const QFileInfo modelInfo(modelPath);
+        return modelInfo.completeBaseName().compare(localBaseName, Qt::CaseSensitive) == 0
+               && QDir::cleanPath(modelInfo.absolutePath()).compare(downloadedDirectory, Qt::CaseInsensitive) == 0;
+    };
 
     QSet<QString> sidebarModelPaths;
     QSet<QString> homeModelPaths;
@@ -5920,11 +6024,11 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
     if (isCoverPreview) {
         for (int i = 0; i < ui->modelList->count(); ++i) {
             QListWidgetItem *item = ui->modelList->item(i);
-            if (item->data(ROLE_MODEL_NAME).toString() == localBaseName) {
+            const QString modelPath = item->data(ROLE_FILE_PATH).toString();
+            if (belongsToDownloadedModel(modelPath)) {
                 item->setData(ROLE_PREVIEW_PATH, savePath);
                 item->setData(ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
                 applyModelHighlightColor(item);
-                const QString modelPath = item->data(ROLE_FILE_PATH).toString();
                 if (!modelPath.isEmpty()) sidebarModelPaths.insert(modelPath);
             }
         }
@@ -5932,8 +6036,7 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
         for (int i = 0; i < ui->homeGalleryList->count(); ++i) {
             QListWidgetItem *item = ui->homeGalleryList->item(i);
             QString itemPath = item->data(ROLE_FILE_PATH).toString();
-            QFileInfo fi(itemPath);
-            if (fi.completeBaseName() == localBaseName) {
+            if (belongsToDownloadedModel(itemPath)) {
                 item->setData(ROLE_PREVIEW_PATH, savePath);
                 item->setData(ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
                 if (!itemPath.isEmpty()) homeModelPaths.insert(itemPath);
@@ -5942,11 +6045,11 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
 
         std::function<void(QTreeWidgetItem*)> updateTreeNode = [&](QTreeWidgetItem *node) {
             if (!node) return;
-            if (node->data(0, ROLE_MODEL_NAME).toString() == localBaseName) {
+            const QString modelPath = node->data(0, ROLE_FILE_PATH).toString();
+            if (belongsToDownloadedModel(modelPath)) {
                 node->setData(0, ROLE_PREVIEW_PATH, savePath);
                 node->setData(0, ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
                 applyModelHighlightColor(node);
-                const QString modelPath = node->data(0, ROLE_FILE_PATH).toString();
                 if (!modelPath.isEmpty()) sidebarModelPaths.insert(modelPath);
             }
             for (int i = 0; i < node->childCount(); ++i) updateTreeNode(node->child(i));
@@ -5972,7 +6075,7 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
     }
 
     QListWidgetItem *currentItem = ui->modelList->currentItem();
-    if (currentItem && currentItem->data(ROLE_MODEL_NAME).toString() == localBaseName) {
+    if (currentItem && belongsToDownloadedModel(currentItem->data(ROLE_FILE_PATH).toString())) {
         if (isCoverPreview) {
             currentMeta.previewPath = savePath;
             currentHeroPath = "";
@@ -6002,10 +6105,14 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
 void MainWindow::saveLocalMetadata(const QString &modelDir, const QString &baseName, const QJsonObject &data) {
     if (modelDir.isEmpty()) return;
     QString savePath = QDir(modelDir).filePath(baseName + ".json");
-    QFile file(savePath);
-    if (file.open(QIODevice::WriteOnly)) {
-        file.write(QJsonDocument(data).toJson());
-        file.close();
+    QSaveFile file(savePath);
+    if (!file.open(QIODevice::WriteOnly)) {
+        qWarning() << "Unable to open metadata for writing:" << savePath << file.errorString();
+        return;
+    }
+    const QByteArray payload = QJsonDocument(data).toJson();
+    if (file.write(payload) != payload.size() || !file.commit()) {
+        qWarning() << "Unable to save metadata atomically:" << savePath << file.errorString();
     }
 }
 
@@ -6015,7 +6122,25 @@ void MainWindow::startModelHashSync(const QString &filePath, const QString &base
         ui->btnForceUpdate->setEnabled(true);
         return;
     }
+
+    if (hashWatcher->isRunning()) {
+        if (currentProcessingPath == filePath) {
+            currentHashSyncForceRefresh = currentHashSyncForceRefresh || forceRefresh;
+        } else {
+            // QFile hashing cannot be canceled cooperatively. Keep only the
+            // newest requested model and start it after the active hash exits.
+            pendingHashSyncPath = filePath;
+            pendingHashSyncBaseName = baseName;
+            pendingHashSyncForceRefresh = forceRefresh;
+        }
+        ui->btnForceUpdate->setEnabled(false);
+        ui->statusbar->showMessage("正在等待上一项 Hash 计算完成...", 0);
+        ui->lblModelName->setText("正在等待模型文件分析...");
+        return;
+    }
+
     currentProcessingPath = filePath;
+    currentProcessingBaseName = baseName;
     currentHashSyncForceRefresh = forceRefresh;
     ui->modelList->setProperty("current_processing_file", baseName);
     ui->modelList->setProperty("current_processing_path", filePath);
@@ -6280,6 +6405,38 @@ QIcon MainWindow::getFitIcon(const QString &path)
 void MainWindow::onIconLoaded(const QString &id, const QImage &image)
 {
     if (isShuttingDown) return;
+    const QString userGalleryPrefix = QStringLiteral("USERGALLERY|");
+    if (id.startsWith(userGalleryPrefix)) {
+        const int separator = id.indexOf('|', userGalleryPrefix.size());
+        bool tokenOk = false;
+        const quint64 token = separator > userGalleryPrefix.size()
+                                  ? id.mid(userGalleryPrefix.size(), separator - userGalleryPrefix.size()).toULongLong(&tokenOk)
+                                  : 0;
+        const QString filePath = separator >= 0 ? id.mid(separator + 1) : QString();
+        if (!tokenOk || token != userGalleryGeneration || filePath.isEmpty()) return;
+
+        queuedUserImageThumbPaths.remove(filePath);
+        if (image.isNull()) {
+            const int failureCount = failedUserImageThumbLoads.value(filePath) + 1;
+            failedUserImageThumbLoads.insert(filePath, failureCount);
+            if (failureCount < 3) scheduleVisibleUserImageThumbLoad();
+            return;
+        }
+
+        for (int i = 0; i < ui->listUserImages->count(); ++i) {
+            QListWidgetItem *item = ui->listUserImages->item(i);
+            if (item && item->data(ROLE_USER_IMAGE_PATH).toString() == filePath) {
+                item->setIcon(QIcon(QPixmap::fromImage(image)));
+                item->setData(ROLE_PREVIEW_PLACEHOLDER, false);
+                break;
+            }
+        }
+        failedUserImageThumbLoads.remove(filePath);
+        loadedUserImageThumbPaths.insert(filePath);
+        scheduleVisibleUserImageThumbLoad();
+        return;
+    }
+
     // 空图 = 预览缺失/加载失败：保留各项已设置的主题化占位X（含 ROLE_PREVIEW_PLACEHOLDER 标记），
     // 不覆盖、不清标记，交给 recolorPlaceholderItems 在切主题时重染。
     if (image.isNull()) return;
@@ -6483,17 +6640,35 @@ QString MainWindow::findLocalPreviewPath(const QString &dirPath, const QString &
 void MainWindow::onHashCalculated()
 {
     // 获取后台线程的返回值
-    QString hash = hashWatcher->result();
+    const QString hash = hashWatcher->result();
     const QString filePath = currentProcessingPath;
-    const QString baseName = ui->modelList->property("current_processing_file").toString();
+    const QString baseName = currentProcessingBaseName;
+
+    currentProcessingPath.clear();
+    currentProcessingBaseName.clear();
+
+    auto startPendingHashForCurrentModel = [this]() {
+        const QString pendingPath = pendingHashSyncPath;
+        const QString pendingBaseName = pendingHashSyncBaseName;
+        const bool pendingForceRefresh = pendingHashSyncForceRefresh;
+        pendingHashSyncPath.clear();
+        pendingHashSyncBaseName.clear();
+        pendingHashSyncForceRefresh = false;
+
+        QListWidgetItem *selectedItem = ui->modelList->currentItem();
+        const QString selectedPath = selectedItem ? selectedItem->data(ROLE_FILE_PATH).toString() : QString();
+        if (!pendingPath.isEmpty() && selectedPath == pendingPath) {
+            startModelHashSync(pendingPath, pendingBaseName, pendingForceRefresh);
+        }
+    };
 
     QString currentSelectedPath;
     if (QListWidgetItem *currentItem = ui->modelList->currentItem()) {
         currentSelectedPath = currentItem->data(ROLE_FILE_PATH).toString();
     }
-    if (!filePath.isEmpty() && !currentSelectedPath.isEmpty() && filePath != currentSelectedPath) {
-        ui->btnForceUpdate->setEnabled(true);
+    if (filePath.isEmpty() || filePath != currentSelectedPath) {
         currentHashSyncForceRefresh = false;
+        startPendingHashForCurrentModel();
         return;
     }
 
@@ -6505,6 +6680,7 @@ void MainWindow::onHashCalculated()
         ui->textDescription->setPlainText(QString("上次同步失败，请点击刷新模型详情重新同步。\n%1").arg(err));
         ui->btnForceUpdate->setEnabled(true);
         currentHashSyncForceRefresh = false;
+        startPendingHashForCurrentModel();
         return;
     }
 
@@ -6513,6 +6689,7 @@ void MainWindow::onHashCalculated()
     ui->lblModelName->setText("Hash 计算完成，正在获取元数据...");
     ui->statusbar->showMessage("Hash 计算完成，正在获取元数据...", 2000);
     fetchModelInfoFromCivitai(hash); // 调用你原来的联网函数
+    startPendingHashForCurrentModel();
 }
 
 void MainWindow::updateBackgroundImage()
@@ -7876,6 +8053,11 @@ void MainWindow::onToggleDetailTab() {
 }
 
 void MainWindow::onRescanUserClicked() {
+    if (userGalleryGlobalMode) {
+        scanForUserImages("");
+        return;
+    }
+
     QListWidgetItem *item = ui->modelList->currentItem();
     if (item) {
         // 如果有选中项，说明是在查看特定模型，按名称扫描
@@ -7913,6 +8095,7 @@ void MainWindow::resetUserImageThumbLoading()
 {
     queuedUserImageThumbPaths.clear();
     loadedUserImageThumbPaths.clear();
+    failedUserImageThumbLoads.clear();
     if (userImageThumbLoadTimer) {
         userImageThumbLoadTimer->stop();
     }
@@ -7953,6 +8136,7 @@ void MainWindow::dispatchVisibleUserImageThumbLoad()
         const QString path = item->data(ROLE_USER_IMAGE_PATH).toString();
         if (path.isEmpty()) continue;
         if (loadedUserImageThumbPaths.contains(path) || queuedUserImageThumbPaths.contains(path)) continue;
+        if (failedUserImageThumbLoads.value(path) >= 3) continue;
 
         const QRect itemRect = ui->listUserImages->visualItemRect(item);
         if (!itemRect.isValid() || itemRect.isEmpty()) continue;
@@ -7982,7 +8166,10 @@ void MainWindow::dispatchVisibleUserImageThumbLoad()
         if (candidate.priority > 1 && launched >= threadCount) break;
         if (launched >= maxLaunchPerPass) break;
 
-        IconLoaderTask *task = new IconLoaderTask(candidate.path, 140, 4, this, candidate.path);
+        const QString taskId = QStringLiteral("USERGALLERY|%1|%2")
+                                   .arg(userGalleryGeneration)
+                                   .arg(candidate.path);
+        IconLoaderTask *task = new IconLoaderTask(candidate.path, 140, 4, this, taskId);
         task->setAutoDelete(true);
         threadPool->start(task);
         queuedUserImageThumbPaths.insert(candidate.path);
@@ -7992,6 +8179,9 @@ void MainWindow::dispatchVisibleUserImageThumbLoad()
 
 
 void MainWindow::scanForUserImages(const QString &loraBaseName) {
+    const quint64 scanGeneration = ++userGalleryGeneration;
+    ++userGalleryLayoutGeneration;
+    userGalleryGlobalMode = loraBaseName.isEmpty();
     placeholderIcon = generatePlaceholderIcon(); // 用当前主题色重建，保证占位X颜色正确
     ui->listUserImages->clear();
     ui->textUserPrompt->clear();
@@ -8189,7 +8379,7 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
             QSet<QString> visited;
 
             for (const QString &root : validGalleryPaths) {
-                QDirIterator it(root, QStringList() << "*.png" << "*.jpg" << "*.jpeg", QDir::Files, iterFlag);
+                QDirIterator it(root, QStringList() << "*.png" << "*.jpg" << "*.jpeg" << "*.webp", QDir::Files, iterFlag);
                 while (it.hasNext()) {
                     QString path = it.next();
                     if (visited.contains(path)) continue;
@@ -8266,7 +8456,8 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
         new QFutureWatcher<QPair<QList<UserImageInfo>, QMap<QString, UserImageInfo>>>(this);
 
     QTimer *scanProgressTimer = new QTimer(this);
-    connect(scanProgressTimer, &QTimer::timeout, this, [this, scanPrefix, scannedCount, matchedCount, lastShown = 0]() mutable {
+    connect(scanProgressTimer, &QTimer::timeout, this, [this, scanPrefix, scannedCount, matchedCount, scanGeneration, lastShown = 0]() mutable {
+        if (scanGeneration != userGalleryGeneration) return;
         const int scanned = scannedCount->load(std::memory_order_relaxed);
         if (scanned <= 0) return;
         if (scanned < lastShown + 50) return;
@@ -8279,11 +8470,16 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     });
     scanProgressTimer->start(200);
 
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, scanProgressTimer](){
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, scanProgressTimer, scanGeneration](){
         if (scanProgressTimer) {
             scanProgressTimer->stop();
             scanProgressTimer->deleteLater();
         }
+        if (scanGeneration != userGalleryGeneration || isShuttingDown) {
+            watcher->deleteLater();
+            return;
+        }
+
         auto resultPair = watcher->result();
         QList<UserImageInfo> results = resultPair.first;
         QMap<QString, UserImageInfo> newUpdates = resultPair.second;
@@ -8298,27 +8494,55 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
             refreshModelUsageStatsAsync();
         }
 
-        // 2. UI 更新逻辑 (与原代码一致)
-        // 这里的 UI 渲染（new QListWidgetItem）在大量数据时也会卡顿
-        // 建议使用 setUpdatesEnabled(false)
-        ui->listUserImages->setUpdatesEnabled(false);
-        for (const auto &info : results) {
-            QListWidgetItem *item = new QListWidgetItem();
-            item->setData(ROLE_USER_IMAGE_PATH, info.path);
-            item->setData(ROLE_USER_IMAGE_PROMPT, info.prompt);
-            item->setData(ROLE_USER_IMAGE_NEG, info.negativePrompt);
-            item->setData(ROLE_USER_IMAGE_PARAMS, info.parameters);
-            item->setData(ROLE_USER_IMAGE_TAGS, info.cleanTags);
-            item->setData(ROLE_USER_IMAGE_NEG_TAGS, info.negativeCleanTags);
-            item->setIcon(placeholderIcon);
-            item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
-            ui->listUserImages->addItem(item);
-        }
-        ui->listUserImages->setUpdatesEnabled(true);
-        scheduleVisibleUserImageThumbLoad();
+        // Add results in small batches so a large gallery does not freeze the
+        // event loop immediately after the background scan completes.
+        auto pendingResults = QSharedPointer<QList<UserImageInfo>>::create(std::move(results));
+        auto nextResultIndex = QSharedPointer<int>::create(0);
+        const int resultCount = pendingResults->size();
+        QTimer *batchTimer = new QTimer(this);
+        batchTimer->setInterval(0);
+        connect(batchTimer, &QTimer::timeout, this,
+                [this, pendingResults, nextResultIndex, batchTimer, scanGeneration, resultCount]() {
+            if (scanGeneration != userGalleryGeneration || isShuttingDown) {
+                batchTimer->stop();
+                batchTimer->deleteLater();
+                return;
+            }
 
-        refreshUserTagFlowStats();
-        ui->statusbar->showMessage(QString("扫描完成，共 %1 张").arg(results.count()), 3000);
+            constexpr int batchSize = 100;
+            const int end = qMin(*nextResultIndex + batchSize, resultCount);
+            ui->listUserImages->setUpdatesEnabled(false);
+            for (; *nextResultIndex < end; ++(*nextResultIndex)) {
+                const UserImageInfo &info = pendingResults->at(*nextResultIndex);
+                QListWidgetItem *item = new QListWidgetItem();
+                item->setData(ROLE_USER_IMAGE_PATH, info.path);
+                item->setData(ROLE_USER_IMAGE_PROMPT, info.prompt);
+                item->setData(ROLE_USER_IMAGE_NEG, info.negativePrompt);
+                item->setData(ROLE_USER_IMAGE_PARAMS, info.parameters);
+                item->setData(ROLE_USER_IMAGE_TAGS, info.cleanTags);
+                item->setData(ROLE_USER_IMAGE_NEG_TAGS, info.negativeCleanTags);
+                item->setIcon(placeholderIcon);
+                item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
+                ui->listUserImages->addItem(item);
+            }
+            ui->listUserImages->setUpdatesEnabled(true);
+
+            if (*nextResultIndex < resultCount) {
+                ui->statusbar->showMessage(QString("正在显示扫描结果... %1/%2")
+                                               .arg(*nextResultIndex)
+                                               .arg(resultCount));
+                return;
+            }
+
+            batchTimer->stop();
+            batchTimer->deleteLater();
+            ui->listUserImages->doItemsLayout();
+            ui->listUserImages->viewport()->update();
+            scheduleVisibleUserImageThumbLoad();
+            refreshUserTagFlowStats();
+            ui->statusbar->showMessage(QString("扫描完成，共 %1 张").arg(resultCount), 3000);
+        });
+        batchTimer->start();
         watcher->deleteLater();
     });
 
@@ -8332,26 +8556,33 @@ void MainWindow::parsePngInfo(const QString &path, UserImageInfo &info) {
 void MainWindow::refreshUserTagFlowStats()
 {
     QMap<QString, int> tagCounts;
+    QHash<QString, QString> tagDisplayText;
     const bool currentOnly = ui->chkUserTagCurrentImageOnly && ui->chkUserTagCurrentImageOnly->isChecked();
     const bool includeNegative = ui->chkUserTagIncludeNegative && ui->chkUserTagIncludeNegative->isChecked();
 
     auto addTagsFromItem = [&](QListWidgetItem *item) {
         if (!item) return;
-        QSet<QString> perImageTags;
+        QSet<QString> perImageTagKeys;
         const QStringList positiveTags = item->data(ROLE_USER_IMAGE_TAGS).toStringList();
         for (const QString &tag : positiveTags) {
             if (tag.compare("BREAK", Qt::CaseInsensitive) == 0) continue;
-            perImageTags.insert(tag);
+            const QString key = normalizedPromptTagKey(tag);
+            if (key.isEmpty()) continue;
+            perImageTagKeys.insert(key);
+            if (!tagDisplayText.contains(key)) tagDisplayText.insert(key, tag);
         }
         if (includeNegative) {
             const QStringList negativeTags = item->data(ROLE_USER_IMAGE_NEG_TAGS).toStringList();
             for (const QString &tag : negativeTags) {
                 if (tag.compare("BREAK", Qt::CaseInsensitive) == 0) continue;
-                perImageTags.insert(tag);
+                const QString key = normalizedPromptTagKey(tag);
+                if (key.isEmpty()) continue;
+                perImageTagKeys.insert(key);
+                if (!tagDisplayText.contains(key)) tagDisplayText.insert(key, tag);
             }
         }
-        for (const QString &tag : perImageTags) {
-            tagCounts[tag]++;
+        for (const QString &key : perImageTagKeys) {
+            tagCounts[tagDisplayText.value(key, key)]++;
         }
     };
 
@@ -8450,9 +8681,34 @@ void MainWindow::onUserImageClicked(QListWidgetItem *item) {
 }
 
 void MainWindow::onTagFilterChanged(const QSet<QString> &selectedTags) {
+    const quint64 layoutGeneration = ++userGalleryLayoutGeneration;
     int visibleCount = 0;
     const bool includeNegative = ui->chkUserTagIncludeNegative && ui->chkUserTagIncludeNegative->isChecked();
+    QString scrollAnchorPath;
+    int scrollAnchorIndex = -1;
+    int bestAnchorTop = std::numeric_limits<int>::max();
+    const QRect oldViewportRect = ui->listUserImages->viewport()->rect();
+    for (int i = 0; i < ui->listUserImages->count(); ++i) {
+        QListWidgetItem *item = ui->listUserImages->item(i);
+        if (!item || item->isHidden()) continue;
+        const QRect itemRect = ui->listUserImages->visualItemRect(item);
+        if (!itemRect.isValid() || !itemRect.intersects(oldViewportRect)) continue;
+        if (itemRect.top() < bestAnchorTop) {
+            bestAnchorTop = itemRect.top();
+            scrollAnchorIndex = i;
+            scrollAnchorPath = item->data(ROLE_USER_IMAGE_PATH).toString();
+        }
+    }
+    const int previousScrollValue = ui->listUserImages->verticalScrollBar()
+                                        ? ui->listUserImages->verticalScrollBar()->value()
+                                        : 0;
+    QSet<QString> selectedTagKeys;
+    for (const QString &tag : selectedTags) {
+        const QString key = normalizedPromptTagKey(tag);
+        if (!key.isEmpty()) selectedTagKeys.insert(key);
+    }
 
+    ui->listUserImages->setUpdatesEnabled(false);
     for(int i = 0; i < ui->listUserImages->count(); ++i) {
         QListWidgetItem *item = ui->listUserImages->item(i);
         QString rawPrompt = item->data(ROLE_USER_IMAGE_PROMPT).toString();
@@ -8464,10 +8720,10 @@ void MainWindow::onTagFilterChanged(const QSet<QString> &selectedTags) {
 
         bool match = true;
         // AND 逻辑：必须包含所有选中的 Tag
-        for (const QString &selTag : selectedTags) {
+        for (const QString &selTag : selectedTagKeys) {
             bool tagFound = false;
             for (const QString &imgTag : distinctTags) {
-                if (imgTag.compare(selTag, Qt::CaseInsensitive) == 0) {
+                if (normalizedPromptTagKey(imgTag) == selTag) {
                     tagFound = true;
                     break;
                 }
@@ -8480,14 +8736,69 @@ void MainWindow::onTagFilterChanged(const QSet<QString> &selectedTags) {
         }
 
         item->setHidden(!match);
-        if (match) visibleCount++;
+        if (match) {
+            visibleCount++;
+        }
     }
+    ui->listUserImages->setUpdatesEnabled(true);
+    ui->listUserImages->doItemsLayout();
+    ui->listUserImages->viewport()->update();
+
+    QTimer::singleShot(0, this, [this, previousScrollValue, scrollAnchorPath,
+                                  scrollAnchorIndex, layoutGeneration]() {
+        if (layoutGeneration != userGalleryLayoutGeneration || !ui->listUserImages) return;
+        ui->listUserImages->doItemsLayout();
+
+        QListWidgetItem *anchorItem = nullptr;
+        if (!scrollAnchorPath.isEmpty()) {
+            for (int i = 0; i < ui->listUserImages->count(); ++i) {
+                QListWidgetItem *item = ui->listUserImages->item(i);
+                if (item && !item->isHidden()
+                    && item->data(ROLE_USER_IMAGE_PATH).toString() == scrollAnchorPath) {
+                    anchorItem = item;
+                    break;
+                }
+            }
+        }
+        if (!anchorItem && scrollAnchorIndex >= 0) {
+            for (int distance = 0; distance < ui->listUserImages->count(); ++distance) {
+                const int after = scrollAnchorIndex + distance;
+                if (after < ui->listUserImages->count()) {
+                    QListWidgetItem *item = ui->listUserImages->item(after);
+                    if (item && !item->isHidden()) {
+                        anchorItem = item;
+                        break;
+                    }
+                }
+                const int before = scrollAnchorIndex - distance;
+                if (before >= 0) {
+                    QListWidgetItem *item = ui->listUserImages->item(before);
+                    if (item && !item->isHidden()) {
+                        anchorItem = item;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (anchorItem) {
+            ui->listUserImages->scrollToItem(anchorItem, QAbstractItemView::PositionAtTop);
+        } else if (QScrollBar *scrollBar = ui->listUserImages->verticalScrollBar()) {
+            scrollBar->setValue(qBound(scrollBar->minimum(), previousScrollValue, scrollBar->maximum()));
+        }
+        if (QScrollBar *horizontalBar = ui->listUserImages->horizontalScrollBar()) {
+            horizontalBar->setValue(horizontalBar->minimum());
+        }
+        ui->listUserImages->viewport()->update();
+        scheduleVisibleUserImageThumbLoad();
+    });
 
     ui->statusbar->showMessage(QString("筛选: %1 张图片符合条件").arg(visibleCount));
 }
 
 void MainWindow::onGalleryButtonClicked()
 {
+    userGalleryGlobalMode = true;
     // 1. 清除侧边栏模型选中状态，表示现在不是看某个具体模型
     ui->modelList->clearSelection();
 
@@ -10181,9 +10492,16 @@ void MainWindow::loadGlobalConfig() {
     QString configPath = qApp->applicationDirPath() + "/config/settings.json";
     QFile file(configPath);
     SettingsState settings;
+    settings.filterTagsText = DEFAULT_FILTER_TAGS;
     if (file.open(QIODevice::ReadOnly)) {
-        QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-        QJsonObject root = doc.object();
+        QJsonParseError parseError;
+        QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+        QJsonObject root;
+        if (parseError.error == QJsonParseError::NoError && doc.isObject()) {
+            root = doc.object();
+        } else {
+            qWarning() << "Invalid global settings JSON:" << configPath << parseError.errorString();
+        }
 
         settings = SettingsState::fromJson(root, DEFAULT_FILTER_TAGS);
         optUiScale = settings.uiScale;
@@ -10579,7 +10897,15 @@ void MainWindow::saveGlobalConfig() {
     QJsonObject root;
     QFile readFile(configPath);
     if (readFile.open(QIODevice::ReadOnly)) {
-        root = QJsonDocument::fromJson(readFile.readAll()).object();
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(readFile.readAll(), &parseError);
+        if (parseError.error == QJsonParseError::NoError && document.isObject()) {
+            root = document.object();
+        } else {
+            qWarning() << "Refusing to overwrite malformed settings JSON:" << configPath
+                       << parseError.errorString();
+            return;
+        }
         readFile.close();
     }
     SettingsState settings = settingsPage ? settingsPage->state() : SettingsState{};
@@ -10685,9 +11011,12 @@ void MainWindow::saveGlobalConfig() {
         root["tree_state"] = treeState;
     }
 
-    QFile file(configPath);
-    if (file.open(QIODevice::WriteOnly)) {
-        file.write(QJsonDocument(root).toJson());
+    QSaveFile file(configPath);
+    const QByteArray payload = QJsonDocument(root).toJson();
+    if (!file.open(QIODevice::WriteOnly)
+        || file.write(payload) != payload.size()
+        || !file.commit()) {
+        qWarning() << "Unable to save global settings atomically:" << file.errorString();
     }
 }
 
@@ -12028,7 +12357,12 @@ void MainWindow::loadUserGalleryCache() {
     QFile file(configDir + "/user_gallery_cache.json");
     if (!file.open(QIODevice::ReadOnly)) return;
 
-    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        qWarning() << "Invalid user gallery cache JSON:" << parseError.errorString();
+        return;
+    }
     QJsonObject root = doc.object();
 
     for (auto it = root.begin(); it != root.end(); ++it) {
@@ -12069,9 +12403,12 @@ void MainWindow::saveUserGalleryCache() {
         root.insert(info.path, obj);
     }
 
-    QFile file(configDir + "/user_gallery_cache.json");
-    if (file.open(QIODevice::WriteOnly)) {
-        file.write(QJsonDocument(root).toJson(QJsonDocument::Compact)); // Compact 模式减小体积
+    QSaveFile file(configDir + "/user_gallery_cache.json");
+    const QByteArray payload = QJsonDocument(root).toJson(QJsonDocument::Compact);
+    if (!file.open(QIODevice::WriteOnly)
+        || file.write(payload) != payload.size()
+        || !file.commit()) {
+        qWarning() << "Unable to save user gallery cache atomically:" << file.errorString();
     }
 }
 

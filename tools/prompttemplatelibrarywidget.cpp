@@ -45,6 +45,7 @@
 #include <QRegularExpression>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSaveFile>
 #include <QSignalBlocker>
 #include <QStackedWidget>
 #include <QStyle>
@@ -1213,12 +1214,14 @@ void PromptTemplateLibraryWidget::saveLibrary()
     root["image_extract_templates"] = imageArray;
     root["favorites"] = favoriteArray;
 
-    QFile file(libraryPath());
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    QSaveFile file(libraryPath());
+    const QByteArray payload = QJsonDocument(root).toJson(QJsonDocument::Indented);
+    if (!file.open(QIODevice::WriteOnly)
+        || file.write(payload) != payload.size()
+        || !file.commit()) {
         QMessageBox::warning(this, "保存失败", "无法写入 config/prompt_templates.json。");
         return;
     }
-    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     m_dirty = false;
 }
 

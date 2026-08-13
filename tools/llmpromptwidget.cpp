@@ -47,6 +47,7 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QScrollBar>
+#include <QSaveFile>
 #include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QSet>
@@ -640,9 +641,12 @@ void LlmPromptWidget::saveConversations() const
     }
     root["conversations"] = sessions;
 
-    QFile file(conversationsPath());
-    if (file.open(QIODevice::WriteOnly)) {
-        file.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
+    QSaveFile file(conversationsPath());
+    const QByteArray payload = QJsonDocument(root).toJson(QJsonDocument::Compact);
+    if (!file.open(QIODevice::WriteOnly)
+        || file.write(payload) != payload.size()
+        || !file.commit()) {
+        qWarning() << "Unable to save LLM conversations atomically:" << file.errorString();
     }
 }
 

@@ -542,6 +542,10 @@ private:
     bool metadataSyncWaitingForPreviews = false;
     int metadataPreviewTasksPending = 0;
     QString currentProcessingPath;
+    QString currentProcessingBaseName;
+    QString pendingHashSyncPath;
+    QString pendingHashSyncBaseName;
+    bool pendingHashSyncForceRefresh = false;
 
     QThreadPool *threadPool = nullptr;           //用于详情页、大图 (可被 cancel)
     QThreadPool *backgroundThreadPool = nullptr; // 【新增】用于侧边栏、主页列表 (不可被 cancel)
@@ -615,7 +619,11 @@ private:
     QMap<QString, UserImageInfo> imageCache;
     QSet<QString> queuedUserImageThumbPaths;
     QSet<QString> loadedUserImageThumbPaths;
+    QHash<QString, int> failedUserImageThumbLoads;
     QTimer *userImageThumbLoadTimer = nullptr;
+    quint64 userGalleryGeneration = 0;
+    quint64 userGalleryLayoutGeneration = 0;
+    bool userGalleryGlobalMode = false;
     void loadUserGalleryCache();
     void saveUserGalleryCache();
 

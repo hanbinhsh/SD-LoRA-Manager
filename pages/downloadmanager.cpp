@@ -17,6 +17,7 @@
 #include <QSaveFile>
 #include <QThreadPool>
 #include <QUrlQuery>
+#include <QUuid>
 #include <QtConcurrent>
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
@@ -294,13 +295,16 @@ void DownloadManager::saveCache() const
     const QString configDir = qApp->applicationDirPath() + "/config";
     QDir().mkpath(configDir);
     QSaveFile file(configDir + "/downloads.json");
-    if (!file.open(QIODevice::WriteOnly)) return;
     QJsonObject root;
     root["version"] = 1;
     root["savedAt"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     root["items"] = items;
-    file.write(QJsonDocument(root).toJson());
-    file.commit();
+    const QByteArray payload = QJsonDocument(root).toJson();
+    if (!file.open(QIODevice::WriteOnly)
+        || file.write(payload) != payload.size()
+        || !file.commit()) {
+        qWarning() << "Unable to save download cache atomically:" << file.errorString();
+    }
 }
 
 void DownloadManager::shutdown()
@@ -319,6 +323,7 @@ void DownloadManager::shutdown()
         m_activeFile = nullptr;
     }
     m_downloadQueue.clear();
+    m_queuedDownloadPaths.clear();
     m_pendingPreviewLoads.clear();
     m_queuedPreviewLoads.clear();
     for (const QPointer<QFutureWatcher<DownloadPreviewLoadResult>> &watcher : std::as_const(m_previewWatchers)) {
@@ -472,6 +477,13 @@ void DownloadManager::startSelectedDownloads()
 
 void DownloadManager::enqueueModelDownload(const ModelUpdateInfo &info)
 {
+    if (info.filePath.isEmpty()) return;
+    if ((m_downloading && m_activeTask.filePath == info.filePath)
+        || m_queuedDownloadPaths.contains(info.filePath)) {
+        emit statusMessageChanged("该模型已经在下载队列中。");
+        return;
+    }
+
     bool overwrite = false;
     const QString targetPath = chooseTargetPath(info, &overwrite);
     if (targetPath.isEmpty()) return;
@@ -484,6 +496,7 @@ void DownloadManager::enqueueModelDownload(const ModelUpdateInfo &info)
     task.overwrite = overwrite;
     if (m_page) m_page->updateCardTargetPath(info.filePath, targetPath);
     m_downloadQueue.enqueue(task);
+    m_queuedDownloadPaths.insert(info.filePath);
     m_canceledPaths.remove(info.filePath);
     updateStatus(info.filePath, "已加入下载队列");
     if (!m_downloading) processNextModelDownload();
@@ -538,11 +551,20 @@ void DownloadManager::processNextModelDownload()
 
     m_downloading = true;
     m_activeTask = m_downloadQueue.dequeue();
+    m_queuedDownloadPaths.remove(m_activeTask.filePath);
     if (m_canceledPaths.contains(m_activeTask.info.filePath)) {
         m_canceledPaths.remove(m_activeTask.info.filePath);
         QTimer::singleShot(0, this, &DownloadManager::processNextModelDownload);
         return;
     }
+    const QUrl downloadUrl(m_activeTask.info.downloadUrl);
+    const bool downloadHasToken = QUrlQuery(downloadUrl).hasQueryItem("token");
+    if (!m_network || !m_makeRequest) {
+        updateStatus(m_activeTask.info.filePath, "下载失败: 下载器未初始化");
+        QTimer::singleShot(0, this, &DownloadManager::processNextModelDownload);
+        return;
+    }
+
     QFile::remove(m_activeTask.tempPath);
     QDir().mkpath(QFileInfo(m_activeTask.tempPath).absolutePath());
 
@@ -554,24 +576,18 @@ void DownloadManager::processNextModelDownload()
         QTimer::singleShot(0, this, &DownloadManager::processNextModelDownload);
         return;
     }
+    m_activeWriteFailed = false;
+    m_activeWriteError.clear();
 
     m_downloadTimer.restart();
     updateStatus(m_activeTask.info.filePath, "下载中...");
     updateProgress(m_activeTask.info.filePath, 0, "--");
 
-    const QUrl downloadUrl(m_activeTask.info.downloadUrl);
-    const bool downloadHasToken = QUrlQuery(downloadUrl).hasQueryItem("token");
-    if (!m_network || !m_makeRequest) {
-        updateStatus(m_activeTask.info.filePath, "下载失败: 下载器未初始化");
-        QTimer::singleShot(0, this, &DownloadManager::processNextModelDownload);
-        return;
-    }
     QNetworkReply *reply = m_network->get(m_makeRequest(downloadUrl, !downloadHasToken));
     m_activeReply = reply;
 
     connect(reply, &QNetworkReply::readyRead, this, [this, reply]() {
-        if (!m_activeFile) return;
-        m_activeFile->write(reply->readAll());
+        if (!writeActiveReplyData(reply)) reply->abort();
     });
     connect(reply, &QNetworkReply::downloadProgress, this, [this](qint64 received, qint64 total) {
         const int percent = total > 0 ? int((received * 100) / total) : 0;
@@ -580,14 +596,19 @@ void DownloadManager::processNextModelDownload()
         updateProgress(m_activeTask.info.filePath, percent, QString::number(mbps, 'f', 2) + " MB/s");
     });
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        if (m_activeFile) {
-            m_activeFile->write(reply->readAll());
-            m_activeFile->close();
-            m_activeFile->deleteLater();
-            m_activeFile = nullptr;
-        }
+        writeActiveReplyData(reply);
+        closeActiveFile();
         reply->deleteLater();
         m_activeReply = nullptr;
+
+        if (m_activeWriteFailed) {
+            QFile::remove(m_activeTask.tempPath);
+            updateStatus(m_activeTask.info.filePath,
+                         "下载失败: 写入文件失败" +
+                             (m_activeWriteError.isEmpty() ? QString() : " (" + m_activeWriteError + ")"));
+            QTimer::singleShot(0, this, &DownloadManager::processNextModelDownload);
+            return;
+        }
 
         if (reply->error() != QNetworkReply::NoError) {
             const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
@@ -598,6 +619,7 @@ void DownloadManager::processNextModelDownload()
                 QFile::remove(m_activeTask.tempPath);
                 m_activeTask.info.downloadUrl = m_tokenUrl(QUrl(m_activeTask.info.downloadUrl)).toString();
                 m_downloadQueue.enqueue(m_activeTask);
+                m_queuedDownloadPaths.insert(m_activeTask.filePath);
                 updateStatus(m_activeTask.info.filePath, "认证重试中...");
                 QTimer::singleShot(0, this, &DownloadManager::processNextModelDownload);
                 return;
@@ -608,33 +630,104 @@ void DownloadManager::processNextModelDownload()
             return;
         }
 
-        const QString expected = m_activeTask.info.sha256;
-        if (!expected.isEmpty()) {
-            const QString actual = m_hash ? m_hash(m_activeTask.tempPath) : FileUtils::calculateSha256Hex(m_activeTask.tempPath);
-            if (!actual.isEmpty() && actual.compare(expected, Qt::CaseInsensitive) != 0) {
-                QFile::remove(m_activeTask.tempPath);
-                updateStatus(m_activeTask.info.filePath, "下载失败: SHA256 校验失败");
-                QTimer::singleShot(0, this, &DownloadManager::processNextModelDownload);
-                return;
-            }
-        }
+        verifyAndFinishDownload(m_activeTask);
+    });
+}
 
-        finishModelDownload(m_activeTask);
+bool DownloadManager::writeActiveReplyData(QNetworkReply *reply)
+{
+    if (!reply || !m_activeFile || m_activeWriteFailed) return !m_activeWriteFailed;
+    const QByteArray data = reply->readAll();
+    if (data.isEmpty()) return true;
+    const qint64 written = m_activeFile->write(data);
+    if (written == data.size()) return true;
+
+    m_activeWriteFailed = true;
+    m_activeWriteError = m_activeFile->errorString();
+    if (m_activeWriteError.isEmpty()) m_activeWriteError = QStringLiteral("写入长度不完整");
+    return false;
+}
+
+void DownloadManager::closeActiveFile()
+{
+    if (!m_activeFile) return;
+    if (!m_activeFile->flush() && !m_activeWriteFailed) {
+        m_activeWriteFailed = true;
+        m_activeWriteError = m_activeFile->errorString();
+    }
+    m_activeFile->close();
+    m_activeFile->deleteLater();
+    m_activeFile = nullptr;
+}
+
+void DownloadManager::verifyAndFinishDownload(const ModelFileDownloadTask &task)
+{
+    const QFileInfo tempInfo(task.tempPath);
+    if (!tempInfo.exists() || tempInfo.size() <= 0) {
+        QFile::remove(task.tempPath);
+        updateStatus(task.info.filePath, "下载失败: 下载文件为空");
+        QTimer::singleShot(0, this, &DownloadManager::processNextModelDownload);
+        return;
+    }
+
+    const QString expected = task.info.sha256.trimmed();
+    if (expected.isEmpty()) {
+        finishModelDownload(task);
+        QTimer::singleShot(0, this, &DownloadManager::processNextModelDownload);
+        return;
+    }
+
+    updateStatus(task.info.filePath, "校验中...");
+    const HashCallback hashCallback = m_hash;
+    auto *watcher = new QFutureWatcher<QString>(this);
+    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher, task, expected]() {
+        const QString actual = watcher->result();
+        watcher->deleteLater();
+        if (m_shuttingDown) return;
+
+        if (actual.isEmpty()) {
+            QFile::remove(task.tempPath);
+            updateStatus(task.info.filePath, "下载失败: 无法计算 SHA256");
+        } else if (actual.compare(expected, Qt::CaseInsensitive) != 0) {
+            QFile::remove(task.tempPath);
+            updateStatus(task.info.filePath, "下载失败: SHA256 校验失败");
+        } else {
+            finishModelDownload(task);
+        }
         QTimer::singleShot(0, this, &DownloadManager::processNextModelDownload);
     });
+    watcher->setFuture(QtConcurrent::run([hashCallback, path = task.tempPath]() {
+        return hashCallback ? hashCallback(path) : FileUtils::calculateSha256Hex(path);
+    }));
 }
 
 void DownloadManager::finishModelDownload(const ModelFileDownloadTask &task)
 {
-    if (task.overwrite && QFile::exists(task.targetPath)) QFile::remove(task.targetPath);
-    if (QFile::exists(task.targetPath) && task.targetPath != task.tempPath) {
+    if (QFile::exists(task.targetPath) && !task.overwrite && task.targetPath != task.tempPath) {
         QFile::remove(task.tempPath);
         updateStatus(task.info.filePath, "下载失败: 目标文件已存在");
         return;
     }
+
+    QString backupPath;
+    if (task.overwrite && QFile::exists(task.targetPath)) {
+        backupPath = task.targetPath + ".replace-backup-" +
+                     QUuid::createUuid().toString(QUuid::WithoutBraces);
+        if (!QFile::rename(task.targetPath, backupPath)) {
+            updateStatus(task.info.filePath, "下载失败: 无法备份原模型文件");
+            return;
+        }
+    }
+
     if (!QFile::rename(task.tempPath, task.targetPath)) {
-        updateStatus(task.info.filePath, "下载失败: 无法移动下载文件");
+        const bool restored = backupPath.isEmpty() || QFile::rename(backupPath, task.targetPath);
+        updateStatus(task.info.filePath,
+                     restored ? "下载失败: 无法移动下载文件，原模型已恢复"
+                              : "下载失败: 无法移动下载文件，原模型保存在 " + backupPath);
         return;
+    }
+    if (!backupPath.isEmpty() && !QFile::remove(backupPath)) {
+        qWarning() << "Downloaded model installed, but old backup could not be removed:" << backupPath;
     }
 
     updateProgress(task.info.filePath, 100, "--");
