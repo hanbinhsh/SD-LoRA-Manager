@@ -338,6 +338,7 @@ QTextBrowser { background-color: @inputBg; border: 1px solid @inputBorder; color
 #scrollAreaGallery { background-color: transparent; border: none; }
 #galleryContents { background-color: transparent; }
 #listUserImages { background-color: transparent; }
+#userGalleryViewport { background-color: @windowBg; }
 
 QPushButton[class="galleryThumb"] {
     border: 2px solid @thumbBorder;

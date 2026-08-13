@@ -57,7 +57,6 @@
 #include <atomic>
 #include <cmath>
 #include <functional>
-#include <limits>
 #include <utility>
 #include <QElapsedTimer>
 #include <QSharedPointer>
@@ -975,6 +974,15 @@ MainWindow::MainWindow(QWidget *parent)
     // 1. 开启像素滚动
     ui->homeGalleryList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     ui->listUserImages->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    // The gallery viewport must erase old icon pixels after rows are hidden.
+    // A transparent viewport can otherwise leave clipped thumbnail remnants.
+    ui->listUserImages->viewport()->setObjectName(QStringLiteral("userGalleryViewport"));
+    ui->listUserImages->viewport()->setAutoFillBackground(true);
+    QPalette userGalleryPalette = ui->listUserImages->viewport()->palette();
+    const QColor userGalleryBackground = AppStyle::color("windowBg");
+    userGalleryPalette.setColor(QPalette::Window, userGalleryBackground);
+    userGalleryPalette.setColor(QPalette::Base, userGalleryBackground);
+    ui->listUserImages->viewport()->setPalette(userGalleryPalette);
     // 2. 设置滚轮滚一下移动的像素距离
     ui->homeGalleryList->verticalScrollBar()->setSingleStep(40);
     ui->listUserImages->verticalScrollBar()->setSingleStep(40);
@@ -8521,6 +8529,21 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
                 item->setData(ROLE_USER_IMAGE_PARAMS, info.parameters);
                 item->setData(ROLE_USER_IMAGE_TAGS, info.cleanTags);
                 item->setData(ROLE_USER_IMAGE_NEG_TAGS, info.negativeCleanTags);
+                auto makeNormalizedTagKeys = [](const QStringList &tags) {
+                    QStringList keys;
+                    keys.reserve(tags.size());
+                    for (const QString &tag : tags) {
+                        const QString key = normalizedPromptTagKey(tag);
+                        if (!key.isEmpty()) keys.append(key);
+                    }
+                    std::sort(keys.begin(), keys.end());
+                    keys.removeDuplicates();
+                    return keys;
+                };
+                item->setData(ROLE_USER_IMAGE_TAG_KEYS,
+                              makeNormalizedTagKeys(info.cleanTags));
+                item->setData(ROLE_USER_IMAGE_NEG_KEYS,
+                              makeNormalizedTagKeys(info.negativeCleanTags));
                 item->setIcon(placeholderIcon);
                 item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
                 ui->listUserImages->addItem(item);
@@ -8684,114 +8707,126 @@ void MainWindow::onTagFilterChanged(const QSet<QString> &selectedTags) {
     const quint64 layoutGeneration = ++userGalleryLayoutGeneration;
     int visibleCount = 0;
     const bool includeNegative = ui->chkUserTagIncludeNegative && ui->chkUserTagIncludeNegative->isChecked();
-    QString scrollAnchorPath;
-    int scrollAnchorIndex = -1;
-    int bestAnchorTop = std::numeric_limits<int>::max();
-    const QRect oldViewportRect = ui->listUserImages->viewport()->rect();
-    for (int i = 0; i < ui->listUserImages->count(); ++i) {
-        QListWidgetItem *item = ui->listUserImages->item(i);
-        if (!item || item->isHidden()) continue;
-        const QRect itemRect = ui->listUserImages->visualItemRect(item);
-        if (!itemRect.isValid() || !itemRect.intersects(oldViewportRect)) continue;
-        if (itemRect.top() < bestAnchorTop) {
-            bestAnchorTop = itemRect.top();
-            scrollAnchorIndex = i;
-            scrollAnchorPath = item->data(ROLE_USER_IMAGE_PATH).toString();
-        }
-    }
-    const int previousScrollValue = ui->listUserImages->verticalScrollBar()
-                                        ? ui->listUserImages->verticalScrollBar()->value()
-                                        : 0;
+    const QString currentImagePath = ui->listUserImages->currentItem()
+                                         ? ui->listUserImages->currentItem()->data(ROLE_USER_IMAGE_PATH).toString()
+                                         : QString();
     QSet<QString> selectedTagKeys;
     for (const QString &tag : selectedTags) {
         const QString key = normalizedPromptTagKey(tag);
         if (!key.isEmpty()) selectedTagKeys.insert(key);
     }
 
-    ui->listUserImages->setUpdatesEnabled(false);
-    for(int i = 0; i < ui->listUserImages->count(); ++i) {
+    struct FilteredGalleryItem {
+        QListWidgetItem *item = nullptr;
+        bool visible = false;
+    };
+    QVector<FilteredGalleryItem> filteredItems;
+    filteredItems.reserve(ui->listUserImages->count());
+
+    for (int i = 0; i < ui->listUserImages->count(); ++i) {
         QListWidgetItem *item = ui->listUserImages->item(i);
-        QString rawPrompt = item->data(ROLE_USER_IMAGE_PROMPT).toString();
-        QStringList distinctTags = item->data(ROLE_USER_IMAGE_TAGS).toStringList();
-        if (includeNegative) {
-            distinctTags.append(item->data(ROLE_USER_IMAGE_NEG_TAGS).toStringList());
-            distinctTags.removeDuplicates();
-        }
+        auto normalizedKeys = [item](int tagRole, int cacheRole) {
+            const QVariant cached = item->data(cacheRole);
+            if (cached.isValid()) return cached.toStringList();
+
+            QStringList keys;
+            const QStringList tags = item->data(tagRole).toStringList();
+            keys.reserve(tags.size());
+            for (const QString &tag : tags) {
+                const QString key = normalizedPromptTagKey(tag);
+                if (!key.isEmpty()) keys.append(key);
+            }
+            std::sort(keys.begin(), keys.end());
+            keys.removeDuplicates();
+            item->setData(cacheRole, keys);
+            return keys;
+        };
+
+        const QStringList positiveTagKeys = normalizedKeys(ROLE_USER_IMAGE_TAGS,
+                                                            ROLE_USER_IMAGE_TAG_KEYS);
+        const QStringList negativeTagKeys = includeNegative
+                                                ? normalizedKeys(ROLE_USER_IMAGE_NEG_TAGS,
+                                                                 ROLE_USER_IMAGE_NEG_KEYS)
+                                                : QStringList();
 
         bool match = true;
         // AND 逻辑：必须包含所有选中的 Tag
         for (const QString &selTag : selectedTagKeys) {
-            bool tagFound = false;
-            for (const QString &imgTag : distinctTags) {
-                if (normalizedPromptTagKey(imgTag) == selTag) {
-                    tagFound = true;
-                    break;
-                }
-            }
-
+            const bool tagFound = std::binary_search(positiveTagKeys.cbegin(),
+                                                     positiveTagKeys.cend(), selTag)
+                                  || (includeNegative
+                                      && std::binary_search(negativeTagKeys.cbegin(),
+                                                            negativeTagKeys.cend(), selTag));
             if (!tagFound) {
                 match = false;
                 break;
             }
         }
 
-        item->setHidden(!match);
         if (match) {
             visibleCount++;
         }
+        filteredItems.append({item, match});
     }
+
+    ui->listUserImages->setUpdatesEnabled(false);
+    QListWidgetItem *restoredCurrentItem = nullptr;
+    for (const FilteredGalleryItem &entry : std::as_const(filteredItems)) {
+        if (!entry.item) continue;
+        const bool shouldHide = !entry.visible;
+        if (entry.item->isHidden() != shouldHide) {
+            entry.item->setHidden(shouldHide);
+        }
+        if (!currentImagePath.isEmpty()
+            && entry.item->data(ROLE_USER_IMAGE_PATH).toString() == currentImagePath) {
+            restoredCurrentItem = entry.item;
+        }
+    }
+    if (restoredCurrentItem && !restoredCurrentItem->isHidden()) {
+        ui->listUserImages->setCurrentItem(restoredCurrentItem, QItemSelectionModel::NoUpdate);
+    } else {
+        ui->listUserImages->setCurrentItem(nullptr);
+    }
+
+    // IconMode can retain geometry for rows whose hidden state changed. Changing
+    // the grid invalidates that cache once, without emitting thousands of model
+    // row removals/insertions as the previous takeItem/addItem workaround did.
+    const QSize galleryGridSize = ui->listUserImages->gridSize();
+    ui->listUserImages->setGridSize(QSize());
+    ui->listUserImages->setGridSize(galleryGridSize);
     ui->listUserImages->setUpdatesEnabled(true);
     ui->listUserImages->doItemsLayout();
-    ui->listUserImages->viewport()->update();
+    if (QScrollBar *verticalBar = ui->listUserImages->verticalScrollBar()) {
+        verticalBar->setValue(verticalBar->minimum());
+    }
+    if (QScrollBar *horizontalBar = ui->listUserImages->horizontalScrollBar()) {
+        horizontalBar->setValue(horizontalBar->minimum());
+    }
+    ui->listUserImages->viewport()->repaint();
 
-    QTimer::singleShot(0, this, [this, previousScrollValue, scrollAnchorPath,
-                                  scrollAnchorIndex, layoutGeneration]() {
+    auto resetFilteredGalleryViewport = [this, layoutGeneration]() {
         if (layoutGeneration != userGalleryLayoutGeneration || !ui->listUserImages) return;
         ui->listUserImages->doItemsLayout();
-
-        QListWidgetItem *anchorItem = nullptr;
-        if (!scrollAnchorPath.isEmpty()) {
-            for (int i = 0; i < ui->listUserImages->count(); ++i) {
-                QListWidgetItem *item = ui->listUserImages->item(i);
-                if (item && !item->isHidden()
-                    && item->data(ROLE_USER_IMAGE_PATH).toString() == scrollAnchorPath) {
-                    anchorItem = item;
-                    break;
-                }
+        for (int i = 0; i < ui->listUserImages->count(); ++i) {
+            QListWidgetItem *item = ui->listUserImages->item(i);
+            if (item && !item->isHidden()) {
+                ui->listUserImages->scrollToItem(item, QAbstractItemView::PositionAtTop);
+                break;
             }
         }
-        if (!anchorItem && scrollAnchorIndex >= 0) {
-            for (int distance = 0; distance < ui->listUserImages->count(); ++distance) {
-                const int after = scrollAnchorIndex + distance;
-                if (after < ui->listUserImages->count()) {
-                    QListWidgetItem *item = ui->listUserImages->item(after);
-                    if (item && !item->isHidden()) {
-                        anchorItem = item;
-                        break;
-                    }
-                }
-                const int before = scrollAnchorIndex - distance;
-                if (before >= 0) {
-                    QListWidgetItem *item = ui->listUserImages->item(before);
-                    if (item && !item->isHidden()) {
-                        anchorItem = item;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (anchorItem) {
-            ui->listUserImages->scrollToItem(anchorItem, QAbstractItemView::PositionAtTop);
-        } else if (QScrollBar *scrollBar = ui->listUserImages->verticalScrollBar()) {
-            scrollBar->setValue(qBound(scrollBar->minimum(), previousScrollValue, scrollBar->maximum()));
+        if (QScrollBar *verticalBar = ui->listUserImages->verticalScrollBar()) {
+            verticalBar->setValue(verticalBar->minimum());
         }
         if (QScrollBar *horizontalBar = ui->listUserImages->horizontalScrollBar()) {
             horizontalBar->setValue(horizontalBar->minimum());
         }
-        ui->listUserImages->viewport()->update();
+        ui->listUserImages->update();
+        ui->listUserImages->viewport()->repaint();
         scheduleVisibleUserImageThumbLoad();
-    });
+    };
+    QTimer::singleShot(0, this, resetFilteredGalleryViewport);
+    // QListView::Adjust may schedule another geometry pass after the first event.
+    QTimer::singleShot(50, this, resetFilteredGalleryViewport);
 
     ui->statusbar->showMessage(QString("筛选: %1 张图片符合条件").arg(visibleCount));
 }

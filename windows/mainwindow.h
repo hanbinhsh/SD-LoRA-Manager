@@ -80,6 +80,8 @@ const int ROLE_USER_IMAGE_TAGS        = Qt::UserRole + 44;
 const int ROLE_USER_IMAGE_NEG_TAGS    = Qt::UserRole + 45;
 const int ROLE_EDIT_IMAGE_PATH        = Qt::UserRole + 46;
 const int ROLE_IS_FOLDER_HEADER       = Qt::UserRole + 47;
+const int ROLE_USER_IMAGE_TAG_KEYS    = Qt::UserRole + 48;
+const int ROLE_USER_IMAGE_NEG_KEYS    = Qt::UserRole + 49;
 // 树状图占位符标记
 const int ROLE_IS_PLACEHOLDER         = Qt::UserRole + 50;
 const int ROLE_CIVITAI_MODEL_ID       = Qt::UserRole + 51;
