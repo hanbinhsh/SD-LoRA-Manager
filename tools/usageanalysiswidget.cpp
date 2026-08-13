@@ -116,9 +116,21 @@ UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
         table->setFocusPolicy(Qt::NoFocus);
     };
     setupTable(ui->tableModels, true);
-    setupTable(ui->tableTopUsed, true);
+    setupTable(ui->tableTopUsed, false);
     setupTable(ui->tableTopTags, true);
     setupTable(ui->tableBaseModels, true);
+
+    ui->tableTopUsed->setColumnCount(4);
+    ui->tableTopUsed->setHorizontalHeaderLabels({"模型", "类别", "数量", "占比"});
+    QHeaderView *usageHeader = ui->tableTopUsed->horizontalHeader();
+    usageHeader->setStretchLastSection(false);
+    usageHeader->setSectionResizeMode(0, QHeaderView::Stretch);
+    usageHeader->setSectionResizeMode(1, QHeaderView::Fixed);
+    usageHeader->setSectionResizeMode(2, QHeaderView::Fixed);
+    usageHeader->setSectionResizeMode(3, QHeaderView::Fixed);
+    usageHeader->resizeSection(1, 160);
+    usageHeader->resizeSection(2, 90);
+    usageHeader->resizeSection(3, 180);
 
     // 空间占用 Tab：图表 + 统计范围下拉 + 最大模型表。
     folderPie = new PieChartWidget(ui->spaceFolderPieContainer);
@@ -141,18 +153,11 @@ UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
     ui->tableLargestModels->setHorizontalHeaderLabels({"模型", "类别", "文件夹", "占用"});
     QHeaderView *largestHeader = ui->tableLargestModels->horizontalHeader();
     largestHeader->setStretchLastSection(false);
-    largestHeader->setSectionResizeMode(0, QHeaderView::Interactive);
-    largestHeader->setSectionResizeMode(1, QHeaderView::Interactive);
-    largestHeader->setSectionResizeMode(2, QHeaderView::Interactive);
+    largestHeader->setSectionResizeMode(0, QHeaderView::Stretch);
+    largestHeader->setSectionResizeMode(1, QHeaderView::Stretch);
+    largestHeader->setSectionResizeMode(2, QHeaderView::Stretch);
     largestHeader->setSectionResizeMode(3, QHeaderView::Fixed);
     largestHeader->resizeSection(3, 110);
-    QTimer::singleShot(0, this, [this]() {
-        const int available = qMax(300, ui->tableLargestModels->viewport()->width() - 110);
-        const int shared = available / 3;
-        ui->tableLargestModels->horizontalHeader()->resizeSection(0, shared);
-        ui->tableLargestModels->horizontalHeader()->resizeSection(1, shared);
-        ui->tableLargestModels->horizontalHeader()->resizeSection(2, available - shared * 2);
-    });
 
     connect(ui->btnRefreshAnalysis, &QPushButton::clicked, this, &UsageAnalysisWidget::requestRefresh);
     connect(ui->editSearchModels, &QLineEdit::textChanged, this, &UsageAnalysisWidget::onSearchTextChanged);
