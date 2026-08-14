@@ -337,8 +337,37 @@ QTextBrowser { background-color: @inputBg; border: 1px solid @inputBorder; color
 
 #scrollAreaGallery { background-color: transparent; border: none; }
 #galleryContents { background-color: transparent; }
-#listUserImages { background-color: transparent; }
-#userGalleryViewport { background-color: @windowBg; }
+#userGalleryFrame {
+    background-color: @rgba(black, 30);
+    border: 1px solid @groupBorder;
+    border-radius: 4px;
+}
+#listUserImages {
+    background-color: transparent;
+    border: none;
+    outline: none;
+}
+#userGalleryViewport {
+    background-color: @rgba(black, 30);
+}
+#listUserImages::item {
+    background-color: transparent;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    padding-top: 3px;
+}
+#listUserImages::item:hover {
+    background-color: @rgba(overlayFg, 18);
+    border-color: @rgba(overlayFg, 38);
+}
+#listUserImages::item:selected {
+    background-color: @rgba(accentBlue, 24);
+    border-color: @accentBlue;
+}
+#listUserImages::item:selected:hover {
+    background-color: @rgba(accentBlue, 34);
+    border-color: @accentBright;
+}
 
 QPushButton[class="galleryThumb"] {
     border: 2px solid @thumbBorder;

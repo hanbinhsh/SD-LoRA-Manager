@@ -975,14 +975,11 @@ MainWindow::MainWindow(QWidget *parent)
     ui->homeGalleryList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     ui->listUserImages->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     // The gallery viewport must erase old icon pixels after rows are hidden.
-    // A transparent viewport can otherwise leave clipped thumbnail remnants.
+    // Let the style sheet paint the opaque viewport: palette auto-fill paints a
+    // rectangular layer first and destroys the rounded corners.
     ui->listUserImages->viewport()->setObjectName(QStringLiteral("userGalleryViewport"));
-    ui->listUserImages->viewport()->setAutoFillBackground(true);
-    QPalette userGalleryPalette = ui->listUserImages->viewport()->palette();
-    const QColor userGalleryBackground = AppStyle::color("windowBg");
-    userGalleryPalette.setColor(QPalette::Window, userGalleryBackground);
-    userGalleryPalette.setColor(QPalette::Base, userGalleryBackground);
-    ui->listUserImages->viewport()->setPalette(userGalleryPalette);
+    ui->listUserImages->viewport()->setAutoFillBackground(false);
+    ui->listUserImages->viewport()->setAttribute(Qt::WA_StyledBackground, true);
     // 2. 设置滚轮滚一下移动的像素距离
     ui->homeGalleryList->verticalScrollBar()->setSingleStep(40);
     ui->listUserImages->verticalScrollBar()->setSingleStep(40);
@@ -1150,7 +1147,7 @@ MainWindow::MainWindow(QWidget *parent)
         else if (index == 2) mode = TagFlowWidget::SortByGivenOrder;
         tagFlowWidget->setSortMode(mode);
         // “提示词顺序”依赖当前图的提示词顺序，刷新一次以重建顺序数据。
-        if (index == 2) refreshUserTagFlowStats();
+        if (index == 2) refreshUserTagFlowStats(false);
     });
     connect(ui->editUserTagSearch, &QLineEdit::textChanged, this, [this](const QString &text){
         tagFlowWidget->setSearchText(text);
@@ -1159,10 +1156,10 @@ MainWindow::MainWindow(QWidget *parent)
         tagFlowWidget->setLoraOnly(checked);
     });
     connect(ui->chkUserTagCurrentImageOnly, &QCheckBox::toggled, this, [this](bool) {
-        refreshUserTagFlowStats();
+        refreshUserTagFlowStats(false);
     });
     connect(ui->chkUserTagIncludeNegative, &QCheckBox::toggled, this, [this](bool) {
-        refreshUserTagFlowStats();
+        refreshUserTagFlowStats(true, false);
     });
     // 图片点击
     connect(ui->listUserImages, &QListWidget::itemClicked, this, &MainWindow::onUserImageClicked);
@@ -8576,7 +8573,8 @@ void MainWindow::parsePngInfo(const QString &path, UserImageInfo &info) {
     parsePngInfoWorker(path, info, optSplitOnNewline, optFilterTags);
 }
 
-void MainWindow::refreshUserTagFlowStats()
+void MainWindow::refreshUserTagFlowStats(bool applyGalleryFilter,
+                                         bool resetGalleryScrollToTop)
 {
     QMap<QString, int> tagCounts;
     QHash<QString, QString> tagDisplayText;
@@ -8627,7 +8625,10 @@ void MainWindow::refreshUserTagFlowStats()
     }
     tagFlowWidget->setGivenOrder(promptOrder);
 
-    onTagFilterChanged(tagFlowWidget->getSelectedTags());
+    if (applyGalleryFilter) {
+        applyUserGalleryTagFilter(tagFlowWidget->getSelectedTags(),
+                                  resetGalleryScrollToTop);
+    }
 }
 
 void MainWindow::onUserImageClicked(QListWidgetItem *item) {
@@ -8699,12 +8700,26 @@ void MainWindow::onUserImageClicked(QListWidgetItem *item) {
     transitionToImage(path);
     const bool promptOrderSort = ui->comboUserTagSortMode && ui->comboUserTagSortMode->currentIndex() == 2;
     if ((ui->chkUserTagCurrentImageOnly && ui->chkUserTagCurrentImageOnly->isChecked()) || promptOrderSort) {
-        refreshUserTagFlowStats();
+        // Clicking a gallery item only changes the details/TagFlow source. It
+        // must not be treated as a filter edit, otherwise the gallery relayout
+        // path resets the vertical scroll position to the top.
+        refreshUserTagFlowStats(false);
     }
 }
 
 void MainWindow::onTagFilterChanged(const QSet<QString> &selectedTags) {
+    applyUserGalleryTagFilter(selectedTags, true);
+}
+
+void MainWindow::applyUserGalleryTagFilter(const QSet<QString> &selectedTags,
+                                           bool resetScrollToTop) {
     const quint64 layoutGeneration = ++userGalleryLayoutGeneration;
+    const int previousVerticalScroll = ui->listUserImages->verticalScrollBar()
+                                           ? ui->listUserImages->verticalScrollBar()->value()
+                                           : 0;
+    const int previousHorizontalScroll = ui->listUserImages->horizontalScrollBar()
+                                             ? ui->listUserImages->horizontalScrollBar()->value()
+                                             : 0;
     int visibleCount = 0;
     const bool includeNegative = ui->chkUserTagIncludeNegative && ui->chkUserTagIncludeNegative->isChecked();
     const QString currentImagePath = ui->listUserImages->currentItem()
@@ -8797,28 +8812,43 @@ void MainWindow::onTagFilterChanged(const QSet<QString> &selectedTags) {
     ui->listUserImages->setUpdatesEnabled(true);
     ui->listUserImages->doItemsLayout();
     if (QScrollBar *verticalBar = ui->listUserImages->verticalScrollBar()) {
-        verticalBar->setValue(verticalBar->minimum());
+        verticalBar->setValue(resetScrollToTop
+                                  ? verticalBar->minimum()
+                                  : qBound(verticalBar->minimum(), previousVerticalScroll,
+                                           verticalBar->maximum()));
     }
     if (QScrollBar *horizontalBar = ui->listUserImages->horizontalScrollBar()) {
-        horizontalBar->setValue(horizontalBar->minimum());
+        horizontalBar->setValue(resetScrollToTop
+                                    ? horizontalBar->minimum()
+                                    : qBound(horizontalBar->minimum(), previousHorizontalScroll,
+                                             horizontalBar->maximum()));
     }
     ui->listUserImages->viewport()->repaint();
 
-    auto resetFilteredGalleryViewport = [this, layoutGeneration]() {
+    auto resetFilteredGalleryViewport = [this, layoutGeneration, resetScrollToTop,
+                                         previousVerticalScroll, previousHorizontalScroll]() {
         if (layoutGeneration != userGalleryLayoutGeneration || !ui->listUserImages) return;
         ui->listUserImages->doItemsLayout();
-        for (int i = 0; i < ui->listUserImages->count(); ++i) {
-            QListWidgetItem *item = ui->listUserImages->item(i);
-            if (item && !item->isHidden()) {
-                ui->listUserImages->scrollToItem(item, QAbstractItemView::PositionAtTop);
-                break;
+        if (resetScrollToTop) {
+            for (int i = 0; i < ui->listUserImages->count(); ++i) {
+                QListWidgetItem *item = ui->listUserImages->item(i);
+                if (item && !item->isHidden()) {
+                    ui->listUserImages->scrollToItem(item, QAbstractItemView::PositionAtTop);
+                    break;
+                }
             }
         }
         if (QScrollBar *verticalBar = ui->listUserImages->verticalScrollBar()) {
-            verticalBar->setValue(verticalBar->minimum());
+            verticalBar->setValue(resetScrollToTop
+                                      ? verticalBar->minimum()
+                                      : qBound(verticalBar->minimum(), previousVerticalScroll,
+                                               verticalBar->maximum()));
         }
         if (QScrollBar *horizontalBar = ui->listUserImages->horizontalScrollBar()) {
-            horizontalBar->setValue(horizontalBar->minimum());
+            horizontalBar->setValue(resetScrollToTop
+                                        ? horizontalBar->minimum()
+                                        : qBound(horizontalBar->minimum(), previousHorizontalScroll,
+                                                 horizontalBar->maximum()));
         }
         ui->listUserImages->update();
         ui->listUserImages->viewport()->repaint();

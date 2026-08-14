@@ -56,6 +56,7 @@
 #include <QtConcurrent/QtConcurrent>
 
 #include <algorithm>
+#include <utility>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -1171,31 +1172,41 @@ QString PromptParserWidget::wd14PresetDirectory() const
 
 QString PromptParserWidget::extractedWd14ScriptPath() const
 {
-    const QString tempDir = QDir(QDir::tempPath()).filePath("SD_LoRA_Manager/scripts");
-    QDir().mkpath(tempDir);
-
-    const QString targetPath = QDir(tempDir).filePath("wd14_tagger.py");
     QFile resource(":/scripts/wd14_tagger.py");
     if (!resource.open(QIODevice::ReadOnly)) {
+        qWarning() << "Unable to open embedded WD14 script resource:" << resource.errorString();
         return QString();
     }
 
     const QByteArray resourceBytes = resource.readAll();
-    QFile existing(targetPath);
-    if (existing.open(QIODevice::ReadOnly) && existing.readAll() == resourceBytes) {
-        existing.close();
+    QStringList extractionDirectories;
+    extractionDirectories << QDir(QDir::tempPath()).filePath("SD_LoRA_Manager/scripts");
+    const QString cacheRoot = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    if (!cacheRoot.isEmpty()) extractionDirectories << QDir(cacheRoot).filePath("scripts");
+    extractionDirectories.removeDuplicates();
+
+    for (const QString &directory : std::as_const(extractionDirectories)) {
+        if (!QDir().mkpath(directory)) continue;
+        const QString targetPath = QDir(directory).filePath("wd14_tagger.py");
+
+        QFile existing(targetPath);
+        if (existing.open(QIODevice::ReadOnly)) {
+            const bool current = existing.readAll() == resourceBytes;
+            // The handle must be closed before QSaveFile replaces this path on Windows.
+            existing.close();
+            if (current) return QFileInfo(targetPath).absoluteFilePath();
+        }
+
+        QSaveFile out(targetPath);
+        if (!out.open(QIODevice::WriteOnly)) continue;
+        if (out.write(resourceBytes) != resourceBytes.size() || !out.commit()) {
+            qWarning() << "Unable to extract WD14 script to" << targetPath << out.errorString();
+            continue;
+        }
         return QFileInfo(targetPath).absoluteFilePath();
     }
 
-    QSaveFile out(targetPath);
-    if (!out.open(QIODevice::WriteOnly)) {
-        return QString();
-    }
-    out.write(resourceBytes);
-    if (!out.commit()) {
-        return QString();
-    }
-    return QFileInfo(targetPath).absoluteFilePath();
+    return QString();
 }
 
 QString PromptParserWidget::defaultWd14ScriptPath() const
@@ -1205,7 +1216,14 @@ QString PromptParserWidget::defaultWd14ScriptPath() const
 
     const QString appScript = QDir(qApp->applicationDirPath()).filePath("scripts/wd14_tagger.py");
     if (QFile::exists(appScript)) return appScript;
-    return QDir(QCoreApplication::applicationDirPath()).absoluteFilePath("../../scripts/wd14_tagger.py");
+
+    QDir searchDir(QCoreApplication::applicationDirPath());
+    for (int depth = 0; depth < 5; ++depth) {
+        const QString developmentScript = searchDir.filePath("scripts/wd14_tagger.py");
+        if (QFile::exists(developmentScript)) return QFileInfo(developmentScript).absoluteFilePath();
+        if (!searchDir.cdUp()) break;
+    }
+    return QString();
 }
 
 QString PromptParserWidget::selectedWd14ScriptPath() const

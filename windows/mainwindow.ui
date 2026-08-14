@@ -2051,55 +2051,94 @@ Hash: ...</string>
                           <property name="handleWidth">
                            <number>10</number>
                           </property>
-                          <widget class="QListWidget" name="listUserImages">
+                          <widget class="QWidget" name="userGalleryContainer" native="true">
                            <property name="minimumSize">
                             <size>
                              <width>0</width>
                              <height>160</height>
                             </size>
                            </property>
-                           <property name="maximumSize">
-                            <size>
-                             <width>16777215</width>
-                             <height>16777215</height>
-                            </size>
-                           </property>
-                           <property name="iconSize">
-                            <size>
-                             <width>140</width>
-                             <height>140</height>
-                            </size>
-                           </property>
-                           <property name="gridSize">
-                            <size>
-                             <width>156</width>
-                             <height>156</height>
-                            </size>
-                           </property>
-                            <property name="uniformItemSizes">
-                             <bool>true</bool>
+                           <layout class="QVBoxLayout" name="layoutUserGalleryContainer">
+                            <property name="leftMargin">
+                             <number>0</number>
                             </property>
-                            <property name="horizontalScrollBarPolicy">
-                             <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>
+                            <property name="topMargin">
+                             <number>1</number>
                             </property>
-                            <property name="flow">
-                             <enum>QListView::Flow::LeftToRight</enum>
+                            <property name="rightMargin">
+                             <number>0</number>
                             </property>
-                            <property name="isWrapping" stdset="0">
-                             <bool>true</bool>
+                            <property name="bottomMargin">
+                             <number>1</number>
                             </property>
-                            <property name="movement">
-                             <enum>QListView::Movement::Static</enum>
+                            <property name="spacing">
+                             <number>0</number>
                             </property>
-                           <property name="resizeMode">
-                            <enum>QListView::ResizeMode::Adjust</enum>
-                           </property>
-                           <property name="spacing">
-                            <number>8</number>
-                           </property>
-                           <property name="viewMode">
-                            <enum>QListView::ViewMode::IconMode</enum>
-                           </property>
+                            <item>
+                             <widget class="QFrame" name="userGalleryFrame">
+                              <property name="frameShape">
+                               <enum>QFrame::Shape::NoFrame</enum>
+                              </property>
+                              <layout class="QVBoxLayout" name="layoutUserGalleryFrame">
+                               <property name="leftMargin">
+                                <number>2</number>
+                               </property>
+                               <property name="topMargin">
+                                <number>10</number>
+                               </property>
+                               <property name="rightMargin">
+                                <number>10</number>
+                               </property>
+                               <property name="bottomMargin">
+                                <number>10</number>
+                               </property>
+                               <property name="spacing">
+                                <number>0</number>
+                               </property>
+                               <item>
+                                <widget class="QListWidget" name="listUserImages">
+                              <property name="iconSize">
+                               <size>
+                                <width>140</width>
+                                <height>140</height>
+                               </size>
+                              </property>
+                              <property name="gridSize">
+                               <size>
+                                <width>156</width>
+                                <height>156</height>
+                               </size>
+                              </property>
+                              <property name="uniformItemSizes">
+                               <bool>true</bool>
+                              </property>
+                              <property name="horizontalScrollBarPolicy">
+                               <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>
+                              </property>
+                              <property name="flow">
+                               <enum>QListView::Flow::LeftToRight</enum>
+                              </property>
+                              <property name="isWrapping" stdset="0">
+                               <bool>true</bool>
+                              </property>
+                              <property name="movement">
+                               <enum>QListView::Movement::Static</enum>
+                              </property>
+                              <property name="resizeMode">
+                               <enum>QListView::ResizeMode::Adjust</enum>
+                              </property>
+                              <property name="spacing">
+                               <number>8</number>
+                              </property>
+                              <property name="viewMode">
+                               <enum>QListView::ViewMode::IconMode</enum>
+                              </property>
+                                </widget>
+                               </item>
+                              </layout>
+                             </widget>
+                            </item>
+                           </layout>
                           </widget>
                           <widget class="QWidget" name="userStatsContainer" native="true">
                            <layout class="QVBoxLayout" name="verticalLayout_6">
