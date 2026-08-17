@@ -2,6 +2,7 @@
 #include "styleconstants.h"
 #include "tableviewstylehelper.h"
 #include "tagutils.h"
+#include "translationcsv.h"
 #include "ui_tagbrowserwidget.h"
 
 #include <QtConcurrent/QtConcurrent>
@@ -37,108 +38,10 @@
 #include <QSignalBlocker>
 
 namespace {
-QStringList parseCsvLineWorker(const QString &line)
+
+TagTranslationRow toTagTranslationRow(const TranslationCsvEntry &entry)
 {
-    QStringList parts;
-    QString current;
-    bool inQuotes = false;
-
-    for (int i = 0; i < line.size(); ++i) {
-        const QChar ch = line.at(i);
-        if (ch == '"') {
-            if (inQuotes && i + 1 < line.size() && line.at(i + 1) == '"') {
-                current += '"';
-                ++i;
-            } else {
-                inQuotes = !inQuotes;
-            }
-        } else if (ch == ',' && !inQuotes) {
-            parts.append(current.trimmed());
-            current.clear();
-        } else {
-            current += ch;
-        }
-    }
-    parts.append(current.trimmed());
-    return parts;
-}
-
-bool isIntegerTextWorker(const QString &text)
-{
-    if (text.isEmpty()) return false;
-    for (const QChar ch : text) {
-        if (!ch.isDigit()) return false;
-    }
-    return true;
-}
-
-QString removeLeadingTagFromDisplayWorker(const QString &tag, QString display)
-{
-    display = display.trimmed();
-
-    const QString prefix1 = tag + " ";
-    const QString prefix2 = tag + "\t";
-
-    if (display.startsWith(prefix1, Qt::CaseSensitive)) {
-        return display.mid(prefix1.size()).trimmed();
-    }
-    if (display.startsWith(prefix2, Qt::CaseSensitive)) {
-        return display.mid(prefix2.size()).trimmed();
-    }
-
-    return display;
-}
-
-void splitCategoryAndTranslationWorker(const QString &text, QString &category, QString &translation)
-{
-    QString value = text.trimmed();
-    category.clear();
-    translation.clear();
-
-    if (value.isEmpty()) return;
-
-    int dash = value.indexOf('-');
-    if (dash < 0) dash = value.indexOf(QChar(0xFF0D)); // －
-    if (dash < 0) dash = value.indexOf(QChar(0x2014)); // —
-    if (dash < 0) dash = value.indexOf(QChar(0x2013)); // –
-
-    if (dash > 0) {
-        category = value.left(dash).trimmed();
-        translation = value.mid(dash + 1).trimmed();
-    } else {
-        translation = value.trimmed();
-    }
-}
-
-TagTranslationRow parseTagCsvRowWorker(const QStringList &parts)
-{
-    TagTranslationRow row;
-
-    row.tag = parts.value(0).trimmed();
-
-    QString displayOrTranslation;
-    QString count;
-
-    // 新格式：
-    // 1girl,1girl 人物-一个女孩,4114588
-    //
-    // 只有最后一列是纯数字时，才认为它是优先级。
-    if (parts.size() >= 3 && isIntegerTextWorker(parts.last().trimmed())) {
-        count = parts.last().trimmed();
-        displayOrTranslation = parts.mid(1, parts.size() - 2).join(",").trimmed();
-    } else {
-        // 旧格式：
-        // 1girl,一个女孩
-        //
-        // 兼容未加引号但翻译里带逗号的旧数据。
-        displayOrTranslation = parts.mid(1).join(",").trimmed();
-    }
-
-    QString cleaned = removeLeadingTagFromDisplayWorker(row.tag, displayOrTranslation);
-    splitCategoryAndTranslationWorker(cleaned, row.category, row.translation);
-    row.count = count;
-
-    return row;
+    return {entry.tag, entry.category, entry.translation, entry.priority};
 }
 
 QVector<TagTranslationRow> readCsvRowsWorker(const QString &csvPath)
@@ -146,44 +49,9 @@ QVector<TagTranslationRow> readCsvRowsWorker(const QString &csvPath)
     QVector<TagTranslationRow> rows;
     if (csvPath.isEmpty() || !QFile::exists(csvPath)) return rows;
 
-    QFile file(csvPath);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return rows;
-
-    QTextStream in(&file);
-    in.setEncoding(QStringConverter::Utf8);
-
-    int rowIndex = 0;
-    while (!in.atEnd()) {
-        QString line = in.readLine();
-        if (line.trimmed().isEmpty()) continue;
-
-        QStringList parts = parseCsvLineWorker(line);
-        if (parts.isEmpty()) continue;
-
-        QString tagText = parts.value(0).trimmed();
-        if (rowIndex == 0 && tagText.startsWith(QChar(0xFEFF))) {
-            tagText.remove(0, 1);
-            parts[0] = tagText;
-        }
-
-        // 只跳过真正的表头，不再误删 tag,1705 这种真实 tag。
-        if (rowIndex == 0) {
-            const QString first = parts.value(0).trimmed().toLower();
-            const QString second = parts.value(1).trimmed().toLower();
-            if ((first == "tag" || first == "name") &&
-                (second == "translation" || second == "count" || second == "post_count" || second == "postcount")) {
-                ++rowIndex;
-                continue;
-            }
-        }
-
-        TagTranslationRow row = parseTagCsvRowWorker(parts);
-        if (!row.tag.isEmpty()) {
-            rows.append(row);
-        }
-
-        ++rowIndex;
-    }
+    const QVector<TranslationCsvEntry> entries = TranslationCsv::readFile(csvPath);
+    rows.reserve(entries.size());
+    for (const TranslationCsvEntry &entry : entries) rows.append(toTagTranslationRow(entry));
 
     return rows;
 }

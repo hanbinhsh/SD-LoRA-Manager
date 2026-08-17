@@ -1969,6 +1969,11 @@ Hash: ...</string>
                               <string>提示词顺序</string>
                              </property>
                             </item>
+                            <item>
+                             <property name="text">
+                              <string>类别</string>
+                             </property>
+                            </item>
                            </widget>
                           </item>
                           <item>

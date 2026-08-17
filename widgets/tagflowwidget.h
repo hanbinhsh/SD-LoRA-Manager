@@ -32,6 +32,7 @@
 #include <QContextMenuEvent>
 #include <QPixmap>
 #include <QtMath>
+#include <utility>
 
 struct TagState {
     QString text;
@@ -46,7 +47,13 @@ public:
     enum SortMode {
         SortByCount = 0,
         SortAlphabetically = 1,
-        SortByGivenOrder = 2   // 按外部提供的顺序（如当前图提示词出现顺序）排序
+        SortByGivenOrder = 2,  // 按外部提供的顺序（如当前图提示词出现顺序）排序
+        SortByCategory = 3
+    };
+
+    enum VisualRole {
+        VisualDefault = 0,
+        VisualNegative
     };
 
     enum DiffState {
@@ -86,7 +93,35 @@ public:
 
     void setTranslationMap(const QHash<QString, QString> *map) {
         m_translationMap = map;
-        invalidateLayoutAndCache();
+        if (m_sortMode == SortByCategory) rebuildVisibleTags();
+        else invalidateLayoutAndCache();
+    }
+
+    void setDefaultVisualRole(VisualRole role) {
+        if (m_defaultVisualRole == role) return;
+        m_defaultVisualRole = role;
+        m_cacheDirty = true;
+        update();
+    }
+
+    void setTagVisualRoles(const QHash<QString, VisualRole> &roles) {
+        m_visualRoles.clear();
+        for (auto it = roles.cbegin(); it != roles.cend(); ++it) {
+            m_visualRoles.insert(normalizedTagKey(it.key()), it.value());
+        }
+        m_cacheDirty = true;
+        update();
+    }
+
+    void clearTagVisualRoles() {
+        if (m_visualRoles.isEmpty()) return;
+        m_visualRoles.clear();
+        m_cacheDirty = true;
+        update();
+    }
+
+    void setEditingEnabled(bool enabled) {
+        m_editingEnabled = enabled;
     }
 
     void setShowTranslation(bool show) {
@@ -193,6 +228,7 @@ public:
 
 signals:
     void filterChanged(const QSet<QString> &selectedTags);
+    void tagEditRequested(const QString &tag);
 
 protected:
     int m_calculatedHeight = 0;
@@ -204,12 +240,23 @@ protected:
     QString m_searchText;
     bool m_loraOnly = false;
     bool m_pixmapCacheEnabled = true;
+    bool m_editingEnabled = false;
+    QString m_editPressTag;
+    bool m_editPressWasSelected = false;
+    VisualRole m_defaultVisualRole = VisualDefault;
+    QHash<QString, VisualRole> m_visualRoles;
     QHash<QString, DiffState> m_diffStates;
     bool m_layoutDirty = true;
     bool m_cacheDirty = true;
     int m_layoutWidth = -1;
     QPixmap m_cachedPixmap;
     static constexpr qsizetype kMaxCachedPixels = 8 * 1024 * 1024;
+
+    static QString normalizedTagKey(QString text) {
+        text = text.trimmed().toCaseFolded();
+        text.replace('_', ' ');
+        return text.simplified();
+    }
 
     QString normalizeForSearch(QString text) const {
         text = text.trimmed().toCaseFolded();
@@ -262,6 +309,16 @@ protected:
                 const int cmp = QString::compare(a.text, b.text, Qt::CaseInsensitive);
                 if (cmp != 0) return cmp < 0;
                 return a.count > b.count;
+            });
+        } else if (m_sortMode == SortByCategory) {
+            std::sort(m_tags.begin(), m_tags.end(), [this](const TagState &a, const TagState &b) {
+                const QString categoryA = categoryForTag(a.text);
+                const QString categoryB = categoryForTag(b.text);
+                if (categoryA.isEmpty() != categoryB.isEmpty()) return !categoryA.isEmpty();
+                const int categoryCmp = QString::compare(categoryA, categoryB, Qt::CaseInsensitive);
+                if (categoryCmp != 0) return categoryCmp < 0;
+                if (a.count != b.count) return a.count > b.count;
+                return QString::compare(a.text, b.text, Qt::CaseInsensitive) < 0;
             });
         } else {
             std::sort(m_tags.begin(), m_tags.end(), [](const TagState &a, const TagState &b) {
@@ -364,6 +421,8 @@ protected:
             const QString line2 = m_showTranslation ? tryGetTranslation(tag.text) : QString();
 
             QColor bgColor = AppStyle::color("buttonBg");
+            const VisualRole visualRole = m_visualRoles.value(normalizedTagKey(tag.text), m_defaultVisualRole);
+            if (visualRole == VisualNegative) bgColor = AppStyle::color("negativeTagBg");
             const DiffState diffState = m_diffStates.value(tag.text, DiffNone);
             if (diffState == DiffOnlyA) bgColor = AppStyle::color("imgCompareA");
             else if (diffState == DiffOnlyB) bgColor = AppStyle::color("imgCompareB");
@@ -477,6 +536,16 @@ protected:
         return ""; // 没找到
     }
 
+    QString categoryForTag(const QString &tag) const {
+        const QString display = tryGetTranslation(tag);
+        if (display.isEmpty()) return QString();
+        int dash = display.indexOf('-');
+        if (dash < 0) dash = display.indexOf(QChar(0xFF0D));
+        if (dash < 0) dash = display.indexOf(QChar(0x2014));
+        if (dash < 0) dash = display.indexOf(QChar(0x2013));
+        return dash > 0 ? display.left(dash).trimmed() : QString();
+    }
+
     void paintEvent(QPaintEvent *event) override {
         if (width() <= 0 || height() <= 0) return;
 
@@ -527,6 +596,10 @@ protected:
                 }
             }
             if (clickedIndex >= 0) {
+                if (m_editingEnabled) {
+                    m_editPressTag = m_tags[clickedIndex].text;
+                    m_editPressWasSelected = m_tags[clickedIndex].selected;
+                }
                 const bool shiftPressed = event->modifiers().testFlag(Qt::ShiftModifier);
                 const bool ctrlPressed = event->modifiers().testFlag(Qt::ControlModifier);
                 if (shiftPressed && m_lastClickedIndex >= 0) {
@@ -555,6 +628,26 @@ protected:
         QWidget::mousePressEvent(event);
     }
 
+    void mouseDoubleClickEvent(QMouseEvent *event) override {
+        ensureLayout();
+        if (m_editingEnabled && event->button() == Qt::LeftButton) {
+            for (const TagState &tag : std::as_const(m_tags)) {
+                if (tag.rect.contains(event->pos())) {
+                    if (tag.text == m_editPressTag && tag.selected != m_editPressWasSelected) {
+                        setSelectedByText(tag.text, m_editPressWasSelected);
+                        m_cacheDirty = true;
+                        update();
+                        emit filterChanged(getSelectedTags());
+                    }
+                    emit tagEditRequested(tag.text);
+                    event->accept();
+                    return;
+                }
+            }
+        }
+        QWidget::mouseDoubleClickEvent(event);
+    }
+
     void contextMenuEvent(QContextMenuEvent *event) override {
         ensureLayout();
         QString clickedTag;
@@ -577,19 +670,13 @@ protected:
         if (hasSelection) {
             QAction *actCopyAll = menu.addAction("复制已选中的 Tags");
             connect(actCopyAll, &QAction::triggered, this, [this](){
-                QStringList list = getSelectedTags().values();
-                QApplication::clipboard()->setText(list.join(", "));
+                QApplication::clipboard()->setText(clipboardTextForVisibleTags(true));
             });
         }
 
         QAction *actCopyEverything = menu.addAction("复制全部 Tags");
         connect(actCopyEverything, &QAction::triggered, this, [this](){
-            QStringList list;
-            list.reserve(m_tags.size());
-            for (const auto &tag : m_tags) {
-                list.append(tag.text);
-            }
-            QApplication::clipboard()->setText(list.join(", "));
+            QApplication::clipboard()->setText(clipboardTextForVisibleTags(false));
         });
 
         QAction *actBatchExport = menu.addAction("批量导出 Tags...");
@@ -604,6 +691,32 @@ private:
     QList<TagState> m_allTags;
     QList<TagState> m_tags;
     int m_lastClickedIndex = -1;
+
+    QString clipboardTextForVisibleTags(bool selectedOnly) const {
+        QStringList ordered;
+        ordered.reserve(m_tags.size());
+        for (const TagState &tag : m_tags) {
+            if (!selectedOnly || tag.selected) ordered.append(tag.text);
+        }
+        if (m_sortMode != SortByCategory || ordered.isEmpty()) return ordered.join(", ");
+
+        QStringList groups;
+        QStringList currentGroup;
+        QString currentCategory;
+        bool haveCategory = false;
+        for (const QString &tag : ordered) {
+            const QString category = categoryForTag(tag);
+            if (haveCategory && category.compare(currentCategory, Qt::CaseInsensitive) != 0) {
+                if (!currentGroup.isEmpty()) groups.append(currentGroup.join(", "));
+                currentGroup.clear();
+            }
+            currentCategory = category;
+            haveCategory = true;
+            currentGroup.append(tag);
+        }
+        if (!currentGroup.isEmpty()) groups.append(currentGroup.join(", "));
+        return groups.join("\n\n");
+    }
 
     QString escapeCsvField(QString text) const {
         if (text.contains('"')) text.replace("\"", "\"\"");

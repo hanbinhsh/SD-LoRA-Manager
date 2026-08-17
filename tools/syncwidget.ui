@@ -65,6 +65,19 @@
       </widget>
      </item>
      <item>
+      <widget class="QPushButton" name="btnGetMobileApp">
+       <property name="cursor">
+        <cursorShape>PointingHandCursor</cursorShape>
+       </property>
+       <property name="toolTip">
+        <string>使用系统浏览器打开手机版同步 App 的最新 GitHub Release 页面。</string>
+       </property>
+       <property name="text">
+        <string>获取手机版 App</string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <spacer name="horizontalSpacer">
        <property name="orientation">
         <enum>Qt::Orientation::Horizontal</enum>

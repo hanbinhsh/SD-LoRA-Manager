@@ -1,6 +1,8 @@
 #include "launcherwidget.h"
 #include "ui_launcherwidget.h"
 #include "styleconstants.h"
+#include "launchscriptparser.h"
+#include "launcherimportdialog.h"
 
 #include <QApplication>
 #include <QColor>
@@ -145,6 +147,8 @@ LauncherWidget::LauncherWidget(QWidget *parent)
     m_a1111.editArgs = ui->editArgs_a1111;
     m_a1111.editWorkdir = ui->editWorkdir_a1111;
     m_a1111.btnBrowseWd = ui->btnBrowseWd_a1111;
+    m_a1111.btnImport = ui->btnImport_a1111;
+    m_a1111.btnHelp = ui->btnHelp_a1111;
     m_a1111.editUrl = ui->editUrl_a1111;
     m_a1111.editEnv = ui->editEnv_a1111;
     m_a1111.btnStartStop = ui->btnStartStop_a1111;
@@ -161,6 +165,8 @@ LauncherWidget::LauncherWidget(QWidget *parent)
     m_comfy.editArgs = ui->editArgs_comfyui;
     m_comfy.editWorkdir = ui->editWorkdir_comfyui;
     m_comfy.btnBrowseWd = ui->btnBrowseWd_comfyui;
+    m_comfy.btnImport = ui->btnImport_comfyui;
+    m_comfy.btnHelp = ui->btnHelp_comfyui;
     m_comfy.editUrl = ui->editUrl_comfyui;
     m_comfy.editEnv = ui->editEnv_comfyui;
     m_comfy.btnStartStop = ui->btnStartStop_comfyui;
@@ -245,6 +251,8 @@ void LauncherWidget::setupTarget(TargetPanel &p)
     connect(p.btnStartStop, &QPushButton::clicked, this, [this, pp]() { startStop(*pp); });
     connect(p.btnBrowse, &QPushButton::clicked, this, [this, pp]() { browseScript(*pp); });
     connect(p.btnBrowseWd, &QPushButton::clicked, this, [this, pp]() { browseWorkdir(*pp); });
+    connect(p.btnImport, &QPushButton::clicked, this, [this, pp]() { importLaunchScript(*pp); });
+    connect(p.btnHelp, &QPushButton::clicked, this, [this, pp]() { showParameterHelp(*pp); });
     connect(p.btnOpen, &QPushButton::clicked, this, [this, pp]() { openInBrowser(*pp); });
     connect(p.btnClear, &QPushButton::clicked, this, [pp]() { pp->console->clear(); });
 
@@ -489,6 +497,47 @@ void LauncherWidget::browseWorkdir(TargetPanel &p)
     saveSettings();
 }
 
+void LauncherWidget::importLaunchScript(TargetPanel &p)
+{
+    const QString current = p.editScript->text().trimmed();
+    const QString startDir = current.isEmpty() ? QString() : QFileInfo(current).absolutePath();
+    const QString path = QFileDialog::getOpenFileName(
+        this, "选择要读取的启动脚本", startDir,
+        "启动入口 (*.bat *.cmd *.py *.exe);;所有文件 (*)");
+    if (path.isEmpty()) return;
+
+    const LaunchScriptTarget target = p.target == Target::A1111
+        ? LaunchScriptTarget::A1111 : LaunchScriptTarget::ComfyUI;
+    const LaunchScriptImportResult result = LaunchScriptParser::parse(path, target);
+    LauncherImportDialog dialog(result,
+                                p.editScript->text(), p.editArgs->text(),
+                                p.editWorkdir->text(), p.editEnv->toPlainText(), this);
+    if (dialog.exec() != QDialog::Accepted) return;
+
+    if (dialog.applyScript()) p.editScript->setText(QDir::toNativeSeparators(result.scriptPath));
+    if (dialog.applyArguments()) p.editArgs->setText(result.arguments);
+    if (dialog.applyWorkdir()) p.editWorkdir->setText(QDir::toNativeSeparators(result.workingDirectory));
+    if (dialog.applyEnvironment()) p.editEnv->setPlainText(result.environmentText);
+    saveSettings();
+    p.console->appendPlainText("[参数导入] 已应用用户确认的安全字段，未执行来源脚本。");
+}
+
+void LauncherWidget::showParameterHelp(const TargetPanel &p)
+{
+    const QString common =
+        "启动脚本/程序：可选择 BAT、CMD、PY 或 EXE。\n"
+        "命令行参数：仅用于追加给当前启动入口；脚本内部已有参数时不要重复填写。\n"
+        "工作目录：留空时使用启动入口所在目录。\n"
+        "界面地址：可留空，程序会从控制台输出中自动识别。\n"
+        "环境变量：每行 KEY=VALUE，支持 %VAR% 和 ${VAR} 引用。\n\n";
+    const QString targetHelp = p.target == Target::A1111
+        ? "A1111 常见参数：--api、--listen、--port 7860、--xformers。\n"
+          "webui-user.bat 中的 COMMANDLINE_ARGS 属于脚本内部参数，导入时只展示，不会再次追加。"
+        : "ComfyUI 常见参数：--listen、--port 8188、--preview-method auto、--lowvram。\n"
+          "便携版 run_nvidia_gpu.bat 中能明确识别的 python.exe + main.py 命令可转换为可编辑参数。";
+    QMessageBox::information(this, "启动参数说明", common + targetHelp);
+}
+
 void LauncherWidget::setRunningUi(TargetPanel &p, bool running)
 {
     p.editScript->setEnabled(!running);
@@ -496,6 +545,7 @@ void LauncherWidget::setRunningUi(TargetPanel &p, bool running)
     p.editArgs->setEnabled(!running);
     p.editWorkdir->setEnabled(!running);
     p.btnBrowseWd->setEnabled(!running);
+    p.btnImport->setEnabled(!running);
 
     if (running) {
         p.btnStartStop->setText("停止 / Stop");

@@ -21,6 +21,7 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QImageReader>
+#include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -63,6 +64,56 @@
 #endif
 
 namespace {
+
+bool replaceFirstPromptTagText(QString &prompt, const QString &oldTag, const QString &newTag)
+{
+    const QString oldKey = TagUtils::normalizedPromptTagKey(oldTag);
+    if (oldKey.isEmpty()) return false;
+
+    auto matchingClose = [](QChar open) -> QChar {
+        if (open == '(') return ')';
+        if (open == '[') return ']';
+        if (open == '{') return '}';
+        return QChar();
+    };
+
+    int segmentStart = 0;
+    for (int i = 0; i <= prompt.size(); ++i) {
+        const bool atEnd = i == prompt.size();
+        const bool separator = !atEnd && (prompt.at(i) == ',' || prompt.at(i) == '\n' || prompt.at(i) == '\r');
+        if (!atEnd && !separator) continue;
+
+        const QString segment = prompt.mid(segmentStart, i - segmentStart);
+        if (TagUtils::normalizedPromptTagKey(segment) == oldKey) {
+            int contentStart = 0;
+            int contentEnd = segment.size();
+            while (contentStart < contentEnd && segment.at(contentStart).isSpace()) ++contentStart;
+            while (contentEnd > contentStart && segment.at(contentEnd - 1).isSpace()) --contentEnd;
+
+            // Only strip balanced outer emphasis brackets. Parentheses that are
+            // part of a tag name are therefore left inside the editable text.
+            while (contentStart < contentEnd) {
+                const QChar close = matchingClose(segment.at(contentStart));
+                if (close.isNull() || segment.at(contentEnd - 1) != close) break;
+                ++contentStart;
+                --contentEnd;
+                while (contentStart < contentEnd && segment.at(contentStart).isSpace()) ++contentStart;
+                while (contentEnd > contentStart && segment.at(contentEnd - 1).isSpace()) --contentEnd;
+            }
+
+            static const QRegularExpression weightAtEnd(QStringLiteral(":[0-9.]+$"));
+            const QString core = segment.mid(contentStart, contentEnd - contentStart);
+            const QRegularExpressionMatch weight = weightAtEnd.match(core);
+            const int replaceEnd = weight.hasMatch() ? contentStart + weight.capturedStart() : contentEnd;
+            if (replaceEnd <= contentStart) return false;
+
+            prompt.replace(segmentStart + contentStart, replaceEnd - contentStart, newTag);
+            return true;
+        }
+        segmentStart = i + 1;
+    }
+    return false;
+}
 
 QString settingsPath()
 {
@@ -272,6 +323,9 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
     compareTagWidgetB = new TagFlowWidget(ui->compareTagsBContainer);
     posTagWidget->setPixmapCacheEnabled(false);
     negTagWidget->setPixmapCacheEnabled(false);
+    posTagWidget->setEditingEnabled(true);
+    negTagWidget->setEditingEnabled(true);
+    negTagWidget->setDefaultVisualRole(TagFlowWidget::VisualNegative);
     compareTagWidgetA->setPixmapCacheEnabled(false);
     compareTagWidgetB->setPixmapCacheEnabled(false);
 
@@ -296,8 +350,14 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
         posTagWidget->setShowTranslation(checked);
         negTagWidget->setShowTranslation(checked);
     });
-    connect(ui->btnOriginalOrder, &QPushButton::toggled, this, [this](bool) {
+    connect(ui->comboPromptTagSortMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
         applyTagSortMode();
+    });
+    connect(posTagWidget, &TagFlowWidget::tagEditRequested, this, [this](const QString &tag) {
+        editPromptTag(false, tag);
+    });
+    connect(negTagWidget, &TagFlowWidget::tagEditRequested, this, [this](const QString &tag) {
+        editPromptTag(true, tag);
     });
     connect(ui->btnSelectAllTags, &QPushButton::clicked, this, [this]() {
         posTagWidget->selectAllVisibleTags();
@@ -745,16 +805,16 @@ QStringList PromptParserWidget::parsePromptOrder(const QString &rawPrompt) const
 
 void PromptParserWidget::applyTagSortMode()
 {
-    const bool original = ui->btnOriginalOrder && ui->btnOriginalOrder->isChecked();
-    if (original) {
-        posTagWidget->setGivenOrder(m_posTagOrder);
-        negTagWidget->setGivenOrder(m_negTagOrder);
-        posTagWidget->setSortMode(TagFlowWidget::SortByGivenOrder);
-        negTagWidget->setSortMode(TagFlowWidget::SortByGivenOrder);
-    } else {
-        posTagWidget->setSortMode(TagFlowWidget::SortByCount);
-        negTagWidget->setSortMode(TagFlowWidget::SortByCount);
-    }
+    TagFlowWidget::SortMode mode = TagFlowWidget::SortByGivenOrder;
+    const int index = ui->comboPromptTagSortMode ? ui->comboPromptTagSortMode->currentIndex() : 0;
+    if (index == 1) mode = TagFlowWidget::SortByCount;
+    else if (index == 2) mode = TagFlowWidget::SortAlphabetically;
+    else if (index == 3) mode = TagFlowWidget::SortByCategory;
+
+    posTagWidget->setGivenOrder(m_posTagOrder);
+    negTagWidget->setGivenOrder(m_negTagOrder);
+    posTagWidget->setSortMode(mode);
+    negTagWidget->setSortMode(mode);
 }
 
 // 把一个 tagflow 滚动区在其所在布局里替换为 QStackedWidget：第 0 页为可编辑文本框，第 1 页为原滚动区。
@@ -792,7 +852,7 @@ void PromptParserWidget::setTagViewActive(bool tagView)
     ui->btnTranslate->setVisible(tagView);
     ui->btnSelectAllTags->setVisible(tagView);
     ui->btnClearTagSelection->setVisible(tagView);
-    ui->btnOriginalOrder->setVisible(tagView);
+    ui->comboPromptTagSortMode->setVisible(tagView);
     ui->btnToggleTagText->setText(tagView ? "文本" : "标签");
     if (tagView) refreshTagFlowsFromText(); // 切回标签时按文本框最新内容重新解析（支持手动编辑/粘贴）
 }
@@ -807,6 +867,37 @@ void PromptParserWidget::refreshTagFlowsFromText()
     posTagWidget->setData(parsePromptToMap(posText));
     negTagWidget->setData(parsePromptToMap(negText));
     applyTagSortMode();
+}
+
+void PromptParserWidget::editPromptTag(bool negative, const QString &tag)
+{
+    QPlainTextEdit *editor = negative ? m_negEdit : m_posEdit;
+    if (!editor || tag.trimmed().isEmpty()) return;
+
+    bool accepted = false;
+    const QString edited = QInputDialog::getText(
+                               this,
+                               negative ? QStringLiteral("编辑负面 Tag") : QStringLiteral("编辑正面 Tag"),
+                               QStringLiteral("Tag："),
+                               QLineEdit::Normal,
+                               tag,
+                               &accepted).trimmed();
+    if (!accepted) return;
+    if (edited.isEmpty() || edited.contains(',') || edited.contains('\n') || edited.contains('\r')) {
+        QMessageBox::warning(this, QStringLiteral("无法编辑"),
+                             QStringLiteral("Tag 不能为空，也不能包含逗号或换行。"));
+        return;
+    }
+
+    QString prompt = editor->toPlainText();
+    if (!replaceFirstPromptTagText(prompt, tag, edited)) {
+        QMessageBox::warning(this, QStringLiteral("无法编辑"),
+                             QStringLiteral("未在当前提示词文本中找到对应的 Tag。"));
+        return;
+    }
+
+    editor->setPlainText(prompt);
+    refreshTagFlowsFromText();
 }
 
 // 让参数“每项单独成行”：先按已有换行拆，再把每行按“不在引号内的逗号”拆开。

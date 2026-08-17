@@ -163,6 +163,53 @@ PATH=D:\novel-ai\novelai-webui-aki-v3\git\bin;%PATH%</string>
             </property>
            </widget>
           </item>
+          <item row="5" column="0">
+           <widget class="QLabel" name="lblAssistA1111">
+            <property name="text">
+             <string>参数辅助</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="1">
+           <layout class="QHBoxLayout" name="rowAssistA1111">
+            <item>
+             <widget class="QPushButton" name="btnImport_a1111">
+              <property name="maximumSize">
+               <size>
+                <width>120</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>从启动脚本导入...</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnHelp_a1111">
+              <property name="maximumSize">
+               <size>
+                <width>80</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>参数说明</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblAssistHintA1111">
+              <property name="text">
+               <string>导入仅静态读取脚本，不执行命令。</string>
+              </property>
+              <property name="wordWrap">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
          </layout>
         </widget>
        </item>
@@ -353,6 +400,53 @@ PATH=D:\novel-ai\novelai-webui-aki-v3\git\bin;%PATH%</string>
 HF_ENDPOINT=https://hf-mirror.com</string>
             </property>
            </widget>
+          </item>
+          <item row="5" column="0">
+           <widget class="QLabel" name="lblAssistComfyUI">
+            <property name="text">
+             <string>参数辅助</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="1">
+           <layout class="QHBoxLayout" name="rowAssistComfyUI">
+            <item>
+             <widget class="QPushButton" name="btnImport_comfyui">
+              <property name="maximumSize">
+               <size>
+                <width>120</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>从启动脚本导入...</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnHelp_comfyui">
+              <property name="maximumSize">
+               <size>
+                <width>80</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>参数说明</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblAssistHintComfyUI">
+              <property name="text">
+               <string>可识别便携包 BAT 中的 Python 与 main.py 参数。</string>
+              </property>
+              <property name="wordWrap">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
           </item>
          </layout>
         </widget>

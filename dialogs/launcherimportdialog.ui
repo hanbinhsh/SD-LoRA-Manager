@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>LauncherImportDialog</class>
+ <widget class="QDialog" name="LauncherImportDialog">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>720</width><height>520</height></rect>
+  </property>
+  <property name="windowTitle"><string>导入启动参数</string></property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QLabel" name="lblImportHint">
+     <property name="text"><string>以下内容仅通过静态读取脚本获得，不会执行脚本。请选择要应用的安全字段。</string></property>
+     <property name="wordWrap"><bool>true</bool></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPlainTextEdit" name="textImportDetails">
+     <property name="readOnly"><bool>true</bool></property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QGridLayout" name="gridApplyFields">
+     <item row="0" column="0"><widget class="QCheckBox" name="chkImportScript"><property name="text"><string>应用启动入口</string></property></widget></item>
+     <item row="0" column="1"><widget class="QCheckBox" name="chkImportArguments"><property name="text"><string>应用附加参数</string></property></widget></item>
+     <item row="1" column="0"><widget class="QCheckBox" name="chkImportWorkdir"><property name="text"><string>应用工作目录</string></property></widget></item>
+     <item row="1" column="1"><widget class="QCheckBox" name="chkImportEnvironment"><property name="text"><string>应用环境变量</string></property></widget></item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QDialogButtonBox" name="buttonBox">
+     <property name="standardButtons"><set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set></property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

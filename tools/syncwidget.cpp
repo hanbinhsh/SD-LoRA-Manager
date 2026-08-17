@@ -8,6 +8,7 @@
 #include <QDataStream>
 #include <QMessageBox>
 #include <QDateTime>
+#include <QDesktopServices>
 #include <QTimer>
 #include <QHostInfo>
 #include <QNetworkInterface>
@@ -15,6 +16,7 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <QHBoxLayout>
+#include <QUrl>
 
 SyncWidget::SyncWidget(QWidget *parent) :
     QWidget(parent),
@@ -31,6 +33,15 @@ SyncWidget::SyncWidget(QWidget *parent) :
     connect(tcpServer, &QTcpServer::newConnection, this, &SyncWidget::newClientConnected);
     connect(udpDiscoverySocket, &QUdpSocket::readyRead, this, &SyncWidget::onDiscoveryReadyRead);
     connect(watcher, &QFileSystemWatcher::directoryChanged, this, &SyncWidget::handleDirectoryChange);
+    connect(ui->btnGetMobileApp, &QPushButton::clicked, this, [this]() {
+        const QUrl url("https://github.com/hanbinhsh/SD_Image_Synchronizer_PE/releases/latest");
+        if (QDesktopServices::openUrl(url)) {
+            logMsg("已打开手机版同步 App 的最新发布页面。");
+        } else {
+            QMessageBox::warning(this, "打开失败", "无法调用系统浏览器，请手动访问：\n" + url.toString());
+            logMsg("打开手机版同步 App 发布页面失败。");
+        }
+    });
 
     // 调整 Splitter 比例
     ui->splitter->setSizes(QList<int>() << 300 << 250 << 400);

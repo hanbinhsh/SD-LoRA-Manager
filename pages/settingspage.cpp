@@ -147,6 +147,8 @@ SettingsPage::SettingsPage(QWidget *parent)
     if (ui->btnBrowseLora) connect(ui->btnBrowseLora, &QPushButton::clicked, this, &SettingsPage::loraPathsEditRequested);
     if (ui->btnBrowseGallery) connect(ui->btnBrowseGallery, &QPushButton::clicked, this, &SettingsPage::galleryPathsEditRequested);
     if (ui->btnBrowseTrans) connect(ui->btnBrowseTrans, &QPushButton::clicked, this, &SettingsPage::translationPathsEditRequested);
+    if (ui->btnDownloadAiTagTranslate) connect(ui->btnDownloadAiTagTranslate, &QPushButton::clicked,
+                                               this, &SettingsPage::downloadAiTagTranslateRequested);
     if (ui->btnClearGalleryCache) connect(ui->btnClearGalleryCache, &QPushButton::clicked, this, &SettingsPage::clearGalleryCacheRequested);
 
     if (ui->chkRecursiveLora) connect(ui->chkRecursiveLora, &QCheckBox::toggled, this, &SettingsPage::emitStateChanged);
@@ -365,6 +367,12 @@ void SettingsPage::setCivitaiApiStatus(const QString &text)
 void SettingsPage::setCivitaiApiTesting(bool testing)
 {
     if (ui->btnTestCivitaiApiKey) ui->btnTestCivitaiApiKey->setEnabled(!testing);
+}
+
+void SettingsPage::setAiTagTranslateDownloadState(bool downloading, const QString &status)
+{
+    if (ui->btnDownloadAiTagTranslate) ui->btnDownloadAiTagTranslate->setEnabled(!downloading);
+    if (ui->lblAiTagTranslateStatus && !status.isEmpty()) ui->lblAiTagTranslateStatus->setText(status);
 }
 
 void SettingsPage::setBlurValue(int value)

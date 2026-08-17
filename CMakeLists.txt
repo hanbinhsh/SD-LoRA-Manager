@@ -21,6 +21,10 @@ qt_add_executable(SD_LoRA_Manager
     utils/styleconstants.cpp
     utils/tagutils.h
     utils/tagutils.cpp
+    utils/translationcsv.h
+    utils/translationcsv.cpp
+    utils/launchscriptparser.h
+    utils/launchscriptparser.cpp
     utils/fileutils.h
     utils/fileutils.cpp
     pages/downloadspage.h
@@ -58,6 +62,9 @@ qt_add_executable(SD_LoRA_Manager
     dialogs/imageviewerdialog.h
     dialogs/imageviewerdialog.cpp
     dialogs/imageviewerdialog.ui
+    dialogs/launcherimportdialog.h
+    dialogs/launcherimportdialog.cpp
+    dialogs/launcherimportdialog.ui
     tools/usageanalysiswidget.h
     tools/usageanalysiswidget.cpp
     tools/usageanalysiswidget.ui

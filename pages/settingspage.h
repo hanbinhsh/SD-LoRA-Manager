@@ -65,6 +65,7 @@ public:
     void setPathSummaries(const QString &lora, const QString &gallery, const QString &translation);
     void setCivitaiApiStatus(const QString &text);
     void setCivitaiApiTesting(bool testing);
+    void setAiTagTranslateDownloadState(bool downloading, const QString &status);
     void setBlurValue(int value);
     void setFilterTagsText(const QString &text);
     void setUserAgentText(const QString &text);
@@ -78,6 +79,7 @@ signals:
     void loraPathsEditRequested();
     void galleryPathsEditRequested();
     void translationPathsEditRequested();
+    void downloadAiTagTranslateRequested();
     void clearGalleryCacheRequested();
     void testCivitaiApiKeyRequested(const QString &key);
     void stateChanged(const SettingsState &state);

@@ -42,6 +42,8 @@ private:
         QLineEdit *editArgs = nullptr;
         QLineEdit *editWorkdir = nullptr;
         QPushButton *btnBrowseWd = nullptr;
+        QPushButton *btnImport = nullptr;
+        QPushButton *btnHelp = nullptr;
         QLineEdit *editUrl = nullptr;
         QPlainTextEdit *editEnv = nullptr;
         QPushButton *btnStartStop = nullptr;
@@ -67,6 +69,8 @@ private:
     void openInBrowser(TargetPanel &p);
     void browseScript(TargetPanel &p);
     void browseWorkdir(TargetPanel &p);
+    void importLaunchScript(TargetPanel &p);
+    void showParameterHelp(const TargetPanel &p);
     void setRunningUi(TargetPanel &p, bool running);
     void enableOpenButton(TargetPanel &p, const QString &url);
     QString effectiveUrl(const TargetPanel &p) const;

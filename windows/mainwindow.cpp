@@ -63,6 +63,7 @@
 
 #include "utils/imageloader.h"
 #include "utils/imagemetadataparser.h"
+#include "utils/translationcsv.h"
 #include "tools/comfyworkflowviewer.h"
 #include "tools/llmpromptwidget.h"
 #include "dialogs/pathlistdialog.h"
@@ -1145,6 +1146,7 @@ MainWindow::MainWindow(QWidget *parent)
         TagFlowWidget::SortMode mode = TagFlowWidget::SortByCount;
         if (index == 1) mode = TagFlowWidget::SortAlphabetically;
         else if (index == 2) mode = TagFlowWidget::SortByGivenOrder;
+        else if (index == 3) mode = TagFlowWidget::SortByCategory;
         tagFlowWidget->setSortMode(mode);
         // “提示词顺序”依赖当前图的提示词顺序，刷新一次以重建顺序数据。
         if (index == 2) refreshUserTagFlowStats(false);
@@ -8578,6 +8580,8 @@ void MainWindow::refreshUserTagFlowStats(bool applyGalleryFilter,
 {
     QMap<QString, int> tagCounts;
     QHash<QString, QString> tagDisplayText;
+    QSet<QString> positiveTagKeys;
+    QSet<QString> negativeTagKeys;
     const bool currentOnly = ui->chkUserTagCurrentImageOnly && ui->chkUserTagCurrentImageOnly->isChecked();
     const bool includeNegative = ui->chkUserTagIncludeNegative && ui->chkUserTagIncludeNegative->isChecked();
 
@@ -8590,6 +8594,7 @@ void MainWindow::refreshUserTagFlowStats(bool applyGalleryFilter,
             const QString key = normalizedPromptTagKey(tag);
             if (key.isEmpty()) continue;
             perImageTagKeys.insert(key);
+            positiveTagKeys.insert(key);
             if (!tagDisplayText.contains(key)) tagDisplayText.insert(key, tag);
         }
         if (includeNegative) {
@@ -8599,6 +8604,7 @@ void MainWindow::refreshUserTagFlowStats(bool applyGalleryFilter,
                 const QString key = normalizedPromptTagKey(tag);
                 if (key.isEmpty()) continue;
                 perImageTagKeys.insert(key);
+                negativeTagKeys.insert(key);
                 if (!tagDisplayText.contains(key)) tagDisplayText.insert(key, tag);
             }
         }
@@ -8616,6 +8622,15 @@ void MainWindow::refreshUserTagFlowStats(bool applyGalleryFilter,
     }
 
     tagFlowWidget->setData(tagCounts);
+    QHash<QString, TagFlowWidget::VisualRole> visualRoles;
+    if (includeNegative) {
+        for (const QString &key : std::as_const(negativeTagKeys)) {
+            if (!positiveTagKeys.contains(key)) {
+                visualRoles.insert(tagDisplayText.value(key, key), TagFlowWidget::VisualNegative);
+            }
+        }
+    }
+    tagFlowWidget->setTagVisualRoles(visualRoles);
 
     // 为“提示词顺序”排序提供顺序：取当前选中图的提示词出现顺序（正面在前，启用负面时追加）。
     QStringList promptOrder;
@@ -10704,6 +10719,8 @@ void MainWindow::initSettingsPage()
     connect(settingsPage, &SettingsPage::loraPathsEditRequested, this, &MainWindow::onBrowseLoraPath);
     connect(settingsPage, &SettingsPage::galleryPathsEditRequested, this, &MainWindow::onBrowseGalleryPath);
     connect(settingsPage, &SettingsPage::translationPathsEditRequested, this, &MainWindow::onBrowseTranslationPath);
+    connect(settingsPage, &SettingsPage::downloadAiTagTranslateRequested,
+            this, &MainWindow::downloadAiTagTranslateDictionary);
     connect(settingsPage, &SettingsPage::clearGalleryCacheRequested, this, &MainWindow::onClearUserGalleryCacheClicked);
     connect(settingsPage, &SettingsPage::testCivitaiApiKeyRequested, this, [this](const QString &key) {
         optCivitaiApiKey = key.trimmed();
@@ -10721,6 +10738,97 @@ void MainWindow::initSettingsPage()
     connect(settingsPage, &SettingsPage::stateChanged, this, &MainWindow::applySettingsState);
     connect(settingsPage, &SettingsPage::editThemeRequested, this, &MainWindow::onEditThemeRequested);
     connect(settingsPage, &SettingsPage::deleteThemeRequested, this, &MainWindow::onThemeDeleteRequested);
+}
+
+void MainWindow::downloadAiTagTranslateDictionary()
+{
+    const QString directory = QDir(qApp->applicationDirPath()).filePath("config/translations");
+    const QString targetPath = QFileInfo(QDir(directory).filePath("AITagTranslate_autocomplete.txt")).absoluteFilePath();
+    if (QFileInfo::exists(targetPath)) {
+        const auto answer = QMessageBox::question(
+            this, "更新 AITagTranslate 词表",
+            "本地已经存在 AITagTranslate 词表。是否下载最新版本并替换？",
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (answer != QMessageBox::Yes) return;
+    }
+
+    if (!QDir().mkpath(directory)) {
+        QMessageBox::warning(this, "下载失败", "无法创建词表目录：\n" + directory);
+        return;
+    }
+
+    if (settingsPage) settingsPage->setAiTagTranslateDownloadState(true, "正在下载 AITagTranslate 词表...");
+    QNetworkReply *reply = netManager->get(makeNetworkRequest(
+        QUrl("https://raw.githubusercontent.com/hanbinhsh/AITagTranslate/main/autocomplete.txt"), false));
+    connect(reply, &QNetworkReply::finished, this, [this, reply, targetPath]() {
+        const QByteArray data = reply->readAll();
+        const QString errorText = reply->errorString();
+        const bool networkOk = reply->error() == QNetworkReply::NoError;
+        reply->deleteLater();
+
+        if (!networkOk) {
+            if (settingsPage) settingsPage->setAiTagTranslateDownloadState(false, "下载失败：" + errorText);
+            QMessageBox::warning(this, "下载失败", "无法下载 AITagTranslate 词表：\n" + errorText);
+            return;
+        }
+
+        if (data.trimmed().startsWith('<')) {
+            if (settingsPage) settingsPage->setAiTagTranslateDownloadState(false, "下载内容不是有效的 Tag 词表。");
+            QMessageBox::warning(this, "下载失败", "GitHub 返回的内容不是有效的 AITagTranslate 词表，旧文件未被修改。");
+            return;
+        }
+
+        if (settingsPage) settingsPage->setAiTagTranslateDownloadState(true, "下载完成，正在后台验证词表...");
+        auto *watcher = new QFutureWatcher<int>(this);
+        connect(watcher, &QFutureWatcher<int>::finished, this, [this, watcher, data, targetPath]() {
+            const int entryCount = watcher->result();
+            watcher->deleteLater();
+            if (entryCount < 10) {
+                if (settingsPage) settingsPage->setAiTagTranslateDownloadState(false, "下载内容不是有效的 Tag 词表。");
+                QMessageBox::warning(this, "下载失败", "GitHub 返回的内容不是有效的 AITagTranslate 词表，旧文件未被修改。");
+                return;
+            }
+
+            QSaveFile output(targetPath);
+            if (!output.open(QIODevice::WriteOnly)
+                || output.write(data) != data.size()
+                || !output.commit()) {
+                const QString message = output.errorString();
+                if (settingsPage) settingsPage->setAiTagTranslateDownloadState(false, "保存失败：" + message);
+                QMessageBox::warning(this, "保存失败", "无法保存 AITagTranslate 词表：\n" + message);
+                return;
+            }
+
+            for (int i = translationCsvPaths.size() - 1; i >= 0; --i) {
+                if (QFileInfo(translationCsvPaths.at(i)).absoluteFilePath().compare(targetPath, Qt::CaseInsensitive) == 0) {
+                    translationCsvPaths.removeAt(i);
+                }
+            }
+            for (auto it = disabledTranslationCsvPaths.begin(); it != disabledTranslationCsvPaths.end();) {
+                const QString disabledPath = QFileInfo(*it).absoluteFilePath();
+                if (disabledPath.compare(targetPath, Qt::CaseInsensitive) == 0) {
+                    it = disabledTranslationCsvPaths.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+            translationCsvPaths.append(targetPath);
+            translationCsvPaths = normalizePathList(translationCsvPaths);
+            disabledTranslationCsvPaths = normalizePathSet(disabledTranslationCsvPaths);
+
+            applyPathListsToUi();
+            reloadTranslationMaps();
+            saveGlobalConfig();
+            if (settingsPage) {
+                settingsPage->setAiTagTranslateDownloadState(
+                    false, QString("已加载 %1 条记录，词表优先级位于最底部。").arg(entryCount));
+            }
+            ui->statusbar->showMessage(QString("AITagTranslate 词表已更新：%1 条记录").arg(entryCount), 5000);
+        });
+        watcher->setFuture(QtConcurrent::run(backgroundThreadPool, [data]() {
+            return static_cast<int>(TranslationCsv::parseUtf8(data).size());
+        }));
+    });
 }
 
 void MainWindow::applySettingsState(SettingsState state)
@@ -11496,22 +11604,10 @@ void MainWindow::reloadTranslationMaps(bool notifyWidgets)
         const QString path = activePaths.at(i);
         if (path.isEmpty() || !QFile::exists(path)) continue;
 
-        QFile file(path);
-        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
-        QTextStream in(&file);
-        while (!in.atEnd()) {
-            QString line = in.readLine();
-            if (line.trimmed().isEmpty()) continue;
-
-            int firstComma = line.indexOf(',');
-            if (firstComma == -1) continue;
-            QString en = line.left(firstComma).trimmed();
-            QString cn = line.mid(firstComma + 1).trimmed();
-            if (en.startsWith('"') && en.endsWith('"')) en = en.mid(1, en.length() - 2);
-            if (cn.startsWith('"') && cn.endsWith('"')) cn = cn.mid(1, cn.length() - 2);
-            if (!en.isEmpty() && !cn.isEmpty()) {
-                translationMap.insert(en, cn);
-            }
+        const QVector<TranslationCsvEntry> entries = TranslationCsv::readFile(path);
+        for (const TranslationCsvEntry &entry : entries) {
+            const QString display = entry.displayValue().trimmed();
+            if (!entry.tag.isEmpty() && !display.isEmpty()) translationMap.insert(entry.tag, display);
         }
     }
 
