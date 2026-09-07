@@ -6,6 +6,7 @@
 #include <QString>
 #include <QWidget>
 #include <QPair>
+#include <QPoint>
 #include <QVector>
 #include <QFutureWatcher>
 #include <QHash>
@@ -32,6 +33,8 @@ struct TagTranslationRow
     QString category;
     QString translation;
     QString count; // priority
+    QString sourcePath;
+    int sourceRow = -1;
 };
 
 struct TagTranslationInfo
@@ -156,6 +159,16 @@ private:
 
     void resetTagSort();
     bool saveCurrentCsv();
+    bool saveMergedCsvChanges();
+    bool writeTranslationRows(const QString &path, const QVector<TagTranslationRow> &rows,
+                              QString *errorMessage = nullptr) const;
+    TagTranslationRow modelTranslationRow(int row) const;
+    bool mergedModelRowChanged(int row) const;
+    int mergedDirtyRowCount() const;
+    void updateMergedRowSnapshot(int row, int sourceRow);
+    void copyCurrentTagCell();
+    void copySelectedTagRows();
+    void showTagTableContextMenu(const QPoint &pos);
     bool confirmDiscardOrSaveChanges(int restoreIndex);
     void applyTranslationSourceIndex(int index);
     void updateTranslationEditingState();

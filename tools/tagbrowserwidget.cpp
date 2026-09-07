@@ -6,6 +6,7 @@
 #include "ui_tagbrowserwidget.h"
 
 #include <QtConcurrent/QtConcurrent>
+#include <QAction>
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
@@ -22,7 +23,9 @@
 #include <QItemSelectionModel>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeySequence>
 #include <QLabel>
+#include <QMap>
 #include <QMenu>
 #include <QMessageBox>
 #include <QRegularExpression>
@@ -39,9 +42,34 @@
 
 namespace {
 
-TagTranslationRow toTagTranslationRow(const TranslationCsvEntry &entry)
+enum TranslationItemRole {
+    SourcePathRole = Qt::UserRole + 20,
+    SourceRowRole,
+    OriginalTagRole,
+    OriginalCategoryRole,
+    OriginalTranslationRole,
+    OriginalCountRole
+};
+
+bool sameTranslationFields(const TagTranslationRow &left, const TagTranslationRow &right)
 {
-    return {entry.tag, entry.category, entry.translation, entry.priority};
+    return left.tag.trimmed() == right.tag.trimmed()
+        && left.category.trimmed() == right.category.trimmed()
+        && left.translation.trimmed() == right.translation.trimmed()
+        && left.count.trimmed() == right.count.trimmed();
+}
+
+TagTranslationRow toTagTranslationRow(const TranslationCsvEntry &entry,
+                                      const QString &sourcePath = QString(), int sourceRow = -1)
+{
+    TagTranslationRow row;
+    row.tag = entry.tag;
+    row.category = entry.category;
+    row.translation = entry.translation;
+    row.count = entry.priority;
+    row.sourcePath = sourcePath;
+    row.sourceRow = sourceRow;
+    return row;
 }
 
 QVector<TagTranslationRow> readCsvRowsWorker(const QString &csvPath)
@@ -51,7 +79,9 @@ QVector<TagTranslationRow> readCsvRowsWorker(const QString &csvPath)
 
     const QVector<TranslationCsvEntry> entries = TranslationCsv::readFile(csvPath);
     rows.reserve(entries.size());
-    for (const TranslationCsvEntry &entry : entries) rows.append(toTagTranslationRow(entry));
+    for (int i = 0; i < entries.size(); ++i) {
+        rows.append(toTagTranslationRow(entries.at(i), QFileInfo(csvPath).absoluteFilePath(), i));
+    }
 
     return rows;
 }
@@ -364,7 +394,8 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     ui->tableTags->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->tableTags->setAlternatingRowColors(true);
     ui->tableTags->setShowGrid(false);
-    ui->tableTags->setFocusPolicy(Qt::NoFocus);
+    ui->tableTags->setFocusPolicy(Qt::StrongFocus);
+    ui->tableTags->setContextMenuPolicy(Qt::CustomContextMenu);
     ui->tableTags->verticalHeader()->setVisible(false);
     QHeaderView *tagHeader = ui->tableTags->horizontalHeader();
 
@@ -453,6 +484,13 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
 
         ui->tableTags->viewport()->update();
     });
+    connect(ui->tableTags, &QWidget::customContextMenuRequested,
+            this, &TagBrowserWidget::showTagTableContextMenu);
+    auto *copyTagCellAction = new QAction("复制当前单元格", ui->tableTags);
+    copyTagCellAction->setShortcut(QKeySequence::Copy);
+    copyTagCellAction->setShortcutContext(Qt::WidgetShortcut);
+    ui->tableTags->addAction(copyTagCellAction);
+    connect(copyTagCellAction, &QAction::triggered, this, &TagBrowserWidget::copyCurrentTagCell);
     connect(ui->editUserTagSearch, &QLineEdit::textChanged, this, &TagBrowserWidget::onUserTagSearchTextChanged);
     connect(ui->comboUserTagSearchMatchMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         m_userTagProxy->setMatchMode(index);
@@ -467,7 +505,20 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     connect(ui->btnSave, &QPushButton::clicked, this, &TagBrowserWidget::onSaveClicked);
     connect(ui->comboTranslationSource, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &TagBrowserWidget::onTranslationSourceChanged);
-    connect(m_model, &QStandardItemModel::itemChanged, this, &TagBrowserWidget::onModelChanged);
+    connect(m_model, &QStandardItemModel::itemChanged, this, [this](QStandardItem *item) {
+        if (!item) return;
+        {
+            QSignalBlocker blocker(m_model);
+            if (item->column() == 3) {
+                bool ok = false;
+                const int numericValue = item->text().trimmed().toInt(&ok);
+                item->setData(ok ? numericValue : 0, Qt::UserRole);
+            } else {
+                item->setData(item->text(), Qt::UserRole);
+            }
+        }
+        onModelChanged();
+    });
 
     m_batchAppendTimer = new QTimer(this);
     m_batchAppendTimer->setInterval(0);
@@ -509,7 +560,7 @@ TagBrowserWidget::~TagBrowserWidget()
 
 void TagBrowserWidget::setTranslationSources(const QVector<TagTranslationSource> &sources)
 {
-    if (m_dirty && !m_mergedSource && !confirmDiscardOrSaveChanges(m_translationSourceIndex)) return;
+    if (m_dirty && !confirmDiscardOrSaveChanges(m_translationSourceIndex)) return;
     const QString previousPath = m_mergedSource ? QString() : m_csvPath;
     m_translationSources = sources;
     reloadEffectiveTranslationInfos();
@@ -678,6 +729,22 @@ void TagBrowserWidget::appendPendingRowsBatch()
         const int countValue = rowData.count.toInt(&ok);
         countItem->setData(ok ? countValue : 0, Qt::UserRole);
 
+        tagItem->setData(rowData.sourcePath, SourcePathRole);
+        tagItem->setData(rowData.sourceRow, SourceRowRole);
+        tagItem->setData(rowData.tag, OriginalTagRole);
+        tagItem->setData(rowData.category, OriginalCategoryRole);
+        tagItem->setData(rowData.translation, OriginalTranslationRole);
+        tagItem->setData(rowData.count, OriginalCountRole);
+
+        if (!rowData.sourcePath.isEmpty()) {
+            const QString sourceTip = QString("来源词表：%1\n%2")
+                                          .arg(QFileInfo(rowData.sourcePath).fileName(), rowData.sourcePath);
+            tagItem->setToolTip(sourceTip);
+            categoryItem->setToolTip(sourceTip);
+            translationItem->setToolTip(sourceTip);
+            countItem->setToolTip(sourceTip);
+        }
+
         QList<QStandardItem*> row;
         row << tagItem << categoryItem << translationItem << countItem;
         m_model->appendRow(row);
@@ -736,10 +803,16 @@ void TagBrowserWidget::updateStatusLabel()
         status = "词表未加载";
         ui->lblEmptyState->setText("为提升启动速度，词表将于进入/操作本页面时自动加载。");
     } else {
+        QString dirtyText;
+        if (m_dirty) {
+            dirtyText = m_mergedSource
+                ? QString("  |  %1 条未保存修改").arg(mergedDirtyRowCount())
+                : QStringLiteral("  |  未保存修改");
+        }
         status = QString("%1 · 共 %2 条 Tag 记录%3")
-                     .arg(m_mergedSource ? "合并结果（只读）" : QFileInfo(m_csvPath).fileName())
+                     .arg(m_mergedSource ? "合并结果（可编辑）" : QFileInfo(m_csvPath).fileName())
                      .arg(m_model->rowCount())
-                     .arg(m_dirty ? "  |  未保存修改" : "");
+                     .arg(dirtyText);
         ui->lblEmptyState->setText("CSV 已加载，但当前没有任何 Tag 记录。可点击“新增”开始编辑。");
     }
     ui->lblStatus->setText(status);
@@ -1224,6 +1297,56 @@ void TagBrowserWidget::onUserTagContextMenu(const QPoint &pos)
     menu.exec(ui->tableUserTags->viewport()->mapToGlobal(pos));
 }
 
+void TagBrowserWidget::copyCurrentTagCell()
+{
+    const QModelIndex index = ui->tableTags->currentIndex();
+    if (!index.isValid()) return;
+    QApplication::clipboard()->setText(index.data(Qt::DisplayRole).toString());
+}
+
+void TagBrowserWidget::copySelectedTagRows()
+{
+    if (!ui->tableTags->selectionModel()) return;
+    QModelIndexList selectedRows = ui->tableTags->selectionModel()->selectedRows();
+    std::sort(selectedRows.begin(), selectedRows.end(), [](const QModelIndex &left, const QModelIndex &right) {
+        return left.row() < right.row();
+    });
+
+    QStringList lines;
+    for (const QModelIndex &rowIndex : std::as_const(selectedRows)) {
+        QStringList columns;
+        for (int column = 0; column < m_proxy->columnCount(); ++column) {
+            columns.append(m_proxy->index(rowIndex.row(), column).data(Qt::DisplayRole).toString());
+        }
+        lines.append(columns.join('\t'));
+    }
+    if (!lines.isEmpty()) QApplication::clipboard()->setText(lines.join('\n'));
+}
+
+void TagBrowserWidget::showTagTableContextMenu(const QPoint &pos)
+{
+    const QModelIndex clickedIndex = ui->tableTags->indexAt(pos);
+    if (clickedIndex.isValid()) {
+        ui->tableTags->setCurrentIndex(clickedIndex);
+        if (ui->tableTags->selectionModel()
+            && !ui->tableTags->selectionModel()->isSelected(clickedIndex)) {
+            ui->tableTags->selectionModel()->select(
+                clickedIndex, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+        }
+    }
+
+    QMenu menu(this);
+    QAction *copyCell = menu.addAction("复制当前单元格");
+    copyCell->setEnabled(ui->tableTags->currentIndex().isValid());
+    connect(copyCell, &QAction::triggered, this, &TagBrowserWidget::copyCurrentTagCell);
+
+    QAction *copyRows = menu.addAction("复制选中行");
+    copyRows->setEnabled(ui->tableTags->selectionModel()
+                         && !ui->tableTags->selectionModel()->selectedRows().isEmpty());
+    connect(copyRows, &QAction::triggered, this, &TagBrowserWidget::copySelectedTagRows);
+    menu.exec(ui->tableTags->viewport()->mapToGlobal(pos));
+}
+
 void TagBrowserWidget::onTabChanged(int index)
 {
     if (ui->tabWidgetTagBrowser->widget(index) == ui->tabTranslation) {
@@ -1319,6 +1442,8 @@ void TagBrowserWidget::onDeleteRowsClicked()
 
 void TagBrowserWidget::onReloadClicked()
 {
+    if (m_dirty && !confirmDiscardOrSaveChanges(m_translationSourceIndex)) return;
+    if (m_loading) return;
     loadCsv();
 }
 
@@ -1329,78 +1454,26 @@ void TagBrowserWidget::onSaveClicked()
 
 bool TagBrowserWidget::saveCurrentCsv()
 {
-    if (m_mergedSource) return false;
     if (m_loading) {
         QMessageBox::information(nullptr, "提示", "词表仍在加载，请稍候再保存。");
         return false;
     }
+    if (m_mergedSource) return saveMergedCsvChanges();
     ensureCsvLoadedForEditing();
     if (m_csvPath.isEmpty()) {
         QMessageBox::information(nullptr, "提示", "请先在设置中配置 Tag 翻译表 CSV 路径。");
         return false;
     }
 
-    QFileInfo info(m_csvPath);
-    QDir().mkpath(info.absolutePath());
-
-    QSaveFile file(m_csvPath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QMessageBox::warning(nullptr, "错误", "无法保存 Tag 翻译表。");
-        return false;
-    }
-
-    file.write("\xEF\xBB\xBF", 3);
-    QTextStream out(&file);
-    out.setEncoding(QStringConverter::Utf8);
+    QVector<TagTranslationRow> rows;
+    rows.reserve(m_model->rowCount());
     for (int row = 0; row < m_model->rowCount(); ++row) {
-        QString tag = m_model->item(row, 0) ? m_model->item(row, 0)->text().trimmed() : QString();
-        QString category = m_model->item(row, 1) ? m_model->item(row, 1)->text().trimmed() : QString();
-        QString translation = m_model->item(row, 2) ? m_model->item(row, 2)->text().trimmed() : QString();
-        QString count = m_model->item(row, 3) ? m_model->item(row, 3)->text().trimmed() : QString();
-
-        if (tag.isEmpty() && category.isEmpty() && translation.isEmpty() && count.isEmpty()) {
-            continue;
-        }
-
-        // 如果有类别或使用次数，就保存为 ComfyUI-Custom-Scripts 兼容格式：
-        // 1girl,1girl 人物-一个女孩,4114588
-        //
-        // 如果只是旧格式 tag,翻译，则继续保存为：
-        // 1girl,一个女孩
-        const bool saveAsAutocompleteFormat = !category.isEmpty() || !count.isEmpty();
-
-        if (saveAsAutocompleteFormat) {
-            QString display = tag;
-
-            QString zhDisplay;
-            if (!category.isEmpty() && !translation.isEmpty()) {
-                zhDisplay = category + "-" + translation;
-            } else if (!translation.isEmpty()) {
-                zhDisplay = translation;
-            } else if (!category.isEmpty()) {
-                zhDisplay = category;
-            }
-
-            if (!zhDisplay.isEmpty()) {
-                display += " " + zhDisplay;
-            }
-
-            out << escapeCsvField(tag)
-                << ","
-                << escapeCsvField(display)
-                << ","
-                << escapeCsvField(count)
-                << "\n";
-        } else {
-            out << escapeCsvField(tag)
-            << ","
-            << escapeCsvField(translation)
-            << "\n";
-        }
+        rows.append(modelTranslationRow(row));
     }
-    out.flush();
-    if (out.status() != QTextStream::Ok || !file.commit()) {
-        QMessageBox::warning(nullptr, "错误", "无法完整保存 Tag 翻译表，原文件未修改。");
+
+    QString errorMessage;
+    if (!writeTranslationRows(m_csvPath, rows, &errorMessage)) {
+        QMessageBox::warning(nullptr, "错误", errorMessage);
         return false;
     }
 
@@ -1413,9 +1486,226 @@ bool TagBrowserWidget::saveCurrentCsv()
     return true;
 }
 
+bool TagBrowserWidget::writeTranslationRows(const QString &path,
+                                            const QVector<TagTranslationRow> &rows,
+                                            QString *errorMessage) const
+{
+    const QFileInfo info(path);
+    if (!QDir().mkpath(info.absolutePath())) {
+        if (errorMessage) *errorMessage = "无法创建词表目录：\n" + info.absolutePath();
+        return false;
+    }
+
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        if (errorMessage) *errorMessage = "无法打开 Tag 翻译表：\n" + path + "\n" + file.errorString();
+        return false;
+    }
+
+    file.write("\xEF\xBB\xBF", 3);
+    QTextStream out(&file);
+    out.setEncoding(QStringConverter::Utf8);
+    for (const TagTranslationRow &row : rows) {
+        const QString tag = row.tag.trimmed();
+        const QString category = row.category.trimmed();
+        const QString translation = row.translation.trimmed();
+        const QString count = row.count.trimmed();
+        if (tag.isEmpty() && category.isEmpty() && translation.isEmpty() && count.isEmpty()) continue;
+
+        const bool autocompleteFormat = !category.isEmpty() || !count.isEmpty();
+        if (autocompleteFormat) {
+            QString display = tag;
+            QString translatedDisplay;
+            if (!category.isEmpty() && !translation.isEmpty()) translatedDisplay = category + "-" + translation;
+            else if (!translation.isEmpty()) translatedDisplay = translation;
+            else if (!category.isEmpty()) translatedDisplay = category;
+            if (!translatedDisplay.isEmpty()) display += " " + translatedDisplay;
+
+            out << escapeCsvField(tag) << ',' << escapeCsvField(display)
+                << ',' << escapeCsvField(count) << '\n';
+        } else {
+            out << escapeCsvField(tag) << ',' << escapeCsvField(translation) << '\n';
+        }
+    }
+    out.flush();
+    if (out.status() != QTextStream::Ok || !file.commit()) {
+        if (errorMessage) *errorMessage = "无法完整保存 Tag 翻译表，原文件未修改：\n" + path;
+        return false;
+    }
+    return true;
+}
+
+TagTranslationRow TagBrowserWidget::modelTranslationRow(int row) const
+{
+    TagTranslationRow result;
+    result.tag = m_model->item(row, 0) ? m_model->item(row, 0)->text().trimmed() : QString();
+    result.category = m_model->item(row, 1) ? m_model->item(row, 1)->text().trimmed() : QString();
+    result.translation = m_model->item(row, 2) ? m_model->item(row, 2)->text().trimmed() : QString();
+    result.count = m_model->item(row, 3) ? m_model->item(row, 3)->text().trimmed() : QString();
+    if (QStandardItem *tagItem = m_model->item(row, 0)) {
+        result.sourcePath = tagItem->data(SourcePathRole).toString();
+        result.sourceRow = tagItem->data(SourceRowRole).toInt();
+    }
+    return result;
+}
+
+bool TagBrowserWidget::mergedModelRowChanged(int row) const
+{
+    QStandardItem *tagItem = m_model->item(row, 0);
+    if (!tagItem || tagItem->data(SourcePathRole).toString().isEmpty()) return false;
+    TagTranslationRow original;
+    original.tag = tagItem->data(OriginalTagRole).toString();
+    original.category = tagItem->data(OriginalCategoryRole).toString();
+    original.translation = tagItem->data(OriginalTranslationRole).toString();
+    original.count = tagItem->data(OriginalCountRole).toString();
+    return !sameTranslationFields(modelTranslationRow(row), original);
+}
+
+int TagBrowserWidget::mergedDirtyRowCount() const
+{
+    if (!m_mergedSource) return m_dirty ? 1 : 0;
+    int count = 0;
+    for (int row = 0; row < m_model->rowCount(); ++row) {
+        if (mergedModelRowChanged(row)) ++count;
+    }
+    return count;
+}
+
+void TagBrowserWidget::updateMergedRowSnapshot(int row, int sourceRow)
+{
+    QStandardItem *tagItem = m_model->item(row, 0);
+    if (!tagItem) return;
+    const TagTranslationRow current = modelTranslationRow(row);
+    tagItem->setData(sourceRow, SourceRowRole);
+    tagItem->setData(current.tag, OriginalTagRole);
+    tagItem->setData(current.category, OriginalCategoryRole);
+    tagItem->setData(current.translation, OriginalTranslationRole);
+    tagItem->setData(current.count, OriginalCountRole);
+}
+
+bool TagBrowserWidget::saveMergedCsvChanges()
+{
+    struct Patch {
+        int modelRow = -1;
+        TagTranslationRow current;
+        TagTranslationRow original;
+        int targetRow = -1;
+    };
+
+    QMap<QString, QVector<Patch>> patchesByPath;
+    for (int row = 0; row < m_model->rowCount(); ++row) {
+        if (!mergedModelRowChanged(row)) continue;
+        QStandardItem *tagItem = m_model->item(row, 0);
+        Patch patch;
+        patch.modelRow = row;
+        patch.current = modelTranslationRow(row);
+        patch.original.tag = tagItem->data(OriginalTagRole).toString();
+        patch.original.category = tagItem->data(OriginalCategoryRole).toString();
+        patch.original.translation = tagItem->data(OriginalTranslationRole).toString();
+        patch.original.count = tagItem->data(OriginalCountRole).toString();
+        patch.original.sourcePath = patch.current.sourcePath;
+        patch.original.sourceRow = patch.current.sourceRow;
+        patchesByPath[QFileInfo(patch.current.sourcePath).absoluteFilePath()].append(patch);
+    }
+
+    if (patchesByPath.isEmpty()) {
+        m_dirty = false;
+        updateStatusLabel();
+        return true;
+    }
+
+    QStringList savedPaths;
+    QStringList failures;
+    for (auto pathIt = patchesByPath.begin(); pathIt != patchesByPath.end(); ++pathIt) {
+        const QString path = pathIt.key();
+        QVector<Patch> &patches = pathIt.value();
+        QVector<TagTranslationRow> sourceRows = readCsvRowsWorker(path);
+        QSet<int> claimedRows;
+        bool valid = QFile::exists(path);
+
+        for (Patch &patch : patches) {
+            if (!valid || patch.current.tag.trimmed().isEmpty()) {
+                valid = false;
+                break;
+            }
+
+            const int hintedRow = patch.original.sourceRow;
+            if (hintedRow >= 0 && hintedRow < sourceRows.size()
+                && sameTranslationFields(sourceRows.at(hintedRow), patch.original)
+                && !claimedRows.contains(hintedRow)) {
+                patch.targetRow = hintedRow;
+            } else {
+                int matchedRow = -1;
+                for (int i = 0; i < sourceRows.size(); ++i) {
+                    if (claimedRows.contains(i) || !sameTranslationFields(sourceRows.at(i), patch.original)) continue;
+                    if (matchedRow >= 0) {
+                        matchedRow = -2;
+                        break;
+                    }
+                    matchedRow = i;
+                }
+                patch.targetRow = matchedRow;
+            }
+
+            if (patch.targetRow < 0) {
+                valid = false;
+                break;
+            }
+            claimedRows.insert(patch.targetRow);
+        }
+
+        if (!valid) {
+            failures.append(QString("%1：来源内容已变化、记录不唯一，或 Tag 被清空")
+                                .arg(QFileInfo(path).fileName()));
+            continue;
+        }
+
+        for (const Patch &patch : std::as_const(patches)) {
+            TagTranslationRow replacement = patch.current;
+            replacement.sourcePath = path;
+            replacement.sourceRow = patch.targetRow;
+            sourceRows[patch.targetRow] = replacement;
+        }
+
+        QString errorMessage;
+        if (!writeTranslationRows(path, sourceRows, &errorMessage)) {
+            failures.append(QString("%1：%2").arg(QFileInfo(path).fileName(), errorMessage));
+            continue;
+        }
+
+        savedPaths.append(path);
+        QSignalBlocker blocker(m_model);
+        for (const Patch &patch : std::as_const(patches)) {
+            updateMergedRowSnapshot(patch.modelRow, patch.targetRow);
+        }
+    }
+
+    m_dirty = mergedDirtyRowCount() > 0;
+    if (!savedPaths.isEmpty()) {
+        reloadEffectiveTranslationInfos();
+        updateUserTagTranslations();
+        updateUserTagStatusLabel();
+        emit csvSaved(savedPaths.first());
+    }
+
+    if (!failures.isEmpty()) {
+        updateStatusLabel();
+        QMessageBox::warning(this, "部分词表未保存",
+                             "以下词表未写入，相关修改仍保留在表格中：\n\n" + failures.join("\n"));
+        return false;
+    }
+
+    m_dirty = false;
+    updateStatusLabel();
+    QTimer::singleShot(0, this, [this]() {
+        if (m_mergedSource && !m_loading) loadCsv();
+    });
+    return true;
+}
+
 bool TagBrowserWidget::confirmDiscardOrSaveChanges(int restoreIndex)
 {
-    if (!m_dirty || m_mergedSource) return true;
+    if (!m_dirty) return true;
     QMessageBox box(QMessageBox::Question, "未保存修改",
                     "当前词表有未保存修改，切换前要保存吗？",
                     QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, this);
@@ -1457,12 +1747,12 @@ void TagBrowserWidget::applyTranslationSourceIndex(int index)
 
 void TagBrowserWidget::updateTranslationEditingState()
 {
-    const bool editable = !m_mergedSource && !m_loading;
+    const bool editable = !m_loading && (!m_mergedSource || m_csvLoaded);
     ui->tableTags->setEditTriggers(editable
         ? QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed | QAbstractItemView::SelectedClicked
         : QAbstractItemView::NoEditTriggers);
-    ui->btnAdd->setEnabled(editable);
-    ui->btnDelete->setEnabled(editable);
+    ui->btnAdd->setEnabled(editable && !m_mergedSource);
+    ui->btnDelete->setEnabled(editable && !m_mergedSource);
     ui->btnSave->setEnabled(editable);
 }
 
@@ -1495,7 +1785,7 @@ void TagBrowserWidget::reloadEffectiveTranslationInfos()
 void TagBrowserWidget::onModelChanged()
 {
     if (m_loading) return;
-    m_dirty = true;
+    m_dirty = m_mergedSource ? mergedDirtyRowCount() > 0 : true;
     if (m_userTagsLoaded) {
         updateUserTagTranslations();
         updateUserTagStatusLabel();
