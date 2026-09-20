@@ -97,7 +97,7 @@ const int ROLE_COLLECTION_EXPAND_KEY  = Qt::UserRole + 63;  // 存储收藏夹�
 const int ROLE_PREVIEW_PLACEHOLDER    = Qt::UserRole + 64;  // 该项当前显示占位图（切主题需重染）
 const int ROLE_MODEL_PREVIEW_STATE    = Qt::UserRole + 65;  // ModelPreviewState，区分明确无预览与缺失/未知
 
-const QString CURRENT_VERSION = "1.5.11";
+const QString CURRENT_VERSION = "1.5.12";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
@@ -530,6 +530,8 @@ private:
     int editImageLoadToken = 0;
     int modelUsageStatsToken = 0;
     int modelScanToken = 0;
+    bool modelScanRunning = false;
+    int translationLoadToken = 0;
     bool editImagesNeedRefresh = false;
     bool m_forceResyncPreview = false;
     bool m_skipPreviewSync = false;
@@ -623,6 +625,11 @@ private:
 
     // Key: 文件绝对路径, Value: 缓存的图片信息
     QMap<QString, UserImageInfo> imageCache;
+    bool userGalleryCacheLoading = false;
+    int userGalleryCacheLoadToken = 0;
+    bool pendingUserGalleryScan = false;
+    QString pendingUserGalleryModel;
+    QString pendingUserGalleryModelPath;
     QSet<QString> queuedUserImageThumbPaths;
     QSet<QString> loadedUserImageThumbPaths;
     QHash<QString, int> failedUserImageThumbLoads;
@@ -631,6 +638,7 @@ private:
     quint64 userGalleryLayoutGeneration = 0;
     bool userGalleryGlobalMode = false;
     void loadUserGalleryCache();
+    void resumePendingUserGalleryScan();
     void saveUserGalleryCache();
 
     // === 配置变量 ===
@@ -703,7 +711,7 @@ private:
     bool editLoraPaths(bool rescanAfter);
     bool editGalleryPaths(bool rescanAfter);
     bool editTranslationCsvPaths();
-    void reloadTranslationMaps(bool notifyWidgets = true);
+    void reloadTranslationMaps(bool notifyWidgets = true, bool asynchronous = false);
 };
 
 #endif // MAINWINDOW_H

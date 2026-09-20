@@ -82,6 +82,7 @@
 #include "dialogs/themeeditordialog.h"
 #include "utils/styleconstants.h"
 #include "utils/fileutils.h"
+#include "utils/modellistcache.h"
 #include "utils/tagutils.h"
 
 namespace {
@@ -1214,21 +1215,19 @@ MainWindow::MainWindow(QWidget *parent)
     clearDetailView();
     refreshHomeFilterChips();
 
-    QTimer::singleShot(0, this, [this]() {
-        reloadTranslationMaps();
-    });
-
     // 事件循环启动后再刷一次主题：setColorScheme 的调色板传播是异步的，会重置启动期
     // 各 West 标签条/视口在构造时钉好的 palette；这里在传播之后补钉一次，避免重启需手动切主题。
     QTimer::singleShot(0, this, [this](){ refreshLoadedToolPageThemes(); });
 
-    QTimer::singleShot(300, this, [this](){
+    QTimer::singleShot(0, this, [this](){
         ui->statusbar->showMessage("正在扫描本地模型库...");
         loadCollections();
         loadModelHighlightColors();
         loadModelUserNotes();
-        loadUserGalleryCache();
-        ui->comboSort->setCurrentIndex(0);
+        {
+            const QSignalBlocker blocker(ui->comboSort);
+            ui->comboSort->setCurrentIndex(0);
+        }
 
         // 扫描完成后（异步）刷新状态栏计数，并按需检查软件更新。
         auto afterScan = [this]() {
@@ -1249,9 +1248,11 @@ MainWindow::MainWindow(QWidget *parent)
             scanModels(activeLoraPaths, afterScan);
         } else {
             executeSort();
-            refreshCollectionTreeView();
             afterScan();
         }
+        // Dispatch the model scan first; unrelated large caches must not delay it.
+        loadUserGalleryCache();
+        reloadTranslationMaps(true, true);
     });
 
 }
@@ -2349,13 +2350,11 @@ void MainWindow::refreshHomeGallery()
         item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
         ui->homeGalleryList->addItem(item);
 
-        if (!filePath.isEmpty()) {
-            QString pathToSend = previewPath.isEmpty() ? "invalid_path" : previewPath;
-
+        if (!filePath.isEmpty() && !previewPath.isEmpty()) {
             QString taskId = "HOME:" + filePath;
 
             // 依然使用主 threadPool (因为主页大图需要点击即停，响应优先)
-            IconLoaderTask *task = new IconLoaderTask(pathToSend, iconSize, 12, this, taskId);
+            IconLoaderTask *task = new IconLoaderTask(previewPath, iconSize, 12, this, taskId);
             task->setAutoDelete(true);
             threadPool->start(task);
         }
@@ -3043,9 +3042,48 @@ struct ModelListMetadata {
     ModelPreviewState previewState = ModelPreviewState::MissingOrUnknown;
 };
 
-// 工作线程函数：读取并解析单个模型的 .json，填充 ModelListMetadata（纯 I/O，无 UI 依赖）。
-ModelListMetadata parseModelListMetadata(const QString &filePath, const QString &jsonPath)
+QJsonObject modelListSummary(const ModelListMetadata &m)
 {
+    return {{"sortDate", QString::number(m.sortDate)}, {"sortAdded", QString::number(m.sortAdded)},
+            {"downloads", m.downloads}, {"likes", m.likes}, {"base", m.filterBase},
+            {"nsfw", m.nsfwLevel}, {"edited", m.localEdited}, {"modelId", m.modelId},
+            {"versionId", m.versionId}, {"sha256", m.civitaiSha256}, {"creator", m.creator},
+            {"tags", QJsonArray::fromStringList(m.modelTags)}, {"type", m.modelType},
+            {"triggers", QJsonArray::fromStringList(m.trainedWords)}, {"name", m.civitaiName},
+            {"previewState", static_cast<int>(m.previewState)}};
+}
+
+bool restoreModelListSummary(const QJsonObject &s, ModelListMetadata *m)
+{
+    // Reject truncated/older summaries rather than silently losing roles.
+    static const QJsonObject schema = modelListSummary(ModelListMetadata{});
+    for (auto it = schema.begin(); it != schema.end(); ++it) {
+        if (s.value(it.key()).type() != it.value().type()) return false;
+    }
+    m->sortDate = s.value("sortDate").toString().toLongLong();
+    m->sortAdded = s.value("sortAdded").toString().toLongLong();
+    m->downloads = s.value("downloads").toInt();
+    m->likes = s.value("likes").toInt();
+    m->filterBase = s.value("base").toString();
+    m->nsfwLevel = s.value("nsfw").toInt();
+    m->localEdited = s.value("edited").toBool();
+    m->modelId = s.value("modelId").toInt();
+    m->versionId = s.value("versionId").toInt();
+    m->civitaiSha256 = s.value("sha256").toString();
+    m->creator = s.value("creator").toString();
+    for (const QJsonValue &v : s.value("tags").toArray()) m->modelTags.append(v.toString());
+    m->modelType = s.value("type").toString();
+    for (const QJsonValue &v : s.value("triggers").toArray()) m->trainedWords.append(v.toString());
+    m->civitaiName = s.value("name").toString();
+    m->previewState = static_cast<ModelPreviewState>(s.value("previewState").toInt());
+    return true;
+}
+
+// 工作线程函数：读取并解析单个模型的 .json，填充 ModelListMetadata（纯 I/O，无 UI 依赖）。
+ModelListMetadata parseModelListMetadata(const QString &filePath, const QString &jsonPath,
+                                         bool *cacheable = nullptr)
+{
+    if (cacheable) *cacheable = false;
     ModelListMetadata m;
 
     QFileInfo fi(filePath);
@@ -3054,7 +3092,12 @@ ModelListMetadata parseModelListMetadata(const QString &filePath, const QString 
     m.sortAdded = birthTime.toMSecsSinceEpoch();
 
     QFile file(jsonPath);
-    if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
+    if (!file.exists()) {
+        if (cacheable) *cacheable = true;
+        m.sortDate = fi.lastModified().toMSecsSinceEpoch();
+        return m;
+    }
+    if (!file.open(QIODevice::ReadOnly)) {
         m.sortDate = fi.lastModified().toMSecsSinceEpoch();
         return m;
     }
@@ -3066,6 +3109,7 @@ ModelListMetadata parseModelListMetadata(const QString &filePath, const QString 
         return m;
     }
     const QJsonObject root = document.object();
+    if (cacheable) *cacheable = true;
     m.creator = jsonModelCreator(root);
     m.modelTags = jsonModelTags(root);
     m.modelType = root["model"].toObject()["type"].toString();
@@ -3186,9 +3230,15 @@ struct ScannedModelEntry {
 };
 
 // 工作线程函数：遍历所有路径，做目录扫描 + 预览图查找 + JSON 解析（全部为 I/O，离开 UI 线程）。
-QList<ScannedModelEntry> scanModelsWorker(const QStringList &paths, bool recursive)
+QList<ScannedModelEntry> scanModelsWorker(const QStringList &paths, bool recursive,
+                                         const QString &cachePath)
 {
     QList<ScannedModelEntry> entries;
+    QElapsedTimer timer;
+    timer.start();
+    ModelListCache cache(cachePath);
+    QSet<QString> visited;
+    int cacheHits = 0;
     static const QStringList nameFilters = {"*.safetensors", "*.ckpt", "*.pt"};
     static const QStringList imgExts = {".preview.png", ".png", ".jpg", ".jpeg"};
     const QDir::Filters dirFilters = QDir::Files | QDir::NoDotAndDotDot;
@@ -3205,6 +3255,12 @@ QList<ScannedModelEntry> scanModelsWorker(const QStringList &paths, bool recursi
         while (it.hasNext()) {
             it.next();
             const QFileInfo fileInfo = it.fileInfo();
+            QString pathKey = fileInfo.absoluteFilePath();
+#ifdef Q_OS_WIN
+            pathKey = pathKey.toCaseFolded();
+#endif
+            if (visited.contains(pathKey)) continue;
+            visited.insert(pathKey);
 
             ScannedModelEntry e;
             e.baseName = fileInfo.completeBaseName();
@@ -3219,18 +3275,26 @@ QList<ScannedModelEntry> scanModelsWorker(const QStringList &paths, bool recursi
             }
 
             const QString jsonPath = currentFileDir.filePath(e.baseName + ".json");
-            e.meta = parseModelListMetadata(e.fullPath, jsonPath);
-            if (!e.previewPath.isEmpty()) {
-                QImageReader reader(e.previewPath);
-                if (reader.canRead()) e.meta.previewState = ModelPreviewState::RealPreview;
-                else {
-                    e.previewPath.clear();
-                    e.meta.previewState = ModelPreviewState::MissingOrUnknown;
-                }
+            const QJsonObject stamp = ModelListCache::fingerprint(fileInfo, QFileInfo(jsonPath));
+            QJsonObject summary;
+            if (cache.lookup(e.fullPath, stamp, &summary) && restoreModelListSummary(summary, &e.meta)) {
+                ++cacheHits;
+            } else {
+                bool cacheable = false;
+                e.meta = parseModelListMetadata(e.fullPath, jsonPath, &cacheable);
+                // A sync/edit may replace the JSON while this scan is reading it.
+                if (cacheable && stamp == ModelListCache::fingerprint(QFileInfo(e.fullPath), QFileInfo(jsonPath)))
+                    cache.insert(e.fullPath, stamp, modelListSummary(e.meta));
             }
+            // Decode once in the thumbnail worker, not while discovering models.
+            // Until it succeeds, an existing but possibly corrupt cover stays an X.
+            if (!e.previewPath.isEmpty()) e.meta.previewState = ModelPreviewState::MissingOrUnknown;
             entries.append(e);
         }
     }
+    if (!cache.save()) qWarning() << "Unable to save model list cache:" << cachePath;
+    qDebug() << "Model scan:" << entries.size() << "models," << cacheHits
+             << "cached summaries," << timer.elapsed() << "ms";
     return entries;
 }
 
@@ -3243,6 +3307,10 @@ void MainWindow::scanModels(const QString &path)
 
 void MainWindow::scanModels(const QStringList &paths, std::function<void()> onComplete)
 {
+    QElapsedTimer loadTimer;
+    loadTimer.start();
+    modelScanRunning = true;
+    ++modelUsageStatsToken;
     // 同步清空列表，随后把繁重的目录遍历 + JSON 解析放到后台线程，避免大模型库卡 UI。
     ui->modelList->clear();
     ui->comboBaseModel->blockSignals(true);
@@ -3259,17 +3327,18 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
 
     const int token = ++modelScanToken;
     const bool recursive = optLoraRecursive;
+    const QString cachePath = qApp->applicationDirPath() + "/config/model_list_cache.json";
     QFuture<QList<ScannedModelEntry>> future = QtConcurrent::run(
         backgroundThreadPool,
-        [paths, recursive]() { return scanModelsWorker(paths, recursive); });
+        [paths, recursive, cachePath]() { return scanModelsWorker(paths, recursive, cachePath); });
 
     auto *watcher = new QFutureWatcher<QList<ScannedModelEntry>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this,
-            [this, watcher, token, onComplete = std::move(onComplete)]() {
+            [this, watcher, token, loadTimer, onComplete = std::move(onComplete)]() {
         const QList<ScannedModelEntry> entries = watcher->result();
         watcher->deleteLater();
         // 期间又触发了新的扫描：丢弃过期结果，避免把旧条目塞进已被清空的列表。
-        if (token != modelScanToken) return;
+        if (token != modelScanToken || isShuttingDown) return;
 
         smallPlaceholderIcon = generateSmallPlaceholderIcon(); // 侧边栏用带内边距的小占位X（当前主题色）
         smallNoPreviewIcon = generateNoPreviewIcon(true);
@@ -3337,11 +3406,12 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
 
         ui->modelList->setUpdatesEnabled(true);
 
-        refreshModelUsageStatsAsync();
+        modelScanRunning = false;
+        // executeSort already rebuilds both home gallery and collection tree.
         executeSort();
-        refreshHomeGallery();
-        refreshCollectionTreeView();
+        refreshModelUsageStatsAsync();
 
+        qDebug() << "Model list ready:" << addedCount << "models," << loadTimer.elapsed() << "ms";
         if (onComplete) onComplete();
     });
     watcher->setFuture(future);
@@ -7216,6 +7286,7 @@ void MainWindow::refreshModelUsageStatsAsync()
     if (!ui || !ui->modelList) return;
 
     const int currentToken = ++modelUsageStatsToken;
+    if (userGalleryCacheLoading || modelScanRunning) return;
 
     QList<ModelUsageInput> models;
     models.reserve(ui->modelList->count());
@@ -7245,8 +7316,6 @@ void MainWindow::refreshModelUsageStatsAsync()
     if (imageCache.isEmpty()) {
         if (ui->comboSort->currentIndex() == 5 || ui->comboSort->currentIndex() == 6) {
             executeSort();
-            refreshHomeGallery();
-            refreshCollectionTreeView();
         }
         refreshCurrentDetailCacheStatus();
         refreshUsageAnalysisWidget();
@@ -7280,8 +7349,6 @@ void MainWindow::refreshModelUsageStatsAsync()
         const int sortType = ui->comboSort->currentIndex();
         if (sortType == 5 || sortType == 6) {
             executeSort();
-            refreshHomeGallery();
-            refreshCollectionTreeView();
         }
         refreshCurrentDetailCacheStatus();
         refreshUsageAnalysisWidget();
@@ -8091,11 +8158,14 @@ void MainWindow::onClearUserGalleryCacheClicked()
     );
     if (reply != QMessageBox::Yes) return;
 
+    ++userGalleryCacheLoadToken;
+    userGalleryCacheLoading = false;
     imageCache.clear();
     QString cachePath = qApp->applicationDirPath() + "/config/user_gallery_cache.json";
     QFile::remove(cachePath);
     refreshModelUsageStatsAsync();
     ui->statusbar->showMessage("本地图库缓存已清除", 3000);
+    resumePendingUserGalleryScan();
 }
 
 void MainWindow::resetUserImageThumbLoading()
@@ -8186,6 +8256,16 @@ void MainWindow::dispatchVisibleUserImageThumbLoad()
 
 
 void MainWindow::scanForUserImages(const QString &loraBaseName) {
+    if (userGalleryCacheLoading) {
+        // Keep only the latest request; never scan/save against a half-loaded cache.
+        pendingUserGalleryScan = true;
+        pendingUserGalleryModel = loraBaseName;
+        const QListWidgetItem *item = ui->modelList->currentItem();
+        pendingUserGalleryModelPath = isModelListItem(item)
+                                          ? item->data(ROLE_FILE_PATH).toString() : currentMeta.filePath;
+        ui->statusbar->showMessage("正在后台加载图库缓存，完成后开始扫描...");
+        return;
+    }
     const quint64 scanGeneration = ++userGalleryGeneration;
     ++userGalleryLayoutGeneration;
     userGalleryGlobalMode = loraBaseName.isEmpty();
@@ -11596,33 +11676,44 @@ bool MainWindow::editTranslationCsvPaths()
     return true;
 }
 
-void MainWindow::reloadTranslationMaps(bool notifyWidgets)
+void MainWindow::reloadTranslationMaps(bool notifyWidgets, bool asynchronous)
 {
-    translationMap.clear();
+    const int token = ++translationLoadToken;
     const QStringList activePaths = collectEnabledPaths(translationCsvPaths, disabledTranslationCsvPaths);
-    for (int i = activePaths.size() - 1; i >= 0; --i) {
-        const QString path = activePaths.at(i);
-        if (path.isEmpty() || !QFile::exists(path)) continue;
-
-        const QVector<TranslationCsvEntry> entries = TranslationCsv::readFile(path);
-        for (const TranslationCsvEntry &entry : entries) {
-            const QString display = entry.displayValue().trimmed();
-            if (!entry.tag.isEmpty() && !display.isEmpty()) translationMap.insert(entry.tag, display);
-        }
-    }
-
     translationCsvPath = activePaths.value(0);
-    if (!notifyWidgets) {
+    const auto readMaps = [activePaths]() {
+        QHash<QString, QString> result;
+        for (int i = activePaths.size() - 1; i >= 0; --i) {
+            const QVector<TranslationCsvEntry> entries = TranslationCsv::readFile(activePaths.at(i));
+            for (const TranslationCsvEntry &entry : entries) {
+                const QString display = entry.displayValue().trimmed();
+                if (!entry.tag.isEmpty() && !display.isEmpty()) result.insert(entry.tag, display);
+            }
+        }
+        return result;
+    };
+    const auto applyMaps = [this, token, notifyWidgets, activePaths](QHash<QString, QString> result) {
+        if (isShuttingDown || token != translationLoadToken) return;
+        translationMap = std::move(result);
+        if (notifyWidgets) {
+            if (parserWidget) parserWidget->setTranslationMap(&translationMap);
+            if (promptTemplateLibraryWidget) promptTemplateLibraryWidget->setTranslationMap(&translationMap);
+            if (tagBrowserWidget) tagBrowserWidget->setMergedTranslationMap(&translationMap);
+            if (tagFlowWidget) tagFlowWidget->setTranslationMap(&translationMap);
+        }
         qDebug() << "Loaded translation entries:" << translationMap.size() << "from" << activePaths.size() << "CSV file(s)";
+    };
+    if (!asynchronous) {
+        applyMaps(readMaps());
         return;
     }
-    if (parserWidget) parserWidget->setTranslationMap(&translationMap);
-    if (promptTemplateLibraryWidget) promptTemplateLibraryWidget->setTranslationMap(&translationMap);
-    if (tagBrowserWidget) {
-        tagBrowserWidget->setMergedTranslationMap(&translationMap);
-    }
-    if (tagFlowWidget) tagFlowWidget->setTranslationMap(&translationMap);
-    qDebug() << "Loaded translation entries:" << translationMap.size() << "from" << activePaths.size() << "CSV file(s)";
+    auto *watcher = new QFutureWatcher<QHash<QString, QString>>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [watcher, applyMaps]() {
+        auto result = watcher->result();
+        watcher->deleteLater();
+        applyMaps(std::move(result));
+    });
+    watcher->setFuture(QtConcurrent::run(backgroundThreadPool, readMaps));
 }
 
 void MainWindow::onUserGalleryContextMenu(const QPoint &pos)
@@ -12512,37 +12603,64 @@ QString MainWindow::getRandomUserAgent() {
 }
 
 // 加载缓存
+void MainWindow::resumePendingUserGalleryScan()
+{
+    if (!pendingUserGalleryScan || userGalleryCacheLoading) return;
+    pendingUserGalleryScan = false;
+    const QListWidgetItem *item = ui->modelList->currentItem();
+    const QString path = isModelListItem(item)
+                             ? item->data(ROLE_FILE_PATH).toString() : currentMeta.filePath;
+    if (!pendingUserGalleryModel.isEmpty() && path != pendingUserGalleryModelPath) return;
+    scanForUserImages(pendingUserGalleryModel);
+}
+
 void MainWindow::loadUserGalleryCache() {
-    imageCache.clear();
-    QString configDir = qApp->applicationDirPath() + "/config";
-    QFile file(configDir + "/user_gallery_cache.json");
-    if (!file.open(QIODevice::ReadOnly)) return;
-
-    QJsonParseError parseError;
-    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
-    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-        qWarning() << "Invalid user gallery cache JSON:" << parseError.errorString();
-        return;
-    }
-    QJsonObject root = doc.object();
-
-    for (auto it = root.begin(); it != root.end(); ++it) {
-        QJsonObject obj = it.value().toObject();
-        UserImageInfo info;
-        info.path = it.key();
-        info.prompt = obj["p"].toString();
-        info.negativePrompt = obj["np"].toString();
-        info.parameters = obj["param"].toString();
-        info.lastModified = obj["t"].toVariant().toLongLong();
-        info.parserVersion = obj.value("pv").toInt(0);
-
-        // 恢复 Tags (为了节省空间，JSON里可以不存tags，读取时解析，或者也存进去)
-        // 这里建议直接解析，因为 parsePromptsToTags 是纯内存操作，很快
-        info.cleanTags = parsePromptsToTags(info.prompt);
-        info.negativeCleanTags = parsePromptsToTags(info.negativePrompt);
-
-        imageCache.insert(info.path, info);
-    }
+    userGalleryCacheLoading = true;
+    const int token = ++userGalleryCacheLoadToken;
+    const QString cachePath = qApp->applicationDirPath() + "/config/user_gallery_cache.json";
+    const bool splitOnNewline = optSplitOnNewline;
+    const QStringList filterTags = optFilterTags;
+    auto *watcher = new QFutureWatcher<QMap<QString, UserImageInfo>>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, token, splitOnNewline, filterTags]() {
+        auto result = watcher->result();
+        watcher->deleteLater();
+        if (isShuttingDown || token != userGalleryCacheLoadToken) return;
+        if (splitOnNewline != optSplitOnNewline || filterTags != optFilterTags) {
+            loadUserGalleryCache();
+            return;
+        }
+        imageCache = std::move(result);
+        userGalleryCacheLoading = false;
+        refreshModelUsageStatsAsync();
+        resumePendingUserGalleryScan();
+    });
+    watcher->setFuture(QtConcurrent::run(backgroundThreadPool, [cachePath, splitOnNewline, filterTags]() {
+        QMap<QString, UserImageInfo> result;
+        QFile file(cachePath);
+        if (!file.open(QIODevice::ReadOnly)) return result;
+        QJsonParseError error;
+        const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &error);
+        if (error.error != QJsonParseError::NoError || !doc.isObject()) {
+            qWarning() << "Invalid user gallery cache JSON:" << error.errorString();
+            return result;
+        }
+        const QJsonObject root = doc.object();
+        for (auto it = root.begin(); it != root.end(); ++it) {
+            if (!it.value().isObject()) continue;
+            const QJsonObject obj = it.value().toObject();
+            UserImageInfo info;
+            info.path = it.key();
+            info.prompt = obj["p"].toString();
+            info.negativePrompt = obj["np"].toString();
+            info.parameters = obj["param"].toString();
+            info.lastModified = obj["t"].toVariant().toLongLong();
+            info.parserVersion = obj.value("pv").toInt(0);
+            info.cleanTags = parsePromptsToTagsWorker(info.prompt, splitOnNewline, filterTags);
+            info.negativeCleanTags = parsePromptsToTagsWorker(info.negativePrompt, splitOnNewline, filterTags);
+            result.insert(info.path, info);
+        }
+        return result;
+    }));
 }
 
 // 保存缓存

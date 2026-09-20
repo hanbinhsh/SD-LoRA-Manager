@@ -27,6 +27,8 @@ qt_add_executable(SD_LoRA_Manager
     utils/launchscriptparser.cpp
     utils/fileutils.h
     utils/fileutils.cpp
+    utils/modellistcache.h
+    utils/modellistcache.cpp
     pages/downloadspage.h
     pages/downloadspage.cpp
     pages/downloadspage.ui
@@ -110,6 +112,15 @@ target_link_libraries(SD_LoRA_Manager
         OpenSSL::Crypto
         Qt6::Concurrent
 )
+
+option(BUILD_MODEL_LIST_CACHE_TESTS "Build model list cache regression tests" OFF)
+if(BUILD_MODEL_LIST_CACHE_TESTS)
+    enable_testing()
+    add_executable(model_list_cache_test tests/model_list_cache_test.cpp utils/modellistcache.cpp)
+    target_include_directories(model_list_cache_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/utils)
+    target_link_libraries(model_list_cache_test PRIVATE Qt6::Core)
+    add_test(NAME model_list_cache_test COMMAND model_list_cache_test)
+endif()
 
 add_custom_command(TARGET SD_LoRA_Manager POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
