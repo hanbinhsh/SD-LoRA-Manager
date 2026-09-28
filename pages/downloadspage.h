@@ -2,16 +2,15 @@
 #define DOWNLOADSPAGE_WIDGET_H
 
 #include <QHash>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QWidget>
 
 #include "downloadmodels.h"
 
-class QComboBox;
 class QPixmap;
 class QPushButton;
-class QTabWidget;
 class QTableWidgetItem;
 class QVBoxLayout;
 
@@ -27,17 +26,12 @@ public:
     explicit DownloadsPage(QWidget *parent = nullptr);
     ~DownloadsPage() override;
 
-    QComboBox *filterCombo() const;
-    QTabWidget *statusTabs() const;
-
     QPushButton *checkSelectedButton() const;
     QPushButton *checkAllButton() const;
     QPushButton *downloadSelectedButton() const;
     QPushButton *retryButton() const;
     QPushButton *openFolderButton() const;
     QPushButton *clearCompletedButton() const;
-    QPushButton *toggleCurrentTabButton() const;
-    QPushButton *clearSelectionButton() const;
     QPushButton *ignoreSelectedButton() const;
 
     QVBoxLayout *cardsLayout(const QString &category) const;
@@ -47,14 +41,15 @@ public:
     QStringList filePathsForCategory(const QString &category) const;
     QStringList visibleFilePathsForCategory(const QString &category) const;
     QStringList sortedFilePathsForCategory(const QString &category) const;
-    QString categoryForStatus(const QString &status) const;
     QString cardStatusText(const QString &filePath) const;
     QString cardTargetPath(const QString &filePath) const;
     bool containsCard(const QString &filePath) const;
     QStringList failedUpdateCheckFilePaths() const;
     bool hasRetryableFailures() const;
     void setStatusText(const QString &text);
-    void setModelSelectionAvailability(bool hasCurrentModel, bool hasSelectedModels);
+    void setCacheRestoring(bool restoring);
+    void beginCardBatch();
+    void endCardBatch();
     void setUpdateCheckButtonsEnabled(bool enabled);
     void updateSelectionSummary();
     void initializeAppearance();
@@ -69,9 +64,6 @@ public:
     void setCurrentTabSelection(bool checked);
     void clearAllCardSelection();
     void toggleCurrentTabSelection();
-    void placeCardInCategory(const QString &filePath, const QString &category, bool deferSort = false);
-    void sortCardsInCategory(const QString &category);
-    void sortAllCards();
     void removeCard(const QString &filePath);
     void applyCardSearchFilter();
 
@@ -104,6 +96,10 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
+    void sortCardsInCategory(const QString &category);
+    void placeCardInCategory(const QString &filePath, const QString &category);
+    void flushCardUpdates();
+    void updateCardActionButtons(const DownloadCardWidgets &card);
     void updateVersionActionButtons();
     bool cardMatchesSearch(const DownloadCardWidgets &card) const;
     void updateSelectionSummary(int selectedCurrent, int currentTotal, int selectedTotal);
@@ -125,8 +121,9 @@ private:
     QHash<QString, DownloadCardWidgets> m_cards;
     QVector<MetadataScanItem> m_metadataScanItems;
     QVector<MetadataHealthIssue> m_healthIssues;
-    bool m_hasCurrentModel = false;
-    bool m_hasSelectedModels = false;
+    bool m_cacheRestoring = false;
+    int m_cardBatchDepth = 0;
+    QSet<QString> m_dirtyCardCategories;
     bool m_updateCheckBusy = false;
     bool m_metadataScanRunning = false;
     bool m_healthCheckRunning = false;

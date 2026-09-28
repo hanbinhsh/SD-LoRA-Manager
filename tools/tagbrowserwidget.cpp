@@ -1,4 +1,5 @@
 #include "tagbrowserwidget.h"
+#include "widgets/tagsearchproxymodel.h"
 #include "styleconstants.h"
 #include "tableviewstylehelper.h"
 #include "tagutils.h"
@@ -35,6 +36,7 @@
 #include <QTextStream>
 #include <QShowEvent>
 #include <QSpinBox>
+#include <QStandardItemModel>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -78,9 +80,10 @@ QVector<TagTranslationRow> readCsvRowsWorker(const QString &csvPath)
     if (csvPath.isEmpty() || !QFile::exists(csvPath)) return rows;
 
     const QVector<TranslationCsvEntry> entries = TranslationCsv::readFile(csvPath);
+    const QString sourcePath = QFileInfo(csvPath).absoluteFilePath();
     rows.reserve(entries.size());
     for (int i = 0; i < entries.size(); ++i) {
-        rows.append(toTagTranslationRow(entries.at(i), QFileInfo(csvPath).absoluteFilePath(), i));
+        rows.append(toTagTranslationRow(entries.at(i), sourcePath, i));
     }
 
     return rows;
@@ -116,57 +119,13 @@ QHash<QString, TagTranslationInfo> readMergedTranslationInfosWorker(const QStrin
     return infos;
 }
 
-QString cleanUserTagTextWorker(QString tag)
-{
-    tag = tag.trimmed();
-    if (tag.isEmpty()) return QString();
-
-    static const QSet<QString> emoticons = {":)", ":-)", ":(", ":-(", "^_^", "T_T", "o_o", "O_O"};
-    if (emoticons.contains(tag)) return tag;
-
-    static QRegularExpression weightRegex(":[0-9.]+$");
-    tag.remove(weightRegex);
-
-    static QRegularExpression bracketRegex("[\\{\\}\\[\\]\\(\\)]");
-    tag.remove(bracketRegex);
-
-    return tag.trimmed();
-}
-
-QStringList parseUserPromptTagsWorker(const QString &prompt)
-{
-    QString normalized = prompt;
-    normalized.replace("\r\n", ",");
-    normalized.replace('\n', ',');
-    normalized.replace('\r', ',');
-
-    static const QSet<QString> blockedTags = {
-        "BREAK", "ADDCOMM", "ADDBASE", "ADDCOL", "ADDROW"
-    };
-
-    QStringList tags;
-    const QStringList parts = normalized.split(',', Qt::SkipEmptyParts);
-    for (const QString &part : parts) {
-        const QString tag = cleanUserTagTextWorker(part);
-        if (tag.isEmpty()) continue;
-        bool blocked = false;
-        for (const QString &blockedTag : blockedTags) {
-            if (tag.compare(blockedTag, Qt::CaseInsensitive) == 0) {
-                blocked = true;
-                break;
-            }
-        }
-        if (!blocked) tags.append(tag);
-    }
-    return tags;
-}
-
 void addPromptTagCounts(const QString &prompt, QMap<QString, int> &counts,
                         QHash<QString, QString> &displayTags)
 {
     if (prompt.trimmed().isEmpty()) return;
     QSet<QString> tagsInImage;
-    for (const QString &tag : parseUserPromptTagsWorker(prompt)) {
+    static const QStringList blockedTags = {"BREAK", "ADDCOMM", "ADDBASE", "ADDCOL", "ADDROW"};
+    for (const QString &tag : TagUtils::parsePromptTags(prompt, true, blockedTags)) {
         const QString key = TagUtils::normalizedPromptTagKey(tag);
         if (key.isEmpty() || tagsInImage.contains(key)) continue;
         tagsInImage.insert(key);
@@ -226,149 +185,6 @@ QVector<UserTagUsageRow> readUserTagRowsWorker(const QString &cachePath, int sco
 }
 }
 
-TagSearchProxyModel::TagSearchProxyModel(QObject *parent)
-    : QSortFilterProxyModel(parent)
-{
-    setFilterCaseSensitivity(Qt::CaseInsensitive);
-    setFilterKeyColumn(-1);
-    setDynamicSortFilter(false);
-}
-
-void TagSearchProxyModel::setSearchText(const QString &text)
-{
-    const QString trimmed = text.trimmed();
-    if (m_searchText == trimmed) return;
-    m_searchText = trimmed;
-    m_normalizedSearchText = normalizedSearchText(trimmed);
-    m_wordSearchText = m_normalizedSearchText.isEmpty()
-                           ? QString()
-                           : QString(" %1 ").arg(m_normalizedSearchText);
-    QSortFilterProxyModel::setFilterFixedString(trimmed);
-}
-
-void TagSearchProxyModel::setMatchMode(int mode)
-{
-    MatchMode nextMode = ContainsMatch;
-    if (mode == WordMatch) nextMode = WordMatch;
-    else if (mode == ExactMatch) nextMode = ExactMatch;
-
-    if (m_matchMode == nextMode) return;
-    m_matchMode = nextMode;
-    invalidateFilter();
-}
-
-QString TagSearchProxyModel::normalizedSearchText(const QString &text)
-{
-    const QString folded = text.toCaseFolded().trimmed();
-    QString normalized;
-    normalized.reserve(folded.size());
-
-    bool lastWasSeparator = true;
-    for (const QChar ch : folded) {
-        const bool isSeparator = ch.isSpace()
-                                 || ch == '_'
-                                 || ch == '-'
-                                 || ch == '.'
-                                 || ch == ','
-                                 || ch == ';'
-                                 || ch == ':'
-                                 || ch == '!'
-                                 || ch == '?'
-                                 || ch == '|'
-                                 || ch == '/'
-                                 || ch == '\\'
-                                 || ch == '('
-                                 || ch == ')'
-                                 || ch == '['
-                                 || ch == ']'
-                                 || ch == '{'
-                                 || ch == '}'
-                                 || ch == '<'
-                                 || ch == '>'
-                                 || ch == '"';
-
-        if (isSeparator) {
-            if (!lastWasSeparator) normalized.append(' ');
-            lastWasSeparator = true;
-        } else {
-            normalized.append(ch);
-            lastWasSeparator = false;
-        }
-    }
-
-    if (normalized.endsWith(' ')) normalized.chop(1);
-    return normalized;
-}
-
-bool TagSearchProxyModel::matchesText(const QString &value) const
-{
-    if (m_normalizedSearchText.isEmpty()) return true;
-
-    const QString haystack = normalizedSearchText(value);
-    if (haystack.isEmpty()) return false;
-
-    switch (m_matchMode) {
-    case ExactMatch:
-        return haystack == m_normalizedSearchText;
-    case WordMatch:
-        return QString(" %1 ").arg(haystack).contains(m_wordSearchText);
-    case ContainsMatch:
-    default:
-        return haystack.contains(m_normalizedSearchText);
-    }
-}
-
-bool TagSearchProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const
-{
-    if (m_searchText.isEmpty()) return true;
-    if (!sourceModel()) return true;
-
-    const int columnCount = sourceModel()->columnCount(sourceParent);
-
-    QVector<int> searchColumns;
-
-    // 只搜索 Tag 和翻译列，避免匹配类别、优先级、使用次数等列。
-    for (int column = 0; column < columnCount; ++column) {
-        const QString header = sourceModel()
-        ->headerData(column, Qt::Horizontal, Qt::DisplayRole)
-            .toString()
-            .trimmed();
-
-        if (header == "Tag" || header == "翻译" || header == "Translation") {
-            searchColumns.append(column);
-        }
-    }
-
-    // 兜底兼容旧表：
-    // 2列：Tag / Translation
-    // 4列：Tag / 类别 / 翻译 / 优先级
-    // 6列：Tag / 类型 / 类别 / 翻译 / 优先级 / 使用次数
-    if (searchColumns.isEmpty()) {
-        searchColumns.append(0);
-
-        if (columnCount >= 6) {
-            searchColumns.append(3);
-        } else if (columnCount >= 4) {
-            searchColumns.append(2);
-        } else if (columnCount >= 2) {
-            searchColumns.append(1);
-        }
-    }
-
-    for (int column : searchColumns) {
-        if (column < 0 || column >= columnCount) continue;
-
-        const QModelIndex index = sourceModel()->index(sourceRow, column, sourceParent);
-        const QString value = sourceModel()->data(index, Qt::DisplayRole).toString();
-
-        if (matchesText(value)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::TagBrowserWidget)
@@ -383,11 +199,8 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     m_model->setColumnCount(4);
     m_model->setHorizontalHeaderLabels({"Tag", "类别", "翻译", "优先级"});
 
+    m_proxy->setSearchColumns(0, 2);
     m_proxy->setSourceModel(m_model);
-    m_proxy->setFilterCaseSensitivity(Qt::CaseInsensitive);
-    m_proxy->setFilterKeyColumn(-1);
-    m_proxy->setDynamicSortFilter(false);
-    m_proxy->setSortRole(Qt::UserRole);
 
     ui->tableTags->setModel(m_proxy);
     applyUnifiedTableRowStyle(ui->tableTags);
@@ -419,11 +232,8 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     m_userTagModel->setColumnCount(6);
     m_userTagModel->setHorizontalHeaderLabels({"Tag", "类型", "类别", "翻译", "优先级", "使用次数"});
 
+    m_userTagProxy->setSearchColumns(0, 3);
     m_userTagProxy->setSourceModel(m_userTagModel);
-    m_userTagProxy->setFilterCaseSensitivity(Qt::CaseInsensitive);
-    m_userTagProxy->setFilterKeyColumn(-1);
-    m_userTagProxy->setDynamicSortFilter(false);
-    m_userTagProxy->setSortRole(Qt::UserRole);
 
     ui->tableUserTags->setModel(m_userTagProxy);
     applyUnifiedTableRowStyle(ui->tableUserTags);
@@ -459,9 +269,9 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
 
     connect(ui->tabWidgetTagBrowser, &QTabWidget::currentChanged, this, &TagBrowserWidget::onTabChanged);
     connect(ui->editSearch, &QLineEdit::textChanged, this, &TagBrowserWidget::onSearchTextChanged);
-    connect(ui->comboSearchMatchMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
-        m_proxy->setMatchMode(index);
-    });
+    connect(ui->editSearch, &QLineEdit::returnPressed, m_proxy, &TagSearchProxyModel::applySearchNow);
+    connect(m_proxy, &TagSearchProxyModel::searchStateChanged, this, &TagBrowserWidget::updateStatusLabel);
+    connect(ui->comboSearchMatchMode, &QComboBox::currentIndexChanged, m_proxy, &TagSearchProxyModel::setMatchMode);
     connect(ui->tableTags->horizontalHeader(), &QHeaderView::sectionClicked, this, [this](int section) {
         if (m_loading) return;
         ensureCsvLoadedForEditing();
@@ -492,9 +302,9 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     ui->tableTags->addAction(copyTagCellAction);
     connect(copyTagCellAction, &QAction::triggered, this, &TagBrowserWidget::copyCurrentTagCell);
     connect(ui->editUserTagSearch, &QLineEdit::textChanged, this, &TagBrowserWidget::onUserTagSearchTextChanged);
-    connect(ui->comboUserTagSearchMatchMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
-        m_userTagProxy->setMatchMode(index);
-    });
+    connect(ui->editUserTagSearch, &QLineEdit::returnPressed, m_userTagProxy, &TagSearchProxyModel::applySearchNow);
+    connect(m_userTagProxy, &TagSearchProxyModel::searchStateChanged, this, &TagBrowserWidget::updateUserTagStatusLabel);
+    connect(ui->comboUserTagSearchMatchMode, &QComboBox::currentIndexChanged, m_userTagProxy, &TagSearchProxyModel::setMatchMode);
     connect(ui->comboUserTagScope, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &TagBrowserWidget::onUserTagScopeChanged);
     connect(ui->btnRefreshUserTags, &QPushButton::clicked, this, &TagBrowserWidget::onRefreshUserTagsClicked);
     connect(ui->tableUserTags, &QWidget::customContextMenuRequested, this, &TagBrowserWidget::onUserTagContextMenu);
@@ -517,7 +327,7 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
                 item->setData(item->text(), Qt::UserRole);
             }
         }
-        onModelChanged();
+        onModelChanged(item->row());
     });
 
     m_batchAppendTimer = new QTimer(this);
@@ -626,19 +436,10 @@ void TagBrowserWidget::setLoadingState(bool loading, const QString &message)
     }
 }
 
-QString TagBrowserWidget::escapeCsvField(const QString &value) const
-{
-    QString text = value;
-    if (text.contains('"')) text.replace("\"", "\"\"");
-    if (text.contains(',') || text.contains('"') || text.contains('\n') || text.contains('\r')) {
-        text = "\"" + text + "\"";
-    }
-    return text;
-}
-
 void TagBrowserWidget::loadCsv()
 {
     m_csvLoaded = false;
+    m_dirtyTranslationRows.clear();
     ++m_loadGeneration;
     m_pendingRows.clear();
     m_pendingRowIndex = 0;
@@ -815,6 +616,8 @@ void TagBrowserWidget::updateStatusLabel()
                      .arg(dirtyText);
         ui->lblEmptyState->setText("CSV 已加载，但当前没有任何 Tag 记录。可点击“新增”开始编辑。");
     }
+    if (m_csvLoaded) status += m_proxy->isSearching() ? "  |  搜索中..."
+        : QString("  |  匹配 %1 条").arg(m_proxy->rowCount());
     ui->lblStatus->setText(status);
     bool empty = (m_model->rowCount() == 0);
     ui->lblEmptyState->setVisible(empty);
@@ -822,49 +625,43 @@ void TagBrowserWidget::updateStatusLabel()
     updateTranslationEditingState();
 }
 
-TagTranslationInfo translatedInfoForTag(const QString &tag, const QHash<QString, TagTranslationInfo> &infos)
+TagTranslationInfo TagBrowserWidget::translationInfoForTag(const QString &tag) const
 {
-    TagTranslationInfo info = infos.value(tag);
+    TagTranslationInfo info = m_effectiveTranslationInfos.value(tag);
 
     if (info.translation.isEmpty() && info.category.isEmpty() && info.priority.isEmpty() && tag.contains(' ')) {
         QString key = tag;
         key.replace(' ', '_');
-        info = infos.value(key);
+        info = m_effectiveTranslationInfos.value(key);
     }
 
     if (info.translation.isEmpty() && info.category.isEmpty() && info.priority.isEmpty() && tag.contains('_')) {
         QString key = tag;
         key.replace('_', ' ');
-        info = infos.value(key);
+        info = m_effectiveTranslationInfos.value(key);
     }
 
+    if (info.translation.isEmpty() && m_mergedTranslationMap) {
+        info.translation = m_mergedTranslationMap->value(tag);
+        if (info.translation.isEmpty()) {
+            QString alternate = tag;
+            alternate.replace(' ', '_');
+            info.translation = m_mergedTranslationMap->value(alternate);
+        }
+        if (info.translation.isEmpty()) {
+            QString alternate = tag;
+            alternate.replace('_', ' ');
+            info.translation = m_mergedTranslationMap->value(alternate);
+        }
+    }
     return info;
-}
-
-QString TagBrowserWidget::translatedTextForTag(const QString &tag, const QHash<QString, QString> &translations) const
-{
-    QString translated = translations.value(tag);
-    if (translated.isEmpty() && tag.contains(' ')) {
-        QString key = tag;
-        key.replace(' ', '_');
-        translated = translations.value(key);
-    }
-    if (translated.isEmpty() && tag.contains('_')) {
-        QString key = tag;
-        key.replace('_', ' ');
-        translated = translations.value(key);
-    }
-    return translated;
 }
 
 void TagBrowserWidget::updateUserTagTranslations()
 {
     for (int row = 0; row < m_userTagModel->rowCount(); ++row) {
         const QString tag = m_userTagModel->item(row, 0) ? m_userTagModel->item(row, 0)->text() : QString();
-        TagTranslationInfo info = translatedInfoForTag(tag, m_effectiveTranslationInfos);
-        if (info.translation.isEmpty() && m_mergedTranslationMap) {
-            info.translation = translatedTextForTag(tag, *m_mergedTranslationMap);
-        }
+        const TagTranslationInfo info = translationInfoForTag(tag);
 
         QStandardItem *categoryItem = m_userTagModel->item(row, 2);
         QStandardItem *translationItem = m_userTagModel->item(row, 3);
@@ -908,7 +705,9 @@ void TagBrowserWidget::updateUserTagStatusLabel()
         ui->lblUserTagEmptyState->setText("未找到用户使用 Tag。请先扫描本地图库生成 user_gallery_cache.json。");
     }
     ui->lblUserTagStatus->setText(m_userTagsLoaded
-        ? QString("共 %1 条用户使用 Tag 记录").arg(m_userTagModel->rowCount())
+        ? QString("共 %1 条用户使用 Tag 记录  |  %2").arg(m_userTagModel->rowCount())
+            .arg(m_userTagProxy->isSearching() ? QStringLiteral("搜索中...")
+                 : QString("匹配 %1 条").arg(m_userTagProxy->rowCount()))
         : "用户 Tag 未加载");
 }
 
@@ -947,9 +746,7 @@ void TagBrowserWidget::loadUserTags()
         for (const auto &rowData : rows) {
             const QString tag = rowData.tag;
             const int count = rowData.count;
-            TagTranslationInfo info = translatedInfoForTag(tag, m_effectiveTranslationInfos);
-            if (info.translation.isEmpty() && m_mergedTranslationMap)
-                info.translation = translatedTextForTag(tag, *m_mergedTranslationMap);
+            const TagTranslationInfo info = translationInfoForTag(tag);
 
             QList<QStandardItem*> row;
 
@@ -999,14 +796,17 @@ void TagBrowserWidget::loadUserTags()
     }));
 }
 
-QString TagBrowserWidget::escapeUserTagCsvField(const QString &value) const
+UserTagUsageRow TagBrowserWidget::userTagRow(int sourceRow) const
 {
-    QString text = value;
-    if (text.contains('"')) text.replace("\"", "\"\"");
-    if (text.contains(',') || text.contains('"') || text.contains('\n') || text.contains('\r')) {
-        text = "\"" + text + "\"";
-    }
-    return text;
+    UserTagUsageRow row;
+    const auto text = [this, sourceRow](int column) { return m_userTagModel->index(sourceRow, column).data().toString(); };
+    row.tag = text(0);
+    row.kind = text(1);
+    row.category = text(2);
+    row.translation = text(3);
+    row.priority = text(4);
+    row.count = text(5).toInt();
+    return row;
 }
 
 QVector<UserTagUsageRow> TagBrowserWidget::allUserTagRows() const
@@ -1015,13 +815,7 @@ QVector<UserTagUsageRow> TagBrowserWidget::allUserTagRows() const
     rows.reserve(m_userTagModel->rowCount());
 
     for (int row = 0; row < m_userTagModel->rowCount(); ++row) {
-        UserTagUsageRow item;
-        item.tag = m_userTagModel->item(row, 0) ? m_userTagModel->item(row, 0)->text() : QString();
-        item.kind = m_userTagModel->item(row, 1) ? m_userTagModel->item(row, 1)->text() : QString();
-        item.category = m_userTagModel->item(row, 2) ? m_userTagModel->item(row, 2)->text() : QString();
-        item.translation = m_userTagModel->item(row, 3) ? m_userTagModel->item(row, 3)->text() : QString();
-        item.priority = m_userTagModel->item(row, 4) ? m_userTagModel->item(row, 4)->text() : QString();
-        item.count = m_userTagModel->item(row, 5) ? m_userTagModel->item(row, 5)->text().toInt() : 0;
+        const UserTagUsageRow item = userTagRow(row);
 
         if (!item.tag.isEmpty()) rows.append(item);
     }
@@ -1040,13 +834,7 @@ QVector<UserTagUsageRow> TagBrowserWidget::visibleUserTagRows() const
 
         const int sourceRow = sourceIndex.row();
 
-        UserTagUsageRow item;
-        item.tag = m_userTagModel->item(sourceRow, 0) ? m_userTagModel->item(sourceRow, 0)->text() : QString();
-        item.kind = m_userTagModel->item(sourceRow, 1) ? m_userTagModel->item(sourceRow, 1)->text() : QString();
-        item.category = m_userTagModel->item(sourceRow, 2) ? m_userTagModel->item(sourceRow, 2)->text() : QString();
-        item.translation = m_userTagModel->item(sourceRow, 3) ? m_userTagModel->item(sourceRow, 3)->text() : QString();
-        item.priority = m_userTagModel->item(sourceRow, 4) ? m_userTagModel->item(sourceRow, 4)->text() : QString();
-        item.count = m_userTagModel->item(sourceRow, 5) ? m_userTagModel->item(sourceRow, 5)->text().toInt() : 0;
+        const UserTagUsageRow item = userTagRow(sourceRow);
 
         if (!item.tag.isEmpty()) rows.append(item);
     }
@@ -1071,13 +859,7 @@ QVector<UserTagUsageRow> TagBrowserWidget::selectedUserTagRows() const
         if (!sourceIndex.isValid() || seenSourceRows.contains(sourceIndex.row())) continue;
         seenSourceRows.insert(sourceIndex.row());
 
-        UserTagUsageRow item;
-        item.tag = m_userTagModel->item(sourceIndex.row(), 0) ? m_userTagModel->item(sourceIndex.row(), 0)->text() : QString();
-        item.kind = m_userTagModel->item(sourceIndex.row(), 1) ? m_userTagModel->item(sourceIndex.row(), 1)->text() : QString();
-        item.category = m_userTagModel->item(sourceIndex.row(), 2) ? m_userTagModel->item(sourceIndex.row(), 2)->text() : QString();
-        item.translation = m_userTagModel->item(sourceIndex.row(), 3) ? m_userTagModel->item(sourceIndex.row(), 3)->text() : QString();
-        item.priority = m_userTagModel->item(sourceIndex.row(), 4) ? m_userTagModel->item(sourceIndex.row(), 4)->text() : QString();
-        item.count = m_userTagModel->item(sourceIndex.row(), 5) ? m_userTagModel->item(sourceIndex.row(), 5)->text().toInt() : 0;
+        const UserTagUsageRow item = userTagRow(sourceIndex.row());
 
         if (!item.tag.isEmpty()) rows.append(item);
     }
@@ -1256,11 +1038,11 @@ void TagBrowserWidget::showUserTagExportDialog()
     out << headers.join(",") << "\n";
     for (const auto &row : rows) {
         QStringList values;
-        if (chkTag->isChecked()) values << escapeUserTagCsvField(row.tag);
-        if (chkType->isChecked()) values << escapeUserTagCsvField(row.kind);
-        if (chkCategory->isChecked()) values << escapeUserTagCsvField(row.category);
-        if (chkTranslation->isChecked()) values << escapeUserTagCsvField(row.translation);
-        if (chkPriority->isChecked()) values << escapeUserTagCsvField(row.priority);
+        if (chkTag->isChecked()) values << TranslationCsv::escapeField(row.tag);
+        if (chkType->isChecked()) values << TranslationCsv::escapeField(row.kind);
+        if (chkCategory->isChecked()) values << TranslationCsv::escapeField(row.category);
+        if (chkTranslation->isChecked()) values << TranslationCsv::escapeField(row.translation);
+        if (chkPriority->isChecked()) values << TranslationCsv::escapeField(row.priority);
         if (chkCount->isChecked()) values << QString::number(row.count);
         out << values.join(",") << "\n";
     }
@@ -1479,8 +1261,6 @@ bool TagBrowserWidget::saveCurrentCsv()
 
     m_dirty = false;
     updateStatusLabel();
-    updateUserTagTranslations();
-    updateUserTagStatusLabel();
     reloadEffectiveTranslationInfos();
     emit csvSaved(m_csvPath);
     return true;
@@ -1521,10 +1301,10 @@ bool TagBrowserWidget::writeTranslationRows(const QString &path,
             else if (!category.isEmpty()) translatedDisplay = category;
             if (!translatedDisplay.isEmpty()) display += " " + translatedDisplay;
 
-            out << escapeCsvField(tag) << ',' << escapeCsvField(display)
-                << ',' << escapeCsvField(count) << '\n';
+            out << TranslationCsv::escapeField(tag) << ',' << TranslationCsv::escapeField(display)
+                << ',' << TranslationCsv::escapeField(count) << '\n';
         } else {
-            out << escapeCsvField(tag) << ',' << escapeCsvField(translation) << '\n';
+            out << TranslationCsv::escapeField(tag) << ',' << TranslationCsv::escapeField(translation) << '\n';
         }
     }
     out.flush();
@@ -1563,12 +1343,7 @@ bool TagBrowserWidget::mergedModelRowChanged(int row) const
 
 int TagBrowserWidget::mergedDirtyRowCount() const
 {
-    if (!m_mergedSource) return m_dirty ? 1 : 0;
-    int count = 0;
-    for (int row = 0; row < m_model->rowCount(); ++row) {
-        if (mergedModelRowChanged(row)) ++count;
-    }
-    return count;
+    return m_mergedSource ? m_dirtyTranslationRows.size() : (m_dirty ? 1 : 0);
 }
 
 void TagBrowserWidget::updateMergedRowSnapshot(int row, int sourceRow)
@@ -1593,8 +1368,7 @@ bool TagBrowserWidget::saveMergedCsvChanges()
     };
 
     QMap<QString, QVector<Patch>> patchesByPath;
-    for (int row = 0; row < m_model->rowCount(); ++row) {
-        if (!mergedModelRowChanged(row)) continue;
+    for (int row : std::as_const(m_dirtyTranslationRows)) {
         QStandardItem *tagItem = m_model->item(row, 0);
         Patch patch;
         patch.modelRow = row;
@@ -1677,14 +1451,13 @@ bool TagBrowserWidget::saveMergedCsvChanges()
         QSignalBlocker blocker(m_model);
         for (const Patch &patch : std::as_const(patches)) {
             updateMergedRowSnapshot(patch.modelRow, patch.targetRow);
+            m_dirtyTranslationRows.remove(patch.modelRow);
         }
     }
 
     m_dirty = mergedDirtyRowCount() > 0;
     if (!savedPaths.isEmpty()) {
         reloadEffectiveTranslationInfos();
-        updateUserTagTranslations();
-        updateUserTagStatusLabel();
         emit csvSaved(savedPaths.first());
     }
 
@@ -1711,7 +1484,7 @@ bool TagBrowserWidget::confirmDiscardOrSaveChanges(int restoreIndex)
                     QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, this);
     box.setDefaultButton(QMessageBox::Save);
     const int result = box.exec();
-    if (result == QMessageBox::Save) return saveCurrentCsv();
+    if (result == QMessageBox::Save && saveCurrentCsv()) return true;
     if (result == QMessageBox::Discard) return true;
 
     QSignalBlocker blocker(ui->comboTranslationSource);
@@ -1733,6 +1506,7 @@ void TagBrowserWidget::applyTranslationSourceIndex(int index)
     m_mergedSource = m_translationSourceIndex == 0;
     m_csvPath = m_mergedSource ? QString() : ui->comboTranslationSource->itemData(m_translationSourceIndex).toString();
     m_dirty = false;
+    m_dirtyTranslationRows.clear();
     m_loading = false;
     m_csvLoaded = false;
     m_pendingRows.clear();
@@ -1782,13 +1556,15 @@ void TagBrowserWidget::reloadEffectiveTranslationInfos()
     }));
 }
 
-void TagBrowserWidget::onModelChanged()
+void TagBrowserWidget::onModelChanged(int row)
 {
     if (m_loading) return;
-    m_dirty = m_mergedSource ? mergedDirtyRowCount() > 0 : true;
-    if (m_userTagsLoaded) {
-        updateUserTagTranslations();
-        updateUserTagStatusLabel();
+    if (m_mergedSource) {
+        if (mergedModelRowChanged(row)) m_dirtyTranslationRows.insert(row);
+        else m_dirtyTranslationRows.remove(row);
+        m_dirty = !m_dirtyTranslationRows.isEmpty();
+    } else {
+        m_dirty = true;
     }
     updateStatusLabel();
 }

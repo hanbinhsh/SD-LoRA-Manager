@@ -12,33 +12,10 @@ class QLabel;
 class QProgressBar;
 class QPushButton;
 
-enum class ModelPreviewState : int {
-    MissingOrUnknown = 0,
-    RealPreview = 1,
-    KnownNoPreview = 2,
-};
+#include "core/modeltypes.h"
+#include "core/modelupdateinfo.h"
+#include "core/metadatascantypes.h"
 
-struct ModelUpdateInfo {
-    QString filePath;
-    QString modelDir;
-    QString baseName;
-    QString displayName;
-    QString currentVersion;
-    QString latestVersion;
-    QString downloadUrl;
-    QString downloadFileName;
-    QString sha256;
-    QString metadataSource;
-    QString sourceUrl;
-    QJsonObject latestVersionJson;
-    int modelId = 0;
-    int currentVersionId = 0;
-    int latestVersionId = 0;
-    double sizeMB = 0.0;
-    bool hasUpdate = false;
-    bool latestFileExistsLocally = false;
-    ModelPreviewState previewState = ModelPreviewState::MissingOrUnknown;
-};
 
 struct DownloadCardWidgets {
     QPointer<QFrame> card;
@@ -78,32 +55,6 @@ struct DownloadPreviewLoadResult {
     QString previewPath;
     QImage image;
     bool valid = false;
-};
-
-struct MetadataScanItem {
-    QString filePath;
-    QString displayName;
-    QString jsonPath;
-    QString previewPath;
-    QString modelIdText;
-    QString versionIdText;
-    QString sha256;
-    QString status;
-    QString category;
-    QString lastSyncedAt;
-    QString lastSyncedSource;
-    QString syncFailure;
-    QString errorText;
-    bool localEdited = false;
-    bool checked = false;
-};
-
-struct MetadataHealthIssue {
-    QString severity;
-    QString modelName;
-    QString issue;
-    QString suggestion;
-    QString filePath;
 };
 
 #endif // DOWNLOADMODELS_H

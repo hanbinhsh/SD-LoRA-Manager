@@ -38,6 +38,7 @@
 #include <functional>
 
 #include "pages/downloadmodels.h"
+#include "core/modeltypes.h"
 #include "pages/settingspage.h"
 #include "pages/aboutpage.h"
 #include "widgets/tagflowwidget.h"
@@ -97,7 +98,7 @@ const int ROLE_COLLECTION_EXPAND_KEY  = Qt::UserRole + 63;  // 存储收藏夹�
 const int ROLE_PREVIEW_PLACEHOLDER    = Qt::UserRole + 64;  // 该项当前显示占位图（切主题需重染）
 const int ROLE_MODEL_PREVIEW_STATE    = Qt::UserRole + 65;  // ModelPreviewState，区分明确无预览与缺失/未知
 
-const QString CURRENT_VERSION = "1.5.12";
+const QString CURRENT_VERSION = "1.5.13";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
@@ -105,7 +106,6 @@ const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
-struct ManagedPathEntry;
 
 class PromptParserWidget;
 class TagBrowserWidget;
@@ -116,49 +116,10 @@ class LauncherWidget;
 class DownloadsPage;
 class DownloadManager;
 
-struct ModelUserNote {
-    double rating = 0.0;
-    QString note;
-    QStringList tags;
-    QStringList customTriggers;
-    QString updatedAt;
-};
-
-struct UpdateCheckSnapshot {
-    QString filePath;
-    QString modelDir;
-    QString baseName;
-    QString displayName;
-    QString currentSha256;
-    int modelId = 0;
-    int currentVersionId = 0;
-    bool localEdited = false;
-    ModelPreviewState previewState = ModelPreviewState::MissingOrUnknown;
-};
-
 struct ImageLoadResult {
     QString path;
     QImage originalImg; // 只存原图，模糊交给主线程做
     bool valid = false;
-};
-
-struct MetadataSyncJob {
-    UpdateCheckSnapshot snapshot;
-    bool updateExisting = false;
-    bool civArchiveOnly = false;
-    bool detailFallback = false;
-};
-
-struct PreviewMetadataPayload {
-    QString prompt;
-    QString negativePrompt;
-    QString sampler;
-    QString cfgScale;
-    QString steps;
-    QString seed;
-    int width = 0;
-    int height = 0;
-    int nsfwLevel = 0;
 };
 
 struct DownloadTask {
@@ -171,62 +132,6 @@ struct DownloadTask {
     bool allowNoButton = false;
     bool metadataOnly = false;
     bool countForMetadataSync = false;
-};
-
-struct ImageInfo {
-    QString url;
-    QString hash;
-    QString prompt;
-    QString negativePrompt;
-    QString sampler;
-    QString cfgScale;
-    QString steps;
-    QString seed;
-    QString model;
-    int nsfwLevel = 0;
-    int width = 0;
-    int height = 0;
-    bool nsfw = false;
-};
-
-struct UserImageInfo {
-    QString path;
-    QString prompt;
-    QStringList cleanTags;
-    QStringList negativeCleanTags;
-    QString negativePrompt;
-    QString parameters;
-    qint64 lastModified = 0;
-    int parserVersion = 0;
-};
-
-struct ModelMeta {
-    QString fileName;
-    QString modelName;
-    QString versionName;
-    QString name;
-    QString filePath;
-    QString previewPath;
-    QStringList trainedWordsGroups;
-    QString modelUrl;
-    QString baseModel;
-    QString type;
-    QString description;
-    QString createdAt;
-    bool nsfw;
-    int downloadCount;
-    int thumbsUpCount;
-    double fileSizeMB;
-    QString sha256;
-    QString fileNameServer;
-    QString creatorName;
-    QString creatorAvatarUrl;
-    QStringList modelTags;
-    int modelId = 0;
-    int versionId = 0;
-    bool isLocalEdited = false;
-    bool isLocalOnly = false;
-    QList<ImageInfo> images;
 };
 
 class MainWindow : public QMainWindow
@@ -378,10 +283,7 @@ private:
     void fitDetailContentToCurrentPage();
     void refreshTriggerWordsPanel(const ModelMeta &meta);
     void clearDetailView();
-    QIcon getSquareIcon(const QPixmap &srcPix);
 
-    // 生成一个适合主页大图的 Icon (2:3比例)
-    QString findLocalPreviewPath(const QString &dirPath, const QString &currentBaseName, const QString &serverFileName, int imgIndex) const;
     void fetchModelInfoFromCivitai(const QString &hash);
     void startModelHashSync(const QString &filePath, const QString &baseName, bool forceRefresh);
     void showPendingLocalModelDetail(const ModelMeta &meta, const QString &message);
@@ -399,13 +301,8 @@ private:
     bool shouldUseCivitaiBearerAuth(const QUrl &url) const;
     QUrl civitaiUrlWithToken(const QUrl &url) const;
     QString civitaiNetworkErrorMessage(QNetworkReply *reply) const;
-    QJsonObject mergeCivitaiModelIntoVersion(const QJsonObject &versionRoot, const QJsonObject &modelRoot) const;
-    QStringList readModelTagsFromJson(const QJsonObject &root) const;
-    QString readModelCreatorFromJson(const QJsonObject &root) const;
-    QString readModelCreatorAvatarFromJson(const QJsonObject &root) const;
     void applyCivitaiAttributionToItem(QListWidgetItem *item, const QString &creator, const QStringList &tags);
     void saveLocalMetadata(const QString &modelDir, const QString &baseName, const QJsonObject &data);
-    bool readLocalJson(const QString &dirPath, const QString &baseName, ModelMeta &meta);
     void clearLayout(QLayout *layout);
     void addBadge(QString text, bool isRed = false);
     void downloadThumbnail(const QString &url, const QString &savePath, QPushButton *button);
@@ -413,7 +310,6 @@ private:
     void openImageViewerForPath(const QString &currentPath);
     QStringList currentModelPreviewPaths() const;
     QStringList visibleUserGalleryImagePaths() const;
-    QIcon getFitIcon(const QString &path);
     void applyDownloadedPreviewToUi(const QString &localBaseName, const QString &savePath);
     void updateBackgroundImage();
     void updateLocalEditorFromMeta(const ModelMeta &meta);
@@ -462,9 +358,6 @@ private:
     void processNextDownload();
     void markMetadataPreviewTaskFinished();
     void finishMetadataSyncBatch();
-    QString buildPreviewParametersText(const PreviewMetadataPayload &payload) const;
-    bool savePreviewImageWithMetadata(const QByteArray &data, const QString &savePath, const PreviewMetadataPayload &payload) const;
-    bool ensurePreviewImageMetadata(const QString &path, const PreviewMetadataPayload &payload) const;
     void syncPreviewImagesFromMetadata(const QString &modelDir, const QString &baseName, const QVector<ImageInfo> &images, bool forceNonCoverDownload, bool countForMetadataSync = false);
     void initDownloadsPage();
     void initSettingsPage();
@@ -479,17 +372,14 @@ private:
     ModelUpdateInfo parseModelUpdateInfo(QListWidgetItem *item, const QJsonObject &modelRoot) const;
     void addOrUpdateDownloadCard(const ModelUpdateInfo &info, const QString &status);
     QString chooseModelDownloadTarget(const ModelUpdateInfo &info, bool *overwrite);
-    QString uniqueFilePath(const QString &dirPath, const QString &fileName) const;
     void finishModelDownload(const ModelFileDownloadTask &task);
-    void updateDownloadSelectionSummary();
-    void updateDownloadModelActionButtons();
     void jumpToDownloadSource(const QString &filePath);
     void openDownloadCivitaiPage(const QString &filePath);
     void showFileInFolder(const QString &filePath);
     QVector<MetadataScanItem> collectMetadataScanSeeds() const;
     void startMetadataScan();
     void runMetadataHealthCheck();
-    void startMetadataSyncForPaths(const QStringList &filePaths, bool updateExisting);
+    void startMetadataSyncForPaths(const QStringList &filePaths, bool updateExisting, bool archiveOnly = false);
     void processNextMetadataSyncJob();
     void fetchMetadataForSyncJob(const MetadataSyncJob &job);
     void handleMetadataSyncModelReply(QNetworkReply *reply);
@@ -572,6 +462,7 @@ private:
     QQueue<DownloadTask> downloadQueue; // 任务队列
     bool isDownloading = false;         // 当前是否有任务在运行
     DownloadManager *downloadManager = nullptr;
+    QMetaObject::Connection pendingDownloadChecksAfterRestore;
     bool isShuttingDown = false;
     bool settingsPageConnectionsInitialized = false;
     QQueue<UpdateCheckSnapshot> pendingUpdateChecksQueue;
@@ -583,7 +474,6 @@ private:
     int updateCheckToken = 0;
     QString detailUpdateCheckFilePath;
     bool detailUpdateCheckPending = false;
-
 
     TagFlowWidget *tagFlowWidget = nullptr;
 
@@ -597,7 +487,6 @@ private:
     void scheduleVisibleUserImageThumbLoad();
     void dispatchVisibleUserImageThumbLoad();
 
-    QString getSafetensorsInternalName(const QString &path);
     QString currentModelLoraTagName() const;
 
     QStringList parsePromptsToTags(const QString &rawPrompt);
@@ -611,8 +500,6 @@ private:
     // 定义一个特殊的字符串标识“未分类”
     const QString FILTER_UNCATEGORIZED = "__UNCATEGORIZED__";
 
-    QPixmap applyNSFWBlur(const QPixmap &pix);
-    QPixmap applyRoundedMask(const QPixmap &src, int radius);
     QHash<QString, QString> translationMap; // 存储翻译数据
 
     void refreshCollectionTreeView();
@@ -700,13 +587,6 @@ private:
     void applyModelFolderVisibility();
     void toggleModelFolderCollapsed(const QString &folderKey);
 
-    QStringList normalizePathList(const QStringList &paths) const;
-    QSet<QString> normalizePathSet(const QSet<QString> &paths) const;
-    QString formatPathListForEdit(const QStringList &paths) const;
-    QStringList collectValidPaths(const QStringList &paths) const;
-    QStringList collectEnabledPaths(const QStringList &paths, const QSet<QString> &disabledPaths) const;
-    QList<ManagedPathEntry> buildPathEntries(const QStringList &paths, const QSet<QString> &disabledPaths) const;
-    void applyPathEntries(const QList<ManagedPathEntry> &entries, QStringList &paths, QSet<QString> &disabledPaths);
     void applyPathListsToUi();
     bool editLoraPaths(bool rescanAfter);
     bool editGalleryPaths(bool rescanAfter);

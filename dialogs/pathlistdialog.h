@@ -3,14 +3,9 @@
 
 #include <QDialog>
 #include <QStringList>
+#include "core/pathmodels.h"
 
 namespace Ui { class PathListDialog; }
-
-struct ManagedPathEntry
-{
-    QString path;
-    bool enabled = true;
-};
 
 class PathListDialog : public QDialog
 {

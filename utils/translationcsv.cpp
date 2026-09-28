@@ -90,6 +90,14 @@ QString TranslationCsvEntry::displayValue() const
     return category + '-' + translation;
 }
 
+QString TranslationCsv::escapeField(QString value)
+{
+    if (value.contains('"')) value.replace("\"", "\"\"");
+    if (value.contains(',') || value.contains('"') || value.contains('\n') || value.contains('\r'))
+        return '"' + value + '"';
+    return value;
+}
+
 QStringList TranslationCsv::parseLine(const QString &line)
 {
     QStringList parts;

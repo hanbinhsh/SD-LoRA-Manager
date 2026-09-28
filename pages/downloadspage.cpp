@@ -2,6 +2,7 @@
 #include "ui_downloadspage.h"
 #include "styleconstants.h"
 #include "tableviewstylehelper.h"
+#include "utils/downloadstatus.h"
 
 #include <QApplication>
 #include <QClipboard>
@@ -39,6 +40,7 @@
 #include <QTableWidgetItem>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <utility>
 
 namespace {
 constexpr int RoleFilePath = Qt::UserRole;
@@ -265,6 +267,12 @@ DownloadsPage::DownloadsPage(QWidget *parent)
     connect(ui->editDownloadsSearch, &QLineEdit::textChanged, this, [this]() {
         applyCardSearchFilter();
     });
+    connect(ui->tabDownloadsStatus, &QTabWidget::currentChanged,
+            this, qOverload<>(&DownloadsPage::updateSelectionSummary));
+    connect(ui->btnDownloadsToggleCurrentTab, &QPushButton::clicked,
+            this, &DownloadsPage::toggleCurrentTabSelection);
+    connect(ui->btnDownloadsClearSelection, &QPushButton::clicked,
+            this, &DownloadsPage::clearAllCardSelection);
 
     loadMetadataResultCache();
     updateVersionActionButtons();
@@ -277,8 +285,6 @@ DownloadsPage::~DownloadsPage()
     delete ui;
 }
 
-QComboBox *DownloadsPage::filterCombo() const { return ui->comboDownloadsFilter; }
-QTabWidget *DownloadsPage::statusTabs() const { return ui->tabDownloadsStatus; }
 
 QPushButton *DownloadsPage::checkSelectedButton() const { return ui->btnDownloadsCheckSelected; }
 QPushButton *DownloadsPage::checkAllButton() const { return ui->btnDownloadsCheckAll; }
@@ -286,8 +292,6 @@ QPushButton *DownloadsPage::downloadSelectedButton() const { return ui->btnDownl
 QPushButton *DownloadsPage::retryButton() const { return ui->btnDownloadsRetry; }
 QPushButton *DownloadsPage::openFolderButton() const { return ui->btnDownloadsOpenFolder; }
 QPushButton *DownloadsPage::clearCompletedButton() const { return ui->btnDownloadsClearCompleted; }
-QPushButton *DownloadsPage::toggleCurrentTabButton() const { return ui->btnDownloadsToggleCurrentTab; }
-QPushButton *DownloadsPage::clearSelectionButton() const { return ui->btnDownloadsClearSelection; }
 QPushButton *DownloadsPage::ignoreSelectedButton() const { return ui->btnDownloadsIgnoreSelected; }
 
 QVBoxLayout *DownloadsPage::cardsLayout(const QString &category) const
@@ -317,11 +321,44 @@ void DownloadsPage::setStatusText(const QString &text)
     ui->lblDownloadsStatus->setText(text);
 }
 
-void DownloadsPage::setModelSelectionAvailability(bool hasCurrentModel, bool hasSelectedModels)
+void DownloadsPage::setCacheRestoring(bool restoring)
 {
-    m_hasCurrentModel = hasCurrentModel;
-    m_hasSelectedModels = hasSelectedModels;
-    updateVersionActionButtons();
+    m_cacheRestoring = restoring;
+    for (auto it = m_cards.cbegin(); it != m_cards.cend(); ++it) updateCardActionButtons(it.value());
+    updateSelectionSummary();
+}
+
+void DownloadsPage::beginCardBatch()
+{
+    ++m_cardBatchDepth;
+}
+
+void DownloadsPage::endCardBatch()
+{
+    Q_ASSERT(m_cardBatchDepth > 0);
+    if (--m_cardBatchDepth == 0) flushCardUpdates();
+}
+
+void DownloadsPage::flushCardUpdates()
+{
+    if (m_cardBatchDepth > 0) return;
+    const QSet<QString> categories = std::exchange(m_dirtyCardCategories, {});
+    for (const QString &category : categories) sortCardsInCategory(category);
+    updateSelectionSummary();
+}
+
+void DownloadsPage::updateCardActionButtons(const DownloadCardWidgets &card)
+{
+    const auto action = DownloadStatus::cardAction(card.statusText, card.hasUpdate);
+    if (card.downloadButton) {
+        card.downloadButton->setText(card.statusText.contains("完成") ? "下载完成"
+            : (action == DownloadStatus::CardAction::Download ? "下载更新" : "检测更新"));
+        card.downloadButton->setEnabled(!m_cacheRestoring && action != DownloadStatus::CardAction::Disabled);
+    }
+    if (card.ignoreButton) {
+        card.ignoreButton->setText(card.statusText.contains("已忽略") ? "取消忽略" : "忽略更新");
+        card.ignoreButton->setEnabled(!m_cacheRestoring && !DownloadStatus::isDownloading(card.statusText));
+    }
 }
 
 void DownloadsPage::setUpdateCheckButtonsEnabled(bool enabled)
@@ -337,20 +374,19 @@ void DownloadsPage::updateVersionActionButtons()
     bool hasSelectedDownloadable = false;
     for (const QString &filePath : selectedPaths) {
         const DownloadCardWidgets card = m_cards.value(filePath);
-        const QString status = card.statusText;
-        const bool busy = status.contains("下载中") || status.contains("认证重试") || status.contains("队列");
-        if (card.hasUpdate && !busy && !status.contains("完成") && !status.contains("已忽略")) {
+        if (DownloadStatus::cardAction(card.statusText, card.hasUpdate) == DownloadStatus::CardAction::Download) {
             hasSelectedDownloadable = true;
             break;
         }
     }
-    ui->btnDownloadsCheckSelected->setEnabled(!m_updateCheckBusy && hasSelectedCards);
-    ui->btnDownloadsCheckAll->setEnabled(!m_updateCheckBusy);
-    ui->btnDownloadsDownloadSelected->setEnabled(hasSelectedDownloadable);
-    ui->btnDownloadsIgnoreSelected->setEnabled(hasSelectedCards);
-    ui->btnDownloadsClearSelection->setEnabled(hasSelectedCards);
-    ui->btnDownloadsRetry->setEnabled(!m_updateCheckBusy && hasRetryableFailures());
-    ui->btnDownloadsOpenFolder->setEnabled(hasSelectedCards);
+    ui->btnDownloadsCheckSelected->setEnabled(!m_updateCheckBusy && !m_cacheRestoring && hasSelectedCards);
+    ui->btnDownloadsCheckAll->setEnabled(!m_updateCheckBusy && !m_cacheRestoring);
+    ui->btnDownloadsDownloadSelected->setEnabled(!m_cacheRestoring && hasSelectedDownloadable);
+    ui->btnDownloadsIgnoreSelected->setEnabled(!m_cacheRestoring && hasSelectedCards);
+    ui->btnDownloadsClearSelection->setEnabled(!m_cacheRestoring && hasSelectedCards);
+    ui->btnDownloadsRetry->setEnabled(!m_updateCheckBusy && !m_cacheRestoring && hasRetryableFailures());
+    ui->btnDownloadsClearCompleted->setEnabled(!m_cacheRestoring);
+    ui->btnDownloadsOpenFolder->setEnabled(!m_cacheRestoring && hasSelectedCards);
 }
 
 void DownloadsPage::updateSelectionSummary(int selectedCurrent, int currentTotal, int selectedTotal)
@@ -362,7 +398,7 @@ void DownloadsPage::updateSelectionSummary(int selectedCurrent, int currentTotal
 
     const bool allChecked = currentTotal > 0 && selectedCurrent == currentTotal;
     ui->btnDownloadsToggleCurrentTab->setText(allChecked ? "取消全选当前 Tab" : "全选当前 Tab");
-    ui->btnDownloadsToggleCurrentTab->setEnabled(currentTotal > 0);
+    ui->btnDownloadsToggleCurrentTab->setEnabled(!m_cacheRestoring && currentTotal > 0);
     updateVersionActionButtons();
 }
 
@@ -431,9 +467,7 @@ QStringList DownloadsPage::failedUpdateCheckFilePaths() const
     QStringList filePaths;
     for (auto it = m_cards.cbegin(); it != m_cards.cend(); ++it) {
         const QString status = it.value().statusText;
-        if (status.startsWith(QStringLiteral("检查失败:"))
-            || status.startsWith(QStringLiteral("无法从 Hash 匹配"))
-            || status.startsWith(QStringLiteral("无法计算 Hash"))) {
+        if (DownloadStatus::isCheckFailure(status)) {
             filePaths << it.key();
         }
     }
@@ -444,12 +478,7 @@ bool DownloadsPage::hasRetryableFailures() const
 {
     for (auto it = m_cards.cbegin(); it != m_cards.cend(); ++it) {
         const QString status = it.value().statusText;
-        if (status.startsWith(QStringLiteral("检查失败:"))
-            || status.startsWith(QStringLiteral("无法从 Hash 匹配"))
-            || status.startsWith(QStringLiteral("无法计算 Hash"))
-            || status.startsWith(QStringLiteral("下载失败:"))
-            || (status.startsWith(QStringLiteral("失败:"))
-                && !status.startsWith(QStringLiteral("检查失败:")))) {
+        if (DownloadStatus::isCheckFailure(status) || DownloadStatus::isDownloadFailure(status)) {
             return true;
         }
     }
@@ -470,13 +499,7 @@ void DownloadsPage::addOrUpdateCard(const ModelUpdateInfo &info, const QString &
 {
     if (info.filePath.isEmpty()) return;
     DownloadCardWidgets card = m_cards.value(info.filePath);
-    QString effectiveStatus = status;
-    if (card.statusText.contains("已忽略") &&
-        !status.contains("下载") &&
-        !status.contains("完成") &&
-        !status.contains("失败")) {
-        effectiveStatus = "已忽略更新";
-    }
+    const QString &effectiveStatus = status;
 
     if (!card.card) {
         auto *frame = new QFrame(ui->downloadCardsContainer);
@@ -606,7 +629,7 @@ void DownloadsPage::addOrUpdateCard(const ModelUpdateInfo &info, const QString &
         card.ignoreButton = ignoreButton;
         m_cards.insert(info.filePath, card);
 
-        const QString initialCategory = categoryForStatus(effectiveStatus);
+        const QString initialCategory = DownloadStatus::category(effectiveStatus);
         QVBoxLayout *targetLayout = cardsLayout(initialCategory);
         const int insertIndex = targetLayout ? qMax(0, targetLayout->count() - 1) : 0;
         if (targetLayout) targetLayout->insertWidget(insertIndex, frame);
@@ -669,18 +692,10 @@ void DownloadsPage::addOrUpdateCard(const ModelUpdateInfo &info, const QString &
             card.civitaiButton->setEnabled(info.modelId > 0 || !info.sourceUrl.trimmed().isEmpty() || !info.sha256.trimmed().isEmpty());
         }
     }
-    if (card.downloadButton) {
-        const bool completed = effectiveStatus.contains("完成");
-        card.downloadButton->setText(completed ? "下载完成" : (info.hasUpdate ? "下载更新" : "检测更新"));
-        card.downloadButton->setEnabled(!completed);
-    }
-    if (card.ignoreButton) {
-        card.ignoreButton->setText(effectiveStatus.contains("已忽略") ? "取消忽略" : "忽略更新");
-        card.ignoreButton->setEnabled(!effectiveStatus.contains("下载中") && !effectiveStatus.contains("队列"));
-    }
     card.targetPath = targetPath;
     m_cards[info.filePath] = card;
 
+    m_dirtyCardCategories.insert(card.category);
     updateCardStatus(info.filePath, effectiveStatus);
     if (card.progressBar) card.progressBar->setValue(effectiveStatus.contains("完成") ? 100 : 0);
 }
@@ -698,20 +713,11 @@ void DownloadsPage::updateCardStatus(const QString &filePath, const QString &sta
         card.statusLabel->setText(displayStatus);
         card.statusLabel->setToolTip(status);
     }
-    if (card.downloadButton) {
-        const bool busy = status.contains("下载中") || status.contains("认证重试") || status.contains("队列");
-        const bool completed = status.contains("完成");
-        card.downloadButton->setText(completed ? "下载完成" : (card.hasUpdate && !status.contains("已忽略") ? "下载更新" : "检测更新"));
-        card.downloadButton->setEnabled(!busy && !completed);
-    }
-    if (card.ignoreButton) {
-        card.ignoreButton->setText(status.contains("已忽略") ? "取消忽略" : "忽略更新");
-        card.ignoreButton->setEnabled(!status.contains("下载中") && !status.contains("队列"));
-    }
+    updateCardActionButtons(card);
     m_cards[filePath] = card;
-    placeCardInCategory(filePath, categoryForStatus(status));
-    applyCardSearchFilter();
-    updateSelectionSummary();
+    placeCardInCategory(filePath, DownloadStatus::category(status));
+    if (card.card) card.card->setVisible(cardMatchesSearch(card));
+    flushCardUpdates();
 }
 
 void DownloadsPage::updateCardProgress(const QString &filePath, int percent, const QString &speedText)
@@ -804,6 +810,7 @@ void DownloadsPage::setCardSelected(const QString &filePath, bool selected)
 {
     if (!m_cards.contains(filePath)) return;
     DownloadCardWidgets card = m_cards.value(filePath);
+    if (card.selected == selected) return;
     card.selected = selected;
     if (card.card) {
         card.card->setProperty("selected", selected);
@@ -862,15 +869,13 @@ void DownloadsPage::applyCardSearchFilter()
     updateSelectionSummary();
 }
 
-void DownloadsPage::placeCardInCategory(const QString &filePath, const QString &category, bool deferSort)
+void DownloadsPage::placeCardInCategory(const QString &filePath, const QString &category)
 {
     if (!m_cards.contains(filePath)) return;
     DownloadCardWidgets card = m_cards.value(filePath);
     if (!card.card) return;
-    if (card.category == category) {
-        if (!deferSort) sortCardsInCategory(category);
-        return;
-    }
+    if (card.category == category) return;
+    m_dirtyCardCategories.insert(card.category);
 
     if (QLayout *oldLayout = card.card->parentWidget() ? card.card->parentWidget()->layout() : nullptr) {
         oldLayout->removeWidget(card.card);
@@ -882,8 +887,7 @@ void DownloadsPage::placeCardInCategory(const QString &filePath, const QString &
     }
     card.category = category;
     m_cards[filePath] = card;
-    if (!deferSort) sortCardsInCategory(category);
-    updateSelectionSummary();
+    m_dirtyCardCategories.insert(category);
 }
 
 void DownloadsPage::sortCardsInCategory(const QString &category)
@@ -891,19 +895,15 @@ void DownloadsPage::sortCardsInCategory(const QString &category)
     QVBoxLayout *layout = cardsLayout(category);
     if (!layout) return;
     const QStringList paths = sortedFilePathsForCategory(category);
+    int index = 0;
     for (const QString &filePath : paths) {
         const DownloadCardWidgets card = m_cards.value(filePath);
         if (!card.card) continue;
-        layout->removeWidget(card.card);
-        const int insertIndex = qMax(0, layout->count() - 1);
-        layout->insertWidget(insertIndex, card.card);
-    }
-}
-
-void DownloadsPage::sortAllCards()
-{
-    for (const QString &category : {"updates", "coexisting", "ignored", "latest", "errors", "local"}) {
-        sortCardsInCategory(category);
+        if (!layout->itemAt(index) || layout->itemAt(index)->widget() != card.card) {
+            layout->removeWidget(card.card);
+            layout->insertWidget(index, card.card);
+        }
+        ++index;
     }
 }
 
@@ -917,7 +917,7 @@ void DownloadsPage::removeCard(const QString &filePath)
         }
         card.card->deleteLater();
     }
-    updateSelectionSummary();
+    flushCardUpdates();
 }
 
 void DownloadsPage::initializeAppearance()
@@ -1324,15 +1324,6 @@ void DownloadsPage::saveMetadataResultCache() const
     file.commit();
 }
 
-QString DownloadsPage::categoryForStatus(const QString &status) const
-{
-    if (status.contains("已忽略")) return "ignored";
-    if (status.contains("旧版共存")) return "coexisting";
-    if (status.contains("本地") || status.contains("跳过")) return "local";
-    if (status.contains("失败") || status.contains("无法") || status.contains("错误") || status.contains("出错")) return "errors";
-    if (status.contains("已是最新")) return "latest";
-    return "updates";
-}
 
 bool DownloadsPage::eventFilter(QObject *watched, QEvent *event)
 {

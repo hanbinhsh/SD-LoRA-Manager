@@ -6,6 +6,32 @@
 
 namespace TagUtils {
 
+QString normalizedGalleryTagKey(QString tag)
+{
+    tag.replace('_', ' ');
+    return tag.simplified().toCaseFolded();
+}
+
+QStringList parsePromptTags(const QString &rawPrompt, bool splitOnNewline, const QStringList &filterTags)
+{
+    QStringList result;
+    const QStringList parts = splitPromptParts(rawPrompt, splitOnNewline);
+    for (const QString &part : parts) {
+        const QString clean = cleanPromptTag(part);
+        if (clean.isEmpty()) continue;
+
+        bool isBlocked = false;
+        for (const QString &filterWord : filterTags) {
+            if (clean.compare(filterWord, Qt::CaseInsensitive) == 0) {
+                isBlocked = true;
+                break;
+            }
+        }
+        if (!isBlocked) result.append(clean);
+    }
+    return result;
+}
+
 QString cleanPromptTag(QString text, bool preserveEmoticons)
 {
     text = text.trimmed();

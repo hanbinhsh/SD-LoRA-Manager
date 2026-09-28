@@ -18,6 +18,7 @@ struct TranslationCsvEntry
 
 namespace TranslationCsv {
 
+QString escapeField(QString value);
 QStringList parseLine(const QString &line);
 TranslationCsvEntry parseEntry(const QStringList &parts);
 QVector<TranslationCsvEntry> readFile(const QString &path);

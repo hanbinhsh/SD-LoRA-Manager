@@ -6,6 +6,11 @@
 
 namespace TagUtils {
 
+// Gallery keys preserve hyphens and already-cleaned prompt syntax.
+QString normalizedGalleryTagKey(QString text);
+QStringList parsePromptTags(const QString &rawPrompt, bool splitOnNewline,
+                            const QStringList &filterTags);
+
 QString cleanPromptTag(QString text, bool preserveEmoticons = true);
 
 // Stable key used for counting, deduplication and matching across tool pages.

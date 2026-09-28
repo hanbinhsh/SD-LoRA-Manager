@@ -10,6 +10,23 @@
 
 namespace FileUtils {
 
+QString uniqueFilePath(const QString &dirPath, const QString &fileName)
+{
+    QDir dir(dirPath);
+    QString base = QFileInfo(fileName).completeBaseName();
+    QString suffix = QFileInfo(fileName).suffix();
+    QString candidate = dir.filePath(fileName);
+    int index = 1;
+    while (QFile::exists(candidate)) {
+        const QString nextName = suffix.isEmpty()
+            ? QString("%1_%2").arg(base).arg(index)
+            : QString("%1_%2.%3").arg(base).arg(index).arg(suffix);
+        candidate = dir.filePath(nextName);
+        ++index;
+    }
+    return QFileInfo(candidate).absoluteFilePath();
+}
+
 QString calculateSha256Hex(const QString &filePath, bool uppercase)
 {
     QFile file(filePath);

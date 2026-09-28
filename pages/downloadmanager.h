@@ -4,7 +4,6 @@
 #include <QElapsedTimer>
 #include <QFutureWatcher>
 #include <QHash>
-#include <QIcon>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QPointer>
@@ -16,6 +15,7 @@
 #include <functional>
 
 #include "downloadmodels.h"
+#include "utils/downloadcache.h"
 
 class DownloadsPage;
 class QFile;
@@ -30,7 +30,8 @@ public:
     explicit DownloadManager(DownloadsPage *page,
                              QNetworkAccessManager *network,
                              QThreadPool *previewThreadPool,
-                             QObject *parent = nullptr);
+                             QObject *parent = nullptr,
+                             const QString &cachePath = QString());
     ~DownloadManager() override;
 
     using MakeRequestCallback = std::function<QNetworkRequest(const QUrl &, bool)>;
@@ -48,7 +49,6 @@ public:
                              HashCallback hash);
     void setTargetPathCallback(TargetPathCallback callback);
     void setPreviewPathCallback(PreviewPathCallback callback);
-    void setPlaceholderIcon(const QIcon &icon);
 
     bool cacheLoaded() const { return m_cacheLoaded; }
     void ensureCacheLoaded();
@@ -59,24 +59,13 @@ public:
     ModelUpdateInfo info(const QString &filePath) const;
     void setInfo(const ModelUpdateInfo &info);
 
-    QStringList selectedFilePaths() const;
-    QString currentCategory() const;
-    QStringList filePathsForCategory(const QString &category) const;
-    QStringList sortedFilePathsForCategory(const QString &category) const;
-    QString cardStatusText(const QString &filePath) const;
-    QString cardTargetPath(const QString &filePath) const;
-    bool containsCard(const QString &filePath) const;
-
     void addOrUpdateCard(const ModelUpdateInfo &info, const QString &status, bool sourceAvailable);
     void updateStatus(const QString &filePath, const QString &status);
     void updateProgress(const QString &filePath, int percent, const QString &speedText);
-    void updateSelectionSummary();
-    void filterCards();
-    void sortCards();
     void removeCard(const QString &filePath);
     void clearCompleted();
     void toggleIgnore(const QString &filePath);
-    void setPreview(const QString &filePath, const QString &previewPath = QString());
+    void resetPreview(const QString &filePath);
     void schedulePreviewLoad(const QString &filePath);
 
     void startSelectedDownloads();
@@ -85,18 +74,19 @@ public:
     void retryFailedDownloads();
 
 signals:
+    void cacheReady();
     void statusMessageChanged(const QString &message);
     void modelFileReady(const ModelFileDownloadTask &task);
     void modelFileDownloaded(const ModelUpdateInfo &info, const QString &targetPath);
 
 private slots:
+    void restoreCacheBatch();
     void processPreviewLoadBatch();
     void onPreviewLoaded();
     void processNextModelDownload();
 
 private:
     static DownloadPreviewLoadResult processPreviewTask(const QString &filePath, const QString &previewPath);
-    static QString uniqueFilePath(const QString &dirPath, const QString &fileName);
 
     QString chooseTargetPath(const ModelUpdateInfo &info, bool *overwrite) const;
     bool writeActiveReplyData(QNetworkReply *reply);
@@ -116,7 +106,13 @@ private:
     TargetPathCallback m_targetPath;
     PreviewPathCallback m_previewPath;
 
-    QIcon m_placeholderIcon;
+    QString m_cachePath;
+    QString m_cacheError;
+    QVector<DownloadCache::Entry> m_pendingCacheEntries;
+    qsizetype m_restoreIndex = 0;
+    QSet<QString> m_removedDuringRestore;
+    QTimer *m_restoreTimer = nullptr;
+    mutable bool m_saveAfterRestore = false;
     QHash<QString, ModelUpdateInfo> m_infos;
     bool m_cacheLoaded = false;
     bool m_restoringCache = false;

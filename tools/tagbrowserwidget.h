@@ -1,8 +1,7 @@
 #ifndef TAGBROWSERWIDGET_H
 #define TAGBROWSERWIDGET_H
 
-#include <QSortFilterProxyModel>
-#include <QStandardItemModel>
+#include <QSet>
 #include <QString>
 #include <QWidget>
 #include <QPair>
@@ -17,6 +16,8 @@ class TagBrowserWidget;
 
 class QShowEvent;
 class QTimer;
+class QStandardItemModel;
+class TagSearchProxyModel;
 
 struct UserTagUsageRow
 {
@@ -50,35 +51,6 @@ struct TagTranslationSource
     bool enabled = true;
 };
 
-class TagSearchProxyModel : public QSortFilterProxyModel
-{
-    Q_OBJECT
-
-public:
-    enum MatchMode {
-        ContainsMatch = 0,
-        WordMatch = 1,
-        ExactMatch = 2
-    };
-
-    explicit TagSearchProxyModel(QObject *parent = nullptr);
-
-    void setSearchText(const QString &text);
-    void setMatchMode(int mode);
-
-protected:
-    bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const override;
-
-private:
-    QString m_searchText;
-    QString m_normalizedSearchText;
-    QString m_wordSearchText;
-    MatchMode m_matchMode = ContainsMatch;
-
-    static QString normalizedSearchText(const QString &text);
-    bool matchesText(const QString &value) const;
-};
-
 class TagBrowserWidget : public QWidget
 {
     Q_OBJECT
@@ -108,7 +80,7 @@ private slots:
     void onDeleteRowsClicked();
     void onReloadClicked();
     void onSaveClicked();
-    void onModelChanged();
+    void onModelChanged(int row);
     void onTranslationSourceChanged(int index);
 
 private:
@@ -123,6 +95,7 @@ private:
     bool m_mergedSource = true;
     bool m_csvLoaded = false;
     bool m_dirty = false;
+    QSet<int> m_dirtyTranslationRows;
     bool m_loading = false;
     int m_loadGeneration = 0;
     QVector<TagTranslationRow> m_pendingRows;
@@ -138,7 +111,6 @@ private:
     const QHash<QString, QString> *m_mergedTranslationMap = nullptr;
     QHash<QString, TagTranslationInfo> m_effectiveTranslationInfos;
 
-    QString escapeCsvField(const QString &value) const;
     void ensureCsvLoadedForEditing();
     void setLoadingState(bool loading, const QString &message = QString());
     void loadCsv();
@@ -147,8 +119,8 @@ private:
     void loadUserTags();
     void updateUserTagTranslations();
     void updateUserTagStatusLabel();
-    QString translatedTextForTag(const QString &tag, const QHash<QString, QString> &translations) const;
-    QString escapeUserTagCsvField(const QString &value) const;
+    TagTranslationInfo translationInfoForTag(const QString &tag) const;
+    UserTagUsageRow userTagRow(int sourceRow) const;
     QVector<UserTagUsageRow> selectedUserTagRows() const;
     QVector<UserTagUsageRow> visibleUserTagRows() const;
     QVector<UserTagUsageRow> allUserTagRows() const;
