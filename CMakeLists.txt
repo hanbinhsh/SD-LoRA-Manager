@@ -55,6 +55,8 @@ qt_add_executable(SD_LoRA_Manager
     utils/tagsearchindex.cpp
     widgets/tagsearchproxymodel.h
     widgets/tagsearchproxymodel.cpp
+    widgets/gallerylistwidget.h
+    widgets/gallerylistwidget.cpp
     utils/launchscriptparser.h
     utils/launchscriptparser.cpp
     utils/fileutils.h
@@ -174,6 +176,25 @@ if(BUILD_CORE_UTIL_TESTS)
 endif()
 
 option(BUILD_TAG_BROWSER_TESTS "Build offscreen tag search and editing tests" OFF)
+option(BUILD_GALLERY_INTERACTION_TESTS "Build offscreen gallery hit testing tests" OFF)
+if(BUILD_GALLERY_INTERACTION_TESTS)
+    enable_testing()
+    add_executable(gallery_interaction_test
+        tests/gallery_interaction_test.cpp
+        windows/mainwindow.ui
+        widgets/gallerylistwidget.h
+        widgets/gallerylistwidget.cpp
+        utils/styleconstants.cpp
+        resources.qrc)
+    target_include_directories(gallery_interaction_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(gallery_interaction_test PRIVATE Qt6::Widgets)
+    set_target_properties(gallery_interaction_test PROPERTIES
+        AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/windows"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
+    add_test(NAME gallery_interaction_test COMMAND gallery_interaction_test)
+    set_tests_properties(gallery_interaction_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
+endif()
+
 if(BUILD_TAG_BROWSER_TESTS)
     enable_testing()
     add_executable(tag_browser_test

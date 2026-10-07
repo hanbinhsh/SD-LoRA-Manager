@@ -2101,7 +2101,7 @@ Hash: ...</string>
                                 <number>0</number>
                                </property>
                                <item>
-                                <widget class="QListWidget" name="listUserImages">
+                                <widget class="GalleryListWidget" name="listUserImages">
                               <property name="iconSize">
                                <size>
                                 <width>140</width>
@@ -2806,6 +2806,13 @@ Hash: ...</string>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>GalleryListWidget</class>
+   <extends>QListWidget</extends>
+   <header>widgets/gallerylistwidget.h</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>
