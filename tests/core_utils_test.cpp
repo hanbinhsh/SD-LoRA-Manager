@@ -13,6 +13,7 @@
 #include "utils/pathutils.h"
 #include "utils/previewimagestore.h"
 #include "utils/tagutils.h"
+#include "utils/tagusage.h"
 
 #include <QBuffer>
 #include <QCoreApplication>
@@ -23,6 +24,7 @@
 #include <QJsonDocument>
 #include <QTemporaryDir>
 #include <QtEndian>
+#include <cstdio>
 
 namespace {
 int failures = 0;
@@ -241,6 +243,343 @@ void testPreview(const QTemporaryDir &dir)
           && readFile(dir.filePath("raw.png")) == "invalid", "undecodable image retains raw fallback");
 }
 
+void testTags(const QTemporaryDir &dir)
+{
+    check(TagUtils::cleanPromptTag("(blue_hair:1.2)") == "blue_hair", "weight inside brackets is stripped");
+    check(TagUtils::cleanPromptTag("((blue_hair:1.2):0.8)") == "blue_hair", "nested weights are stripped");
+    check(TagUtils::cleanPromptTag("[blue_hair]") == "blue_hair", "unweighted wrappers still work");
+    check(TagUtils::cleanPromptTag("(blue_hair:-.5)") == "blue_hair", "signed decimal weight");
+    check(TagUtils::cleanPromptTag(":)") == ":)", "emoticons remain intact");
+    check(TagUsage::promptTags(R"({"prompt":"not a tag, neither is this"})").isEmpty(), "JSON is not counted as tags");
+    check(TagUsage::promptTags("(empty)").isEmpty(), "negative empty marker is not counted");
+    check(TagUsage::promptTags("(Blue_Hair:1.2), blue hair, BLUE-HAIR, BREAK, flower")
+          == QStringList{"Blue_Hair", "flower"}, "prompt stats deduplicate case, separators and weights");
+
+    const QString cachePath = dir.filePath("tag-cache.json");
+    writeFile(cachePath, R"json({
+        "a.png":{"p":"(Blue_Hair:1.2), blue hair, FLOWER, BREAK", "np":"blue_hair, blur, blur"},
+        "b.png":{"p":"blue-hair, flower", "np":"(empty)"},
+        "c.png":{"p":"{\"prompt\":\"not a tag, neither is this\"}"},
+        "__metadata__":{"p":"ghost"},
+        "invalid":"ghost"
+    })json");
+    const TagUsage::Statistics stats = TagUsage::readCache(cachePath);
+    check(stats.positive.values.size() == 2 && stats.positive.values.value("blue hair") == 2
+          && stats.positive.values.value("flower") == 2, "each positive tag counts once per image");
+    check(stats.negative.values.size() == 2 && stats.negative.values.value("blue hair") == 1,
+          "negative counts remain separate");
+    const auto combined = TagUsage::readCache(cachePath, TagUsage::Combined).combined;
+    check(combined.values.size() == 3 && combined.values.value("blue hair") == 2,
+          "WD14 combined counts deduplicate across positive and negative prompts in one image");
+    check(TagUsage::readCache(cachePath, TagUsage::Positive).negative.values.isEmpty(),
+          "single-scope callers do not build unused statistics");
+    const auto rows = stats.rows();
+    check(rows.size() == 4 && rows.first().tag == "Blue_Hair" && rows.first().count == 2,
+          "rows retain first display text and numeric descending order");
+    check(stats.rows(0).size() == 2 && stats.rows(1).size() == 2, "both pickers can filter one statistics snapshot");
+    TagUsage::Counts usageAnalysis;
+    usageAnalysis.addImage({"Blue_Hair", "blue hair", "BLUE_HAIR"});
+    usageAnalysis.addImage({"blue hair"});
+    check(usageAnalysis.values.value("blue hair") == 2, "usage analysis shares per-image counting");
+    writeFile(cachePath, "{broken");
+    check(TagUsage::readCache(cachePath).rows().isEmpty(), "bad cache safely returns no rows");
+    check(TagUsage::readCache(dir.filePath("missing.json")).rows().isEmpty(), "missing cache safely returns no rows");
+
+    const QString imagePath = dir.filePath("metadata-removed.png");
+    QImage image(16, 16, QImage::Format_RGB32);
+    image.fill(Qt::blue);
+    check(image.save(imagePath, "PNG"), "write plain image");
+    UserImageInfo stale;
+    stale.path = imagePath;
+    stale.lastModified = 123;
+    stale.prompt = "old prompt";
+    stale.negativePrompt = "old negative";
+    stale.parameters = "Model: old-model";
+    stale.cleanTags = {"old tag"};
+    stale.negativeCleanTags = {"old negative"};
+    stale.parserVersion = GalleryMetadata::ParserVersion;
+    GalleryMetadata::parseImage(imagePath, stale, true, {});
+    check(stale.prompt.isEmpty() && stale.negativePrompt.isEmpty() && stale.parameters.isEmpty()
+          && stale.cleanTags.isEmpty() && stale.negativeCleanTags.isEmpty(), "rescan clears removed metadata and tag lists");
+    check(stale.parserVersion == GalleryMetadata::ParserVersion && stale.path == imagePath && stale.lastModified == 123,
+          "metadata-free image completes parsing without changing its identity");
+    writeFile(imagePath, readFile(imagePath).left(33));
+    GalleryMetadata::parseImage(imagePath, stale, true, {});
+    check(stale.parserVersion == 0, "truncated PNG remains retryable even when its header is readable");
+    stale.parserVersion = GalleryMetadata::ParserVersion;
+    GalleryMetadata::parseImage(dir.filePath("missing.png"), stale, true, {});
+    check(stale.parserVersion == 0, "missing file cannot retain a successful parser version");
+}
+
+void testComfyModels(const QTemporaryDir &dir, const QString &attachmentPath)
+{
+    const QString path = dir.filePath("comfy.png");
+    auto saveImage = [&](const QJsonObject &prompt, const QJsonObject &workflow = {}) {
+        QImage image(16, 16, QImage::Format_RGB32);
+        image.fill(Qt::blue);
+        if (!prompt.isEmpty()) image.setText("prompt", QString::fromUtf8(QJsonDocument(prompt).toJson()));
+        if (!workflow.isEmpty()) image.setText("workflow", QString::fromUtf8(QJsonDocument(workflow).toJson()));
+        check(image.save(path, "PNG"), "save ComfyUI image fixture");
+        return parseImageMetadataFromFile(path);
+    };
+    auto setInput = [](QJsonObject &nodes, const QString &id, const QString &key, const QJsonValue &value) {
+        QJsonObject node = nodes.value(id).toObject();
+        QJsonObject inputs = node.value("inputs").toObject();
+        inputs.insert(key, value);
+        node.insert("inputs", inputs);
+        nodes.insert(id, node);
+    };
+    const QJsonObject original = QJsonDocument::fromJson(R"({
+        "1": {"class_type":"CheckpointLoaderSimple", "inputs":{"ckpt_name":"Illustrious.safetensors"}},
+        "2": {"class_type":"UNETLoader", "inputs":{"unet_name":"anima.safetensors","weight_dtype":"default"}},
+        "4": {"class_type":"CLIPTextEncode", "inputs":{"text":"portrait, blue_hair","clip":["6",0]}},
+        "5": {"class_type":"CLIPTextEncode", "inputs":{"text":"blur","clip":["6",0]}},
+        "6": {"class_type":"CLIPLoader", "inputs":{"clip_name":"encoder.safetensors"}},
+        "16": {"class_type":"LoraLoader", "inputs":{"model":["2",0],"clip":["6",0],
+                 "lora_name":"style.safetensors","strength_model":0.8}},
+        "30": {"class_type":"KSampler", "inputs":{"model":["16",0],"positive":["4",0],"negative":["5",0],
+                 "seed":123,"steps":20,"cfg":5,"sampler_name":"euler","scheduler":"normal"}},
+        "99": {"class_type":"KSamplerSelect", "inputs":{"sampler_name":"euler"}}
+    })").object();
+    auto parsed = saveImage(original);
+    check(parsed.checkpoint == "anima.safetensors" && parsed.sourceType == "ComfyUI",
+          "connected UNet wins over an unconnected CheckpointLoader");
+    check(parsed.positivePrompt == "portrait, blue_hair" && parsed.negativePrompt == "blur"
+          && parsed.loraDescriptions == QStringList{"style.safetensors: 0.8"},
+          "sampler selection preserves prompts and active LoRA chain, ignoring KSamplerSelect");
+    check(parsed.parametersText.contains("Checkpoint: anima.safetensors")
+          && !parsed.parametersText.contains("Illustrious"), "gallery parameters contain only the sampled base model");
+
+    const QByteArray originalBytes = readFile(path);
+    UserImageInfo info;
+    info.parserVersion = 7;
+    info.parameters = "Source: ComfyUI\nCheckpoint: Illustrious.safetensors";
+    GalleryMetadata::parseImage(path, info, true, {});
+    check(info.parserVersion > 7 && info.parserVersion == GalleryMetadata::ParserVersion
+          && info.parameters.contains("Checkpoint: anima.safetensors")
+          && !info.parameters.contains("Illustrious"), "reparsing replaces stale cached base model");
+    using namespace ModelImageMatcher;
+    const auto anima = buildCandidate({dir.filePath("anima.safetensors"), "anima", "Checkpoint", "", ""});
+    const auto ill = buildCandidate({dir.filePath("Illustrious.safetensors"), "Illustrious", "Checkpoint", "", ""});
+    check(matches(anima, imageUsage(info), {2, true}) && !matches(ill, imageUsage(info), {2, true}),
+          "gallery name fallback matches Anima, not the idle Illustrious model");
+    check(!matches(anima, imageUsage(info), {2, false}), "strict hash option is unchanged");
+    check(readFile(path) == originalBytes, "metadata parsing never changes the source image");
+
+    auto nodes = original;
+    setInput(nodes, "16", "clip", QJsonArray{"1", 1});
+    check(saveImage(nodes).checkpoint == "anima.safetensors", "CLIP from another checkpoint is not the base model");
+    nodes.insert("2", QJsonObject{{"class_type", "UnknownLoader"}, {"inputs", QJsonObject{}}});
+    check(saveImage(nodes).checkpoint.isEmpty(), "unknown model chain does not guess from CLIP or global loaders");
+    setInput(nodes, "30", "model", QJsonArray{"missing", 0});
+    check(saveImage(nodes).checkpoint.isEmpty(), "broken model link does not select an idle checkpoint");
+    setInput(nodes, "30", "model", QJsonArray{"30", 0});
+    check(saveImage(nodes).checkpoint.isEmpty(), "cyclic model input terminates without guessing");
+
+    for (const QString &loader : {QString("UNETLoader"), QString("UnetLoaderGGUF"), QString("DiffusionModelLoader")}) {
+        nodes = original;
+        QJsonObject node = nodes.value("2").toObject();
+        node.insert("class_type", loader);
+        nodes.insert("2", node);
+        check(saveImage(nodes).checkpoint == "anima.safetensors", "supported diffusion loaders follow the same model chain");
+    }
+    nodes = original;
+    setInput(nodes, "30", "model", QJsonArray{"1", 0});
+    check(saveImage(nodes).checkpoint == "Illustrious.safetensors", "a connected checkpoint still wins over an idle UNet");
+
+    const QJsonObject workflow = QJsonDocument::fromJson(R"({
+        "nodes":[
+            {"id":1,"type":"CheckpointLoaderSimple","widgets_values":["Illustrious.safetensors"]},
+            {"id":2,"type":"UNETLoader","widgets_values":["anima.safetensors","default"]},
+            {"id":4,"type":"CLIPTextEncode","widgets_values":["portrait, blue_hair"]},
+            {"id":5,"type":"CLIPTextEncode","widgets_values":["blur"]},
+            {"id":16,"type":"LoraLoaderModelOnly","widgets_values":["style.safetensors",0.8],
+             "inputs":[{"name":"model","link":1}]},
+            {"id":30,"type":"KSampler","inputs":[{"name":"model","link":2},
+                {"name":"positive","link":3},{"name":"negative","link":4}]}
+        ],
+        "links":[[1,2,0,16,0,"MODEL"],[2,16,0,30,0,"MODEL"],
+                 [3,4,0,30,1,"CONDITIONING"],[4,5,0,30,2,"CONDITIONING"]]
+    })").object();
+    parsed = saveImage({}, workflow);
+    check(parsed.checkpoint == "anima.safetensors" && parsed.positivePrompt == "portrait, blue_hair"
+          && parsed.loraDescriptions == QStringList{"style.safetensors: 0.8"},
+          "workflow-only metadata traces top-level links and UNet widgets");
+    QJsonObject managerGraph = workflow;
+    QJsonArray managerNodes = managerGraph.value("nodes").toArray();
+    QJsonObject manager = managerNodes.at(4).toObject();
+    manager.insert("type", "Lora Loader (LoraManager)");
+    manager.insert("widgets_values", QJsonArray{"<lora:inactive:1>, <lora:active:0.5>", QJsonArray{
+        QJsonObject{{"name", "inactive"}, {"active", false}, {"strength", 1}},
+        QJsonObject{{"name", "active"}, {"active", true}, {"strength", 0.5}}}});
+    managerNodes.replace(4, manager);
+    managerGraph.insert("nodes", managerNodes);
+    parsed = saveImage({}, managerGraph);
+    check(parsed.checkpoint == "anima.safetensors" && parsed.loraDescriptions == QStringList{"active: 0.5"},
+          "LoraManager still respects structured active flags while tracing UNet");
+    for (const QString &loader : {QString("UnetLoaderGGUF"), QString("DiffusionModelLoader"),
+                                  QString("CheckpointLoaderSimple"), QString("CheckpointLoader")}) {
+        QJsonObject graph = workflow;
+        QJsonArray graphNodes = graph.value("nodes").toArray();
+        auto loaderNode = graphNodes.at(1).toObject();
+        loaderNode.insert("type", loader);
+        loaderNode.insert("widgets_values", loader == "CheckpointLoader"
+                                                ? QJsonArray{"config.yaml", "anima.safetensors"}
+                                                : QJsonArray{"anima.safetensors"});
+        graphNodes.replace(1, loaderNode);
+        graph.insert("nodes", graphNodes);
+        check(saveImage({}, graph).checkpoint == "anima.safetensors", "workflow loader names are read from the right widget");
+    }
+
+    // Prefer the executed prompt's sampler ID when supplementing from a canvas
+    // that also contains a different (unused) sampling branch.
+    QJsonObject unrelatedGraph = workflow;
+    QJsonArray graphNodes = unrelatedGraph.value("nodes").toArray();
+    auto differentSampler = graphNodes.last().toObject();
+    differentSampler.insert("id", 90);
+    differentSampler.insert("inputs", QJsonArray{QJsonObject{{"name", "model"}, {"link", 90}}});
+    graphNodes.removeLast();
+    graphNodes.append(differentSampler);
+    unrelatedGraph.insert("nodes", graphNodes);
+    unrelatedGraph.insert("links", QJsonArray{QJsonArray{90, 1, 0, 90, 0, "MODEL"}});
+    nodes = original;
+    setInput(nodes, "30", "model", QJsonArray{"missing", 0});
+    check(saveImage(nodes, unrelatedGraph).checkpoint.isEmpty(),
+          "workflow supplement cannot substitute a different sampler's checkpoint");
+
+    nodes = original;
+    nodes.insert("25", QJsonObject{{"class_type", "CFGGuider"}, {"inputs", QJsonObject{
+        {"model", QJsonArray{"16", 0}}, {"positive", QJsonArray{"4", 0}},
+        {"negative", QJsonArray{"5", 0}}, {"cfg", 4}}}});
+    nodes.insert("30", QJsonObject{{"class_type", "SamplerCustomAdvanced"},
+                                  {"inputs", QJsonObject{{"guider", QJsonArray{"25", 0}}}}});
+    parsed = saveImage(nodes);
+    check(parsed.checkpoint == "anima.safetensors" && parsed.positivePrompt == "portrait, blue_hair"
+          && parsed.cfg == "4", "custom sampler resolves its model through CFGGuider");
+
+    // Reduced from the reported workflow: node 33 is present but its outputs
+    // are disconnected. The saved image comes from KSampler 3, not node 33.
+    const QJsonObject twoBranches = QJsonDocument::fromJson(R"json({
+        "3":{"class_type":"KSampler","inputs":{"seed":554710696109726,"steps":32,"cfg":5.5,
+            "sampler_name":"euler_ancestral","scheduler":"beta","model":["16",0],
+            "positive":["6",0],"negative":["7",0]}},
+        "4":{"class_type":"CheckpointLoaderSimple","inputs":{"ckpt_name":"waiIllustriousSDXL_v170.safetensors"}},
+        "6":{"class_type":"CLIPTextEncode","inputs":{"text":"portrait","clip":["16",1]}},
+        "7":{"class_type":"CLIPTextEncode","inputs":{"text":"blur","clip":["16",1]}},
+        "8":{"class_type":"VAEDecode","inputs":{"samples":["3",0]}},
+        "9":{"class_type":"SaveImage","inputs":{"images":["8",0]}},
+        "16":{"class_type":"Lora Loader (LoraManager)","inputs":{"model":["104",0],"loras":{"__value__":[
+            {"name":"inactive","active":false,"strength":1},
+            {"name":"yachiyo_v1","active":true,"strength":"0.60"},
+            {"name":"mary-harker_anima","active":true,"strength":"0.65"},
+            {"name":"kanzarin_v1_anima","active":true,"strength":"0.90"}]}}},
+        "33":{"class_type":"SamplerCustomAdvanced","inputs":{"noise":["35",0],"guider":["36",0],
+            "sampler":["34",0],"sigmas":["37",0]}},
+        "34":{"class_type":"Z2SamplerExperimental","inputs":{"mode":"surrogate"}},
+        "35":{"class_type":"RandomNoise","inputs":{"noise_seed":500818567943651}},
+        "36":{"class_type":"CFGGuider","inputs":{"cfg":6.5,"model":["104",0],
+            "positive":["6",0],"negative":["7",0]}},
+        "37":{"class_type":"BasicScheduler","inputs":{"steps":50,"scheduler":"karras","model":["104",0]}},
+        "87":{"class_type":"PreviewImage","inputs":{"images":["86",0]}},
+        "86":{"class_type":"MaskToImage","inputs":{}},
+        "104":{"class_type":"UNETLoader","inputs":{"unet_name":"anima_baseV10.safetensors"}}
+    })json").object();
+    auto verifySavedParameters = [](const ParsedImageMetadata &meta) {
+        check(meta.seed == "554710696109726", "reported seed is a complete decimal integer");
+        check(meta.steps == "32" && meta.cfg == "5.5" && meta.sampler == "euler_ancestral"
+              && meta.scheduler == "beta", "all generation settings come from the saved-image sampler");
+        check(meta.checkpoint == "anima_baseV10.safetensors", "saved-image model chain still resolves UNet");
+        check(meta.loraDescriptions == QStringList{"yachiyo_v1: 0.60", "mary-harker_anima: 0.65", "kanzarin_v1_anima: 0.90"},
+              "saved-image chain includes exactly the three active LoRAs");
+    };
+    verifySavedParameters(saveImage(twoBranches));
+
+    // Workflow-only representation also includes the unnamed MODEL/CONDITIONING
+    // reroutes and the UI-only randomize widget found in the attachment.
+    const QJsonObject twoBranchWorkflow = QJsonDocument::fromJson(R"json({"nodes":[
+        {"id":3,"type":"KSampler","widgets_values":[554710696109726,"randomize",32,5.5,"euler_ancestral","beta",1],
+            "inputs":[{"name":"model","link":22},{"name":"positive","link":61},{"name":"negative","link":63}]},
+        {"id":6,"type":"CLIPTextEncode","widgets_values":["portrait"]},
+        {"id":7,"type":"CLIPTextEncode","widgets_values":["blur"]},
+        {"id":8,"type":"VAEDecode","inputs":[{"name":"samples","link":147}]},
+        {"id":9,"type":"SaveImage","inputs":[{"name":"images","link":9}]},
+        {"id":16,"type":"Lora Loader (LoraManager)","inputs":[{"name":"model","link":157}],"widgets_values":[
+            "unused text",[{"name":"inactive","active":false,"strength":1},
+                {"name":"yachiyo_v1","active":true,"strength":"0.60"},
+                {"name":"mary-harker_anima","active":true,"strength":"0.65"},
+                {"name":"kanzarin_v1_anima","active":true,"strength":"0.90"}]]},
+        {"id":33,"type":"SamplerCustomAdvanced","inputs":[{"name":"guider","link":27},
+            {"name":"noise","link":26},{"name":"sampler","link":148},{"name":"sigmas","link":31}]},
+        {"id":34,"type":"Z2SamplerExperimental","widgets_values":["surrogate"]},
+        {"id":35,"type":"RandomNoise","widgets_values":[500818567943651,"randomize"]},
+        {"id":36,"type":"CFGGuider","widgets_values":[6.5],"inputs":[{"name":"model","link":158}]},
+        {"id":37,"type":"BasicScheduler","widgets_values":["karras",50,1]},
+        {"id":43,"type":"Reroute","inputs":[{"name":"","link":153}]},
+        {"id":44,"type":"Reroute","inputs":[{"name":"","link":76}]},
+        {"id":103,"type":"Reroute","inputs":[{"name":"","link":166}]},
+        {"id":104,"type":"UNETLoader","widgets_values":["anima_baseV10.safetensors","default"]}
+    ],"links":[[22,16,0,3,0,"MODEL"],[61,43,0,3,1,"CONDITIONING"],[63,44,0,3,2,"CONDITIONING"],
+        [153,6,0,43,0,"CONDITIONING"],[76,7,0,44,0,"CONDITIONING"],[157,103,0,16,0,"MODEL"],
+        [158,103,0,36,0,"MODEL"],[166,104,0,103,0,"MODEL"],[147,3,0,8,0,"LATENT"],[9,8,0,9,0,"IMAGE"],
+        [27,36,0,33,1,"GUIDER"],[26,35,0,33,0,"NOISE"],[148,34,0,33,2,"SAMPLER"],[31,37,0,33,3,"SIGMAS"]]})json").object();
+    parsed = saveImage({}, twoBranchWorkflow);
+    verifySavedParameters(parsed);
+    check(parsed.positivePrompt == "portrait" && parsed.negativePrompt == "blur", "workflow reroutes preserve prompt text");
+    verifySavedParameters(saveImage(twoBranches, twoBranchWorkflow));
+
+    nodes = twoBranches;
+    setInput(nodes, "8", "samples", QJsonArray{"33", 0});
+    parsed = saveImage(nodes);
+    check(parsed.seed == "500818567943651" && parsed.cfg == "6.5" && parsed.steps == "50"
+          && parsed.scheduler == "karras" && parsed.sampler == "Z2SamplerExperimental",
+          "connected custom sampler reads its own noise, sampler and sigmas, never KSampler's settings");
+    QJsonObject customWorkflow = twoBranchWorkflow;
+    QJsonArray customLinks = customWorkflow.value("links").toArray();
+    for (int i = 0; i < customLinks.size(); ++i) {
+        QJsonArray link = customLinks.at(i).toArray();
+        if (link.first().toInt() == 147) { link.replace(1, 33); customLinks.replace(i, link); }
+    }
+    customWorkflow.insert("links", customLinks);
+    parsed = saveImage({}, customWorkflow);
+    check(parsed.seed == "500818567943651" && parsed.steps == "50" && parsed.scheduler == "karras",
+          "workflow-only custom sampler parameters follow connected helper nodes");
+
+    nodes = twoBranches;
+    for (qint64 seed : {Q_INT64_C(554710696109726), Q_INT64_C(9007199254740993), Q_INT64_C(9223372036854775807)}) {
+        setInput(nodes, "3", "seed", QJsonValue(seed));
+        check(saveImage(nodes).seed == QString::number(seed), "integer seeds preserve every digit, including values beyond double precision");
+    }
+    QJsonObject namedWorkflow = twoBranchWorkflow;
+    QJsonArray namedNodes = namedWorkflow.value("nodes").toArray();
+    QJsonObject namedSampler = namedNodes.first().toObject();
+    namedSampler.remove("widgets_values");
+    namedSampler.insert("widgets_values_named", twoBranches.value("3").toObject().value("inputs"));
+    namedNodes.replace(0, namedSampler);
+    namedWorkflow.insert("nodes", namedNodes);
+    verifySavedParameters(saveImage({}, namedWorkflow));
+
+    if (!attachmentPath.isEmpty()) {
+        const QString raw = QString::fromUtf8(readFile(attachmentPath));
+        const QString promptMarker = "===== prompt =====";
+        const QString workflowMarker = "===== workflow =====";
+        const int promptStart = raw.indexOf(promptMarker) + promptMarker.size();
+        const int workflowStart = raw.indexOf(workflowMarker);
+        check(promptStart >= promptMarker.size() && workflowStart > promptStart, "attachment contains both metadata sections");
+        // Keep the original text and numeric tokens, including the actual seed.
+        QImage image(16, 16, QImage::Format_RGB32);
+        image.fill(Qt::blue);
+        image.setText("prompt", raw.mid(promptStart, workflowStart - promptStart).trimmed());
+        image.setText("workflow", raw.mid(workflowStart + workflowMarker.size()).trimmed());
+        check(image.save(path, "PNG"), "save attachment metadata in temporary test image");
+        const QByteArray before = readFile(path);
+        verifySavedParameters(parseImageMetadataFromFile(path));
+        check(readFile(path) == before, "attachment metadata stays unmodified");
+        image.setText("prompt", "");
+        check(image.save(path, "PNG"), "save workflow-only attachment fixture");
+        verifySavedParameters(parseImageMetadataFromFile(path));
+    }
+}
+
 void testArchive()
 {
     const QJsonObject version = versionFixture();
@@ -369,6 +708,9 @@ void testInspection(const QTemporaryDir &dir)
 
 int main(int argc, char **argv)
 {
+    qInstallMessageHandler([](QtMsgType, const QMessageLogContext &, const QString &message) {
+        std::fprintf(stderr, "%s\n", message.toUtf8().constData());
+    });
     QCoreApplication app(argc, argv);
     QTemporaryDir dir;
     if (!dir.isValid()) return 1;
@@ -377,6 +719,8 @@ int main(int argc, char **argv)
     else if (group == "matching") testMatcher(dir);
     else if (group == "scanner") testScanner(dir);
     else if (group == "preview") testPreview(dir);
+    else if (group == "comfy") testComfyModels(dir, app.arguments().value(2));
+    else if (group == "tags") testTags(dir);
     else if (group == "archive") testArchive();
     else if (group == "paths_filters") testPathsAndFilters(dir);
     else if (group == "inspection") testInspection(dir);

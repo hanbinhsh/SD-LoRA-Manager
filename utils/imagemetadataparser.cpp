@@ -87,7 +87,13 @@ QMap<QString, QString> readPngTextChunks(const QString &filePath)
 QString jsonValueToString(const QJsonValue &value)
 {
     if (value.isString()) return value.toString().trimmed();
-    if (value.isDouble()) return QString::number(value.toDouble(), 'g', 12);
+    if (value.isDouble()) {
+        // Qt keeps JSON integers as qint64. Do not round seeds through double
+        // or format them with a limited number of significant digits.
+        const qint64 integer = value.toInteger();
+        if (value == QJsonValue(integer)) return QString::number(integer);
+        return QString::number(value.toDouble(), 'g', 12);
+    }
     if (value.isBool()) return value.toBool() ? "true" : "false";
     return QString();
 }
@@ -134,34 +140,74 @@ bool classContains(const QJsonObject &node, const QString &needle)
     return classNameContains(node.value("class_type").toString(), needle);
 }
 
-QString checkpointNameFromNode(const QJsonObject &node)
+QString rerouteSource(const QJsonObject &node)
+{
+    if (!classContains(node, "Reroute")) return QString();
+    const QJsonObject inputs = node.value("inputs").toObject();
+    for (auto it = inputs.begin(); it != inputs.end(); ++it) {
+        if (it.value().isArray()) return linkedNodeId(it.value());
+    }
+    return QString();
+}
+
+QJsonObject linkedNode(const QJsonValue &link, const QJsonObject &nodes)
+{
+    QString nodeId = linkedNodeId(link);
+    QSet<QString> visited;
+    while (!nodeId.isEmpty() && !visited.contains(nodeId)) {
+        visited.insert(nodeId);
+        const QJsonObject node = nodes.value(nodeId).toObject();
+        const QString source = rerouteSource(node);
+        if (source.isEmpty()) return node;
+        nodeId = source;
+    }
+    return {};
+}
+
+bool isUnetLoader(const QString &className)
+{
+    return classNameContains(className, "UNETLoader")
+           || classNameContains(className, "DiffusionModelLoader");
+}
+
+QString baseModelNameFromNode(const QJsonObject &node)
 {
     const QJsonObject inputs = node.value("inputs").toObject();
-    const QStringList keys = {"ckpt_name", "checkpoint", "checkpoint_name", "model_name"};
+    QStringList keys;
+    if (classContains(node, "CheckpointLoader")) {
+        keys = {"ckpt_name", "checkpoint", "checkpoint_name", "model_name"};
+    } else if (isUnetLoader(node.value("class_type").toString())) {
+        keys = {"unet_name", "diffusion_model_name", "model_name"};
+    } else {
+        return QString();
+    }
     for (const QString &key : keys) {
-        const QString name = jsonValueToString(inputs.value(key)).trimmed();
+        const QString name = inputs.value(key).toString().trimmed();
         if (!name.isEmpty()) return name;
     }
     return QString();
 }
 
-QStringList collectCheckpointNamesFromNodes(const QJsonObject &nodes)
+QString traceBaseModelFromNode(const QString &nodeId, const QJsonObject &nodes,
+                              QSet<QString> &visited)
 {
-    QStringList checkpoints;
-    QSet<QString> seen;
-    for (auto it = nodes.begin(); it != nodes.end(); ++it) {
-        const QJsonObject node = it.value().toObject();
-        if (!classContains(node, "CheckpointLoader")) continue;
+    if (nodeId.isEmpty() || visited.contains(nodeId)) return QString();
+    visited.insert(nodeId);
+    const QJsonObject node = nodes.value(nodeId).toObject();
+    const QString name = baseModelNameFromNode(node);
+    if (!name.isEmpty()) return name;
+    const QString rerouted = rerouteSource(node);
+    if (!rerouted.isEmpty()) return traceBaseModelFromNode(rerouted, nodes, visited);
 
-        const QString checkpoint = checkpointNameFromNode(node);
-        if (checkpoint.isEmpty()) continue;
-
-        const QString key = checkpoint.toCaseFolded();
-        if (seen.contains(key)) continue;
-        seen.insert(key);
-        checkpoints.append(checkpoint);
+    // Only follow model-bearing inputs. A checkpoint supplying CLIP, or an
+    // unconnected loader elsewhere in the workflow, is not the sampled model.
+    const QJsonObject inputs = node.value("inputs").toObject();
+    const QStringList linkKeys = {"model", "base_model", "unet", "diffusion_model", "guider"};
+    for (const QString &key : linkKeys) {
+        const QString traced = traceBaseModelFromNode(linkedNodeId(inputs.value(key)), nodes, visited);
+        if (!traced.isEmpty()) return traced;
     }
-    return checkpoints;
+    return QString();
 }
 
 QString nodeTextInput(const QJsonObject &node)
@@ -182,6 +228,8 @@ QString traceTextFromNode(const QString &nodeId, const QJsonObject &nodes, QSet<
 
     const QJsonObject node = nodes.value(nodeId).toObject();
     if (node.isEmpty()) return QString();
+    const QString rerouted = rerouteSource(node);
+    if (!rerouted.isEmpty()) return traceTextFromNode(rerouted, nodes, visited);
 
     const QString directText = nodeTextInput(node);
     if (!directText.isEmpty()
@@ -252,14 +300,13 @@ QJsonValue structuredLoraWidgetValue(const QJsonArray &widgets)
         QStringList unused;
         if (appendLorasFromStructuredValue(widget, unused)) return widget;
     }
-    return QJsonValue();
+    return QJsonValue(QJsonValue::Undefined);
 }
 
 void collectLorasFromNode(const QString &nodeId,
                           const QJsonObject &nodes,
                           QSet<QString> &visited,
                           QStringList &loras,
-                          QString &checkpoint,
                           QMap<QString, QString> &hashes)
 {
     if (nodeId.isEmpty() || visited.contains(nodeId)) return;
@@ -267,6 +314,11 @@ void collectLorasFromNode(const QString &nodeId,
 
     const QJsonObject node = nodes.value(nodeId).toObject();
     if (node.isEmpty()) return;
+    const QString rerouted = rerouteSource(node);
+    if (!rerouted.isEmpty()) {
+        collectLorasFromNode(rerouted, nodes, visited, loras, hashes);
+        return;
+    }
 
     const QJsonObject inputs = node.value("inputs").toObject();
     if (classContains(node, "LoraLoader")) {
@@ -288,13 +340,9 @@ void collectLorasFromNode(const QString &nodeId,
         if (!loraNameForHash.isEmpty() && !hash.isEmpty()) hashes.insert(QFileInfo(loraNameForHash).completeBaseName(), hash);
     }
 
-    if (classContains(node, "CheckpointLoader") && checkpoint.isEmpty()) {
-        checkpoint = checkpointNameFromNode(node);
-    }
-
-    const QStringList linkKeys = {"model", "clip", "base_model", "lora_stack"};
+    const QStringList linkKeys = {"model", "clip", "base_model", "lora_stack", "guider"};
     for (const QString &key : linkKeys) {
-        collectLorasFromNode(linkedNodeId(inputs.value(key)), nodes, visited, loras, checkpoint, hashes);
+        collectLorasFromNode(linkedNodeId(inputs.value(key)), nodes, visited, loras, hashes);
     }
 }
 
@@ -409,44 +457,99 @@ bool looksLikeComfyPromptObject(const QJsonObject &obj)
     return false;
 }
 
-ParsedImageMetadata parseComfyPromptObject(const QJsonObject &nodes)
+bool isComfySampler(const QJsonObject &node)
+{
+    const QJsonObject inputs = node.value("inputs").toObject();
+    return (classContains(node, "KSampler") || classContains(node, "SamplerCustom"))
+           && (inputs.contains("model") || inputs.contains("guider"));
+}
+
+QString samplerUpstreamOfImage(const QString &nodeId, const QJsonObject &nodes,
+                              QSet<QString> &visited)
+{
+    if (nodeId.isEmpty() || visited.contains(nodeId)) return {};
+    visited.insert(nodeId);
+    const QJsonObject node = nodes.value(nodeId).toObject();
+    if (isComfySampler(node)) return nodeId;
+    const QString rerouted = rerouteSource(node);
+    if (!rerouted.isEmpty()) return samplerUpstreamOfImage(rerouted, nodes, visited);
+
+    // Follow the image/latent path, not conditioning, masks or model loaders.
+    const QJsonObject inputs = node.value("inputs").toObject();
+    for (const QString &key : {QString("images"), QString("image"), QString("samples"),
+                               QString("latent"), QString("latent_image")}) {
+        const QString sampler = samplerUpstreamOfImage(linkedNodeId(inputs.value(key)), nodes, visited);
+        if (!sampler.isEmpty()) return sampler;
+    }
+    return {};
+}
+
+QString comfySamplerNodeId(const QJsonObject &nodes)
+{
+    // Prompt metadata can contain unused samplers too. A saved image's path
+    // takes precedence over node IDs or the order in which JSON was serialized.
+    bool hasImageOutput = false;
+    for (const QString &outputClass : {QString("SaveImage"), QString("PreviewImage")}) {
+        for (auto it = nodes.begin(); it != nodes.end(); ++it) {
+            if (!classContains(it.value().toObject(), outputClass)) continue;
+            hasImageOutput = true;
+            QSet<QString> visited;
+            const QString sampler = samplerUpstreamOfImage(it.key(), nodes, visited);
+            if (!sampler.isEmpty()) return sampler;
+        }
+    }
+    if (hasImageOutput) return {};
+
+    // Partial exports without image output nodes retain the existing fallback.
+    QString samplerId;
+    for (auto it = nodes.begin(); it != nodes.end(); ++it) {
+        if (isComfySampler(it.value().toObject())) samplerId = it.key();
+    }
+    return samplerId;
+}
+
+ParsedImageMetadata parseComfyPromptObject(const QJsonObject &nodes, QString samplerId = {})
 {
     ParsedImageMetadata meta;
     if (!looksLikeComfyPromptObject(nodes)) return meta;
-
-    QString samplerId;
-    for (auto it = nodes.begin(); it != nodes.end(); ++it) {
-        const QJsonObject node = it.value().toObject();
-        if (classContains(node, "KSampler")) samplerId = it.key();
-    }
+    if (samplerId.isEmpty()) samplerId = comfySamplerNodeId(nodes);
     if (samplerId.isEmpty()) return meta;
 
     const QJsonObject sampler = nodes.value(samplerId).toObject();
+    if (sampler.isEmpty()) return meta;
     const QJsonObject inputs = sampler.value("inputs").toObject();
+    const QJsonObject guiderInputs = linkedNode(inputs.value("guider"), nodes).value("inputs").toObject();
+    const QJsonObject conditioningInputs = inputs.contains("guider") ? guiderInputs : inputs;
 
     QSet<QString> visitedPositive;
     QSet<QString> visitedNegative;
-    meta.positivePrompt = traceTextFromNode(linkedNodeId(inputs.value("positive")), nodes, visitedPositive);
-    meta.negativePrompt = traceTextFromNode(linkedNodeId(inputs.value("negative")), nodes, visitedNegative);
+    meta.positivePrompt = traceTextFromNode(linkedNodeId(conditioningInputs.value(
+        conditioningInputs.contains("positive") ? "positive" : "conditioning")), nodes, visitedPositive);
+    meta.negativePrompt = traceTextFromNode(linkedNodeId(conditioningInputs.value("negative")), nodes, visitedNegative);
     meta.seed = jsonValueToString(inputs.value(inputs.contains("noise_seed") ? "noise_seed" : "seed"));
     meta.steps = jsonValueToString(inputs.value("steps"));
-    meta.cfg = jsonValueToString(inputs.value("cfg"));
+    meta.cfg = jsonValueToString(conditioningInputs.value("cfg"));
     meta.sampler = jsonValueToString(inputs.value("sampler_name"));
     meta.scheduler = jsonValueToString(inputs.value("scheduler"));
+    if (inputs.contains("noise")) {
+        const QJsonObject noiseInputs = linkedNode(inputs.value("noise"), nodes).value("inputs").toObject();
+        if (meta.seed.isEmpty()) meta.seed = jsonValueToString(noiseInputs.value("noise_seed"));
+    }
+    if (inputs.contains("sigmas")) {
+        const QJsonObject schedulerInputs = linkedNode(inputs.value("sigmas"), nodes).value("inputs").toObject();
+        if (meta.steps.isEmpty()) meta.steps = jsonValueToString(schedulerInputs.value("steps"));
+        if (meta.scheduler.isEmpty()) meta.scheduler = jsonValueToString(schedulerInputs.value("scheduler"));
+    }
+    if (meta.sampler.isEmpty() && inputs.contains("sampler")) {
+        const QJsonObject samplerNode = linkedNode(inputs.value("sampler"), nodes);
+        meta.sampler = jsonValueToString(samplerNode.value("inputs").toObject().value("sampler_name"));
+        if (meta.sampler.isEmpty()) meta.sampler = samplerNode.value("class_type").toString();
+    }
 
     QSet<QString> visitedModel;
-    collectLorasFromNode(linkedNodeId(inputs.value("model")), nodes, visitedModel,
-                         meta.loraDescriptions, meta.checkpoint, meta.loraHashes);
-
-    if (meta.checkpoint.isEmpty()) {
-        const QStringList checkpoints = collectCheckpointNamesFromNodes(nodes);
-        if (!checkpoints.isEmpty()) {
-            // Some ComfyUI exports omit or obscure the model link chain. Keep the
-            // KSampler-traced value when available, otherwise expose a stable
-            // Checkpoint: line so gallery checkpoint matching can still work.
-            meta.checkpoint = checkpoints.first();
-        }
-    }
+    meta.checkpoint = traceBaseModelFromNode(samplerId, nodes, visitedModel);
+    QSet<QString> visitedLoras;
+    collectLorasFromNode(samplerId, nodes, visitedLoras, meta.loraDescriptions, meta.loraHashes);
 
     if (meta.hasContent() || !meta.loraDescriptions.isEmpty() || !meta.checkpoint.isEmpty()) {
         meta.sourceType = "ComfyUI";
@@ -495,18 +598,27 @@ QJsonObject promptObjectFromWorkflowGraph(const QJsonObject &workflow)
     const QJsonArray workflowNodes = workflow.value("nodes").toArray();
     if (workflowNodes.isEmpty()) return QJsonObject();
 
-    QHash<int, QString> outputLinkToNodeId;
+    QHash<int, QJsonArray> outputLinks;
     for (const QJsonValue &value : workflowNodes) {
         const QJsonObject node = value.toObject();
         const QString nodeId = jsonValueToString(node.value("id"));
         if (nodeId.isEmpty()) continue;
 
         const QJsonArray outputs = node.value("outputs").toArray();
-        for (const QJsonValue &outputValue : outputs) {
-            const QJsonArray links = outputValue.toObject().value("links").toArray();
+        for (int slot = 0; slot < outputs.size(); ++slot) {
+            const QJsonObject output = outputs.at(slot).toObject();
+            const QJsonArray links = output.value("links").toArray();
             for (const QJsonValue &linkValue : links) {
-                outputLinkToNodeId.insert(linkValue.toInt(-1), nodeId);
+                outputLinks.insert(linkValue.toInt(-1), QJsonArray{nodeId, output.value("slot_index").toInt(slot)});
             }
+        }
+    }
+
+    // Workflow exports may keep connections only in the graph-level link table.
+    for (const QJsonValue &value : workflow.value("links").toArray()) {
+        const QJsonArray link = value.toArray();
+        if (link.size() >= 6) {
+            outputLinks.insert(link.at(0).toInt(-1), QJsonArray{jsonValueToString(link.at(1)), link.at(2)});
         }
     }
 
@@ -532,19 +644,34 @@ QJsonObject promptObjectFromWorkflowGraph(const QJsonObject &workflow)
                     break;
                 }
             }
+        } else if (classNameContains(classType, "KSamplerSelect")) {
+            if (!widgets.isEmpty()) inputs.insert("sampler_name", widgets.first());
         } else if (classNameContains(classType, "KSampler")) {
-            const QStringList samplerKeys = {"seed", "steps", "cfg", "sampler_name", "scheduler"};
-            for (int i = 0; i < samplerKeys.size() && i < widgets.size(); ++i) {
-                inputs.insert(samplerKeys.at(i), widgets.at(i));
+            const bool advanced = classNameContains(classType, "KSamplerAdvanced");
+            int index = advanced ? 1 : 0;
+            if (index < widgets.size()) inputs.insert(advanced ? "noise_seed" : "seed", widgets.at(index++));
+            // control_after_generate is a UI-only widget between seed and steps.
+            const QString control = index < widgets.size() ? widgets.at(index).toString() : QString();
+            if (QStringList{"fixed", "increment", "decrement", "randomize"}.contains(control)) ++index;
+            const QStringList samplerKeys = {"steps", "cfg", "sampler_name", "scheduler"};
+            for (const QString &key : samplerKeys) {
+                if (index < widgets.size()) inputs.insert(key, widgets.at(index++));
             }
+        } else if (classNameContains(classType, "RandomNoise")) {
+            if (!widgets.isEmpty()) inputs.insert("noise_seed", widgets.first());
+        } else if (classNameContains(classType, "BasicScheduler")) {
+            if (!widgets.isEmpty()) inputs.insert("scheduler", widgets.first());
+            if (widgets.size() > 1) inputs.insert("steps", widgets.at(1));
         } else if (classNameContains(classType, "CheckpointLoader")) {
-            for (const QJsonValue &widget : widgets) {
-                const QString checkpoint = jsonValueToString(widget);
-                if (!checkpoint.isEmpty()) {
-                    inputs.insert("ckpt_name", checkpoint);
-                    break;
-                }
-            }
+            // The legacy loader has config_name before ckpt_name.
+            const int nameIndex = normalizeClassName(classType) == "checkpointloader" ? 1 : 0;
+            if (widgets.size() > nameIndex && widgets.at(nameIndex).isString())
+                inputs.insert("ckpt_name", widgets.at(nameIndex));
+        } else if (isUnetLoader(classType)) {
+            if (!widgets.isEmpty() && widgets.first().isString())
+                inputs.insert("unet_name", widgets.first());
+        } else if (classNameContains(classType, "CFGGuider")) {
+            if (!widgets.isEmpty()) inputs.insert("cfg", widgets.first());
         } else if (classNameContains(classType, "LoraLoader")) {
             const QJsonValue structured = structuredLoraWidgetValue(widgets);
             if (!structured.isUndefined()) {
@@ -555,17 +682,19 @@ QJsonObject promptObjectFromWorkflowGraph(const QJsonObject &workflow)
             }
         }
 
+        // Newer exporters provide names, avoiding guesses about widget order.
+        const QJsonObject namedWidgets = node.value("widgets_values_named").toObject();
+        for (auto it = namedWidgets.begin(); it != namedWidgets.end(); ++it) inputs.insert(it.key(), it.value());
+
         const QJsonArray graphInputs = node.value("inputs").toArray();
         for (const QJsonValue &inputValue : graphInputs) {
             const QJsonObject input = inputValue.toObject();
             const int linkId = input.value("link").toInt(-1);
-            if (linkId < 0 || !outputLinkToNodeId.contains(linkId)) continue;
-            const QString name = input.value("name").toString();
+            if (linkId < 0 || !outputLinks.contains(linkId)) continue;
+            QString name = input.value("name").toString();
+            if (name.isEmpty() && classNameContains(classType, "Reroute")) name = "input";
             if (name.isEmpty()) continue;
-            QJsonArray link;
-            link.append(outputLinkToNodeId.value(linkId));
-            link.append(0);
-            inputs.insert(name, link);
+            inputs.insert(name, outputLinks.value(linkId));
         }
 
         converted.insert("inputs", inputs);
@@ -577,13 +706,17 @@ QJsonObject promptObjectFromWorkflowGraph(const QJsonObject &workflow)
 
 ParsedImageMetadata parseComfyMetadata(const QString &promptJson, const QString &workflowJson)
 {
-    ParsedImageMetadata meta = parseComfyPromptObject(comfyPromptNodesFromRoot(parseJsonObject(promptJson)));
-
+    const QJsonObject promptNodes = comfyPromptNodesFromRoot(parseJsonObject(promptJson));
     const QJsonObject workflow = parseJsonObject(workflowJson);
-    const ParsedImageMetadata workflowPrompt = parseComfyPromptObject(comfyPromptNodesFromRoot(workflow));
+    const QJsonObject workflowPromptNodes = comfyPromptNodesFromRoot(workflow);
+    QString samplerId = comfySamplerNodeId(promptNodes);
+    if (samplerId.isEmpty()) samplerId = comfySamplerNodeId(workflowPromptNodes);
+    ParsedImageMetadata meta = parseComfyPromptObject(promptNodes, samplerId);
+    const ParsedImageMetadata workflowPrompt = parseComfyPromptObject(workflowPromptNodes, samplerId);
     mergeComfyMetadata(meta, workflowPrompt);
 
-    const ParsedImageMetadata workflowGraph = parseComfyPromptObject(promptObjectFromWorkflowGraph(workflow));
+    // Supplement the same sampled chain, not another sampler left on the canvas.
+    const ParsedImageMetadata workflowGraph = parseComfyPromptObject(promptObjectFromWorkflowGraph(workflow), samplerId);
     mergeComfyMetadata(meta, workflowGraph);
     return meta;
 }

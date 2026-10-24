@@ -40,11 +40,12 @@ QString cleanPromptTag(QString text, bool preserveEmoticons)
     static const QSet<QString> emoticons = {":)", ":-)", ":(", ":-(", "^_^", "T_T", "o_o", "O_O"};
     if (preserveEmoticons && emoticons.contains(text)) return text;
 
-    static const QRegularExpression weightRegex(":[0-9.]+$");
-    text.remove(weightRegex);
-
     static const QRegularExpression bracketRegex("[\\{\\}\\[\\]\\(\\)]");
     text.remove(bracketRegex);
+
+    // Strip closing wrappers before weights: (tag:1.2) and ((tag:1.2):0.8).
+    static const QRegularExpression weightRegex(":[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?\\s*$");
+    while (weightRegex.match(text).hasMatch()) text.remove(weightRegex);
 
     return text.trimmed();
 }

@@ -49,6 +49,8 @@ qt_add_executable(SD_LoRA_Manager
     utils/styleconstants.cpp
     utils/tagutils.h
     utils/tagutils.cpp
+    utils/tagusage.h
+    utils/tagusage.cpp
     utils/translationcsv.h
     utils/translationcsv.cpp
     utils/tagsearchindex.h
@@ -167,10 +169,11 @@ if(BUILD_CORE_UTIL_TESTS)
         utils/modelscanner.cpp
         utils/pathutils.cpp
         utils/previewimagestore.cpp
-        utils/tagutils.cpp)
+        utils/tagutils.cpp
+        utils/tagusage.cpp)
     target_include_directories(core_utils_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(core_utils_test PRIVATE Qt6::Core Qt6::Gui)
-    foreach(group metadata matching scanner preview archive paths_filters inspection downloads)
+    foreach(group metadata matching scanner preview comfy tags archive paths_filters inspection downloads)
         add_test(NAME core_utils_${group} COMMAND core_utils_test ${group})
     endforeach()
 endif()
@@ -207,6 +210,7 @@ if(BUILD_TAG_BROWSER_TESTS)
         utils/tagsearchindex.cpp
         utils/translationcsv.cpp
         utils/tagutils.cpp
+        utils/tagusage.cpp
         utils/styleconstants.cpp
         utils/tableviewstylehelper.cpp
         resources.qrc)
@@ -215,6 +219,25 @@ if(BUILD_TAG_BROWSER_TESTS)
     set_target_properties(tag_browser_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
     add_test(NAME tag_browser_test COMMAND tag_browser_test)
     set_tests_properties(tag_browser_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
+
+    add_executable(template_picker_test
+        tests/template_picker_test.cpp
+        tools/prompttemplatelibrarywidget.cpp
+        tools/prompttemplatelibrarywidget.h
+        tools/prompttemplatelibrarywidget.ui
+        widgets/tagflowwidget.h
+        utils/imagemetadataparser.cpp
+        utils/tagutils.cpp
+        utils/tagusage.cpp
+        utils/styleconstants.cpp
+        utils/tableviewstylehelper.cpp
+        resources.qrc)
+    target_include_directories(template_picker_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/utils ${CMAKE_CURRENT_SOURCE_DIR}/widgets)
+    target_link_libraries(template_picker_test PRIVATE Qt6::Widgets Qt6::Concurrent)
+    set_target_properties(template_picker_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/template-picker")
+    add_test(NAME template_picker_test COMMAND template_picker_test)
+    set_tests_properties(template_picker_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
 endif()
 
 option(BUILD_DOWNLOAD_RESTORE_TESTS "Build offscreen download cache restore tests" OFF)

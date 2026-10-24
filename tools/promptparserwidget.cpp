@@ -1,6 +1,7 @@
 #include "promptparserwidget.h"
 #include "ui_promptparserwidget.h"
 #include "tagutils.h"
+#include "tagusage.h"
 #include "imagemetadataparser.h"
 #include "tableviewstylehelper.h"
 #include "styleconstants.h"
@@ -255,27 +256,9 @@ Wd14TranslationInfo parseWd14TranslationInfo(const QString &tag, QString raw)
 QHash<QString, int> readWd14TagUsageCountsWorker(const QString &cachePath)
 {
     QHash<QString, int> counts;
-    QFile file(cachePath);
-    if (!file.open(QIODevice::ReadOnly)) return counts;
-
-    const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
-    for (auto it = root.constBegin(); it != root.constEnd(); ++it) {
-        if (it.key().startsWith("__") || !it.value().isObject()) continue;
-        const QJsonObject image = it.value().toObject();
-        QSet<QString> tagsInImage;
-        const auto collect = [&tagsInImage](QString prompt) {
-            prompt.replace("\r\n", ",");
-            prompt.replace('\n', ',');
-            prompt.replace('\r', ',');
-            for (const QString &part : prompt.split(',', Qt::SkipEmptyParts)) {
-                const QString key = normalizedWd14TagKey(part);
-                if (!key.isEmpty()) tagsInImage.insert(key);
-            }
-        };
-        collect(image.value("p").toString());
-        collect(image.value("np").toString());
-        for (const QString &key : tagsInImage) counts[key] += 1;
-    }
+    const TagUsage::Counts combined = TagUsage::readCache(cachePath, TagUsage::Combined).combined;
+    for (auto it = combined.values.cbegin(); it != combined.values.cend(); ++it)
+        counts.insert(it.key(), it.value());
     return counts;
 }
 
@@ -1698,7 +1681,7 @@ void PromptParserWidget::updateWd14TagUsageColumn()
     for (int i = 0; i < ui->treeWd14Tags->topLevelItemCount(); ++i) {
         QTreeWidgetItem *item = ui->treeWd14Tags->topLevelItem(i);
         const QString sourceTag = item->data(0, Qt::UserRole).toString();
-        const int count = m_wd14TagUsageCounts.value(normalizedWd14TagKey(sourceTag));
+        const int count = m_wd14TagUsageCounts.value(TagUtils::normalizedPromptTagKey(sourceTag));
         item->setText(5, QString::number(count));
         item->setData(5, Qt::UserRole, count);
     }
@@ -1732,7 +1715,7 @@ void PromptParserWidget::applyWd14Result(const Wd14InferenceResult &result, cons
         score.category = info.category;
         score.translation = info.translation;
         score.priority = info.priority;
-        score.usageCount = m_wd14TagUsageCounts.value(normalizedWd14TagKey(score.tag));
+        score.usageCount = m_wd14TagUsageCounts.value(TagUtils::normalizedPromptTagKey(score.tag));
         visibleTags.append(score);
     }
 

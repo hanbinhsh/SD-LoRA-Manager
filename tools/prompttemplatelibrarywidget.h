@@ -1,6 +1,7 @@
 #ifndef PROMPTTEMPLATELIBRARYWIDGET_H
 #define PROMPTTEMPLATELIBRARYWIDGET_H
 
+#include "utils/tagusage.h"
 #include <QHash>
 #include <QIcon>
 #include <QPair>
@@ -45,11 +46,7 @@ public:
     void reloadTemplateLibrary();
     void applyTheme(); // 切主题时重建内联样式卡片（占位符/收藏），保留当前选择
 
-    struct TagUsageRow {
-        QString tag;
-        QString kind;
-        int count = 0;
-    };
+    using TagUsageRow = TagUsage::Row;
 
     struct ModelTriggerRow {
         QString modelKey;
@@ -123,6 +120,7 @@ private:
         QTableWidget *table = nullptr;
         QLabel *status = nullptr;
         bool insertIntoTemplate = false;
+        bool requested = false;
     };
 
     struct ModelTriggerPickerUi {
@@ -168,7 +166,7 @@ private:
     TagFlowWidget *m_templateImagePositiveTags = nullptr;
     TagFlowWidget *m_templateImageNegativeTags = nullptr;
     QVector<TagUsageRow> m_allTagRows;
-    int m_loadedTagScope = -1;
+    bool m_tagsLoaded = false;
     TagPickerUi m_generateTagPicker;
     TagPickerUi m_templateTagPicker;
     ModelTriggerPickerUi m_generateModelTriggerPicker;
@@ -285,7 +283,6 @@ private slots:
     void onSavePlaceholderClicked();
     void onNewPlaceholderClicked();
     void onDeletePlaceholderClicked();
-    void onTagPickerFiltersChanged(TagPickerUi &picker);
 };
 
 #endif // PROMPTTEMPLATELIBRARYWIDGET_H

@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include "utils/tagusage.h"
 
 #include <QFileDialog>
 #include <QMessageBox>
@@ -2628,12 +2629,11 @@ void MainWindow::refreshUsageAnalysisWidget()
         data.models.append(model);
     }
 
-    for (auto it = imageCache.cbegin(); it != imageCache.cend(); ++it) {
-        for (const QString &tag : it.value().cleanTags) {
-            const QString clean = tag.trimmed();
-            if (!clean.isEmpty()) data.positiveTagCounts[clean] += 1;
-        }
-    }
+    TagUsage::Counts tagCounts;
+    for (auto it = imageCache.cbegin(); it != imageCache.cend(); ++it)
+        tagCounts.addImage(it.value().cleanTags);
+    for (auto it = tagCounts.values.cbegin(); it != tagCounts.values.cend(); ++it)
+        data.positiveTagCounts.insert(tagCounts.displayTags.value(it.key()), it.value());
 
     usageAnalysisWidget->setAnalysisData(data);
 }

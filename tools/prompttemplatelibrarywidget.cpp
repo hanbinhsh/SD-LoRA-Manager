@@ -273,44 +273,11 @@ QString imagePathFromMimeData(const QMimeData *mimeData)
     return QString();
 }
 
-QStringList parsePromptTags(const QString &prompt)
-{
-    QString normalized = prompt;
-    normalized.replace("\r\n", ",");
-    normalized.replace('\n', ',');
-    normalized.replace('\r', ',');
-
-    QStringList tags;
-    QSet<QString> seenInImage;
-    static const QSet<QString> blockedTags = {"BREAK", "ADDCOMM", "ADDBASE", "ADDCOL", "ADDROW"};
-    for (const QString &part : normalized.split(',', Qt::SkipEmptyParts)) {
-        const QString tag = TagUtils::cleanPromptTag(part, false);
-        if (tag.isEmpty()) continue;
-        bool blocked = false;
-        for (const QString &blockedTag : blockedTags) {
-            if (tag.compare(blockedTag, Qt::CaseInsensitive) == 0) {
-                blocked = true;
-                break;
-            }
-        }
-        const QString key = TagUtils::normalizedPromptTagKey(tag);
-        if (blocked || key.isEmpty() || seenInImage.contains(key)) continue;
-        seenInImage.insert(key);
-        tags.append(tag);
-    }
-    return tags;
-}
-
-QString tagDedupKey(const QString &tag)
-{
-    return normalizeTagSearch(TagUtils::cleanPromptTag(tag, false));
-}
-
 QStringList newPromptTagsOnly(const QString &currentPrompt, const QStringList &tags)
 {
     QSet<QString> existing;
-    for (const QString &tag : parsePromptTags(currentPrompt)) {
-        const QString key = tagDedupKey(tag);
+    for (const QString &tag : TagUsage::promptTags(currentPrompt)) {
+        const QString key = TagUtils::normalizedPromptTagKey(tag);
         if (!key.isEmpty()) existing.insert(key);
     }
 
@@ -318,7 +285,7 @@ QStringList newPromptTagsOnly(const QString &currentPrompt, const QStringList &t
     QSet<QString> seenNew;
     for (const QString &rawTag : tags) {
         const QString tag = TagUtils::cleanPromptTag(rawTag, false);
-        const QString key = tagDedupKey(tag);
+        const QString key = TagUtils::normalizedPromptTagKey(tag);
         if (tag.isEmpty() || key.isEmpty()) continue;
         if (existing.contains(key) || seenNew.contains(key)) continue;
         seenNew.insert(key);
@@ -479,15 +446,15 @@ QStringList placeholderNamesInTemplateText(const QString &positive, const QStrin
 QStringList promptTagsNotInBase(const QString &prompt, const QString &basePrompt)
 {
     QSet<QString> baseKeys;
-    for (const QString &tag : parsePromptTags(basePrompt)) {
-        const QString key = tagDedupKey(tag);
+    for (const QString &tag : TagUsage::promptTags(basePrompt)) {
+        const QString key = TagUtils::normalizedPromptTagKey(tag);
         if (!key.isEmpty()) baseKeys.insert(key);
     }
 
     QStringList out;
     QSet<QString> seen;
-    for (const QString &tag : parsePromptTags(prompt)) {
-        const QString key = tagDedupKey(tag);
+    for (const QString &tag : TagUsage::promptTags(prompt)) {
+        const QString key = TagUtils::normalizedPromptTagKey(tag);
         if (key.isEmpty() || baseKeys.contains(key) || seen.contains(key)) continue;
         seen.insert(key);
         out.append(tag);
@@ -532,17 +499,6 @@ void populateModelTriggerChildren(QTreeWidgetItem *modelItem)
 
     addTriggerChildren(metadataTriggers, AppStyle::color("accentBlue"));
     addTriggerChildren(customTriggers, AppStyle::color("successGreenBright"));
-}
-
-void addTagCounts(const QString &prompt, QMap<QString, int> &counts,
-                  QHash<QString, QString> &displayTags)
-{
-    for (const QString &tag : parsePromptTags(prompt)) {
-        const QString key = TagUtils::normalizedPromptTagKey(tag);
-        if (key.isEmpty()) continue;
-        if (!displayTags.contains(key)) displayTags.insert(key, tag);
-        counts[key] += 1;
-    }
 }
 
 QString removeLeadingTagFromDisplayText(const QString &tag, QString display)
@@ -602,50 +558,6 @@ QString removeLeadingTagFromDisplayText(const QString &tag, QString display)
     }
 
     return display;
-}
-
-QVector<PromptTemplateLibraryWidget::TagUsageRow> readTagRowsWorker(const QString &cachePath, int scope)
-{
-    QVector<PromptTemplateLibraryWidget::TagUsageRow> rows;
-    QFile file(cachePath);
-    if (!file.open(QIODevice::ReadOnly)) return rows;
-
-    const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
-    QMap<QString, int> positiveCounts;
-    QMap<QString, int> negativeCounts;
-    QHash<QString, QString> positiveDisplayTags;
-    QHash<QString, QString> negativeDisplayTags;
-    for (auto it = root.constBegin(); it != root.constEnd(); ++it) {
-        if (it.key().startsWith("__")) continue;
-        const QJsonObject obj = it.value().toObject();
-        if (scope == 0 || scope == 2) {
-            addTagCounts(obj["p"].toString(), positiveCounts, positiveDisplayTags);
-        }
-        if (scope == 1 || scope == 2) {
-            addTagCounts(obj["np"].toString(), negativeCounts, negativeDisplayTags);
-        }
-    }
-
-    auto appendRows = [&rows](const QMap<QString, int> &counts,
-                              const QHash<QString, QString> &displayTags,
-                              const QString &kind) {
-        for (auto it = counts.constBegin(); it != counts.constEnd(); ++it) {
-            PromptTemplateLibraryWidget::TagUsageRow row;
-            row.tag = displayTags.value(it.key(), it.key());
-            row.kind = kind;
-            row.count = it.value();
-            rows.append(row);
-        }
-    };
-    if (scope == 0 || scope == 2) appendRows(positiveCounts, positiveDisplayTags, "正面");
-    if (scope == 1 || scope == 2) appendRows(negativeCounts, negativeDisplayTags, "负面");
-
-    std::sort(rows.begin(), rows.end(), [](const auto &a, const auto &b) {
-        if (a.count != b.count) return a.count > b.count;
-        if (a.tag != b.tag) return QString::compare(a.tag, b.tag, Qt::CaseInsensitive) < 0;
-        return a.kind < b.kind;
-    });
-    return rows;
 }
 
 QString jsonString(const QJsonObject &obj, const QString &key, const QString &fallback = QString())
@@ -941,7 +853,7 @@ PromptTemplateLibraryWidget::~PromptTemplateLibraryWidget()
     if (m_tagWatcher) {
         m_tagWatcher->disconnect(this);
         m_tagWatcher->cancel();
-        m_tagWatcher->waitForFinished();
+        // The worker owns its input and never accesses this widget.
         delete m_tagWatcher;
         m_tagWatcher = nullptr;
     }
@@ -2170,12 +2082,12 @@ void PromptTemplateLibraryWidget::setupTagPickerUi(TagPickerUi &picker)
 
     if (picker.search) {
         connect(picker.search, &QLineEdit::textChanged, this, [this, &picker]() {
-            onTagPickerFiltersChanged(picker);
+            loadTagPickerRows(picker, false);
         });
     }
     if (picker.scope) {
         connect(picker.scope, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, &picker]() {
-            onTagPickerFiltersChanged(picker);
+            loadTagPickerRows(picker, false);
         });
     }
     if (picker.refresh) {
@@ -2858,7 +2770,7 @@ void PromptTemplateLibraryWidget::saveAutocompleteSettings() const
 QMap<QString, int> PromptTemplateLibraryWidget::tagCountsFromPrompt(const QString &prompt) const
 {
     QMap<QString, int> counts;
-    for (const QString &tag : parsePromptTags(prompt)) {
+    for (const QString &tag : TagUsage::promptTags(prompt)) {
         counts[tag] += 1;
     }
     return counts;
@@ -2952,40 +2864,44 @@ QStringList PromptTemplateLibraryWidget::selectedTagTexts(const TagPickerUi &pic
 void PromptTemplateLibraryWidget::loadTagPickerRows(TagPickerUi &picker, bool force)
 {
     if (!picker.table || !picker.scope || !picker.status) return;
-    const int scope = picker.scope->currentIndex();
+    picker.requested = true;
     if (m_tagWatcher) {
         picker.status->setText("Tag 统计正在加载中...");
         return;
     }
-    if (!force && !m_allTagRows.isEmpty() && m_loadedTagScope == scope) {
+    if (!force && m_tagsLoaded) {
         refreshTagPickerTable(picker);
         return;
     }
     picker.status->setText("正在读取 user_gallery_cache.json 并统计常用 Tag...");
     picker.table->setRowCount(0);
+    m_tagsLoaded = false;
     const QString cachePath = qApp->applicationDirPath() + "/config/user_gallery_cache.json";
     m_tagWatcher = new QFutureWatcher<QVector<TagUsageRow>>(this);
-    connect(m_tagWatcher, &QFutureWatcher<QVector<TagUsageRow>>::finished, this, [this, &picker, scope]() {
+    connect(m_tagWatcher, &QFutureWatcher<QVector<TagUsageRow>>::finished, this, [this]() {
         if (!m_tagWatcher) return;
         m_allTagRows = m_tagWatcher->result();
-        m_loadedTagScope = scope;
+        m_tagsLoaded = true;
         m_tagWatcher->deleteLater();
         m_tagWatcher = nullptr;
-        refreshTagPickerTable(picker);
+        refreshTagPickerTable(m_generateTagPicker);
+        refreshTagPickerTable(m_templateTagPicker);
     });
-    m_tagWatcher->setFuture(QtConcurrent::run([cachePath, scope]() {
-        return readTagRowsWorker(cachePath, scope);
+    m_tagWatcher->setFuture(QtConcurrent::run([cachePath]() {
+        return TagUsage::readCache(cachePath).rows();
     }));
 }
 
 void PromptTemplateLibraryWidget::refreshTagPickerTable(TagPickerUi &picker)
 {
-    if (!picker.table || !picker.search || !picker.status) return;
+    if (!m_tagsLoaded || !picker.requested || !picker.table || !picker.search || !picker.status) return;
 
     const int pickerScope = picker.scope ? picker.scope->currentIndex() : -1;
-    if (m_loadedTagScope != pickerScope) return;
-
-    QVector<TagUsageRow> rows = m_allTagRows;
+    QVector<TagUsageRow> rows;
+    for (const TagUsageRow &row : m_allTagRows) {
+        if (pickerScope == 2 || (pickerScope == 0 && row.kind == "正面")
+            || (pickerScope == 1 && row.kind == "负面")) rows.append(row);
+    }
     const QString needle = normalizeTagSearch(picker.search->text());
 
     if (!needle.isEmpty()) {
@@ -3012,31 +2928,26 @@ void PromptTemplateLibraryWidget::refreshTagPickerTable(TagPickerUi &picker)
         rows = filtered;
     }
 
-    std::sort(rows.begin(), rows.end(), [](const auto &a, const auto &b) {
-        if (a.count != b.count) return a.count > b.count;
-        return QString::compare(a.tag, b.tag, Qt::CaseInsensitive) < 0;
-    });
-
     const int sortColumn = picker.table->horizontalHeader()->sortIndicatorSection() >= 0
                                ? picker.table->horizontalHeader()->sortIndicatorSection()
                                : 4;
     const Qt::SortOrder sortOrder = picker.table->horizontalHeader()->sortIndicatorOrder();
 
     picker.table->setSortingEnabled(false);
-    picker.table->setRowCount(0);
+    picker.table->clearSelection();
+    picker.table->setCurrentCell(-1, -1);
+    picker.table->setRowCount(rows.size());
     picker.table->setColumnCount(5);
     picker.table->setHorizontalHeaderLabels({"Tag", "类型", "类别", "翻译", "使用次数"});
 
-    for (const TagUsageRow &rowData : rows) {
+    for (int row = 0; row < rows.size(); ++row) {
+        const TagUsageRow &rowData = rows.at(row);
         const QString displayTranslation = translatedTextForTag(rowData.tag);
         const QString cleanedTranslation = removeLeadingTagFromDisplayText(rowData.tag, displayTranslation);
 
         QString category;
         QString translation;
         splitCategoryAndTranslationText(cleanedTranslation, category, translation);
-
-        const int row = picker.table->rowCount();
-        picker.table->insertRow(row);
 
         picker.table->setItem(row, 0, makePromptTemplateTableItem(rowData.tag));
         picker.table->setItem(row, 1, makePromptTemplateTableItem(rowData.kind));
@@ -3357,20 +3268,4 @@ void PromptTemplateLibraryWidget::onDeletePlaceholderClicked()
     m_placeholders.removeAt(row);
     saveLibrary();
     refreshAllLists();
-}
-
-void PromptTemplateLibraryWidget::onTagPickerFiltersChanged(TagPickerUi &picker)
-{
-    if (sender() == picker.scope) {
-        m_allTagRows.clear();
-        m_loadedTagScope = -1;
-        loadTagPickerRows(picker, true);
-        return;
-    }
-    const int scope = picker.scope ? picker.scope->currentIndex() : -1;
-    if (m_allTagRows.isEmpty() || m_loadedTagScope != scope) {
-        loadTagPickerRows(picker, false);
-    } else {
-        refreshTagPickerTable(picker);
-    }
 }

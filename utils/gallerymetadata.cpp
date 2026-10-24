@@ -8,11 +8,18 @@ namespace GalleryMetadata {
 void parseImage(const QString &path, UserImageInfo &info, bool splitOnNewline, const QStringList &filterTags)
 {
     const ParsedImageMetadata parsed = parseImageMetadataFromFile(path);
+    // A rescan replaces parsed fields, including a transition to no metadata.
+    info.prompt.clear();
+    info.negativePrompt.clear();
+    info.parameters.clear();
+    info.cleanTags.clear();
+    info.negativeCleanTags.clear();
+    info.parserVersion = 0;
     if (!parsed.hasContent()) {
         // A readable image without metadata is a stable result. Incomplete,
         // locked, or damaged files stay retryable on the next scan.
         QImageReader reader(path);
-        if (reader.canRead()) info.parserVersion = ParserVersion;
+        if (!reader.read().isNull()) info.parserVersion = ParserVersion;
         return;
     }
 
