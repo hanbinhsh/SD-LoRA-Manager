@@ -1,3 +1,4 @@
+#include "utils/applanguage.h"
 #include "aboutpage.h"
 #include "ui_aboutpage.h"
 
@@ -20,11 +21,11 @@ AboutPage::~AboutPage()
 
 void AboutPage::setVersionText(const QString &version)
 {
-    ui->lblAboutVersion->setText("Version " + version);
+    ui->lblAboutVersion->setText(AppText::tr("Version ") + version);
 }
 
 void AboutPage::setCheckingForUpdates(bool checking)
 {
-    ui->btnCheckUpdate->setText(checking ? "⏳ Checking..." : "🚀 检查更新 / Check for Updates");
+    ui->btnCheckUpdate->setText(checking ? AppText::tr("⏳ Checking...") : AppText::tr("🚀 检查更新 / Check for Updates"));
     ui->btnCheckUpdate->setEnabled(!checking);
 }

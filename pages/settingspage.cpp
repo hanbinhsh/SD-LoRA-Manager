@@ -1,6 +1,8 @@
 #include "settingspage.h"
 #include "ui_settingspage.h"
 #include "styleconstants.h"
+#include "utils/applanguage.h"
+#include "utils/modelbrowserurl.h"
 
 #include <QCheckBox>
 #include <QColor>
@@ -29,6 +31,7 @@ constexpr bool kThemeSettingsEnabled = true;
 SettingsState SettingsState::fromJson(const QJsonObject &root, const QString &defaultFilterTags)
 {
     SettingsState state;
+    state.uiLanguage = AppLanguage::normalized(root["ui_language"].toString());
     state.uiScale = root["ui_scale"].toDouble(1.0);
     state.filterNSFW = root["nsfw_filter"].toBool(false);
     state.nsfwMode = root["nsfw_mode"].toInt(1);
@@ -49,6 +52,7 @@ SettingsState SettingsState::fromJson(const QJsonObject &root, const QString &de
     state.useCustomUserAgent = root["use_custom_ua"].toBool(false);
     state.customUserAgent = root["custom_user_agent"].toString();
     state.civitaiApiKey = root["civitai_api_key"].toString();
+    state.civitaiBrowserHost = ModelBrowser::normalizedCivitaiHost(root["civitai_browser_host"].toString());
     state.useCivitaiName = root["use_civitai_name"].toBool(false);
     state.suppressLocalWarnings = root["suppress_local_model_warnings"].toBool(false);
     state.userGalleryMatchMode = root["user_gallery_match_mode"].toInt(0);
@@ -70,6 +74,7 @@ void SettingsState::writeToJson(QJsonObject &root) const
     normalized.normalize();
 
     root["ui_scale"] = normalized.uiScale;
+    root["ui_language"] = normalized.uiLanguage;
     root["lora_recursive"] = normalized.loraRecursive;
     root["gallery_recursive"] = normalized.galleryRecursive;
     root["blur_radius"] = normalized.blurRadius;
@@ -89,6 +94,7 @@ void SettingsState::writeToJson(QJsonObject &root) const
     root["use_custom_ua"] = normalized.useCustomUserAgent;
     root["custom_user_agent"] = normalized.customUserAgent;
     root["civitai_api_key"] = normalized.civitaiApiKey;
+    root["civitai_browser_host"] = normalized.civitaiBrowserHost;
     root["use_civitai_name"] = normalized.useCivitaiName;
     root["suppress_local_model_warnings"] = normalized.suppressLocalWarnings;
     root["user_gallery_match_mode"] = normalized.userGalleryMatchMode;
@@ -104,6 +110,8 @@ void SettingsState::writeToJson(QJsonObject &root) const
 
 void SettingsState::normalize()
 {
+    uiLanguage = AppLanguage::normalized(uiLanguage);
+    civitaiBrowserHost = ModelBrowser::normalizedCivitaiHost(civitaiBrowserHost);
     if (blurRadius < 0) blurRadius = 0;
     if (blurRadius > 100) blurRadius = 100;
     if (renderThreadCount < 1) renderThreadCount = 4;
@@ -135,6 +143,14 @@ SettingsPage::SettingsPage(QWidget *parent)
     , ui(new Ui::SettingsPage)
 {
     ui->setupUi(this);
+    ui->comboUiLanguage->setItemData(0, "zh_CN");
+    ui->comboUiLanguage->setItemData(1, "en_US");
+    ui->comboCivitaiBrowserHost->setItemData(0, "civitai.red");
+    ui->comboCivitaiBrowserHost->setItemData(1, "civitai.com");
+    connect(ui->comboCivitaiBrowserHost, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &SettingsPage::emitStateChanged);
+    connect(ui->comboUiLanguage, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &SettingsPage::emitStateChanged);
 
     // 最外层 tab 移到侧边，与工具箱/启动器一致。
     ui->tabSettings->setTabPosition(QTabWidget::West);
@@ -217,14 +233,14 @@ SettingsPage::SettingsPage(QWidget *parent)
     if (ui->chkTryCivArchiveOnMetadataFail) connect(ui->chkTryCivArchiveOnMetadataFail, &QCheckBox::toggled, this, &SettingsPage::emitStateChanged);
     if (ui->chkConfirmCloseLauncherRunning) connect(ui->chkConfirmCloseLauncherRunning, &QCheckBox::toggled, this, &SettingsPage::emitStateChanged);
     if (ui->editCivitaiApiKey) connect(ui->editCivitaiApiKey, &QLineEdit::editingFinished, this, [this]() {
-        setCivitaiApiStatus(ui->editCivitaiApiKey && ui->editCivitaiApiKey->text().trimmed().isEmpty() ? "API Key 未配置" : "API Key 未测试");
+        setCivitaiApiStatus(ui->editCivitaiApiKey && ui->editCivitaiApiKey->text().trimmed().isEmpty() ? AppText::tr("API Key 未配置") : AppText::tr("API Key 未测试"));
         emitStateChanged();
     });
     if (ui->btnToggleCivitaiApiKey) connect(ui->btnToggleCivitaiApiKey, &QPushButton::clicked, this, [this]() {
         if (!ui->editCivitaiApiKey || !ui->btnToggleCivitaiApiKey) return;
         const bool showing = ui->editCivitaiApiKey->echoMode() == QLineEdit::Normal;
         ui->editCivitaiApiKey->setEchoMode(showing ? QLineEdit::Password : QLineEdit::Normal);
-        ui->btnToggleCivitaiApiKey->setText(showing ? "显示" : "隐藏");
+        ui->btnToggleCivitaiApiKey->setText(showing ? AppText::tr("显示") : AppText::tr("隐藏"));
     });
     if (ui->btnTestCivitaiApiKey) connect(ui->btnTestCivitaiApiKey, &QPushButton::clicked, this, [this]() {
         emit testCivitaiApiKeyRequested(state().civitaiApiKey);
@@ -291,6 +307,7 @@ SettingsState SettingsPage::state() const
     s.useCustomUserAgent = ui->chkUseCustomUserAgent && ui->chkUseCustomUserAgent->isChecked();
     s.customUserAgent = ui->editUserAgent ? ui->editUserAgent->text().trimmed() : QString();
     s.civitaiApiKey = ui->editCivitaiApiKey ? ui->editCivitaiApiKey->text().trimmed() : QString();
+    s.civitaiBrowserHost = ui->comboCivitaiBrowserHost->currentData().toString();
     s.modelUpdateDownloadPolicy = ui->comboModelUpdateDownloadPolicy ? ui->comboModelUpdateDownloadPolicy->currentIndex() : 0;
     s.autoCheckUpdatesOnStartup = !ui->chkAutoCheckUpdatesOnStartup || ui->chkAutoCheckUpdatesOnStartup->isChecked();
     s.useCivitaiName = ui->chkUseCivitaiName && ui->chkUseCivitaiName->isChecked();
@@ -301,6 +318,7 @@ SettingsState SettingsPage::state() const
     s.tryCivArchiveOnMetadataFail = !ui->chkTryCivArchiveOnMetadataFail || ui->chkTryCivArchiveOnMetadataFail->isChecked();
     s.confirmCloseWhileLauncherRunning = !ui->chkConfirmCloseLauncherRunning || ui->chkConfirmCloseLauncherRunning->isChecked();
     s.uiScale = ui->spinUiScale ? ui->spinUiScale->value() : 1.0;
+    s.uiLanguage = ui->comboUiLanguage->currentData().toString();
     s.themeId = currentThemeId();
     s.customThemePath = ui->editCustomThemePath ? ui->editCustomThemePath->text().trimmed() : QString();
     return s;
@@ -315,6 +333,8 @@ void SettingsPage::setState(const SettingsState &state)
     });
 
     if (ui->chkRecursiveLora) ui->chkRecursiveLora->setChecked(state.loraRecursive);
+    ui->comboUiLanguage->setCurrentIndex(qMax(0, ui->comboUiLanguage->findData(AppLanguage::normalized(state.uiLanguage))));
+    ui->comboCivitaiBrowserHost->setCurrentIndex(qMax(0, ui->comboCivitaiBrowserHost->findData(ModelBrowser::normalizedCivitaiHost(state.civitaiBrowserHost))));
     if (ui->chkRecursiveGallery) ui->chkRecursiveGallery->setChecked(state.galleryRecursive);
     if (ui->sliderBlur) ui->sliderBlur->setValue(state.blurRadius);
     setBlurValue(state.blurRadius);
@@ -361,7 +381,7 @@ void SettingsPage::setPathSummaries(const QString &lora, const QString &gallery,
 
 void SettingsPage::setCivitaiApiStatus(const QString &text)
 {
-    if (ui->lblCivitaiApiStatus) ui->lblCivitaiApiStatus->setText(text);
+    if (ui->lblCivitaiApiStatus) ui->lblCivitaiApiStatus->setText(AppText::display(text));
 }
 
 void SettingsPage::setCivitaiApiTesting(bool testing)
@@ -372,12 +392,12 @@ void SettingsPage::setCivitaiApiTesting(bool testing)
 void SettingsPage::setAiTagTranslateDownloadState(bool downloading, const QString &status)
 {
     if (ui->btnDownloadAiTagTranslate) ui->btnDownloadAiTagTranslate->setEnabled(!downloading);
-    if (ui->lblAiTagTranslateStatus && !status.isEmpty()) ui->lblAiTagTranslateStatus->setText(status);
+    if (ui->lblAiTagTranslateStatus && !status.isEmpty()) ui->lblAiTagTranslateStatus->setText(AppText::display(status));
 }
 
 void SettingsPage::setBlurValue(int value)
 {
-    if (ui->lblBlurValue) ui->lblBlurValue->setText(QString::number(value) + "px");
+    if (ui->lblBlurValue) ui->lblBlurValue->setText(QString::number(value) + AppText::tr("px"));
 }
 
 void SettingsPage::setFilterTagsText(const QString &text)
@@ -396,7 +416,7 @@ void SettingsPage::setUserAgentText(const QString &text)
 
 void SettingsPage::setThemeStatus(const QString &text)
 {
-    if (ui->lblThemeStatus) ui->lblThemeStatus->setText(text);
+    if (ui->lblThemeStatus) ui->lblThemeStatus->setText(AppText::display(text));
 }
 
 void SettingsPage::applyTheme()
@@ -455,11 +475,11 @@ void SettingsPage::initThemeComboData()
     ui->comboTheme->clear();
     const QList<AppStyle::ThemeInfo> themes = AppStyle::availableThemes();
     for (const AppStyle::ThemeInfo &t : themes) {
-        const QString label = t.builtin ? t.displayName
-                                        : QStringLiteral("%1（自定义）").arg(t.displayName);
+        const QString label = t.builtin ? AppText::display(t.displayName)
+                                        : AppText::tr("%1（自定义）").arg(t.displayName);
         ui->comboTheme->addItem(label, t.id);
     }
-    ui->comboTheme->addItem(QStringLiteral("Custom QSS"), QStringLiteral("custom_qss"));
+    ui->comboTheme->addItem(AppText::tr("Custom QSS"), QStringLiteral("custom_qss"));
 }
 
 void SettingsPage::refreshThemeList(const QString &selectThemeId)

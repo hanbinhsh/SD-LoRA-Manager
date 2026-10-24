@@ -1,3 +1,4 @@
+#include "utils/applanguage.h"
 #include "pathlistdialog.h"
 #include "tableviewstylehelper.h"
 #include "ui_pathlistdialog.h"
@@ -110,11 +111,11 @@ void PathListDialog::onAddClicked()
         QFileInfo startInfo(startDir);
         const QString startPath = startInfo.isDir() ? startDir : startInfo.absolutePath();
         path = QFileDialog::getOpenFileName(this,
-                                            "选择文件",
+                                            AppText::tr("选择文件"),
                                             startPath,
-                                            m_fileFilter.isEmpty() ? "All Files (*.*)" : m_fileFilter);
+                                            m_fileFilter.isEmpty() ? AppText::tr("All Files (*.*)") : m_fileFilter);
     } else {
-        path = QFileDialog::getExistingDirectory(this, "选择文件夹", startDir);
+        path = QFileDialog::getExistingDirectory(this, AppText::tr("选择文件夹"), startDir);
     }
     if (path.isEmpty()) return;
     const QString normalizedPath = QFileInfo(path).absoluteFilePath();

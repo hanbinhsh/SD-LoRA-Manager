@@ -1,3 +1,4 @@
+#include "utils/applanguage.h"
 #include "usageanalysiswidget.h"
 #include "chartwidgets.h"
 #include "styleconstants.h"
@@ -59,13 +60,13 @@ QString normalizeCategory(const QString &modelType, const QString &rootName)
 {
     const QString t = modelType.trimmed().toLower();
     if (t.contains("lora") || t.contains("locon") || t.contains("dora") || t.contains("lycoris")) return "LoRA";
-    if (t.contains("checkpoint")) return "底模 (Checkpoint)";
+    if (t.contains("checkpoint")) return AppText::tr("底模 (Checkpoint)");
     if (t.contains("textualinversion") || t.contains("embedding")) return "Embedding";
     if (t.contains("vae")) return "VAE";
     if (t.contains("hypernetwork")) return "Hypernetwork";
     if (t.contains("controlnet")) return "ControlNet";
     if (!t.isEmpty()) return modelType.trimmed();
-    return rootName.trimmed().isEmpty() ? "其他" : rootName.trimmed();
+    return rootName.trimmed().isEmpty() ? AppText::tr("其他") : rootName.trimmed();
 }
 
 // 一组与深色主题搭配的稳定调色板（按索引取色）。
@@ -121,7 +122,7 @@ UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
     setupTable(ui->tableBaseModels, true);
 
     ui->tableTopUsed->setColumnCount(4);
-    ui->tableTopUsed->setHorizontalHeaderLabels({"模型", "类别", "数量", "占比"});
+    ui->tableTopUsed->setHorizontalHeaderLabels({AppText::tr("模型"), AppText::tr("类别"), AppText::tr("数量"), AppText::tr("占比")});
     QHeaderView *usageHeader = ui->tableTopUsed->horizontalHeader();
     usageHeader->setStretchLastSection(false);
     usageHeader->setSectionResizeMode(0, QHeaderView::Stretch);
@@ -142,15 +143,15 @@ UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
     ui->layoutSpaceCategoryPie->addWidget(categoryPie);
     ui->layoutSpaceCategoryBar->addWidget(categoryBar);
 
-    ui->comboSpaceScope->addItem("模型 + 附属文件", 2);
-    ui->comboSpaceScope->addItem("仅模型文件", 0);
-    ui->comboSpaceScope->addItem("仅附属文件", 1);
+    ui->comboSpaceScope->addItem(AppText::tr("模型 + 附属文件"), 2);
+    ui->comboSpaceScope->addItem(AppText::tr("仅模型文件"), 0);
+    ui->comboSpaceScope->addItem(AppText::tr("仅附属文件"), 1);
     connect(ui->comboSpaceScope, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             [this](int) { refreshDiskSpace(); });
 
     setupTable(ui->tableLargestModels, true);
     ui->tableLargestModels->setColumnCount(4);
-    ui->tableLargestModels->setHorizontalHeaderLabels({"模型", "类别", "文件夹", "占用"});
+    ui->tableLargestModels->setHorizontalHeaderLabels({AppText::tr("模型"), AppText::tr("类别"), AppText::tr("文件夹"), AppText::tr("占用")});
     QHeaderView *largestHeader = ui->tableLargestModels->horizontalHeader();
     largestHeader->setStretchLastSection(false);
     largestHeader->setSectionResizeMode(0, QHeaderView::Stretch);
@@ -221,7 +222,7 @@ void UsageAnalysisWidget::refreshCharts()
     ui->tableTopUsed->setSortingEnabled(false);
     ui->tableTopUsed->clear();
     ui->tableTopUsed->setColumnCount(4);
-    ui->tableTopUsed->setHorizontalHeaderLabels({"模型", "类别", "数量", "占比"});
+    ui->tableTopUsed->setHorizontalHeaderLabels({AppText::tr("模型"), AppText::tr("类别"), AppText::tr("数量"), AppText::tr("占比")});
     ui->tableTopUsed->setRowCount(usedModels.size());
     int maxUsage = 1;
     for (const UsageAnalysisModel *model : std::as_const(usedModels))
@@ -311,7 +312,7 @@ void UsageAnalysisWidget::refreshDiskSpace()
     if (categoryPie) categoryPie->setData(categorySlices);
     if (categoryBar) categoryBar->setData(categorySlices);
 
-    ui->lblSpaceSummary->setText(QString("总占用 %1 · 模型 %2 个")
+    ui->lblSpaceSummary->setText(AppText::tr("总占用 %1 · 模型 %2 个")
                                      .arg(humanSize(total))
                                      .arg(analysisData.models.size()));
 
@@ -348,7 +349,7 @@ void UsageAnalysisWidget::fillTopTable(QTableWidget *table, const QVector<QPair<
     table->setSortingEnabled(false);
     table->clear();
     table->setColumnCount(3);
-    table->setHorizontalHeaderLabels({nameHeader, "数量", "占比"});
+    table->setHorizontalHeaderLabels({nameHeader, AppText::tr("数量"), AppText::tr("占比")});
     table->setRowCount(rows.size());
 
     int maxValue = 1;
@@ -392,7 +393,7 @@ void UsageAnalysisWidget::refreshModelTable()
         ui->tableModels->setItem(row, 6, new QTableWidgetItem(model.filePath));
     }
     ui->tableModels->setSortingEnabled(true);
-    ui->lblAnalysisStatus->setText(QString("显示 %1 / %2 个模型").arg(rows.size()).arg(analysisData.models.size()));
+    ui->lblAnalysisStatus->setText(AppText::tr("显示 %1 / %2 个模型").arg(rows.size()).arg(analysisData.models.size()));
 }
 
 bool UsageAnalysisWidget::modelMatchesSearch(const UsageAnalysisModel &model, const QString &query) const
@@ -412,7 +413,7 @@ void UsageAnalysisWidget::onSearchTextChanged(const QString &)
 
 void UsageAnalysisWidget::onExportAnalysisCsvClicked()
 {
-    const QString path = QFileDialog::getSaveFileName(this, "导出使用分析 CSV", QString(), "CSV Files (*.csv)");
+    const QString path = QFileDialog::getSaveFileName(this, AppText::tr("导出使用分析 CSV"), QString(), AppText::tr("CSV Files (*.csv)"));
     if (path.isEmpty()) return;
 
     QSaveFile file(path);

@@ -1,3 +1,4 @@
+#include "utils/applanguage.h"
 #include "downloadspage.h"
 #include "ui_downloadspage.h"
 #include "styleconstants.h"
@@ -56,14 +57,14 @@ QString normalizedMetadataSha(QString hash)
 
 QString metadataCategoryDisplayName(const QString &category)
 {
-    if (category == "missing") return QStringLiteral("缺失元信息");
-    if (category == "existing") return QStringLiteral("已有元信息");
-    if (category == "local") return QStringLiteral("本地/已编辑");
-    if (category == "failed") return QStringLiteral("同步失败");
-    if (category == "invalid") return QStringLiteral("JSON 异常");
-    if (category == "no_ids") return QStringLiteral("缺少识别字段");
-    if (category == "duplicate") return QStringLiteral("重复模型");
-    return QStringLiteral("全部");
+    if (category == "missing") return AppText::tr("缺失元信息");
+    if (category == "existing") return AppText::tr("已有元信息");
+    if (category == "local") return AppText::tr("本地/已编辑");
+    if (category == "failed") return AppText::tr("同步失败");
+    if (category == "invalid") return AppText::tr("JSON 异常");
+    if (category == "no_ids") return AppText::tr("缺少识别字段");
+    if (category == "duplicate") return AppText::tr("重复模型");
+    return AppText::tr("全部");
 }
 
 QJsonObject metadataScanItemToJson(const MetadataScanItem &item)
@@ -222,7 +223,7 @@ DownloadsPage::DownloadsPage(QWidget *parent)
     connect(ui->tabMetadataScanStatus, &QTabWidget::currentChanged, this, [this]() {
         // 切换分类（尤其"重复模型"）要重建表格，给个忙碌提示，避免看起来卡死。
         QApplication::setOverrideCursor(Qt::BusyCursor);
-        ui->lblMetadataScanStatus->setText(QStringLiteral("正在加载分类视图…"));
+        ui->lblMetadataScanStatus->setText(AppText::tr("正在加载分类视图…"));
         ui->lblMetadataScanStatus->repaint(); // 阻塞重建前先把提示画出来
         refreshMetadataScanTable();           // 末尾的 updateMetadataSelectionSummary 会覆盖状态文字
         QApplication::restoreOverrideCursor();
@@ -318,7 +319,7 @@ QString DownloadsPage::currentCategory() const
 
 void DownloadsPage::setStatusText(const QString &text)
 {
-    ui->lblDownloadsStatus->setText(text);
+    ui->lblDownloadsStatus->setText(AppText::display(text));
 }
 
 void DownloadsPage::setCacheRestoring(bool restoring)
@@ -351,12 +352,12 @@ void DownloadsPage::updateCardActionButtons(const DownloadCardWidgets &card)
 {
     const auto action = DownloadStatus::cardAction(card.statusText, card.hasUpdate);
     if (card.downloadButton) {
-        card.downloadButton->setText(card.statusText.contains("完成") ? "下载完成"
-            : (action == DownloadStatus::CardAction::Download ? "下载更新" : "检测更新"));
+        card.downloadButton->setText(card.statusText.contains("完成") ? AppText::tr("下载完成")
+            : (action == DownloadStatus::CardAction::Download ? AppText::tr("下载更新") : AppText::tr("检测更新")));
         card.downloadButton->setEnabled(!m_cacheRestoring && action != DownloadStatus::CardAction::Disabled);
     }
     if (card.ignoreButton) {
-        card.ignoreButton->setText(card.statusText.contains("已忽略") ? "取消忽略" : "忽略更新");
+        card.ignoreButton->setText(card.statusText.contains("已忽略") ? AppText::tr("取消忽略") : AppText::tr("忽略更新"));
         card.ignoreButton->setEnabled(!m_cacheRestoring && !DownloadStatus::isDownloading(card.statusText));
     }
 }
@@ -391,13 +392,13 @@ void DownloadsPage::updateVersionActionButtons()
 
 void DownloadsPage::updateSelectionSummary(int selectedCurrent, int currentTotal, int selectedTotal)
 {
-    ui->lblDownloadsSelected->setText(QString("当前 Tab 已选择 %1/%2 个模型\n全部已选择 %3 个模型")
+    ui->lblDownloadsSelected->setText(AppText::tr("当前 Tab 已选择 %1/%2 个模型\n全部已选择 %3 个模型")
                                           .arg(selectedCurrent)
                                           .arg(currentTotal)
                                           .arg(selectedTotal));
 
     const bool allChecked = currentTotal > 0 && selectedCurrent == currentTotal;
-    ui->btnDownloadsToggleCurrentTab->setText(allChecked ? "取消全选当前 Tab" : "全选当前 Tab");
+    ui->btnDownloadsToggleCurrentTab->setText(allChecked ? AppText::tr("取消全选当前 Tab") : AppText::tr("全选当前 Tab"));
     ui->btnDownloadsToggleCurrentTab->setEnabled(!m_cacheRestoring && currentTotal > 0);
     updateVersionActionButtons();
 }
@@ -669,26 +670,26 @@ void DownloadsPage::addOrUpdateCard(const ModelUpdateInfo &info, const QString &
 
     if (card.titleLabel) card.titleLabel->setText(card.displayName);
     if (card.versionLabel) {
-        card.versionLabel->setText(QString("当前: %1    最新: %2")
+        card.versionLabel->setText(AppText::tr("当前: %1    最新: %2")
                                        .arg(info.currentVersion.isEmpty() ? "--" : info.currentVersion,
                                             info.latestVersion.isEmpty() ? "--" : info.latestVersion));
     }
-    if (card.sizeLabel) card.sizeLabel->setText("大小: " + sizeText);
+    if (card.sizeLabel) card.sizeLabel->setText(AppText::tr("大小: ") + sizeText);
     if (card.targetLabel) {
-        card.targetLabel->setText("目标: " + targetPath);
+        card.targetLabel->setText(AppText::tr("目标: ") + targetPath);
         card.targetLabel->setToolTip(targetPath);
     }
     if (card.sourceButton) {
-        card.sourceButton->setText("模型详情");
+        card.sourceButton->setText(AppText::tr("模型详情"));
         card.sourceButton->setEnabled(sourceAvailable);
     }
     if (card.civitaiButton) {
         const bool isArchive = info.metadataSource.compare("civarchive", Qt::CaseInsensitive) == 0;
         if (isArchive) {
-            card.civitaiButton->setText("CivArchive");
+            card.civitaiButton->setText(AppText::tr("CivArchive"));
             card.civitaiButton->setEnabled(!info.sourceUrl.trimmed().isEmpty() || !info.sha256.trimmed().isEmpty());
         } else {
-            card.civitaiButton->setText(info.modelId > 0 ? QString("Civitai #%1").arg(info.modelId) : "来源");
+            card.civitaiButton->setText(info.modelId > 0 ? AppText::tr("Civitai #%1").arg(info.modelId) : AppText::tr("来源"));
             card.civitaiButton->setEnabled(info.modelId > 0 || !info.sourceUrl.trimmed().isEmpty() || !info.sha256.trimmed().isEmpty());
         }
     }
@@ -706,12 +707,12 @@ void DownloadsPage::updateCardStatus(const QString &filePath, const QString &sta
     DownloadCardWidgets card = m_cards.value(filePath);
     card.statusText = status;
     if (card.statusLabel) {
-        QString displayStatus = status;
+        QString displayStatus = AppText::display(status);
         if (displayStatus.size() > 220) {
             displayStatus = displayStatus.left(217) + "...";
         }
         card.statusLabel->setText(displayStatus);
-        card.statusLabel->setToolTip(status);
+        card.statusLabel->setToolTip(AppText::display(status));
     }
     updateCardActionButtons(card);
     m_cards[filePath] = card;
@@ -733,7 +734,7 @@ void DownloadsPage::updateCardTargetPath(const QString &filePath, const QString 
     DownloadCardWidgets card = m_cards.value(filePath);
     card.targetPath = targetPath;
     if (card.targetLabel) {
-        card.targetLabel->setText("目标: " + targetPath);
+        card.targetLabel->setText(AppText::tr("目标: ") + targetPath);
         card.targetLabel->setToolTip(targetPath);
     }
     m_cards[filePath] = card;
@@ -858,6 +859,7 @@ bool DownloadsPage::cardMatchesSearch(const DownloadCardWidgets &card) const
     if (query.isEmpty()) return true;
     return card.searchText.contains(query, Qt::CaseInsensitive)
            || card.statusText.contains(query, Qt::CaseInsensitive)
+           || (card.statusLabel && card.statusLabel->toolTip().contains(query, Qt::CaseInsensitive))
            || card.targetPath.contains(query, Qt::CaseInsensitive);
 }
 
@@ -1017,7 +1019,7 @@ void DownloadsPage::updateSelectedMetadataIdentityLabel()
     const int row = ui->tableMetadataScan->currentRow();
     QTableWidgetItem *item = row >= 0 ? ui->tableMetadataScan->item(row, 1) : nullptr;
     if (!item) {
-        ui->lblMetadataSelectedIdentity->setText("未选择模型");
+        ui->lblMetadataSelectedIdentity->setText(AppText::tr("未选择模型"));
         ui->lblMetadataSelectedIdentity->setToolTip(QString());
         return;
     }
@@ -1026,11 +1028,11 @@ void DownloadsPage::updateSelectedMetadataIdentityLabel()
     const QString versionId = item->data(RoleVersionIdText).toString().trimmed();
     const QString sha256 = item->data(RoleSha256).toString().trimmed();
     const QString shortSha = sha256.isEmpty() ? QStringLiteral("--") : sha256.left(12);
-    ui->lblMetadataSelectedIdentity->setText(QString("Model ID: %1 | Version ID: %2 | SHA256: %3")
+    ui->lblMetadataSelectedIdentity->setText(AppText::tr("Model ID: %1 | Version ID: %2 | SHA256: %3")
                                                  .arg(modelId.isEmpty() ? QStringLiteral("--") : modelId,
                                                       versionId.isEmpty() ? QStringLiteral("--") : versionId,
                                                       shortSha));
-    ui->lblMetadataSelectedIdentity->setToolTip(QString("模型路径: %1\nModel ID: %2\nVersion ID: %3\nSHA256: %4")
+    ui->lblMetadataSelectedIdentity->setToolTip(AppText::tr("模型路径: %1\nModel ID: %2\nVersion ID: %3\nSHA256: %4")
                                                     .arg(item->data(RoleFilePath).toString(),
                                                          modelId.isEmpty() ? QStringLiteral("--") : modelId,
                                                          versionId.isEmpty() ? QStringLiteral("--") : versionId,
@@ -1041,7 +1043,7 @@ void DownloadsPage::setMetadataScanRunning(bool running)
 {
     m_metadataScanRunning = running;
     ui->btnMetadataScan->setEnabled(!running);
-    ui->lblMetadataScanStatus->setText(running ? "正在后台扫描模型元信息..." : "元信息扫描完成。");
+    ui->lblMetadataScanStatus->setText(running ? AppText::tr("正在后台扫描模型元信息...") : AppText::tr("元信息扫描完成。"));
     updateMetadataActionButtons();
 }
 
@@ -1085,7 +1087,7 @@ void DownloadsPage::refreshMetadataScanTable()
         nameItem->setData(RoleModelIdText, item.modelIdText);
         nameItem->setData(RoleVersionIdText, item.versionIdText);
         nameItem->setData(RoleSha256, item.sha256);
-        nameItem->setToolTip(QString("路径: %1\nModel ID: %2\nVersion ID: %3\nSHA256: %4")
+        nameItem->setToolTip(AppText::tr("路径: %1\nModel ID: %2\nVersion ID: %3\nSHA256: %4")
                                  .arg(item.filePath,
                                       item.modelIdText.isEmpty() ? QStringLiteral("--") : item.modelIdText,
                                       item.versionIdText.isEmpty() ? QStringLiteral("--") : item.versionIdText,
@@ -1095,14 +1097,14 @@ void DownloadsPage::refreshMetadataScanTable()
         QString statusText = item.status;
         if (category == "duplicate") {
             const QString hash = normalizedMetadataSha(item.sha256);
-            statusText = QString("重复摘要：%1...，共 %2 个")
+            statusText = AppText::tr("重复摘要：%1...，共 %2 个")
                              .arg(hash.left(12))
                              .arg(duplicateCounts.value(hash));
         }
-        ui->tableMetadataScan->setItem(row, 3, new QTableWidgetItem(statusText));
+        ui->tableMetadataScan->setItem(row, 3, new QTableWidgetItem(AppText::display(statusText)));
         const QString syncedText = item.lastSyncedAt.isEmpty()
             ? QStringLiteral("-")
-            : QString("%1 (%2)").arg(item.lastSyncedAt, item.lastSyncedSource);
+            : QString("%1 (%2)").arg(item.lastSyncedAt, AppText::display(item.lastSyncedSource));
         ui->tableMetadataScan->setItem(row, 4, new QTableWidgetItem(syncedText));
         ++row;
     }
@@ -1168,10 +1170,10 @@ void DownloadsPage::updateMetadataSelectionSummary()
         }
     }
     const bool allCurrentChecked = currentTotal > 0 && currentChecked == currentTotal;
-    ui->btnMetadataToggleCurrent->setText(allCurrentChecked ? "取消全选当前分类" : "全选当前分类");
+    ui->btnMetadataToggleCurrent->setText(allCurrentChecked ? AppText::tr("取消全选当前分类") : AppText::tr("全选当前分类"));
     ui->btnMetadataToggleCurrent->setEnabled(!m_metadataScanRunning && currentTotal > 0);
     ui->btnMetadataClearSelection->setEnabled(!m_metadataScanRunning && allChecked > 0);
-    ui->lblMetadataScanStatus->setText(QString("当前分类 %1/%2，全部已选择 %3 个模型。")
+    ui->lblMetadataScanStatus->setText(AppText::tr("当前分类 %1/%2，全部已选择 %3 个模型。")
                                            .arg(currentChecked)
                                            .arg(currentTotal)
                                            .arg(allChecked));
@@ -1207,7 +1209,7 @@ void DownloadsPage::setHealthCheckRunning(bool running)
 {
     m_healthCheckRunning = running;
     ui->btnRunHealthCheck->setEnabled(!running);
-    ui->lblHealthStatus->setText(running ? "正在后台检查元数据..." : "元数据健康检查完成。");
+    ui->lblHealthStatus->setText(running ? AppText::tr("正在后台检查元数据...") : AppText::tr("元数据健康检查完成。"));
     updateHealthActionButtons();
 }
 
@@ -1218,15 +1220,15 @@ void DownloadsPage::setHealthIssues(const QVector<MetadataHealthIssue> &issues)
     ui->tableHealth->setRowCount(issues.size());
     for (int row = 0; row < issues.size(); ++row) {
         const MetadataHealthIssue &issue = issues[row];
-        auto *severityItem = new QTableWidgetItem(issue.severity);
+        auto *severityItem = new QTableWidgetItem(AppText::display(issue.severity));
         severityItem->setData(RoleFilePath, issue.filePath);
         ui->tableHealth->setItem(row, 0, severityItem);
         ui->tableHealth->setItem(row, 1, new QTableWidgetItem(issue.modelName));
-        ui->tableHealth->setItem(row, 2, new QTableWidgetItem(issue.issue));
-        ui->tableHealth->setItem(row, 3, new QTableWidgetItem(issue.suggestion));
+        ui->tableHealth->setItem(row, 2, new QTableWidgetItem(AppText::display(issue.issue)));
+        ui->tableHealth->setItem(row, 3, new QTableWidgetItem(AppText::display(issue.suggestion)));
     }
     ui->tableHealth->setSortingEnabled(true);
-    ui->lblHealthStatus->setText(QString("检查完成，共发现 %1 条问题/提示。").arg(issues.size()));
+    ui->lblHealthStatus->setText(AppText::tr("检查完成，共发现 %1 条问题/提示。").arg(issues.size()));
     saveMetadataResultCache();
     updateHealthActionButtons();
 }
@@ -1290,11 +1292,11 @@ void DownloadsPage::loadMetadataResultCache()
     if (!scanItems.isEmpty()) {
         m_metadataScanItems = scanItems;
         refreshMetadataScanTable();
-        ui->lblMetadataScanStatus->setText(QString("已恢复上次元信息扫描结果，共 %1 个模型。").arg(scanItems.size()));
+        ui->lblMetadataScanStatus->setText(AppText::tr("已恢复上次元信息扫描结果，共 %1 个模型。").arg(scanItems.size()));
     }
     if (!healthIssues.isEmpty()) {
         setHealthIssues(healthIssues);
-        ui->lblHealthStatus->setText(QString("已恢复上次健康检查结果，共 %1 条问题/提示。").arg(healthIssues.size()));
+        ui->lblHealthStatus->setText(AppText::tr("已恢复上次健康检查结果，共 %1 条问题/提示。").arg(healthIssues.size()));
     }
 }
 

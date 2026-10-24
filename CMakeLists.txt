@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.19)
 project(SD_LoRA_Manager LANGUAGES CXX)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network concurrent)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network Concurrent LinguistTools)
 
 find_package(OpenSSL REQUIRED)
 
@@ -10,6 +10,18 @@ qt_standard_project_setup()
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
+
+qt_add_lrelease(TS_FILES translations/app_zh_CN.ts translations/app_en_US.ts
+    QM_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/i18n"
+    QM_FILES_OUTPUT_VARIABLE app_qm_files
+    MERGE_QT_TRANSLATIONS QT_TRANSLATION_CATALOGS qtbase)
+add_library(app_i18n STATIC utils/applanguage.h utils/applanguage.cpp)
+target_include_directories(app_i18n PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(app_i18n PUBLIC Qt6::Core)
+qt_add_resources(app_i18n app_translations
+    PREFIX "/i18n" BASE "${CMAKE_CURRENT_BINARY_DIR}/i18n" FILES ${app_qm_files})
+qt_add_resources(app_i18n app_translation_catalog
+    PREFIX "/i18n" BASE "${CMAKE_CURRENT_SOURCE_DIR}/translations" FILES translations/catalog.json)
 
 qt_add_executable(SD_LoRA_Manager
     WIN32 MACOSX_BUNDLE
@@ -27,6 +39,7 @@ qt_add_executable(SD_LoRA_Manager
     core/metadatascantypes.h
     utils/modelmetadatacodec.h
     utils/modelmetadatacodec.cpp
+    utils/modelbrowserurl.h
     utils/modelscanner.h
     utils/modelscanner.cpp
     utils/modelimagematcher.h
@@ -147,6 +160,7 @@ target_link_libraries(SD_LoRA_Manager
         OpenSSL::SSL
         OpenSSL::Crypto
         Qt6::Concurrent
+        app_i18n
 )
 
 option(BUILD_MODEL_LIST_CACHE_TESTS "Build model list cache regression tests" OFF)
@@ -173,7 +187,7 @@ if(BUILD_CORE_UTIL_TESTS)
         utils/tagusage.cpp)
     target_include_directories(core_utils_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(core_utils_test PRIVATE Qt6::Core Qt6::Gui)
-    foreach(group metadata matching scanner preview comfy tags archive paths_filters inspection downloads)
+    foreach(group metadata matching scanner preview comfy tags archive paths_filters browser_urls inspection downloads)
         add_test(NAME core_utils_${group} COMMAND core_utils_test ${group})
     endforeach()
 endif()
@@ -271,6 +285,36 @@ if(BUILD_MODEL_LIST_CACHE_TESTS)
     target_link_libraries(model_list_cache_test PRIVATE Qt6::Core)
     add_test(NAME model_list_cache_test COMMAND model_list_cache_test)
 endif()
+
+if(BUILD_CORE_UTIL_TESTS)
+    add_executable(app_language_test
+        tests/app_language_test.cpp
+        pages/settingspage.cpp pages/settingspage.h pages/settingspage.ui
+        pages/downloadspage.cpp pages/downloadspage.h pages/downloadspage.ui
+        windows/mainwindow.ui tools/promptparserwidget.ui
+        tools/prompttemplatelibrarywidget.ui tools/llmpromptwidget.ui
+        tools/tagbrowserwidget.ui tools/syncwidget.ui tools/usageanalysiswidget.ui
+        pages/launcherwidget.ui pages/aboutpage.ui
+        dialogs/modelnotedialog.ui dialogs/pathlistdialog.ui
+        dialogs/imageviewerdialog.ui dialogs/launcherimportdialog.ui
+        widgets/gallerylistwidget.cpp widgets/gallerylistwidget.h
+        utils/downloadstatus.cpp utils/styleconstants.cpp utils/tableviewstylehelper.cpp
+        resources.qrc)
+    target_include_directories(app_language_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/utils)
+    target_compile_definitions(app_language_test PRIVATE TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(app_language_test PRIVATE Qt6::Widgets app_i18n)
+    set_target_properties(app_language_test PROPERTIES
+        AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/windows;${CMAKE_CURRENT_SOURCE_DIR}/pages;${CMAKE_CURRENT_SOURCE_DIR}/tools;${CMAKE_CURRENT_SOURCE_DIR}/dialogs"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/language")
+    add_test(NAME app_language_test COMMAND app_language_test)
+    set_tests_properties(app_language_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
+endif()
+
+foreach(test_target tag_browser_test template_picker_test download_restore_test gallery_interaction_test)
+    if(TARGET ${test_target})
+        target_link_libraries(${test_target} PRIVATE app_i18n)
+    endif()
+endforeach()
 
 add_custom_command(TARGET SD_LoRA_Manager POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory

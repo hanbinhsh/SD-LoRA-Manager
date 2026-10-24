@@ -1,4 +1,5 @@
 #include "windows/mainwindow.h"
+#include "utils/applanguage.h"
 
 #include <QApplication>
 #include <QStyleHints>
@@ -15,6 +16,7 @@
 
 // 定义一个结构体存放初始配置
 struct StartupConfig {
+    QString language = "zh_CN";
     QString uiScale = "1.0";
     int width = 1300;
     int height = 900;
@@ -34,6 +36,7 @@ StartupConfig readStartupConfig(int argc, char *argv[]) {
     QFile file(configPath);
     if (file.open(QIODevice::ReadOnly)) {
         QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+        config.language = AppLanguage::normalized(root["ui_language"].toString());
 
         if (root.contains("ui_scale")) {
             config.uiScale = QString::number(root["ui_scale"].toDouble(1.0), 'f', 2);
@@ -71,6 +74,7 @@ int main(int argc, char *argv[])
 
     // 3. 实例化 QApplication
     QApplication a(argc, argv);
+    AppLanguage::initialize(a, config.language);
     a.styleHints()->setColorScheme(Qt::ColorScheme::Dark);
     a.setWindowIcon(QIcon("://logo.ico"));
 

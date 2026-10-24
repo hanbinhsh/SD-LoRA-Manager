@@ -1,3 +1,4 @@
+#include "utils/applanguage.h"
 #include "prompttemplatelibrarywidget.h"
 #include "tableviewstylehelper.h"
 #include "ui_prompttemplatelibrarywidget.h"
@@ -394,7 +395,7 @@ QTableWidgetItem *makePlaceholderOptionItem(const QString &value)
 {
     auto *item = new QTableWidgetItem(placeholderOptionDisplayText(value));
     item->setData(Qt::UserRole, value);
-    item->setToolTip(value.isEmpty() ? "空选项" : value);
+    item->setToolTip(value.isEmpty() ? AppText::tr("空选项") : value);
     item->setFlags(item->flags() & ~Qt::ItemIsEditable);
     return item;
 }
@@ -599,23 +600,23 @@ PromptTemplateLibraryWidget::PromptTemplateLibraryWidget(QWidget *parent)
     ui->tableTemplateDefaults->setShowGrid(false);
     ui->tableTemplateDefaults->setFocusPolicy(Qt::NoFocus);
     ui->tableTemplateDefaults->setSelectionBehavior(QAbstractItemView::SelectRows);
-    ui->tableTemplateDefaults->setToolTip("当前模板对每个全局占位符的默认值，可按模板单独覆盖。");
+    ui->tableTemplateDefaults->setToolTip(AppText::tr("当前模板对每个全局占位符的默认值，可按模板单独覆盖。"));
     ui->tablePlaceholders->horizontalHeader()->setStretchLastSection(true);
     ui->tablePlaceholders->verticalHeader()->hide();
     ui->tablePlaceholders->setShowGrid(false);
     ui->tablePlaceholders->setFocusPolicy(Qt::NoFocus);
     ui->tablePlaceholders->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->tablePlaceholders->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    ui->tablePlaceholders->setToolTip("全局占位符定义，例如名称、显示名、文本/单选/多选类型。");
+    ui->tablePlaceholders->setToolTip(AppText::tr("全局占位符定义，例如名称、显示名、文本/单选/多选类型。"));
     ui->tablePlaceholderOptions->setColumnCount(1);
-    ui->tablePlaceholderOptions->setHorizontalHeaderLabels({"选项"});
+    ui->tablePlaceholderOptions->setHorizontalHeaderLabels({AppText::tr("选项")});
     ui->tablePlaceholderOptions->horizontalHeader()->setStretchLastSection(true);
     ui->tablePlaceholderOptions->verticalHeader()->hide();
     ui->tablePlaceholderOptions->setShowGrid(false);
     ui->tablePlaceholderOptions->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->tablePlaceholderOptions->setSelectionMode(QAbstractItemView::SingleSelection);
     ui->tablePlaceholderOptions->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    ui->tablePlaceholderOptions->setToolTip("单选/多选的候选项。选项内容可以包含换行，也可以为空。");
+    ui->tablePlaceholderOptions->setToolTip(AppText::tr("单选/多选的候选项。选项内容可以包含换行，也可以为空。"));
     m_generateTagPicker = { ui->tabGenerateTagPicker,
                             ui->editTagSearch,
                             ui->comboTagScope,
@@ -778,7 +779,7 @@ PromptTemplateLibraryWidget::PromptTemplateLibraryWidget(QWidget *parent)
         if (ui->tabGenerateTools->widget(index) == ui->tabGenerateFavorites) refreshFavoritesTable();
     });
     connect(ui->btnChooseGenerateImage, &QPushButton::clicked, this, [this]() {
-        const QString path = QFileDialog::getOpenFileName(this, "选择图片", QString(), "Images (*.png *.jpg *.jpeg *.webp)");
+        const QString path = QFileDialog::getOpenFileName(this, AppText::tr("选择图片"), QString(), AppText::tr("Images (*.png *.jpg *.jpeg *.webp)"));
         if (path.isEmpty()) return;
         ui->editGenerateImagePath->setText(path);
         parseGenerateImageTags();
@@ -799,7 +800,7 @@ PromptTemplateLibraryWidget::PromptTemplateLibraryWidget(QWidget *parent)
     connect(ui->btnAddGenerateImagePositive, &QPushButton::clicked, this, [this]() { addGenerateImageTagsToPrompt(true); });
     connect(ui->btnAddGenerateImageNegative, &QPushButton::clicked, this, [this]() { addGenerateImageTagsToPrompt(false); });
     connect(ui->btnChooseTemplateImage, &QPushButton::clicked, this, [this]() {
-        const QString path = QFileDialog::getOpenFileName(this, "选择图片", QString(), "Images (*.png *.jpg *.jpeg *.webp)");
+        const QString path = QFileDialog::getOpenFileName(this, AppText::tr("选择图片"), QString(), AppText::tr("Images (*.png *.jpg *.jpeg *.webp)"));
         if (path.isEmpty()) return;
         ui->editTemplateImagePath->setText(path);
         parseTemplateImageTags();
@@ -1144,7 +1145,7 @@ void PromptTemplateLibraryWidget::saveLibrary()
     if (!file.open(QIODevice::WriteOnly)
         || file.write(payload) != payload.size()
         || !file.commit()) {
-        QMessageBox::warning(this, "保存失败", "无法写入 config/prompt_templates.json。");
+        QMessageBox::warning(this, AppText::tr("保存失败"), AppText::tr("无法写入 config/prompt_templates.json。"));
         return;
     }
     m_dirty = false;
@@ -1290,7 +1291,7 @@ void PromptTemplateLibraryWidget::refreshFavoritesTable()
             auto *t = new QLabel(title, detail);
             t->setStyleSheet(QString("color:%1;font-weight:bold;").arg(color));
             detailLayout->addWidget(t);
-            auto *body = new QLabel(text.trimmed().isEmpty() ? "（空）" : text, detail);
+            auto *body = new QLabel(text.trimmed().isEmpty() ? AppText::tr("（空）") : text, detail);
             body->setWordWrap(true);
             body->setTextInteractionFlags(Qt::TextSelectableByMouse);
             body->setStyleSheet(QStringLiteral("color:%1;").arg(AppStyle::str("bodyText")));
@@ -1311,8 +1312,8 @@ void PromptTemplateLibraryWidget::refreshFavoritesTable()
     ui->layoutFavorites->addStretch(1);
 
     ui->lblPromptFavoritesStatus->setText(m_favorites.isEmpty()
-        ? "暂无收藏。可在右侧当前提示词区域点击“添加至收藏”。"
-        : QString("共 %1 条收藏。").arg(m_favorites.size()));
+        ? AppText::tr("暂无收藏。可在右侧当前提示词区域点击“添加至收藏”。")
+        : AppText::tr("共 %1 条收藏。").arg(m_favorites.size()));
 }
 
 void PromptTemplateLibraryWidget::refreshGenerateTemplateCombo()
@@ -1544,11 +1545,11 @@ void PromptTemplateLibraryWidget::rebuildPlaceholderInputs()
             };
             auto *btnTranslate = makeMini("文", true);
             btnTranslate->setObjectName("btnTranslate");   // 复用 QSS 选中高亮
-            btnTranslate->setToolTip("显示/隐藏选项翻译");
+            btnTranslate->setToolTip(AppText::tr("显示/隐藏选项翻译"));
             auto *btnSelectAll = makeMini("全选", false);
-            btnSelectAll->setToolTip("全选 / 取消全选");
+            btnSelectAll->setToolTip(AppText::tr("全选 / 取消全选"));
             auto *btnClear = makeMini("×", false);
-            btnClear->setToolTip("取消选择");
+            btnClear->setToolTip(AppText::tr("取消选择"));
 
             auto *btnRow = new QHBoxLayout();
             btnRow->setContentsMargins(0, 0, 0, 0);
@@ -1592,7 +1593,7 @@ void PromptTemplateLibraryWidget::rebuildPlaceholderInputs()
     }
 
     if (!addedAny) {
-        auto *emptyLabel = new QLabel("当前模板没有使用全局占位符。", ui->placeholderInputContainer);
+        auto *emptyLabel = new QLabel(AppText::tr("当前模板没有使用全局占位符。"), ui->placeholderInputContainer);
         emptyLabel->setWordWrap(true);
         ui->layoutPlaceholderInputs->addWidget(emptyLabel);
     }
@@ -1698,9 +1699,9 @@ void PromptTemplateLibraryWidget::updateGeneratedPrompt()
 
     missing.removeDuplicates();
     if (missing.isEmpty()) {
-        ui->lblGenerateStatus->setText("模板已渲染。");
+        ui->lblGenerateStatus->setText(AppText::tr("模板已渲染。"));
     } else {
-        ui->lblGenerateStatus->setText("存在未填写占位符: " + missing.join(", "));
+        ui->lblGenerateStatus->setText(AppText::tr("存在未填写占位符: ") + missing.join(", "));
     }
 }
 
@@ -2053,7 +2054,7 @@ void PromptTemplateLibraryWidget::setupTagPickerUi(TagPickerUi &picker)
     if (!picker.table) return;
 
     picker.table->setColumnCount(5);
-    picker.table->setHorizontalHeaderLabels({"Tag", "类型", "类别", "翻译", "使用次数"});
+    picker.table->setHorizontalHeaderLabels({AppText::tr("Tag"), AppText::tr("类型"), AppText::tr("类别"), AppText::tr("翻译"), AppText::tr("使用次数")});
 
     QHeaderView *header = picker.table->horizontalHeader();
     header->setStretchLastSection(false);
@@ -2182,8 +2183,8 @@ void PromptTemplateLibraryWidget::setupModelTriggerPickerUi(ModelTriggerPickerUi
         const int added = appendUniquePromptTags(target, tags);
         if (p.status) {
             p.status->setText(added == 0
-                ? "目标中已经包含该触发词。"
-                : QString("已添加 %1 个触发词到%2。").arg(added).arg(p.insertIntoTemplate ? "正面模板" : "正面提示词"));
+                ? AppText::tr("目标中已经包含该触发词。")
+                : AppText::tr("已添加 %1 个触发词到%2。").arg(added).arg(p.insertIntoTemplate ? "正面模板" : "正面提示词"));
         }
     });
     connect(picker.tree, &QTreeWidget::itemExpanded, this, [this, pickerRef](QTreeWidgetItem *item) mutable {
@@ -2300,8 +2301,8 @@ void PromptTemplateLibraryWidget::refreshModelTriggerPickerTable(ModelTriggerPic
     }
 
     picker.status->setText(picker.tree->topLevelItemCount() == 0
-        ? "没有可显示的模型触发词。请先同步模型元数据或编辑自定义触发词。"
-        : QString("显示 %1 个模型，共 %2 条触发词。")
+        ? AppText::tr("没有可显示的模型触发词。请先同步模型元数据或编辑自定义触发词。")
+        : AppText::tr("显示 %1 个模型，共 %2 条触发词。")
               .arg(picker.tree->topLevelItemCount())
               .arg(std::accumulate(groups.cbegin(), groups.cend(), 0, [](int total, const ModelTriggerGroup &group) {
                   return total + group.metadataTriggers.size() + group.customTriggers.size();
@@ -2330,7 +2331,7 @@ void PromptTemplateLibraryWidget::addModelTriggerTags(ModelTriggerPickerUi &pick
     QStringList tags = loraTags;
     tags += triggers;
     if (tags.isEmpty()) {
-        if (picker.status) picker.status->setText("请先选择模型触发词。");
+        if (picker.status) picker.status->setText(AppText::tr("请先选择模型触发词。"));
         return;
     }
 
@@ -2338,8 +2339,8 @@ void PromptTemplateLibraryWidget::addModelTriggerTags(ModelTriggerPickerUi &pick
     const int added = appendUniquePromptTags(target, tags);
     if (picker.status) {
         picker.status->setText(added == 0
-            ? "目标中已经包含选中的触发词。"
-            : QString("已添加 %1 个触发词到%2。").arg(added).arg(picker.insertIntoTemplate ? "正面模板" : "正面提示词"));
+            ? AppText::tr("目标中已经包含选中的触发词。")
+            : AppText::tr("已添加 %1 个触发词到%2。").arg(added).arg(picker.insertIntoTemplate ? "正面模板" : "正面提示词"));
     }
 }
 
@@ -2379,14 +2380,14 @@ void PromptTemplateLibraryWidget::setupPromptTagFlowView(QPlainTextEdit *edit)
 
     view.translateButton = makeMiniButton("文", true);
     view.translateButton->setObjectName("btnTranslate"); // 复用 QSS 的选中高亮样式
-    view.translateButton->setToolTip("显示/隐藏 Tag 翻译");
+    view.translateButton->setToolTip(AppText::tr("显示/隐藏 Tag 翻译"));
     view.translateButton->setChecked(true);
     view.selectAllButton = makeMiniButton("全选", false);
-    view.selectAllButton->setToolTip("全选 / 取消全选当前显示的 Tag");
+    view.selectAllButton->setToolTip(AppText::tr("全选 / 取消全选当前显示的 Tag"));
     view.clearButton = makeMiniButton("×", false);
-    view.clearButton->setToolTip("取消选中的 Tag");
+    view.clearButton->setToolTip(AppText::tr("取消选中的 Tag"));
     view.toggleButton = makeMiniButton("标签", true);
-    view.toggleButton->setToolTip("在文本编辑与标签视图之间切换");
+    view.toggleButton->setToolTip(AppText::tr("在文本编辑与标签视图之间切换"));
 
     // 标签视图相关按钮仅在标签视图下显示。
     view.translateButton->setVisible(false);
@@ -2471,7 +2472,7 @@ void PromptTemplateLibraryWidget::togglePromptTagFlowView(int viewIndex, bool ta
     if (view.translateButton) view.translateButton->setVisible(tagView);
     if (view.selectAllButton) view.selectAllButton->setVisible(tagView);
     if (view.clearButton) view.clearButton->setVisible(tagView);
-    if (view.toggleButton) view.toggleButton->setText(tagView ? "文本" : "标签");
+    if (view.toggleButton) view.toggleButton->setText(tagView ? AppText::tr("文本") : AppText::tr("标签"));
     if (tagView) {
         hideAutocompletePopup();
         refreshPromptTagFlowFromText(view);
@@ -2805,19 +2806,19 @@ void PromptTemplateLibraryWidget::addGenerateImageTagsToPrompt(bool positiveTarg
     const QStringList tags = selectedGenerateImageTags(positiveTarget);
     if (tags.isEmpty()) {
         ui->lblGenerateImageStatus->setText(positiveTarget
-            ? "请先在正面 TagFlow 中选择要添加的 Tag。"
-            : "请先在负面 TagFlow 中选择要添加的 Tag。");
+            ? AppText::tr("请先在正面 TagFlow 中选择要添加的 Tag。")
+            : AppText::tr("请先在负面 TagFlow 中选择要添加的 Tag。"));
         return;
     }
     QPlainTextEdit *target = positiveTarget ? ui->textGeneratedPositive : ui->textGeneratedNegative;
     const int added = appendUniquePromptTags(target, tags);
     if (added <= 0) {
         ui->lblGenerateImageStatus->setText(positiveTarget
-            ? "选中的 Tag 已存在于正面提示词中。"
-            : "选中的 Tag 已存在于负面提示词中。");
+            ? AppText::tr("选中的 Tag 已存在于正面提示词中。")
+            : AppText::tr("选中的 Tag 已存在于负面提示词中。"));
         return;
     }
-    ui->lblGenerateImageStatus->setText(QString("已添加 %1 个新 Tag 到%2提示词。")
+    ui->lblGenerateImageStatus->setText(AppText::tr("已添加 %1 个新 Tag 到%2提示词。")
         .arg(added)
         .arg(positiveTarget ? "正面" : "负面"));
 }
@@ -2827,8 +2828,8 @@ void PromptTemplateLibraryWidget::addTemplateImageTagsToTemplate(bool positiveTa
     const QStringList tags = selectedTemplateImageTags(positiveTarget);
     if (tags.isEmpty()) {
         ui->lblTemplateImageStatus->setText(positiveTarget
-            ? "请先在正面 TagFlow 中选择要添加到模板的 Tag。"
-            : "请先在负面 TagFlow 中选择要添加到模板的 Tag。");
+            ? AppText::tr("请先在正面 TagFlow 中选择要添加到模板的 Tag。")
+            : AppText::tr("请先在负面 TagFlow 中选择要添加到模板的 Tag。"));
         return;
     }
 
@@ -2836,11 +2837,11 @@ void PromptTemplateLibraryWidget::addTemplateImageTagsToTemplate(bool positiveTa
     const int added = appendUniquePromptTags(target, tags);
     if (added <= 0) {
         ui->lblTemplateImageStatus->setText(positiveTarget
-            ? "选中的 Tag 已存在于正面模板中。"
-            : "选中的 Tag 已存在于负面模板中。");
+            ? AppText::tr("选中的 Tag 已存在于正面模板中。")
+            : AppText::tr("选中的 Tag 已存在于负面模板中。"));
         return;
     }
-    ui->lblTemplateImageStatus->setText(QString("已添加 %1 个新 Tag 到%2模板。")
+    ui->lblTemplateImageStatus->setText(AppText::tr("已添加 %1 个新 Tag 到%2模板。")
         .arg(added)
         .arg(positiveTarget ? "正面" : "负面"));
 }
@@ -2866,14 +2867,14 @@ void PromptTemplateLibraryWidget::loadTagPickerRows(TagPickerUi &picker, bool fo
     if (!picker.table || !picker.scope || !picker.status) return;
     picker.requested = true;
     if (m_tagWatcher) {
-        picker.status->setText("Tag 统计正在加载中...");
+        picker.status->setText(AppText::tr("Tag 统计正在加载中..."));
         return;
     }
     if (!force && m_tagsLoaded) {
         refreshTagPickerTable(picker);
         return;
     }
-    picker.status->setText("正在读取 user_gallery_cache.json 并统计常用 Tag...");
+    picker.status->setText(AppText::tr("正在读取 user_gallery_cache.json 并统计常用 Tag..."));
     picker.table->setRowCount(0);
     m_tagsLoaded = false;
     const QString cachePath = qApp->applicationDirPath() + "/config/user_gallery_cache.json";
@@ -2938,7 +2939,7 @@ void PromptTemplateLibraryWidget::refreshTagPickerTable(TagPickerUi &picker)
     picker.table->setCurrentCell(-1, -1);
     picker.table->setRowCount(rows.size());
     picker.table->setColumnCount(5);
-    picker.table->setHorizontalHeaderLabels({"Tag", "类型", "类别", "翻译", "使用次数"});
+    picker.table->setHorizontalHeaderLabels({AppText::tr("Tag"), AppText::tr("类型"), AppText::tr("类别"), AppText::tr("翻译"), AppText::tr("使用次数")});
 
     for (int row = 0; row < rows.size(); ++row) {
         const TagUsageRow &rowData = rows.at(row);
@@ -2950,7 +2951,7 @@ void PromptTemplateLibraryWidget::refreshTagPickerTable(TagPickerUi &picker)
         splitCategoryAndTranslationText(cleanedTranslation, category, translation);
 
         picker.table->setItem(row, 0, makePromptTemplateTableItem(rowData.tag));
-        picker.table->setItem(row, 1, makePromptTemplateTableItem(rowData.kind));
+        picker.table->setItem(row, 1, makePromptTemplateTableItem(AppText::display(rowData.kind)));
         picker.table->setItem(row, 2, makePromptTemplateTableItem(category));
         picker.table->setItem(row, 3, makePromptTemplateTableItem(translation));
         picker.table->setItem(row, 4, makePromptTemplateTableItem(rowData.count));
@@ -2960,15 +2961,15 @@ void PromptTemplateLibraryWidget::refreshTagPickerTable(TagPickerUi &picker)
     picker.table->sortItems(sortColumn, sortOrder);
 
     picker.status->setText(rows.isEmpty()
-                               ? "未找到常用 Tag。请先扫描本地图库，或调整搜索条件。"
-                               : QString("显示 %1 条常用 Tag").arg(rows.size()));
+                               ? AppText::tr("未找到常用 Tag。请先扫描本地图库，或调整搜索条件。")
+                               : AppText::tr("显示 %1 条常用 Tag").arg(rows.size()));
 }
 
 void PromptTemplateLibraryWidget::addPickerTags(TagPickerUi &picker, bool positiveTarget)
 {
     const QStringList tags = selectedTagTexts(picker);
     if (tags.isEmpty()) {
-        if (picker.status) picker.status->setText("请先在表格中选择 Tag。");
+        if (picker.status) picker.status->setText(AppText::tr("请先在表格中选择 Tag。"));
         return;
     }
 
@@ -2987,8 +2988,8 @@ void PromptTemplateLibraryWidget::addPickerTags(TagPickerUi &picker, bool positi
     const int added = appendUniquePromptTags(target, tags);
     if (status) {
         status->setText(added == 0
-            ? QString("%1中已经包含选中的 Tag。").arg(targetName)
-            : QString("已添加 %1 个新 Tag 到%2。").arg(added).arg(targetName));
+            ? AppText::tr("%1中已经包含选中的 Tag。").arg(targetName)
+            : AppText::tr("已添加 %1 个新 Tag 到%2。").arg(added).arg(targetName));
     }
 }
 
@@ -2997,7 +2998,7 @@ void PromptTemplateLibraryWidget::addCurrentPromptToFavorites()
     const QString positive = ui->textGeneratedPositive->toPlainText().trimmed();
     const QString negative = ui->textGeneratedNegative->toPlainText().trimmed();
     if (positive.isEmpty() && negative.isEmpty()) {
-        ui->lblGenerateStatus->setText("当前提示词为空，无法添加收藏。");
+        ui->lblGenerateStatus->setText(AppText::tr("当前提示词为空，无法添加收藏。"));
         return;
     }
 
@@ -3005,8 +3006,8 @@ void PromptTemplateLibraryWidget::addCurrentPromptToFavorites()
     if (defaultName.isEmpty()) defaultName = "Favorite Prompt";
     bool ok = false;
     const QString name = QInputDialog::getText(this,
-                                               "添加提示词收藏",
-                                               "收藏名称:",
+                                               AppText::tr("添加提示词收藏"),
+                                               AppText::tr("收藏名称:"),
                                                QLineEdit::Normal,
                                                defaultName,
                                                &ok).trimmed();
@@ -3023,15 +3024,15 @@ void PromptTemplateLibraryWidget::addCurrentPromptToFavorites()
     saveLibrary();
     refreshFavoritesTable();
     ui->tabGenerateTools->setCurrentWidget(ui->tabGenerateFavorites);
-    ui->lblGenerateStatus->setText("已添加到提示词收藏。");
+    ui->lblGenerateStatus->setText(AppText::tr("已添加到提示词收藏。"));
 }
 
 void PromptTemplateLibraryWidget::copyFavoriteById(const QString &id) const
 {
     for (const PromptFavorite &item : m_favorites) {
         if (item.id != id) continue;
-        QApplication::clipboard()->setText("Positive prompt:\n" + item.positive + "\n\nNegative prompt:\n" + item.negative);
-        if (ui->lblPromptFavoritesStatus) ui->lblPromptFavoritesStatus->setText("已复制收藏提示词。");
+        QApplication::clipboard()->setText(AppText::tr("Positive prompt:\n") + item.positive + AppText::tr("\n\nNegative prompt:\n") + item.negative);
+        if (ui->lblPromptFavoritesStatus) ui->lblPromptFavoritesStatus->setText(AppText::tr("已复制收藏提示词。"));
         return;
     }
 }
@@ -3046,8 +3047,8 @@ void PromptTemplateLibraryWidget::replacePromptFromFavoriteById(const QString &i
         m_lastRenderedPositivePrompt = item.positive;
         m_lastRenderedNegativePrompt = item.negative;
         m_loadingUi = false;
-        ui->lblPromptFavoritesStatus->setText("已用收藏替换当前提示词。");
-        ui->lblGenerateStatus->setText("已用收藏替换当前提示词。");
+        ui->lblPromptFavoritesStatus->setText(AppText::tr("已用收藏替换当前提示词。"));
+        ui->lblGenerateStatus->setText(AppText::tr("已用收藏替换当前提示词。"));
         return;
     }
 }
@@ -3057,8 +3058,8 @@ void PromptTemplateLibraryWidget::deleteFavoriteById(const QString &id)
     for (int i = 0; i < m_favorites.size(); ++i) {
         if (m_favorites.at(i).id != id) continue;
         if (QMessageBox::question(this,
-                                  "删除收藏",
-                                  QString("确定删除收藏“%1”吗？").arg(m_favorites.at(i).name))
+                                  AppText::tr("删除收藏"),
+                                  AppText::tr("确定删除收藏“%1”吗？").arg(m_favorites.at(i).name))
             != QMessageBox::Yes) {
             return;
         }
@@ -3073,7 +3074,7 @@ void PromptTemplateLibraryWidget::parseGenerateImageTags()
 {
     const QString path = ui->editGenerateImagePath->text().trimmed();
     if (path.isEmpty() || !QFile::exists(path)) {
-        ui->lblGenerateImageStatus->setText("请先选择存在的图片。");
+        ui->lblGenerateImageStatus->setText(AppText::tr("请先选择存在的图片。"));
         return;
     }
 
@@ -3087,15 +3088,15 @@ void PromptTemplateLibraryWidget::parseGenerateImageTags()
 
     const int total = positive.size() + negative.size();
     ui->lblGenerateImageStatus->setText(total == 0
-        ? "图片元数据中没有解析出可用 Tag。"
-        : QString("已解析 %1 个正面 Tag，%2 个负面 Tag。").arg(positive.size()).arg(negative.size()));
+        ? AppText::tr("图片元数据中没有解析出可用 Tag。")
+        : AppText::tr("已解析 %1 个正面 Tag，%2 个负面 Tag。").arg(positive.size()).arg(negative.size()));
 }
 
 void PromptTemplateLibraryWidget::parseTemplateImageTags()
 {
     const QString path = ui->editTemplateImagePath->text().trimmed();
     if (path.isEmpty() || !QFile::exists(path)) {
-        ui->lblTemplateImageStatus->setText("请先选择存在的图片。");
+        ui->lblTemplateImageStatus->setText(AppText::tr("请先选择存在的图片。"));
         return;
     }
 
@@ -3109,8 +3110,8 @@ void PromptTemplateLibraryWidget::parseTemplateImageTags()
 
     const int total = positive.size() + negative.size();
     ui->lblTemplateImageStatus->setText(total == 0
-        ? "未从图片中解析到可用 Tag。"
-        : QString("已解析 %1 个正面 Tag，%2 个负面 Tag，可选择后添加到当前模板。").arg(positive.size()).arg(negative.size()));
+        ? AppText::tr("未从图片中解析到可用 Tag。")
+        : AppText::tr("已解析 %1 个正面 Tag，%2 个负面 Tag，可选择后添加到当前模板。").arg(positive.size()).arg(negative.size()));
 }
 
 void PromptTemplateLibraryWidget::onTabChanged(int index)
@@ -3192,7 +3193,7 @@ void PromptTemplateLibraryWidget::onDeleteTemplateClicked()
 {
     const int index = templateIndexById(ui->listTemplates->currentItem() ? ui->listTemplates->currentItem()->data(Qt::UserRole).toString() : QString());
     if (index < 0) return;
-    if (QMessageBox::question(this, "确认删除", "确定删除当前模板吗？") != QMessageBox::Yes) return;
+    if (QMessageBox::question(this, AppText::tr("确认删除"), AppText::tr("确定删除当前模板吗？")) != QMessageBox::Yes) return;
     m_templates.removeAt(index);
     if (m_templates.isEmpty()) createDefaultLibrary();
     saveLibrary();
@@ -3205,13 +3206,13 @@ void PromptTemplateLibraryWidget::onSavePlaceholderClicked()
     const QString nextName = ui->editPlaceholderName->text().trimmed();
 
     if (nextName.isEmpty()) {
-        QMessageBox::information(this, "提示", "占位符名称不能为空。");
+        QMessageBox::information(this, AppText::tr("提示"), AppText::tr("占位符名称不能为空。"));
         return;
     }
 
     const int duplicateIndex = placeholderIndexByName(nextName);
     if (duplicateIndex >= 0 && duplicateIndex != currentRow) {
-        QMessageBox::information(this, "提示", "占位符名称已存在。");
+        QMessageBox::information(this, AppText::tr("提示"), AppText::tr("占位符名称已存在。"));
         return;
     }
 
@@ -3264,7 +3265,7 @@ void PromptTemplateLibraryWidget::onDeletePlaceholderClicked()
 {
     const int row = ui->tablePlaceholders->currentRow();
     if (row < 0 || row >= m_placeholders.size()) return;
-    if (QMessageBox::question(this, "确认删除", "确定删除当前占位符吗？模板中的 {name} 文本会保留，方便之后手动处理。") != QMessageBox::Yes) return;
+    if (QMessageBox::question(this, AppText::tr("确认删除"), AppText::tr("确定删除当前占位符吗？模板中的 {name} 文本会保留，方便之后手动处理。")) != QMessageBox::Yes) return;
     m_placeholders.removeAt(row);
     saveLibrary();
     refreshAllLists();

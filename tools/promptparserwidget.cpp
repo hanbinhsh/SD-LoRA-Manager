@@ -1,3 +1,4 @@
+#include "utils/applanguage.h"
 #include "promptparserwidget.h"
 #include "ui_promptparserwidget.h"
 #include "tagutils.h"
@@ -325,7 +326,7 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
 
     connect(ui->btnTranslate, &QPushButton::toggled, this, [this](bool checked) {
         if (checked && (!m_translationMap || m_translationMap->isEmpty())) {
-            QMessageBox::warning(this, "提示", "未加载翻译词表，请在设置中配置 CSV 文件。");
+            QMessageBox::warning(this, AppText::tr("提示"), AppText::tr("未加载翻译词表，请在设置中配置 CSV 文件。"));
             QSignalBlocker blocker(ui->btnTranslate);
             ui->btnTranslate->setChecked(false);
             return;
@@ -373,13 +374,13 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
     ui->splitterCompareMain->setSizes({300, 280});
     ui->splitterCompareTags->setSizes({1, 1});
     ui->splitterCompareBottom->setSizes({1, 1});
-    ui->listCompareOnlyA->setToolTip("仅图片 A 中存在的 Tag");
-    ui->listCompareOnlyB->setToolTip("仅图片 B 中存在的 Tag");
-    ui->listCompareCommon->setToolTip("两张图片共同存在的 Tag");
+    ui->listCompareOnlyA->setToolTip(AppText::tr("仅图片 A 中存在的 Tag"));
+    ui->listCompareOnlyB->setToolTip(AppText::tr("仅图片 B 中存在的 Tag"));
+    ui->listCompareCommon->setToolTip(AppText::tr("两张图片共同存在的 Tag"));
     connect(ui->chkCompareNegative, &QCheckBox::toggled, this, &PromptParserWidget::updateImageCompare);
     connect(ui->chkCompareTranslate, &QCheckBox::toggled, this, [this](bool checked) {
         if (checked && (!m_translationMap || m_translationMap->isEmpty())) {
-            QMessageBox::warning(this, "提示", "未加载翻译词表，请在设置中配置 CSV 文件。");
+            QMessageBox::warning(this, AppText::tr("提示"), AppText::tr("未加载翻译词表，请在设置中配置 CSV 文件。"));
             QSignalBlocker blocker(ui->chkCompareTranslate);
             ui->chkCompareTranslate->setChecked(false);
             checked = false;
@@ -402,21 +403,21 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
             wd14Process->readAllStandardOutput(),
             wd14Process->readAllStandardError(),
             exitCode);
-        ui->lblWd14Elapsed->setText(QString("用时: %1 sec.").arg(result.elapsedSec, 0, 'f', 2));
+        ui->lblWd14Elapsed->setText(AppText::tr("用时: %1 sec.").arg(result.elapsedSec, 0, 'f', 2));
         updateWd14MemoryLabel(result.totalMemory, result.availableMemory);
 
         if (!result.ok) {
-            ui->lblWd14Status->setText(result.error.isEmpty() ? "WD14 反推失败。" : result.error);
+            ui->lblWd14Status->setText(result.error.isEmpty() ? AppText::tr("WD14 反推失败。") : result.error);
             return;
         }
 
         applyWd14Result(result, &m_activeWd14Settings);
-        ui->lblWd14Status->setText(QString("WD14 反推完成，共 %1 个标签。").arg(result.tags.size()));
+        ui->lblWd14Status->setText(AppText::tr("WD14 反推完成，共 %1 个标签。").arg(result.tags.size()));
         appendWd14History(result, m_activeWd14Settings);
     });
     connect(wd14Process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
         setWd14Running(false);
-        ui->lblWd14Status->setText("WD14 Python 进程启动失败: " + wd14Process->errorString());
+        ui->lblWd14Status->setText(AppText::tr("WD14 Python 进程启动失败: ") + wd14Process->errorString());
     });
 
     m_wd14BatchProcess = new QProcess(this);
@@ -437,11 +438,11 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
         m_wd14BatchModel->notifyAll();
         setWd14BatchRunning(false);
         updateWd14BatchCounts();
-        if (m_wd14BatchStopRequested) ui->lblWd14BatchStatus->setText("批量任务已停止，可继续失败/未完成项。");
+        if (m_wd14BatchStopRequested) ui->lblWd14BatchStatus->setText(AppText::tr("批量任务已停止，可继续失败/未完成项。"));
         else if (!m_wd14BatchFatalError.isEmpty()) ui->lblWd14BatchStatus->setText(m_wd14BatchFatalError);
         else if (exitCode != 0 && !stderrText.isEmpty()) ui->lblWd14BatchStatus->setText(stderrText.left(1000));
-        else if (exitCode != 0) ui->lblWd14BatchStatus->setText(QString("批量进程异常结束 (exit %1)。").arg(exitCode));
-        else ui->lblWd14BatchStatus->setText("批量打标完成。");
+        else if (exitCode != 0) ui->lblWd14BatchStatus->setText(AppText::tr("批量进程异常结束 (exit %1)。").arg(exitCode));
+        else ui->lblWd14BatchStatus->setText(AppText::tr("批量打标完成。"));
         if (!m_wd14BatchManifestPath.isEmpty()) QFile::remove(m_wd14BatchManifestPath);
         m_wd14BatchManifestPath.clear();
         m_wd14BatchFatalError.clear();
@@ -469,11 +470,11 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
     connect(ui->btnWd14Run, &QPushButton::clicked, this, &PromptParserWidget::runWd14Tagger);
     connect(ui->btnWd14Copy, &QPushButton::clicked, this, [this]() {
         if (wd14LastTagsText.trimmed().isEmpty()) {
-            ui->lblWd14Status->setText("暂无可复制的 WD14 Tag。");
+            ui->lblWd14Status->setText(AppText::tr("暂无可复制的 WD14 Tag。"));
             return;
         }
         QApplication::clipboard()->setText(wd14LastTagsText);
-        ui->lblWd14Status->setText("已复制 WD14 Tag。");
+        ui->lblWd14Status->setText(AppText::tr("已复制 WD14 Tag。"));
     });
     connect(ui->btnWd14BrowseModel, &QPushButton::clicked, this, &PromptParserWidget::browseWd14ModelPath);
     connect(ui->btnWd14BrowsePython, &QPushButton::clicked, this, &PromptParserWidget::browseWd14PythonPath);
@@ -527,7 +528,7 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
     ui->treeWd14Tags->header()->setSortIndicatorShown(true);
     connect(ui->treeWd14Tags, &QWidget::customContextMenuRequested,
             this, &PromptParserWidget::showWd14TagContextMenu);
-    auto *copyWd14SelectedTagsAction = new QAction("复制选中 Tag", ui->treeWd14Tags);
+    auto *copyWd14SelectedTagsAction = new QAction(AppText::tr("复制选中 Tag"), ui->treeWd14Tags);
     copyWd14SelectedTagsAction->setShortcut(QKeySequence::Copy);
     copyWd14SelectedTagsAction->setShortcutContext(Qt::WidgetShortcut);
     ui->treeWd14Tags->addAction(copyWd14SelectedTagsAction);
@@ -682,21 +683,21 @@ bool PromptParserWidget::eventFilter(QObject *watched, QEvent *event)
         }
     }
     if (watched == ui->lblImage && event->type() == QEvent::MouseButtonPress) {
-        const QString filePath = QFileDialog::getOpenFileName(this, "选择图片", "", "Images (*.png *.jpg *.jpeg *.webp)");
+        const QString filePath = QFileDialog::getOpenFileName(this, AppText::tr("选择图片"), "", AppText::tr("Images (*.png *.jpg *.jpeg *.webp)"));
         if (!filePath.isEmpty()) processImage(filePath);
         return true;
     }
     if (watched == ui->lblWd14Image && event->type() == QEvent::MouseButtonPress) {
-        const QString filePath = QFileDialog::getOpenFileName(this, "选择图片", "", "Images (*.png *.jpg *.jpeg *.webp)");
+        const QString filePath = QFileDialog::getOpenFileName(this, AppText::tr("选择图片"), "", AppText::tr("Images (*.png *.jpg *.jpeg *.webp)"));
         if (!filePath.isEmpty()) processWd14Image(filePath);
         return true;
     }
     if ((watched == ui->lblComparePreviewA || watched == ui->lblComparePreviewB) && event->type() == QEvent::MouseButtonPress) {
         const bool imageA = watched == ui->lblComparePreviewA;
         const QString filePath = QFileDialog::getOpenFileName(this,
-                                                              imageA ? "选择图片 A" : "选择图片 B",
+                                                              imageA ? AppText::tr("选择图片 A") : AppText::tr("选择图片 B"),
                                                               "",
-                                                              "Images (*.png *.jpg *.jpeg *.webp)");
+                                                              AppText::tr("Images (*.png *.jpg *.jpeg *.webp)"));
         if (!filePath.isEmpty()) processCompareImage(imageA, filePath);
         return true;
     }
@@ -809,7 +810,7 @@ static QStackedWidget *wrapScrollWithEditor(QBoxLayout *layout, QScrollArea *are
 
     auto *edit = new QPlainTextEdit(stack);
     edit->setSizePolicy(area->sizePolicy());
-    edit->setPlaceholderText("提示词文本（可编辑 / 复制 / 粘贴），切到“标签”视图可解析并翻译");
+    edit->setPlaceholderText(AppText::tr("提示词文本（可编辑 / 复制 / 粘贴），切到“标签”视图可解析并翻译"));
 
     // 用 stack 接管滚动区在布局中的位置，再把滚动区重新父化进 stack。
     delete layout->replaceWidget(area, stack);
@@ -836,7 +837,7 @@ void PromptParserWidget::setTagViewActive(bool tagView)
     ui->btnSelectAllTags->setVisible(tagView);
     ui->btnClearTagSelection->setVisible(tagView);
     ui->comboPromptTagSortMode->setVisible(tagView);
-    ui->btnToggleTagText->setText(tagView ? "文本" : "标签");
+    ui->btnToggleTagText->setText(tagView ? AppText::tr("文本") : AppText::tr("标签"));
     if (tagView) refreshTagFlowsFromText(); // 切回标签时按文本框最新内容重新解析（支持手动编辑/粘贴）
 }
 
@@ -860,22 +861,22 @@ void PromptParserWidget::editPromptTag(bool negative, const QString &tag)
     bool accepted = false;
     const QString edited = QInputDialog::getText(
                                this,
-                               negative ? QStringLiteral("编辑负面 Tag") : QStringLiteral("编辑正面 Tag"),
-                               QStringLiteral("Tag："),
+                               negative ? AppText::tr("编辑负面 Tag") : AppText::tr("编辑正面 Tag"),
+                               AppText::tr("Tag："),
                                QLineEdit::Normal,
                                tag,
                                &accepted).trimmed();
     if (!accepted) return;
     if (edited.isEmpty() || edited.contains(',') || edited.contains('\n') || edited.contains('\r')) {
-        QMessageBox::warning(this, QStringLiteral("无法编辑"),
-                             QStringLiteral("Tag 不能为空，也不能包含逗号或换行。"));
+        QMessageBox::warning(this, AppText::tr("无法编辑"),
+                             AppText::tr("Tag 不能为空，也不能包含逗号或换行。"));
         return;
     }
 
     QString prompt = editor->toPlainText();
     if (!replaceFirstPromptTagText(prompt, tag, edited)) {
-        QMessageBox::warning(this, QStringLiteral("无法编辑"),
-                             QStringLiteral("未在当前提示词文本中找到对应的 Tag。"));
+        QMessageBox::warning(this, AppText::tr("无法编辑"),
+                             AppText::tr("未在当前提示词文本中找到对应的 Tag。"));
         return;
     }
 
@@ -917,7 +918,7 @@ void PromptParserWidget::processImage(const QString &filePath)
 
     const ParsedImageMetadata parsed = parseImageMetadataFromFile(filePath);
     if (!parsed.hasContent()) {
-        ui->txtParams->setText("未找到生成参数 / No generation parameters found.");
+        ui->txtParams->setText(AppText::tr("未找到生成参数 / No generation parameters found."));
         m_lastParsedPositive.clear();
         m_lastParsedNegative.clear();
         if (m_posEdit) m_posEdit->clear();
@@ -952,7 +953,7 @@ void PromptParserWidget::processImage(const QString &filePath)
 void PromptParserWidget::processCompareImage(bool imageA, const QString &filePath)
 {
     if (filePath.isEmpty() || !QFile::exists(filePath)) {
-        ui->lblCompareStatus->setText(imageA ? "图片 A 不存在。" : "图片 B 不存在。");
+        ui->lblCompareStatus->setText(imageA ? AppText::tr("图片 A 不存在。") : AppText::tr("图片 B 不存在。"));
         return;
     }
 
@@ -1110,11 +1111,11 @@ void PromptParserWidget::updateImageCompare()
     const bool hasA = compareMetaA.hasContent();
     const bool hasB = compareMetaB.hasContent();
     if (!hasA && !hasB) {
-        ui->lblCompareStatus->setText("请选择两张包含元数据的图片。");
+        ui->lblCompareStatus->setText(AppText::tr("请选择两张包含元数据的图片。"));
     } else if (!hasA || !hasB) {
-        ui->lblCompareStatus->setText(hasA ? "图片 B 未解析到可用元数据。" : "图片 A 未解析到可用元数据。");
+        ui->lblCompareStatus->setText(hasA ? AppText::tr("图片 B 未解析到可用元数据。") : AppText::tr("图片 A 未解析到可用元数据。"));
     } else {
-        ui->lblCompareStatus->setText(QString("%1对比：仅 A %2 个，仅 B %3 个，共同 %4 个。")
+        ui->lblCompareStatus->setText(AppText::tr("%1对比：仅 A %2 个，仅 B %3 个，共同 %4 个。")
             .arg(useNegative ? "负面 Tag " : "正面 Tag ")
             .arg(compareOnlyATags.size())
             .arg(compareOnlyBTags.size())
@@ -1125,7 +1126,7 @@ void PromptParserWidget::updateImageCompare()
 void PromptParserWidget::copyCompareTags(const QStringList &tags, const QString &label)
 {
     QApplication::clipboard()->setText(tags.join(", "));
-    ui->lblCompareStatus->setText(QString("已复制 %1：%2 个 Tag。").arg(label).arg(tags.size()));
+    ui->lblCompareStatus->setText(AppText::tr("已复制 %1：%2 个 Tag。").arg(label).arg(tags.size()));
 }
 
 void PromptParserWidget::copyCompareAll()
@@ -1153,19 +1154,19 @@ void PromptParserWidget::copyCompareAll()
         if (a != b) lines << QString("%1: A=%2 | B=%3").arg(key, a, b);
     }
     QApplication::clipboard()->setText(lines.join("\n"));
-    ui->lblCompareStatus->setText("已复制全部图片差异。");
+    ui->lblCompareStatus->setText(AppText::tr("已复制全部图片差异。"));
 }
 
 void PromptParserWidget::processWd14Image(const QString &filePath)
 {
     if (filePath.isEmpty() || !QFile::exists(filePath)) {
-        ui->lblWd14Status->setText("图片不存在。");
+        ui->lblWd14Status->setText(AppText::tr("图片不存在。"));
         return;
     }
 
     wd14ImagePath = filePath;
     updateWd14ImagePreview(filePath);
-    ui->lblWd14Status->setText("已选择图片: " + QFileInfo(filePath).fileName());
+    ui->lblWd14Status->setText(AppText::tr("已选择图片: ") + QFileInfo(filePath).fileName());
 }
 
 void PromptParserWidget::loadWd14Settings()
@@ -1195,7 +1196,7 @@ void PromptParserWidget::loadWd14Settings()
     const QStringList presets = dir.entryList({"*.json"}, QDir::Files, QDir::Name);
     ui->comboWd14Preset->clear();
     if (presets.isEmpty()) {
-        ui->comboWd14Preset->addItem("default.json");
+        ui->comboWd14Preset->addItem(AppText::tr("default.json"));
     } else {
         ui->comboWd14Preset->addItems(presets);
     }
@@ -1339,7 +1340,7 @@ void PromptParserWidget::saveWd14Preset()
     QDir().mkpath(wd14PresetDirectory());
     QFile file(QDir(wd14PresetDirectory()).filePath(presetName));
     if (!file.open(QIODevice::WriteOnly)) {
-        ui->lblWd14Status->setText("预设保存失败。");
+        ui->lblWd14Status->setText(AppText::tr("预设保存失败。"));
         return;
     }
     file.write(QJsonDocument(preset).toJson());
@@ -1348,34 +1349,34 @@ void PromptParserWidget::saveWd14Preset()
     }
     ui->comboWd14Preset->setCurrentText(presetName);
     saveWd14Settings();
-    ui->lblWd14Status->setText("已保存预设: " + presetName);
+    ui->lblWd14Status->setText(AppText::tr("已保存预设: ") + presetName);
 }
 
 void PromptParserWidget::deleteWd14Preset()
 {
     QString presetName = ui->comboWd14Preset->currentText().trimmed();
     if (presetName.isEmpty()) {
-        ui->lblWd14Status->setText("没有可删除的预设。");
+        ui->lblWd14Status->setText(AppText::tr("没有可删除的预设。"));
         return;
     }
     if (!presetName.endsWith(".json", Qt::CaseInsensitive)) presetName += ".json";
 
     const QString presetPath = QDir(wd14PresetDirectory()).filePath(presetName);
     if (!QFile::exists(presetPath)) {
-        ui->lblWd14Status->setText("预设文件不存在: " + presetName);
+        ui->lblWd14Status->setText(AppText::tr("预设文件不存在: ") + presetName);
         return;
     }
 
     const auto reply = QMessageBox::question(
         this,
-        "删除预设",
-        QString("确定要删除预设 \"%1\" 吗？").arg(presetName),
+        AppText::tr("删除预设"),
+        AppText::tr("确定要删除预设 \"%1\" 吗？").arg(presetName),
         QMessageBox::Yes | QMessageBox::No,
         QMessageBox::No);
     if (reply != QMessageBox::Yes) return;
 
     if (!QFile::remove(presetPath)) {
-        ui->lblWd14Status->setText("预设删除失败: " + presetName);
+        ui->lblWd14Status->setText(AppText::tr("预设删除失败: ") + presetName);
         return;
     }
 
@@ -1383,7 +1384,7 @@ void PromptParserWidget::deleteWd14Preset()
     const QStringList presets = dir.entryList({"*.json"}, QDir::Files, QDir::Name);
     ui->comboWd14Preset->clear();
     if (presets.isEmpty()) {
-        ui->comboWd14Preset->addItem("default.json");
+        ui->comboWd14Preset->addItem(AppText::tr("default.json"));
     } else {
         ui->comboWd14Preset->addItems(presets);
     }
@@ -1394,7 +1395,7 @@ void PromptParserWidget::deleteWd14Preset()
     } else {
         saveWd14Settings();
     }
-    ui->lblWd14Status->setText("已删除预设: " + presetName);
+    ui->lblWd14Status->setText(AppText::tr("已删除预设: ") + presetName);
 }
 
 void PromptParserWidget::loadWd14Preset(const QString &presetName)
@@ -1422,13 +1423,13 @@ bool PromptParserWidget::applyWd14Preset(const QString &presetName, bool persist
     ui->chkWd14ReplaceUnderscore->setChecked(preset.value("replace_underscore").toBool(true));
     ui->chkWd14EscapeBrackets->setChecked(preset.value("escape_brackets").toBool(false));
     if (persistActivePreset) saveWd14Settings();
-    ui->lblWd14Status->setText("已加载预设: " + presetName);
+    ui->lblWd14Status->setText(AppText::tr("已加载预设: ") + presetName);
     return true;
 }
 
 void PromptParserWidget::browseWd14ModelPath()
 {
-    const QString dir = QFileDialog::getExistingDirectory(this, "选择 WD14 模型目录", ui->editWd14ModelPath->text().trimmed());
+    const QString dir = QFileDialog::getExistingDirectory(this, AppText::tr("选择 WD14 模型目录"), ui->editWd14ModelPath->text().trimmed());
     if (dir.isEmpty()) return;
     ui->editWd14ModelPath->setText(dir);
     saveWd14Settings();
@@ -1438,9 +1439,9 @@ void PromptParserWidget::browseWd14PythonPath()
 {
     const QString file = QFileDialog::getOpenFileName(
         this,
-        "选择 Python",
+        AppText::tr("选择 Python"),
         QFileInfo(ui->editWd14PythonPath->text().trimmed()).absolutePath(),
-        "Python (python.exe python);;Executable Files (*.exe);;All Files (*)");
+        AppText::tr("Python (python.exe python);;Executable Files (*.exe);;All Files (*)"));
     if (file.isEmpty()) return;
     ui->editWd14PythonPath->setText(file);
     saveWd14Settings();
@@ -1450,9 +1451,9 @@ void PromptParserWidget::browseWd14ScriptPath()
 {
     const QString file = QFileDialog::getOpenFileName(
         this,
-        "选择 WD14 Python 脚本",
+        AppText::tr("选择 WD14 Python 脚本"),
         QFileInfo(selectedWd14ScriptPath()).absolutePath(),
-        "Python Scripts (*.py);;All Files (*)");
+        AppText::tr("Python Scripts (*.py);;All Files (*)"));
     if (file.isEmpty()) return;
     ui->editWd14ScriptPath->setText(file);
     saveWd14Settings();
@@ -1474,12 +1475,12 @@ void PromptParserWidget::copySelectedWd14Tags()
     }
 
     if (tags.isEmpty()) {
-        ui->lblWd14Status->setText("请先选择需要复制的 WD14 Tag。");
+        ui->lblWd14Status->setText(AppText::tr("请先选择需要复制的 WD14 Tag。"));
         return;
     }
 
     QApplication::clipboard()->setText(tags.join(", "));
-    ui->lblWd14Status->setText(QString("已复制 %1 个 WD14 Tag。").arg(tags.size()));
+    ui->lblWd14Status->setText(AppText::tr("已复制 %1 个 WD14 Tag。").arg(tags.size()));
 }
 
 void PromptParserWidget::showWd14TagContextMenu(const QPoint &pos)
@@ -1490,7 +1491,7 @@ void PromptParserWidget::showWd14TagContextMenu(const QPoint &pos)
     }
 
     QMenu menu(this);
-    QAction *copyAction = menu.addAction("复制选中 Tag");
+    QAction *copyAction = menu.addAction(AppText::tr("复制选中 Tag"));
     copyAction->setEnabled(!ui->treeWd14Tags->selectedItems().isEmpty());
     connect(copyAction, &QAction::triggered, this, &PromptParserWidget::copySelectedWd14Tags);
     menu.exec(ui->treeWd14Tags->viewport()->mapToGlobal(pos));
@@ -1542,24 +1543,24 @@ void PromptParserWidget::runWd14Tagger()
 {
     if (wd14Process->state() != QProcess::NotRunning) return;
     if (m_wd14BatchProcess && m_wd14BatchProcess->state() != QProcess::NotRunning) {
-        ui->lblWd14Status->setText("批量 WD14 正在运行，请先停止或等待完成。");
+        ui->lblWd14Status->setText(AppText::tr("批量 WD14 正在运行，请先停止或等待完成。"));
         return;
     }
     loadWd14TagUsageCounts();
     if (wd14ImagePath.isEmpty() || !QFile::exists(wd14ImagePath)) {
-        ui->lblWd14Status->setText("请先选择需要反推的图片。");
+        ui->lblWd14Status->setText(AppText::tr("请先选择需要反推的图片。"));
         return;
     }
 
     const QString modelDir = ui->editWd14ModelPath->text().trimmed();
     if (modelDir.isEmpty()) {
-        ui->lblWd14Status->setText("请先选择 WD14 模型目录。");
+        ui->lblWd14Status->setText(AppText::tr("请先选择 WD14 模型目录。"));
         return;
     }
 
     const QString scriptPath = selectedWd14ScriptPath();
     if (!QFile::exists(scriptPath)) {
-        ui->lblWd14Status->setText("未找到 WD14 脚本: " + scriptPath);
+        ui->lblWd14Status->setText(AppText::tr("未找到 WD14 脚本: ") + scriptPath);
         return;
     }
 
@@ -1572,8 +1573,8 @@ void PromptParserWidget::runWd14Tagger()
     saveWd14Settings();
     m_activeWd14Settings = currentWd14Settings();
     setWd14Running(true);
-    ui->lblWd14Status->setText("WD14 Python 反推运行中...");
-    ui->lblWd14Elapsed->setText("用时: 计算中...");
+    ui->lblWd14Status->setText(AppText::tr("WD14 Python 反推运行中..."));
+    ui->lblWd14Elapsed->setText(AppText::tr("用时: 计算中..."));
     wd14Process->start(selectedPythonPath(), args);
 }
 
@@ -1760,14 +1761,14 @@ void PromptParserWidget::applyWd14Result(const Wd14InferenceResult &result, cons
 void PromptParserWidget::updateWd14MemoryLabel(quint64 totalBytes, quint64 availableBytes)
 {
     if (totalBytes == 0) {
-        ui->lblWd14Memory->setText("Sys: --");
+        ui->lblWd14Memory->setText(AppText::tr("Sys: --"));
         return;
     }
 
     const quint64 usedBytes = totalBytes > availableBytes ? totalBytes - availableBytes : 0;
     const double usage = totalBytes == 0 ? 0.0 : double(usedBytes) * 100.0 / double(totalBytes);
     ui->lblWd14Memory->setText(
-        QString("Sys: %1/%2 (%3%)")
+        AppText::tr("Sys: %1/%2 (%3%)")
             .arg(formatMemoryBytes(usedBytes))
             .arg(formatMemoryBytes(totalBytes))
             .arg(usage, 0, 'f', 1));
@@ -1799,7 +1800,7 @@ QString PromptParserWidget::wd14HistoryPath() const
 void PromptParserWidget::loadWd14History()
 {
     if (m_wd14HistoryLoaded || m_wd14HistoryWatcher) return;
-    ui->lblWd14HistoryStatus->setText("正在加载 WD14 反推历史...");
+    ui->lblWd14HistoryStatus->setText(AppText::tr("正在加载 WD14 反推历史..."));
     m_wd14HistoryWatcher = new QFutureWatcher<QVector<Wd14HistoryEntry>>(this);
     connect(m_wd14HistoryWatcher, &QFutureWatcher<QVector<Wd14HistoryEntry>>::finished, this, [this]() {
         if (!m_wd14HistoryWatcher) return;
@@ -1837,7 +1838,7 @@ void PromptParserWidget::appendWd14History(const Wd14InferenceResult &result,
 
     QFile file(wd14HistoryPath());
     if (!file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-        ui->lblWd14Status->setText("WD14 反推完成，但历史记录保存失败: " + file.errorString());
+        ui->lblWd14Status->setText(AppText::tr("WD14 反推完成，但历史记录保存失败: ") + file.errorString());
         return;
     }
     file.write(QJsonDocument(wd14HistoryEntryToJson(entry)).toJson(QJsonDocument::Compact));
@@ -1881,8 +1882,8 @@ void PromptParserWidget::updateWd14HistoryActions()
     ui->btnWd14HistoryClear->setEnabled(totalCount > 0);
     if (!m_wd14HistoryLoaded && m_wd14HistoryWatcher) return;
     ui->lblWd14HistoryStatus->setText(totalCount == 0
-        ? "暂无 WD14 反推历史。"
-        : QString("显示 %1 / %2 条历史，已选择 %3 条。").arg(visibleCount).arg(totalCount).arg(selectedCount));
+        ? AppText::tr("暂无 WD14 反推历史。")
+        : AppText::tr("显示 %1 / %2 条历史，已选择 %3 条。").arg(visibleCount).arg(totalCount).arg(selectedCount));
 }
 
 void PromptParserWidget::previewWd14HistoryEntry(const QModelIndex &index)
@@ -1890,9 +1891,9 @@ void PromptParserWidget::previewWd14HistoryEntry(const QModelIndex &index)
     const Wd14HistoryEntry *entry = m_wd14HistoryModel->entryAt(index.row());
     if (!entry) return;
     applyWd14Result(entry->result, &entry->settings);
-    ui->lblWd14Elapsed->setText(QString("用时: %1 sec.").arg(entry->result.elapsedSec, 0, 'f', 2));
+    ui->lblWd14Elapsed->setText(AppText::tr("用时: %1 sec.").arg(entry->result.elapsedSec, 0, 'f', 2));
     updateWd14MemoryLabel(entry->result.totalMemory, entry->result.availableMemory);
-    ui->lblWd14Status->setText(QString("正在预览 %1 的历史结果。").arg(QFileInfo(entry->imagePath).fileName()));
+    ui->lblWd14Status->setText(AppText::tr("正在预览 %1 的历史结果。").arg(QFileInfo(entry->imagePath).fileName()));
     updateWd14HistoryActions();
 }
 
@@ -1901,17 +1902,17 @@ void PromptParserWidget::restoreWd14HistoryEntry()
     const Wd14HistoryEntry *entry = currentWd14HistoryEntry();
     if (!entry) return;
     applyWd14Result(entry->result, &entry->settings);
-    ui->lblWd14Elapsed->setText(QString("用时: %1 sec.").arg(entry->result.elapsedSec, 0, 'f', 2));
+    ui->lblWd14Elapsed->setText(AppText::tr("用时: %1 sec.").arg(entry->result.elapsedSec, 0, 'f', 2));
     updateWd14MemoryLabel(entry->result.totalMemory, entry->result.availableMemory);
     if (QFile::exists(entry->imagePath)) {
         wd14ImagePath = entry->imagePath;
         updateWd14ImagePreview(entry->imagePath);
-        ui->lblWd14Status->setText("已恢复历史结果，不会重新运行反推。");
+        ui->lblWd14Status->setText(AppText::tr("已恢复历史结果，不会重新运行反推。"));
     } else {
         wd14ImagePath.clear();
         ui->lblWd14Image->clear();
-        ui->lblWd14Image->setText("历史图片已移动或删除\n请重新选择图片");
-        ui->lblWd14Status->setText("已恢复历史结果，但原图片不存在。");
+        ui->lblWd14Image->setText(AppText::tr("历史图片已移动或删除\n请重新选择图片"));
+        ui->lblWd14Status->setText(AppText::tr("已恢复历史结果，但原图片不存在。"));
     }
     ui->tabWd14Left->setCurrentWidget(ui->tabWd14Image);
 }
@@ -1943,15 +1944,15 @@ void PromptParserWidget::applyWd14HistorySettings()
         ui->comboWd14Preset->setCurrentIndex(presetIndex);
     }
     saveWd14Settings();
-    ui->lblWd14HistoryStatus->setText("已应用该历史记录的模型与反推设置。");
+    ui->lblWd14HistoryStatus->setText(AppText::tr("已应用该历史记录的模型与反推设置。"));
 }
 
 void PromptParserWidget::deleteSelectedWd14History()
 {
     const QModelIndexList rows = ui->listWd14History->selectionModel()->selectedRows();
     if (rows.isEmpty()) return;
-    if (QMessageBox::question(this, "删除反推历史",
-                              QString("确定删除选中的 %1 条 WD14 反推历史吗？").arg(rows.size()))
+    if (QMessageBox::question(this, AppText::tr("删除反推历史"),
+                              AppText::tr("确定删除选中的 %1 条 WD14 反推历史吗？").arg(rows.size()))
         != QMessageBox::Yes) return;
     QSet<QString> ids;
     for (const QModelIndex &index : rows) ids.insert(index.data(Wd14HistoryModel::EntryIdRole).toString());
@@ -1959,7 +1960,7 @@ void PromptParserWidget::deleteSelectedWd14History()
     m_wd14HistoryModel->removeIds(ids);
     if (!rewriteWd14History()) {
         m_wd14HistoryModel->setEntries(previousEntries);
-        QMessageBox::warning(this, "保存失败", "无法写入 wd14_history.jsonl，历史记录未删除。");
+        QMessageBox::warning(this, AppText::tr("保存失败"), AppText::tr("无法写入 wd14_history.jsonl，历史记录未删除。"));
     }
     updateWd14HistoryActions();
 }
@@ -1967,13 +1968,13 @@ void PromptParserWidget::deleteSelectedWd14History()
 void PromptParserWidget::clearWd14History()
 {
     if (!m_wd14HistoryModel || m_wd14HistoryModel->allEntries().isEmpty()) return;
-    if (QMessageBox::question(this, "清空反推历史", "确定清空全部 WD14 反推历史吗？此操作无法撤销。")
+    if (QMessageBox::question(this, AppText::tr("清空反推历史"), AppText::tr("确定清空全部 WD14 反推历史吗？此操作无法撤销。"))
         != QMessageBox::Yes) return;
     const QVector<Wd14HistoryEntry> previousEntries = m_wd14HistoryModel->allEntries();
     m_wd14HistoryModel->clear();
     if (!rewriteWd14History()) {
         m_wd14HistoryModel->setEntries(previousEntries);
-        QMessageBox::warning(this, "保存失败", "无法清空历史文件，历史记录未删除。");
+        QMessageBox::warning(this, AppText::tr("保存失败"), AppText::tr("无法清空历史文件，历史记录未删除。"));
     }
     updateWd14HistoryActions();
 }
@@ -1981,7 +1982,7 @@ void PromptParserWidget::clearWd14History()
 void PromptParserWidget::browseWd14BatchFolder()
 {
     const QString folder = QFileDialog::getExistingDirectory(
-        this, "选择批量 WD14 图片文件夹", ui->editWd14BatchFolder->text());
+        this, AppText::tr("选择批量 WD14 图片文件夹"), ui->editWd14BatchFolder->text());
     if (folder.isEmpty()) return;
     ui->editWd14BatchFolder->setText(QFileInfo(folder).absoluteFilePath());
     scanWd14BatchFolder();
@@ -1992,12 +1993,12 @@ void PromptParserWidget::scanWd14BatchFolder()
     if (m_wd14BatchScanWatcher || m_wd14BatchProcess->state() != QProcess::NotRunning) return;
     const QString folder = ui->editWd14BatchFolder->text().trimmed();
     if (!QDir(folder).exists()) {
-        ui->lblWd14BatchStatus->setText("请选择有效的图片文件夹。");
+        ui->lblWd14BatchStatus->setText(AppText::tr("请选择有效的图片文件夹。"));
         return;
     }
     ui->btnWd14BatchScan->setEnabled(false);
     ui->btnWd14BatchStart->setEnabled(false);
-    ui->lblWd14BatchStatus->setText("正在后台扫描图片...");
+    ui->lblWd14BatchStatus->setText(AppText::tr("正在后台扫描图片..."));
     const bool recursive = ui->chkWd14BatchRecursive->isChecked();
     m_wd14BatchScanWatcher = new QFutureWatcher<QVector<Wd14BatchItem>>(this);
     setWd14BatchRunning(false);
@@ -2009,7 +2010,7 @@ void PromptParserWidget::scanWd14BatchFolder()
         applyWd14BatchExistingPolicy();
         setWd14BatchRunning(false);
         updateWd14BatchCounts();
-        ui->lblWd14BatchStatus->setText(QString("扫描完成，共找到 %1 张图片。").arg(m_wd14BatchModel->rowCount()));
+        ui->lblWd14BatchStatus->setText(AppText::tr("扫描完成，共找到 %1 张图片。").arg(m_wd14BatchModel->rowCount()));
     });
     m_wd14BatchScanWatcher->setFuture(QtConcurrent::run([folder, recursive]() {
         return ::scanWd14BatchFolder(folder, recursive);
@@ -2036,21 +2037,21 @@ void PromptParserWidget::applyWd14BatchExistingPolicy()
 void PromptParserWidget::startWd14Batch(bool retryOnly)
 {
     if (m_wd14BatchProcess->state() != QProcess::NotRunning || wd14Process->state() != QProcess::NotRunning) {
-        ui->lblWd14BatchStatus->setText("单图或批量 WD14 正在运行，请等待或先停止。");
+        ui->lblWd14BatchStatus->setText(AppText::tr("单图或批量 WD14 正在运行，请等待或先停止。"));
         return;
     }
     if (m_wd14BatchModel->items().isEmpty()) {
-        ui->lblWd14BatchStatus->setText("请先扫描图片文件夹。");
+        ui->lblWd14BatchStatus->setText(AppText::tr("请先扫描图片文件夹。"));
         return;
     }
     const QString modelDir = ui->editWd14ModelPath->text().trimmed();
     const QString scriptPath = selectedWd14ScriptPath();
     if (modelDir.isEmpty() || !QFile::exists(QDir(modelDir).filePath("model.onnx"))) {
-        ui->lblWd14BatchStatus->setText("请先在 WD14 设置中选择有效模型目录。");
+        ui->lblWd14BatchStatus->setText(AppText::tr("请先在 WD14 设置中选择有效模型目录。"));
         return;
     }
     if (!QFile::exists(scriptPath)) {
-        ui->lblWd14BatchStatus->setText("未找到 WD14 脚本: " + scriptPath);
+        ui->lblWd14BatchStatus->setText(AppText::tr("未找到 WD14 脚本: ") + scriptPath);
         return;
     }
 
@@ -2071,7 +2072,7 @@ void PromptParserWidget::startWd14Batch(bool retryOnly)
         }
     }
     if (paths.isEmpty()) {
-        ui->lblWd14BatchStatus->setText("没有需要处理的图片。");
+        ui->lblWd14BatchStatus->setText(AppText::tr("没有需要处理的图片。"));
         updateWd14BatchCounts();
         return;
     }
@@ -2079,7 +2080,7 @@ void PromptParserWidget::startWd14Batch(bool retryOnly)
     QTemporaryFile manifest(QDir::tempPath() + "/sdlm_wd14_batch_XXXXXX.txt");
     manifest.setAutoRemove(false);
     if (!manifest.open()) {
-        ui->lblWd14BatchStatus->setText("无法创建批量图片清单: " + manifest.errorString());
+        ui->lblWd14BatchStatus->setText(AppText::tr("无法创建批量图片清单: ") + manifest.errorString());
         return;
     }
     for (const QString &path : paths) {
@@ -2099,7 +2100,7 @@ void PromptParserWidget::startWd14Batch(bool retryOnly)
     setWd14BatchRunning(true);
     m_wd14BatchModel->notifyAll();
     updateWd14BatchCounts();
-    ui->lblWd14BatchStatus->setText(QString("正在启动批量打标，共 %1 张图片...").arg(paths.size()));
+    ui->lblWd14BatchStatus->setText(AppText::tr("正在启动批量打标，共 %1 张图片...").arg(paths.size()));
     QStringList arguments;
     arguments << scriptPath
               << "--manifest" << m_wd14BatchManifestPath
@@ -2112,7 +2113,7 @@ void PromptParserWidget::stopWd14Batch()
 {
     if (m_wd14BatchProcess->state() == QProcess::NotRunning) return;
     m_wd14BatchStopRequested = true;
-    ui->lblWd14BatchStatus->setText("正在停止批量任务...");
+    ui->lblWd14BatchStatus->setText(AppText::tr("正在停止批量任务..."));
     m_wd14BatchProcess->kill();
 }
 
@@ -2123,7 +2124,7 @@ void PromptParserWidget::clearWd14Batch()
     ui->listWd14Batch->setCurrentIndex(QModelIndex());
     updateWd14BatchCounts();
     updateWd14BatchSelection();
-    ui->lblWd14BatchStatus->setText("任务列表已清空。");
+    ui->lblWd14BatchStatus->setText(AppText::tr("任务列表已清空。"));
 }
 
 void PromptParserWidget::setWd14BatchRunning(bool running)
@@ -2160,7 +2161,7 @@ void PromptParserWidget::updateWd14BatchSettingsSummary()
     const Wd14RenderSettings settings = currentWd14Settings();
     const QString model = QFileInfo(settings.modelDir).fileName();
     ui->lblWd14BatchSettingsSummary->setText(
-        QString("模型: %1 | 预设: %2 | 阈值: %3 | 附加: %4 | 排除: %5 | %6 / %7 / %8 / %9")
+        AppText::tr("模型: %1 | 预设: %2 | 阈值: %3 | 附加: %4 | 排除: %5 | %6 / %7 / %8 / %9")
             .arg(model.isEmpty() ? "未设置" : model,
                  settings.presetName.isEmpty() ? "-" : settings.presetName)
             .arg(settings.threshold, 0, 'f', 2)
@@ -2176,7 +2177,7 @@ void PromptParserWidget::updateWd14BatchSettingsSummary()
 void PromptParserWidget::updateWd14BatchCaptionPreview()
 {
     ui->editWd14BatchCaptionPreview->setText(
-        ui->editWd14BatchPrefix->text() + "1girl, solo, sample_tag" + ui->editWd14BatchSuffix->text());
+        ui->editWd14BatchPrefix->text() + AppText::tr("1girl, solo, sample_tag") + ui->editWd14BatchSuffix->text());
 }
 
 void PromptParserWidget::updateWd14BatchCounts()
@@ -2192,7 +2193,7 @@ void PromptParserWidget::updateWd14BatchCounts()
         }
     }
     ui->lblWd14BatchCounts->setText(
-        QString("成功 %1 | 跳过 %2 | 失败 %3 | 未处理 %4").arg(success).arg(skipped).arg(failed).arg(remaining));
+        AppText::tr("成功 %1 | 跳过 %2 | 失败 %3 | 未处理 %4").arg(success).arg(skipped).arg(failed).arg(remaining));
     ui->progressWd14Batch->setRange(0, qMax(1, m_wd14BatchModel->rowCount()));
     ui->progressWd14Batch->setValue(completed);
     setWd14BatchRunning(m_wd14BatchProcess && m_wd14BatchProcess->state() != QProcess::NotRunning);
@@ -2204,7 +2205,7 @@ void PromptParserWidget::updateWd14BatchSelection()
     ui->btnWd14BatchOpenImage->setEnabled(item != nullptr);
     ui->btnWd14BatchOpenTxt->setEnabled(item != nullptr);
     if (!item) {
-        ui->lblWd14BatchSelectedPath->setText("未选择任务");
+        ui->lblWd14BatchSelectedPath->setText(AppText::tr("未选择任务"));
         ui->textWd14BatchSelectedTags->clear();
         return;
     }
@@ -2324,7 +2325,7 @@ void PromptParserWidget::processWd14BatchEvent(const QJsonObject &event)
             if (item.status == Wd14BatchStatus::Waiting) item.status = Wd14BatchStatus::Running;
         }
         m_wd14BatchModel->notifyAll();
-        ui->lblWd14BatchStatus->setText(QString("模型已加载，正在处理 %1 张图片...").arg(event.value("total").toInt()));
+        ui->lblWd14BatchStatus->setText(AppText::tr("模型已加载，正在处理 %1 张图片...").arg(event.value("total").toInt()));
         return;
     }
     if (type == "fatal") {
@@ -2333,7 +2334,7 @@ void PromptParserWidget::processWd14BatchEvent(const QJsonObject &event)
         return;
     }
     if (type == "done") {
-        ui->lblWd14BatchStatus->setText("Python 推理完成，正在整理结果...");
+        ui->lblWd14BatchStatus->setText(AppText::tr("Python 推理完成，正在整理结果..."));
         return;
     }
     if (type != "item") return;

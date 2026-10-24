@@ -1,3 +1,4 @@
+#include "utils/applanguage.h"
 #include "modelnotedialog.h"
 #include "ui_modelnotedialog.h"
 
@@ -51,7 +52,7 @@ ModelNoteDialog::~ModelNoteDialog()
 
 void ModelNoteDialog::setModelName(const QString &name)
 {
-    ui->lblModelName->setText(name.isEmpty() ? "当前模型" : name);
+    ui->lblModelName->setText(name.isEmpty() ? AppText::tr("当前模型") : name);
 }
 
 void ModelNoteDialog::setRating(double rating)

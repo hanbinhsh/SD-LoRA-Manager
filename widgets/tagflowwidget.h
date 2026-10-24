@@ -1,3 +1,4 @@
+#include "utils/applanguage.h"
 #ifndef TAGFLOWWIDGET_H
 #define TAGFLOWWIDGET_H
 
@@ -660,7 +661,7 @@ protected:
 
         QMenu menu(this);
         if (!clickedTag.isEmpty()) {
-            QAction *actCopy = menu.addAction("复制 \"" + clickedTag + "\"");
+            QAction *actCopy = menu.addAction(AppText::tr("复制 \"") + clickedTag + "\"");
             connect(actCopy, &QAction::triggered, this, [clickedTag](){
                 QApplication::clipboard()->setText(clickedTag);
             });
@@ -668,18 +669,18 @@ protected:
 
         bool hasSelection = !getSelectedTags().isEmpty();
         if (hasSelection) {
-            QAction *actCopyAll = menu.addAction("复制已选中的 Tags");
+            QAction *actCopyAll = menu.addAction(AppText::tr("复制已选中的 Tags"));
             connect(actCopyAll, &QAction::triggered, this, [this](){
                 QApplication::clipboard()->setText(clipboardTextForVisibleTags(true));
             });
         }
 
-        QAction *actCopyEverything = menu.addAction("复制全部 Tags");
+        QAction *actCopyEverything = menu.addAction(AppText::tr("复制全部 Tags"));
         connect(actCopyEverything, &QAction::triggered, this, [this](){
             QApplication::clipboard()->setText(clipboardTextForVisibleTags(false));
         });
 
-        QAction *actBatchExport = menu.addAction("批量导出 Tags...");
+        QAction *actBatchExport = menu.addAction(AppText::tr("批量导出 Tags..."));
         connect(actBatchExport, &QAction::triggered, this, [this](){
             showBatchExportDialog();
         });
@@ -746,27 +747,27 @@ private:
     void showBatchExportDialog() {
         const QVector<QPair<QString, int>> allRows = allTagRows();
         if (allRows.isEmpty()) {
-            QMessageBox::information(nullptr, "提示", "没有可导出的 Tag。");
+            QMessageBox::information(nullptr, AppText::tr("提示"), AppText::tr("没有可导出的 Tag。"));
             return;
         }
 
         const QVector<QPair<QString, int>> selectedRows = selectedTagRows();
         QDialog dlg;
-        dlg.setWindowTitle("批量导出 Tags");
+        dlg.setWindowTitle(AppText::tr("批量导出 Tags"));
         dlg.setMinimumWidth(420);
 
         QVBoxLayout *root = new QVBoxLayout(&dlg);
-        root->addWidget(new QLabel("导出范围:", &dlg));
+        root->addWidget(new QLabel(AppText::tr("导出范围:"), &dlg));
 
         QComboBox *rangeBox = new QComboBox(&dlg);
-        if (!selectedRows.isEmpty()) rangeBox->addItem("选中项", "selected");
-        rangeBox->addItem("全部", "all");
-        rangeBox->addItem("Top K（按使用次数排序）", "top");
-        rangeBox->addItem("使用次数 >= K", "count");
+        if (!selectedRows.isEmpty()) rangeBox->addItem(AppText::tr("选中项"), "selected");
+        rangeBox->addItem(AppText::tr("全部"), "all");
+        rangeBox->addItem(AppText::tr("Top K（按使用次数排序）"), "top");
+        rangeBox->addItem(AppText::tr("使用次数 >= K"), "count");
         root->addWidget(rangeBox);
 
         QHBoxLayout *valueRow = new QHBoxLayout();
-        QLabel *valueLabel = new QLabel("K:", &dlg);
+        QLabel *valueLabel = new QLabel(AppText::tr("K:"), &dlg);
         QSpinBox *valueSpin = new QSpinBox(&dlg);
         int maxCount = 1;
         for (const auto &row : allRows) maxCount = qMax(maxCount, row.second);
@@ -777,17 +778,17 @@ private:
         valueRow->addWidget(valueSpin, 1);
         root->addLayout(valueRow);
 
-        root->addWidget(new QLabel("输出方式:", &dlg));
+        root->addWidget(new QLabel(AppText::tr("输出方式:"), &dlg));
         QComboBox *outputBox = new QComboBox(&dlg);
-        outputBox->addItem("复制到剪贴板", "copy");
-        outputBox->addItem("导出 CSV", "csv");
+        outputBox->addItem(AppText::tr("复制到剪贴板"), "copy");
+        outputBox->addItem(AppText::tr("导出 CSV"), "csv");
         root->addWidget(outputBox);
 
-        QLabel *columnsLabel = new QLabel("CSV 导出列:", &dlg);
+        QLabel *columnsLabel = new QLabel(AppText::tr("CSV 导出列:"), &dlg);
         root->addWidget(columnsLabel);
         QHBoxLayout *columnsRow = new QHBoxLayout();
-        QCheckBox *chkTag = new QCheckBox("Tag", &dlg);
-        QCheckBox *chkCount = new QCheckBox("Count", &dlg);
+        QCheckBox *chkTag = new QCheckBox(AppText::tr("Tag"), &dlg);
+        QCheckBox *chkCount = new QCheckBox(AppText::tr("Count"), &dlg);
         chkTag->setChecked(true);
         chkCount->setChecked(true);
         columnsRow->addWidget(chkTag);
@@ -801,11 +802,11 @@ private:
             valueLabel->setEnabled(needsValue);
             valueSpin->setEnabled(needsValue);
             if (mode == "top") {
-                valueLabel->setText("K:");
+                valueLabel->setText(AppText::tr("K:"));
                 valueSpin->setRange(1, qMax(1, count));
                 valueSpin->setValue(qMin(valueSpin->value(), count));
             } else if (mode == "count") {
-                valueLabel->setText("K:");
+                valueLabel->setText(AppText::tr("K:"));
                 valueSpin->setRange(1, maxCount);
                 valueSpin->setValue(qMin(valueSpin->value(), maxCount));
             }
@@ -850,7 +851,7 @@ private:
         }
 
         if (rows.isEmpty()) {
-            QMessageBox::information(nullptr, "提示", "没有符合条件的 Tag。");
+            QMessageBox::information(nullptr, AppText::tr("提示"), AppText::tr("没有符合条件的 Tag。"));
             return;
         }
 
@@ -862,7 +863,7 @@ private:
             return;
         }
 
-        QString fileName = QFileDialog::getSaveFileName(nullptr, "导出 Tags 到 CSV", "", "CSV Files (*.csv)");
+        QString fileName = QFileDialog::getSaveFileName(nullptr, AppText::tr("导出 Tags 到 CSV"), "", AppText::tr("CSV Files (*.csv)"));
         if (fileName.isEmpty()) return;
         if (!fileName.endsWith(".csv", Qt::CaseInsensitive)) fileName += ".csv";
 
@@ -870,13 +871,13 @@ private:
         if (chkTag->isChecked()) headers << "Tag";
         if (chkCount->isChecked()) headers << "Count";
         if (headers.isEmpty()) {
-            QMessageBox::information(nullptr, "提示", "请至少选择一列导出。");
+            QMessageBox::information(nullptr, AppText::tr("提示"), AppText::tr("请至少选择一列导出。"));
             return;
         }
 
         QFile file(fileName);
         if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            QMessageBox::warning(nullptr, "错误", "无法写入文件。");
+            QMessageBox::warning(nullptr, AppText::tr("错误"), AppText::tr("无法写入文件。"));
             return;
         }
 
@@ -890,7 +891,7 @@ private:
             if (chkCount->isChecked()) values << QString::number(row.second);
             out << values.join(",") << "\n";
         }
-        QMessageBox::information(nullptr, "成功", "导出成功！");
+        QMessageBox::information(nullptr, AppText::tr("成功"), AppText::tr("导出成功！"));
     }
 };
 

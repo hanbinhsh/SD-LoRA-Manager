@@ -1,3 +1,4 @@
+#include "utils/applanguage.h"
 #include "launcherwidget.h"
 #include "ui_launcherwidget.h"
 #include "styleconstants.h"
@@ -296,7 +297,7 @@ void LauncherWidget::start(TargetPanel &p)
 {
     const QString script = p.editScript->text().trimmed();
     if (script.isEmpty() || !QFileInfo::exists(script)) {
-        QMessageBox::warning(this, "启动器", "启动脚本/程序路径无效，请先选择有效的脚本或可执行文件。");
+        QMessageBox::warning(this, AppText::tr("启动器"), AppText::tr("启动脚本/程序路径无效，请先选择有效的脚本或可执行文件。"));
         return;
     }
 
@@ -419,7 +420,7 @@ void LauncherWidget::updateProgress(TargetPanel &p, const QString &plain)
     p.progressBar->setVisible(true);
     p.progressBar->setValue(pct);
     tail.replace('%', "%%");
-    p.progressBar->setFormat(tail.isEmpty() ? "%p%" : QString("%p%  %1").arg(tail));
+    p.progressBar->setFormat(tail.isEmpty() ? AppText::tr("%p%") : AppText::tr("%p%  %1").arg(tail));
 }
 
 void LauncherWidget::scanForUrl(TargetPanel &p, const QString &text)
@@ -481,8 +482,8 @@ void LauncherWidget::browseScript(TargetPanel &p)
     const QString current = p.editScript->text().trimmed();
     const QString dir = current.isEmpty() ? QString() : QFileInfo(current).absolutePath();
     const QString file = QFileDialog::getOpenFileName(
-        this, "选择启动脚本/程序", dir,
-        "启动脚本/程序 (*.bat *.cmd *.py *.exe);;所有文件 (*)");
+        this, AppText::tr("选择启动脚本/程序"), dir,
+        AppText::tr("启动脚本/程序 (*.bat *.cmd *.py *.exe);;所有文件 (*)"));
     if (file.isEmpty()) return;
     p.editScript->setText(QDir::toNativeSeparators(file));
     saveSettings();
@@ -491,7 +492,7 @@ void LauncherWidget::browseScript(TargetPanel &p)
 void LauncherWidget::browseWorkdir(TargetPanel &p)
 {
     const QString dir = QFileDialog::getExistingDirectory(
-        this, "选择工作目录", p.editWorkdir->text().trimmed());
+        this, AppText::tr("选择工作目录"), p.editWorkdir->text().trimmed());
     if (dir.isEmpty()) return;
     p.editWorkdir->setText(QDir::toNativeSeparators(dir));
     saveSettings();
@@ -502,8 +503,8 @@ void LauncherWidget::importLaunchScript(TargetPanel &p)
     const QString current = p.editScript->text().trimmed();
     const QString startDir = current.isEmpty() ? QString() : QFileInfo(current).absolutePath();
     const QString path = QFileDialog::getOpenFileName(
-        this, "选择要读取的启动脚本", startDir,
-        "启动入口 (*.bat *.cmd *.py *.exe);;所有文件 (*)");
+        this, AppText::tr("选择要读取的启动脚本"), startDir,
+        AppText::tr("启动入口 (*.bat *.cmd *.py *.exe);;所有文件 (*)"));
     if (path.isEmpty()) return;
 
     const LaunchScriptTarget target = p.target == Target::A1111
@@ -535,7 +536,7 @@ void LauncherWidget::showParameterHelp(const TargetPanel &p)
           "webui-user.bat 中的 COMMANDLINE_ARGS 属于脚本内部参数，导入时只展示，不会再次追加。"
         : "ComfyUI 常见参数：--listen、--port 8188、--preview-method auto、--lowvram。\n"
           "便携版 run_nvidia_gpu.bat 中能明确识别的 python.exe + main.py 命令可转换为可编辑参数。";
-    QMessageBox::information(this, "启动参数说明", common + targetHelp);
+    QMessageBox::information(this, AppText::tr("启动参数说明"), common + targetHelp);
 }
 
 void LauncherWidget::setRunningUi(TargetPanel &p, bool running)
@@ -548,14 +549,14 @@ void LauncherWidget::setRunningUi(TargetPanel &p, bool running)
     p.btnImport->setEnabled(!running);
 
     if (running) {
-        p.btnStartStop->setText("停止 / Stop");
+        p.btnStartStop->setText(AppText::tr("停止 / Stop"));
         p.btnStartStop->setStyleSheet(
             QString("QPushButton{background-color:%1;color:%2;font-weight:bold;}"
                     "QPushButton:hover{background-color:#c24444;}"
                     "QPushButton:pressed{background-color:#8e2a2a;}")
                 .arg(AppStyle::SyncStopRed(), AppStyle::WhiteText()));
     } else {
-        p.btnStartStop->setText("启动 / Start");
+        p.btnStartStop->setText(AppText::tr("启动 / Start"));
         p.btnStartStop->setStyleSheet(QString());
         if (p.progressBar) p.progressBar->setVisible(false);
         // 进程已停止：复位“打开界面”按钮（清除绿色高亮并禁用），下次启动重新识别地址。

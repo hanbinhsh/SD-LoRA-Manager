@@ -9,6 +9,7 @@
 #include "utils/modelimagematcher.h"
 #include "utils/modellistcache.h"
 #include "utils/modelmetadatacodec.h"
+#include "utils/modelbrowserurl.h"
 #include "utils/modelscanner.h"
 #include "utils/pathutils.h"
 #include "utils/previewimagestore.h"
@@ -684,6 +685,39 @@ void testDownloadCache(const QTemporaryDir &dir)
     check(preserveIgnored("已忽略更新", "发现新版本") == "已忽略更新", "update refresh retains explicit ignore");
 }
 
+void testModelBrowserUrls()
+{
+    using namespace ModelBrowser;
+    const QUrl original("https://civitai.com/models/1317146/from-haison-shoujo?modelVersionId=987654#images");
+    const QUrl red = preferredUrl(original, "civitai.red");
+    check(red.host() == "civitai.red" && red.path() == original.path()
+          && red.query() == original.query() && red.fragment() == original.fragment(),
+          "Civitai browser preference preserves slug, version query and fragment");
+    check(original.host() == "civitai.com", "browser resolution does not mutate its input");
+    check(preferredUrl(red, "civitai.com") == original, "preference can switch back to civitai.com");
+    check(preferredUrl(QUrl("http://WWW.CIVITAI.COM/models/1"), "civitai.red") == QUrl("https://civitai.red/models/1"),
+          "legacy HTTP and www model links use the selected HTTPS site");
+    check(normalizedCivitaiHost(" CIVITAI.COM ") == "civitai.com"
+          && normalizedCivitaiHost("invalid.example") == "civitai.red", "unknown settings fall back to red");
+    for (const QString &text : {QString("https://civarchive.com/sha256/abcdef"),
+                               QString("https://civitai.com/api/v1/models/1317146"),
+                               QString("https://civitai.com/api/download/models/987654"),
+                               QString("https://civitai.com.evil.example/models/1"),
+                               QString("https://example.com/models/1?redirect=civitai.com"),
+                               QString("https://image.civitai.com/preview.png"),
+                               QString("file:///models/local.html")}) {
+        const QUrl url(text);
+        check(!isCivitaiModelPage(url) && preferredUrl(url, "civitai.red") == url,
+              "archive, custom, API, download and image URLs are never redirected");
+    }
+    const QJsonObject metadata = versionFixture();
+    const QByteArray before = QJsonDocument(metadata).toJson();
+    const QString canonical = ModelMetadata::metadataBrowserUrlFromRoot(metadata);
+    check(preferredUrl(QUrl(canonical), "civitai.red").host() == "civitai.red"
+          && ModelMetadata::metadataBrowserUrlFromRoot(metadata) == canonical
+          && QJsonDocument(metadata).toJson() == before, "metadata keeps its original Civitai URL and fields");
+}
+
 void testInspection(const QTemporaryDir &dir)
 {
     const QString model = dir.filePath("model.safetensors");
@@ -723,6 +757,7 @@ int main(int argc, char **argv)
     else if (group == "tags") testTags(dir);
     else if (group == "archive") testArchive();
     else if (group == "paths_filters") testPathsAndFilters(dir);
+    else if (group == "browser_urls") testModelBrowserUrls();
     else if (group == "inspection") testInspection(dir);
     else if (group == "downloads") testDownloadCache(dir);
     else return 2;

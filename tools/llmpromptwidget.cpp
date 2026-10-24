@@ -1,3 +1,4 @@
+#include "utils/applanguage.h"
 #include "llmpromptwidget.h"
 #include "ui_llmpromptwidget.h"
 #include "styleconstants.h"
@@ -445,18 +446,18 @@ QString LlmPromptWidget::currentTaskKey() const
 
 QString LlmPromptWidget::taskLabelForKey(const QString &taskKey) const
 {
-    if (taskKey == kTaskCharacterReplace) return "人物替换";
-    if (taskKey == kTaskOutfitReplace) return "服装替换";
-    if (taskKey == kTaskPreferenceGenerate) return "偏好提示词生成";
-    if (taskKey == kTaskImageAdjust) return "图片调整";
-    return "人物替换";
+    if (taskKey == kTaskCharacterReplace) return AppText::tr("人物替换");
+    if (taskKey == kTaskOutfitReplace) return AppText::tr("服装替换");
+    if (taskKey == kTaskPreferenceGenerate) return AppText::tr("偏好提示词生成");
+    if (taskKey == kTaskImageAdjust) return AppText::tr("图片调整");
+    return AppText::tr("人物替换");
 }
 
 void LlmPromptWidget::loadPromptTemplateForTask(const QString &taskKey)
 {
     m_syncingPromptTemplateEditor = true;
     ui->textPromptTemplate->setPlainText(m_taskPromptTemplates.value(taskKey, defaultPromptTemplate(taskKey)));
-    ui->lblPromptTemplateTask->setText("当前模板任务");
+    ui->lblPromptTemplateTask->setText(AppText::tr("当前模板任务"));
     m_syncingPromptTemplateEditor = false;
 }
 
@@ -497,8 +498,8 @@ void LlmPromptWidget::updateContextSelectionSummary()
         if (item && item->checkState() == Qt::Checked) ++imageChecked;
     }
 
-    ui->lblLoraSelectionSummary->setText(QString("已勾选 %1 / %2 个 LoRA").arg(loraChecked).arg(ui->listLoraCandidates->count()));
-    ui->lblImageSelectionSummary->setText(QString("已勾选 %1 / %2 张图片").arg(imageChecked).arg(ui->listImageCandidates->count()));
+    ui->lblLoraSelectionSummary->setText(AppText::tr("已勾选 %1 / %2 个 LoRA").arg(loraChecked).arg(ui->listLoraCandidates->count()));
+    ui->lblImageSelectionSummary->setText(AppText::tr("已勾选 %1 / %2 张图片").arg(imageChecked).arg(ui->listImageCandidates->count()));
 }
 
 void LlmPromptWidget::setupChatUi()
@@ -800,9 +801,9 @@ void LlmPromptWidget::updateChatView(bool scrollToBottom)
     if (ui->tabMain->currentWidget() != ui->pageChat) {
         m_chatViewDirty = true;
         const ChatSession *session = activeChatSession();
-        ui->lblChatTitle->setText(session ? session->title : "未选择对话");
-        ui->lblChatModelInfo->setText(session ? QString("模型：%1").arg(session->modelName.isEmpty() ? "未设置" : session->modelName)
-                                             : "模型：未设置");
+        ui->lblChatTitle->setText(session ? session->title : AppText::tr("未选择对话"));
+        ui->lblChatModelInfo->setText(session ? AppText::tr("模型：%1").arg(session->modelName.isEmpty() ? "未设置" : session->modelName)
+                                             : AppText::tr("模型：未设置"));
         updateChatButtons();
         return;
     }
@@ -818,15 +819,15 @@ void LlmPromptWidget::updateChatView(bool scrollToBottom)
 
     const ChatSession *session = activeChatSession();
     if (!session) {
-        ui->lblChatTitle->setText("未选择对话");
-        ui->lblChatModelInfo->setText("模型：未设置");
+        ui->lblChatTitle->setText(AppText::tr("未选择对话"));
+        ui->lblChatModelInfo->setText(AppText::tr("模型：未设置"));
         ui->listChatMessages->setUpdatesEnabled(true);
         updateChatButtons();
         return;
     }
 
     ui->lblChatTitle->setText(session->title);
-    ui->lblChatModelInfo->setText(QString("模型：%1").arg(session->modelName.isEmpty() ? "未设置" : session->modelName));
+    ui->lblChatModelInfo->setText(AppText::tr("模型：%1").arg(session->modelName.isEmpty() ? "未设置" : session->modelName));
 
     const int viewportWidth = qMax(320, ui->listChatMessages->viewport()->width());
     const int rowWidth = qMax(260, viewportWidth - 8);
@@ -957,7 +958,7 @@ void LlmPromptWidget::updateChatView(bool scrollToBottom)
                 QPushButton *thumb = new QPushButton(imageGrid);
                 thumb->setFixedSize(82, 82);
                 thumb->setToolTip(path);
-                thumb->setText(QFileInfo::exists(path) ? QString() : "图片\n缺失");
+                thumb->setText(QFileInfo::exists(path) ? QString() : AppText::tr("图片\n缺失"));
                 thumb->setStyleSheet(AppStyle::chatThumbStyle());
                 if (QFileInfo::exists(path)) {
                     QImageReader reader(path);
@@ -971,7 +972,7 @@ void LlmPromptWidget::updateChatView(bool scrollToBottom)
                         thumb->setIcon(QIcon(QPixmap::fromImage(image)));
                         thumb->setIconSize(QSize(76, 76));
                     } else {
-                        thumb->setText("图片\n无法读取");
+                        thumb->setText(AppText::tr("图片\n无法读取"));
                     }
                     connect(thumb, &QPushButton::clicked, this, [this, path]() { openImagePath(path); });
                 } else {
@@ -989,7 +990,7 @@ void LlmPromptWidget::updateChatView(bool scrollToBottom)
             btnToggleThinking->setProperty("thinkingToggleButton", true);
             btnToggleThinking->setStyleSheet(AppStyle::chatActionButtonStyle(bubbleText));
             const bool expanded = pending ? m_pendingChatThinkingExpanded : m_expandedThinkingMessageIds.contains(message.id);
-            btnToggleThinking->setText(expanded ? "隐藏思考" : "显示思考");
+            btnToggleThinking->setText(expanded ? AppText::tr("隐藏思考") : AppText::tr("显示思考"));
             bubbleLayout->addWidget(btnToggleThinking, 0, Qt::AlignLeft);
 
             QTextBrowser *thinkingView = new QTextBrowser(bubble);
@@ -1019,7 +1020,7 @@ void LlmPromptWidget::updateChatView(bool scrollToBottom)
                 } else {
                     m_expandedThinkingMessageIds.remove(message.id);
                 }
-                btnToggleThinking->setText(checked ? "隐藏思考" : "显示思考");
+                btnToggleThinking->setText(checked ? AppText::tr("隐藏思考") : AppText::tr("显示思考"));
                 thinkingView->setVisible(checked);
                 if (checked && thinkingView->verticalScrollBar()) {
                     QPointer<QTextBrowser> safeThinkingView(thinkingView);
@@ -1145,7 +1146,7 @@ void LlmPromptWidget::updateChatButtons()
 void LlmPromptWidget::updateChatImageInfoLabel()
 {
     if (m_pendingChatImagePaths.isEmpty()) {
-        ui->lblChatImageInfo->setText("图片：未选择");
+        ui->lblChatImageInfo->setText(AppText::tr("图片：未选择"));
         return;
     }
     QStringList names;
@@ -1153,7 +1154,7 @@ void LlmPromptWidget::updateChatImageInfoLabel()
         names.append(QFileInfo(path).fileName());
         if (names.size() >= 3) break;
     }
-    ui->lblChatImageInfo->setText(QString("图片：%1 张（%2%3）")
+    ui->lblChatImageInfo->setText(AppText::tr("图片：%1 张（%2%3）")
                                       .arg(m_pendingChatImagePaths.size())
                                       .arg(names.join(", "))
                                       .arg(m_pendingChatImagePaths.size() > 3 ? " ..." : ""));
@@ -1622,7 +1623,7 @@ void LlmPromptWidget::onRenameChatClicked()
     ChatSession *session = activeChatSession();
     if (!session) return;
     bool ok = false;
-    QString title = QInputDialog::getText(nullptr, "重命名对话", "对话标题:", QLineEdit::Normal, session->title, &ok).trimmed();
+    QString title = QInputDialog::getText(nullptr, AppText::tr("重命名对话"), AppText::tr("对话标题:"), QLineEdit::Normal, session->title, &ok).trimmed();
     if (!ok || title.isEmpty()) return;
     session->title = title;
     session->updatedAt = QDateTime::currentDateTime();
@@ -1636,7 +1637,7 @@ void LlmPromptWidget::onDeleteChatClicked()
     if (!m_activeChatReply.isNull() || !m_activeGenerateReply.isNull()) return;
     int index = chatSessionIndex(m_activeChatSessionId);
     if (index < 0) return;
-    if (QMessageBox::question(nullptr, "删除对话", "确定删除当前对话吗？") != QMessageBox::Yes) return;
+    if (QMessageBox::question(nullptr, AppText::tr("删除对话"), AppText::tr("确定删除当前对话吗？")) != QMessageBox::Yes) return;
     const QString removedId = m_chatSessions[index].id;
     m_chatSessions.removeAt(index);
     if (m_currentGeneratedConversationId == removedId) m_currentGeneratedConversationId.clear();
@@ -1655,7 +1656,7 @@ void LlmPromptWidget::onDeleteChatClicked()
 void LlmPromptWidget::onClearChatsClicked()
 {
     if (!m_activeChatReply.isNull() || !m_activeGenerateReply.isNull() || m_chatSessions.isEmpty()) return;
-    if (QMessageBox::question(nullptr, "清空历史", "确定清空所有对话历史吗？") != QMessageBox::Yes) return;
+    if (QMessageBox::question(nullptr, AppText::tr("清空历史"), AppText::tr("确定清空所有对话历史吗？")) != QMessageBox::Yes) return;
     m_chatSessions.clear();
     m_activeChatSessionId.clear();
     m_currentGeneratedConversationId.clear();
@@ -1737,7 +1738,7 @@ void LlmPromptWidget::onChatStopClicked()
 
 void LlmPromptWidget::onChatAddImagesClicked()
 {
-    QStringList files = QFileDialog::getOpenFileNames(nullptr, "选择参考图片", QString(), "Images (*.png *.jpg *.jpeg *.webp *.bmp)");
+    QStringList files = QFileDialog::getOpenFileNames(nullptr, AppText::tr("选择参考图片"), QString(), AppText::tr("Images (*.png *.jpg *.jpeg *.webp *.bmp)"));
     for (const QString &path : files) {
         if (!m_pendingChatImagePaths.contains(path)) m_pendingChatImagePaths.append(path);
     }
@@ -1772,13 +1773,13 @@ void LlmPromptWidget::showChatMessageMenuForId(const QString &messageId, const Q
     if (it == session->messages.end()) return;
 
     QMenu menu(this);
-    QAction *copyAction = menu.addAction("复制消息");
+    QAction *copyAction = menu.addAction(AppText::tr("复制消息"));
     QAction *editAction = nullptr;
     QAction *regenerateAction = nullptr;
     const bool busy = !m_activeChatReply.isNull() || !m_activeGenerateReply.isNull();
-    if (it->role == "user") editAction = menu.addAction("编辑并重新生成");
-    if (it->role == "assistant") regenerateAction = menu.addAction("重新生成回答");
-    QAction *deleteAction = menu.addAction("删除消息");
+    if (it->role == "user") editAction = menu.addAction(AppText::tr("编辑并重新生成"));
+    if (it->role == "assistant") regenerateAction = menu.addAction(AppText::tr("重新生成回答"));
+    QAction *deleteAction = menu.addAction(AppText::tr("删除消息"));
     if (editAction) editAction->setEnabled(!busy);
     if (regenerateAction) regenerateAction->setEnabled(!busy);
     deleteAction->setEnabled(!busy);
@@ -1809,7 +1810,7 @@ void LlmPromptWidget::editChatMessage(const QString &messageId)
     for (int i = 0; i < session->messages.size(); ++i) {
         if (session->messages[i].id != messageId || session->messages[i].role != "user") continue;
         QDialog dialog;
-        dialog.setWindowTitle("编辑消息");
+        dialog.setWindowTitle(AppText::tr("编辑消息"));
         dialog.resize(620, 460);
         QVBoxLayout *layout = new QVBoxLayout(&dialog);
 
@@ -1818,7 +1819,7 @@ void LlmPromptWidget::editChatMessage(const QString &messageId)
         textEdit->setMinimumHeight(180);
         layout->addWidget(textEdit);
 
-        QLabel *imageLabel = new QLabel("图片", &dialog);
+        QLabel *imageLabel = new QLabel(AppText::tr("图片"), &dialog);
         layout->addWidget(imageLabel);
 
         QListWidget *imageList = new QListWidget(&dialog);
@@ -1833,9 +1834,9 @@ void LlmPromptWidget::editChatMessage(const QString &messageId)
         layout->addWidget(imageList);
 
         QHBoxLayout *imageButtons = new QHBoxLayout();
-        QPushButton *btnAddImage = new QPushButton("添加图片", &dialog);
-        QPushButton *btnRemoveImage = new QPushButton("删除选中", &dialog);
-        QPushButton *btnClearImages = new QPushButton("清空图片", &dialog);
+        QPushButton *btnAddImage = new QPushButton(AppText::tr("添加图片"), &dialog);
+        QPushButton *btnRemoveImage = new QPushButton(AppText::tr("删除选中"), &dialog);
+        QPushButton *btnClearImages = new QPushButton(AppText::tr("清空图片"), &dialog);
         imageButtons->addWidget(btnAddImage);
         imageButtons->addWidget(btnRemoveImage);
         imageButtons->addWidget(btnClearImages);
@@ -1844,14 +1845,14 @@ void LlmPromptWidget::editChatMessage(const QString &messageId)
 
         QHBoxLayout *buttons = new QHBoxLayout();
         buttons->addStretch(1);
-        QPushButton *btnOk = new QPushButton("保存并重新生成", &dialog);
-        QPushButton *btnCancel = new QPushButton("取消", &dialog);
+        QPushButton *btnOk = new QPushButton(AppText::tr("保存并重新生成"), &dialog);
+        QPushButton *btnCancel = new QPushButton(AppText::tr("取消"), &dialog);
         buttons->addWidget(btnOk);
         buttons->addWidget(btnCancel);
         layout->addLayout(buttons);
 
         connect(btnAddImage, &QPushButton::clicked, &dialog, [&dialog, imageList]() {
-            const QStringList files = QFileDialog::getOpenFileNames(nullptr, "选择参考图片", QString(), "Images (*.png *.jpg *.jpeg *.webp *.bmp)");
+            const QStringList files = QFileDialog::getOpenFileNames(nullptr, AppText::tr("选择参考图片"), QString(), AppText::tr("Images (*.png *.jpg *.jpeg *.webp *.bmp)"));
             for (const QString &path : files) {
                 bool exists = false;
                 for (int row = 0; row < imageList->count(); ++row) {
@@ -2791,7 +2792,7 @@ QJsonObject LlmPromptWidget::buildLmStudioGenerationPayload(const QString &model
 
 void LlmPromptWidget::updateStatus(const QString &text, bool isError)
 {
-    ui->lblGenerateStatus->setText(text);
+    ui->lblGenerateStatus->setText(AppText::display(text));
     ui->lblGenerateStatus->setStyleSheet(AppStyle::chatStatusStyle(isError));
 }
 
@@ -2826,13 +2827,13 @@ void LlmPromptWidget::appendUniqueImageCandidate(const QString &label, const QSt
 void LlmPromptWidget::onFetchModelsClicked()
 {
     const bool lmStudio = currentBackend() == LlmBackend::LmStudio;
-    updateStatus(QString("正在读取 %1 模型...").arg(currentBackendName()));
+    updateStatus(AppText::tr("正在读取 %1 模型...").arg(currentBackendName()));
     QNetworkRequest request(QUrl(endpointBaseUrl() + (lmStudio ? "/v1/models" : "/api/tags")));
     QNetworkReply *reply = m_netManager->get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply, lmStudio]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            updateStatus(QString("读取 %1 模型失败: %2").arg(currentBackendName(), reply->errorString()), true);
+            updateStatus(AppText::tr("读取 %1 模型失败: %2").arg(currentBackendName(), reply->errorString()), true);
             return;
         }
 
@@ -2852,7 +2853,7 @@ void LlmPromptWidget::onFetchModelsClicked()
             }
         }
         populateModels(names);
-        updateStatus(names.isEmpty() ? "未发现可用模型" : QString("已加载 %1 个本地模型").arg(names.size()));
+        updateStatus(names.isEmpty() ? AppText::tr("未发现可用模型") : AppText::tr("已加载 %1 个本地模型").arg(names.size()));
         saveSettings();
     });
 }
@@ -2988,7 +2989,7 @@ void LlmPromptWidget::onRefreshCandidatesClicked()
 
     queueLoraCandidateThumbnailLoads();
     updateContextSelectionSummary();
-    updateStatus(QString("已刷新候选上下文: %1 个 LoRA, %2 张图片").arg(ui->listLoraCandidates->count()).arg(ui->listImageCandidates->count()));
+    updateStatus(AppText::tr("已刷新候选上下文: %1 个 LoRA, %2 张图片").arg(ui->listLoraCandidates->count()).arg(ui->listImageCandidates->count()));
 }
 
 void LlmPromptWidget::onClearCandidateSelectionsClicked()
@@ -3006,27 +3007,27 @@ void LlmPromptWidget::onClearCandidateSelectionsClicked()
     }
 
     updateContextSelectionSummary();
-    updateStatus("已取消选择所有候选 LoRA 和图片");
+    updateStatus(AppText::tr("已取消选择所有候选 LoRA 和图片"));
 }
 
 void LlmPromptWidget::onAnalyzePreferenceClicked()
 {
     QString summary = preferenceSummary();
     ui->textPreferenceSummary->setPlainText(summary);
-    updateStatus("已根据历史图库缓存生成人物偏好摘要");
+    updateStatus(AppText::tr("已根据历史图库缓存生成人物偏好摘要"));
 }
 
 void LlmPromptWidget::onGenerateClicked()
 {
     if (m_activeGenerateReply) {
-        updateStatus("已有生成任务正在进行，请先停止当前任务", true);
+        updateStatus(AppText::tr("已有生成任务正在进行，请先停止当前任务"), true);
         return;
     }
 
     saveSettings();
 
     if (ui->textInstruction->toPlainText().trimmed().isEmpty()) {
-        QMessageBox::information(nullptr, "提示", "请先输入生成指令。");
+        QMessageBox::information(nullptr, AppText::tr("提示"), AppText::tr("请先输入生成指令。"));
         return;
     }
 
@@ -3036,8 +3037,8 @@ void LlmPromptWidget::onGenerateClicked()
         QString errorText;
         QStringList models = readInstalledModelsSync(&ok, &errorText);
         if (!ok || models.isEmpty()) {
-            updateStatus(QString("未能自动获取 %1 模型: %2").arg(currentBackendName(), errorText), true);
-            QMessageBox::warning(nullptr, "错误", QString("没有可用的 %1 模型，请先启动服务或手动填写模型名。").arg(currentBackendName()));
+            updateStatus(AppText::tr("未能自动获取 %1 模型: %2").arg(currentBackendName(), errorText), true);
+            QMessageBox::warning(nullptr, AppText::tr("错误"), AppText::tr("没有可用的 %1 模型，请先启动服务或手动填写模型名。").arg(currentBackendName()));
             return;
         }
         populateModels(models);
@@ -3085,7 +3086,7 @@ void LlmPromptWidget::onGenerateClicked()
     updateChatView(true);
     saveConversations();
 
-    updateStatus(QString("正在调用 %1 生成提示词...").arg(currentBackendName()));
+    updateStatus(AppText::tr("正在调用 %1 生成提示词...").arg(currentBackendName()));
     updateChatStatus(QString("正在调用 %1 生成提示词...").arg(currentBackendName()));
     ui->textResult->clear();
     ui->textThinking->clear();
@@ -3138,7 +3139,7 @@ void LlmPromptWidget::onGenerateClicked()
             if (m_activeChatSessionId == m_pendingChatSessionId) requestChatRefresh(false);
             else m_chatViewDirty = true;
             m_activeModelName.clear();
-            updateStatus(QString("%1 调用失败: %2").arg(currentBackendName(), errorText), true);
+            updateStatus(AppText::tr("%1 调用失败: %2").arg(currentBackendName(), errorText), true);
             updateChatStatus(QString("%1 调用失败: %2").arg(currentBackendName(), errorText), true);
             updateChatButtons();
             return;
@@ -3152,7 +3153,7 @@ void LlmPromptWidget::onStopGenerateClicked()
 {
     if (!m_activeGenerateReply) return;
 
-    updateStatus("正在停止生成...");
+    updateStatus(AppText::tr("正在停止生成..."));
     ui->btnStopGenerate->setEnabled(false);
     if (currentBackend() == LlmBackend::Ollama && !m_activeModelName.isEmpty()) {
         QProcess::startDetached("ollama", QStringList() << "stop" << m_activeModelName);
@@ -3164,30 +3165,30 @@ void LlmPromptWidget::onUnloadModelClicked()
 {
     QString modelName = ui->comboModel->currentText().trimmed();
     if (modelName.isEmpty()) {
-        updateStatus("请先选择或输入要停止的模型", true);
-        QMessageBox::information(nullptr, "提示", "请先选择或输入模型名。");
+        updateStatus(AppText::tr("请先选择或输入要停止的模型"), true);
+        QMessageBox::information(nullptr, AppText::tr("提示"), AppText::tr("请先选择或输入模型名。"));
         return;
     }
 
     if (currentBackend() == LlmBackend::LmStudio) {
-        updateStatus("LM Studio 暂不支持通过此按钮卸载模型，请在 LM Studio 中管理模型。", true);
-        QMessageBox::information(nullptr, "提示", "LM Studio 的 OpenAI 兼容接口没有等价的 unload/stop 命令，请在 LM Studio 界面中卸载模型。");
+        updateStatus(AppText::tr("LM Studio 暂不支持通过此按钮卸载模型，请在 LM Studio 中管理模型。"), true);
+        QMessageBox::information(nullptr, AppText::tr("提示"), AppText::tr("LM Studio 的 OpenAI 兼容接口没有等价的 unload/stop 命令，请在 LM Studio 界面中卸载模型。"));
         return;
     }
 
     bool started = QProcess::startDetached("ollama", QStringList() << "stop" << modelName);
     if (started) {
-        updateStatus("已请求停止模型: " + modelName);
+        updateStatus(AppText::tr("已请求停止模型: ") + modelName);
     } else {
-        updateStatus("停止模型失败: " + modelName, true);
-        QMessageBox::warning(nullptr, "错误", "无法执行 ollama stop，请检查 Ollama 是否可用。");
+        updateStatus(AppText::tr("停止模型失败: ") + modelName, true);
+        QMessageBox::warning(nullptr, AppText::tr("错误"), AppText::tr("无法执行 ollama stop，请检查 Ollama 是否可用。"));
     }
 }
 
 void LlmPromptWidget::onContinueConversationClicked()
 {
     if (m_currentGeneratedConversationId.isEmpty() || chatSessionIndex(m_currentGeneratedConversationId) < 0) {
-        QMessageBox::information(nullptr, "提示", "当前还没有可继续修改的模型输出。");
+        QMessageBox::information(nullptr, AppText::tr("提示"), AppText::tr("当前还没有可继续修改的模型输出。"));
         return;
     }
     selectChatSession(m_currentGeneratedConversationId, true);
@@ -3200,19 +3201,19 @@ void LlmPromptWidget::onCopyPromptClicked()
 
     const QJsonObject payload = buildGenerationPayload(ui->comboModel->currentText().trimmed());
     ui->textLastRequest->setPlainText(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Indented)));
-    updateStatus("已复制交给 LLM 的提示词");
+    updateStatus(AppText::tr("已复制交给 LLM 的提示词"));
 }
 
 void LlmPromptWidget::onCopyResultClicked()
 {
     QString rawResult = splitThinkingBlocks(m_streamResponseText).visibleText;
     QApplication::clipboard()->setText(rawResult.isEmpty() ? ui->textResult->toMarkdown() : rawResult);
-    updateStatus("结果已复制到剪贴板");
+    updateStatus(AppText::tr("结果已复制到剪贴板"));
 }
 
 void LlmPromptWidget::onAddManualImagesClicked()
 {
-    QStringList files = QFileDialog::getOpenFileNames(nullptr, "选择参考图片", QString(), "Images (*.png *.jpg *.jpeg *.webp)");
+    QStringList files = QFileDialog::getOpenFileNames(nullptr, AppText::tr("选择参考图片"), QString(), AppText::tr("Images (*.png *.jpg *.jpeg *.webp)"));
     for (const QString &path : files) {
         QImageReader reader(path);
         QString prompt = reader.text("parameters");
@@ -3220,7 +3221,7 @@ void LlmPromptWidget::onAddManualImagesClicked()
         appendUniqueImageCandidate(label, path, prompt, true);
     }
     updateContextSelectionSummary();
-    updateStatus("已添加手动参考图片");
+    updateStatus(AppText::tr("已添加手动参考图片"));
 }
 
 void LlmPromptWidget::onResetPromptTemplateClicked()
@@ -3232,7 +3233,7 @@ void LlmPromptWidget::onResetPromptTemplateClicked()
     m_taskImageAttachmentNotes.insert(taskKey, defaultImageAttachmentNote(taskKey));
     loadPromptTemplateForTask(taskKey);
     loadTaskPromptFieldsForTask(taskKey);
-    updateStatus(taskLabelForKey(taskKey) + " 的提示词模板已重置");
+    updateStatus(taskLabelForKey(taskKey) + AppText::tr(" 的提示词模板已重置"));
 }
 
 void LlmPromptWidget::onTaskTypeChanged(int)
@@ -3247,14 +3248,14 @@ void LlmPromptWidget::onTaskTypeChanged(int)
     loadTaskPromptFieldsForTask(currentTaskKey());
 
     if (currentTaskKey() == kTaskImageAdjust) {
-        ui->textInstruction->setPlaceholderText("例如：这张图想保留整体构图，但把裙子从 striped skirt 改成更明确的 checkered skirt，并补全袜子与袖口细节。");
-        ui->textSourcePrompt->setPlaceholderText("输入生成这张图时使用的原始 prompt，便于 AI 找出哪里描述不足或写错。");
+        ui->textInstruction->setPlaceholderText(AppText::tr("例如：这张图想保留整体构图，但把裙子从 striped skirt 改成更明确的 checkered skirt，并补全袜子与袖口细节。"));
+        ui->textSourcePrompt->setPlaceholderText(AppText::tr("输入生成这张图时使用的原始 prompt，便于 AI 找出哪里描述不足或写错。"));
     } else if (currentTaskKey() == kTaskPreferenceGenerate) {
-        ui->textInstruction->setPlaceholderText("例如：根据我历史常用 tag，生成一条偏向二次元、雨天窗边、细节丰富的人物 prompt。");
-        ui->textSourcePrompt->setPlaceholderText("原始提示词可留空；如果有想延续的 prompt，也可以粘贴进来。");
+        ui->textInstruction->setPlaceholderText(AppText::tr("例如：根据我历史常用 tag，生成一条偏向二次元、雨天窗边、细节丰富的人物 prompt。"));
+        ui->textSourcePrompt->setPlaceholderText(AppText::tr("原始提示词可留空；如果有想延续的 prompt，也可以粘贴进来。"));
     } else {
-        ui->textInstruction->setPlaceholderText("例如：把提示词里的人物 Arisu 换成 Mika，保留教室构图与蓝白色调，并尽量选择合适的 LoRA。");
-        ui->textSourcePrompt->setPlaceholderText("原始提示词，可为空；如果是人物/服装替换，建议粘贴原 prompt。");
+        ui->textInstruction->setPlaceholderText(AppText::tr("例如：把提示词里的人物 Arisu 换成 Mika，保留教室构图与蓝白色调，并尽量选择合适的 LoRA。"));
+        ui->textSourcePrompt->setPlaceholderText(AppText::tr("原始提示词，可为空；如果是人物/服装替换，建议粘贴原 prompt。"));
     }
 }
 
@@ -3292,7 +3293,7 @@ void LlmPromptWidget::onThinkingToggled(bool checked)
 {
     bool hasThinking = !ui->textThinking->toPlainText().trimmed().isEmpty();
     ui->textThinking->setVisible(checked && hasThinking);
-    ui->btnToggleThinking->setText(checked ? "隐藏思考内容" : "显示思考内容");
+    ui->btnToggleThinking->setText(checked ? AppText::tr("隐藏思考内容") : AppText::tr("显示思考内容"));
 }
 
 void LlmPromptWidget::processStreamChunk(const QByteArray &chunk)
@@ -3437,7 +3438,7 @@ void LlmPromptWidget::finishStreaming(const QString &modelName, bool canceled)
         m_pendingChatSessionId.clear();
         if (m_activeChatSessionId == canceledSessionId) requestChatRefresh(false);
         else updateChatButtons();
-        updateStatus("已停止生成");
+        updateStatus(AppText::tr("已停止生成"));
         updateChatStatus("已停止生成");
         updateChatButtons();
         return;
@@ -3454,15 +3455,15 @@ void LlmPromptWidget::finishStreaming(const QString &modelName, bool canceled)
     if (ui->chkStopModelAfterGenerate->isChecked() && currentBackend() == LlmBackend::Ollama) {
         bool started = QProcess::startDetached("ollama", QStringList() << "stop" << modelName);
         m_activeModelName.clear();
-        updateStatus(started ? "提示词生成完成，已请求停止模型" : "提示词生成完成，但停止模型失败", !started);
+        updateStatus(started ? AppText::tr("提示词生成完成，已请求停止模型") : AppText::tr("提示词生成完成，但停止模型失败"), !started);
         updateChatStatus(started ? "提示词生成完成，已请求停止模型" : "提示词生成完成，但停止模型失败", !started);
     } else if (ui->chkStopModelAfterGenerate->isChecked()) {
         m_activeModelName.clear();
-        updateStatus("提示词生成完成；LM Studio 需在其界面中手动停止或卸载模型");
+        updateStatus(AppText::tr("提示词生成完成；LM Studio 需在其界面中手动停止或卸载模型"));
         updateChatStatus("提示词生成完成；LM Studio 需在其界面中手动停止或卸载模型");
     } else {
         m_activeModelName.clear();
-        updateStatus("提示词生成完成");
+        updateStatus(AppText::tr("提示词生成完成"));
         updateChatStatus("提示词生成完成");
     }
     updateChatButtons();

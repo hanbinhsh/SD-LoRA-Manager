@@ -1,3 +1,4 @@
+#include "utils/applanguage.h"
 #include "syncwidget.h"
 #include "ui_syncwidget.h"
 #include "styleconstants.h"
@@ -38,7 +39,7 @@ SyncWidget::SyncWidget(QWidget *parent) :
         if (QDesktopServices::openUrl(url)) {
             logMsg("已打开手机版同步 App 的最新发布页面。");
         } else {
-            QMessageBox::warning(this, "打开失败", "无法调用系统浏览器，请手动访问：\n" + url.toString());
+            QMessageBox::warning(this, AppText::tr("打开失败"), AppText::tr("无法调用系统浏览器，请手动访问：\n") + url.toString());
             logMsg("打开手机版同步 App 发布页面失败。");
         }
     });
@@ -146,19 +147,19 @@ void SyncWidget::on_btnStart_clicked() {
         stopDiscoveryResponder();
         tcpServer->close();
         for (auto client : clients) client->disconnectFromHost();
-        ui->btnStart->setText("启动服务 / Start");
+        ui->btnStart->setText(AppText::tr("启动服务 / Start"));
         ui->btnStart->setStyleSheet("");
         logMsg("服务已停止。");
     } else {
         quint16 port = ui->editPort->text().toUShort();
         if (tcpServer->listen(QHostAddress::Any, port)) {
             startDiscoveryResponder(port);
-            ui->btnStart->setText("停止服务 / Stop");
+            ui->btnStart->setText(AppText::tr("停止服务 / Stop"));
             ui->btnStart->setStyleSheet(QString("background-color: %1; color: %2; font-weight: bold;")
                                              .arg(AppStyle::SyncStopRed(), AppStyle::WhiteText()));
             logMsg(QString("服务已启动，监听端口: %1").arg(port));
         } else {
-            QMessageBox::critical(this, "错误", "端口被占用或启动失败");
+            QMessageBox::critical(this, AppText::tr("错误"), AppText::tr("端口被占用或启动失败"));
         }
     }
 }
@@ -249,7 +250,7 @@ void SyncWidget::onDiscoveryReadyRead() {
 }
 
 void SyncWidget::on_btnAddFolder_clicked() {
-    QString dir = QFileDialog::getExistingDirectory(this, "选择 SD 输出文件夹");
+    QString dir = QFileDialog::getExistingDirectory(this, AppText::tr("选择 SD 输出文件夹"));
     if (dir.isEmpty() || m_rootPaths.contains(dir)) return;
 
     m_rootPaths.append(dir);
@@ -670,7 +671,7 @@ void SyncWidget::addFolderItem(const QString &path) {
     lblPath->setStyleSheet(QString("color: %1; background-color: transparent;").arg(AppStyle::MutedText()));
     lblPath->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
-    QPushButton *btnRemove = new QPushButton("X");
+    QPushButton *btnRemove = new QPushButton(AppText::tr("X"));
     btnRemove->setCursor(Qt::PointingHandCursor);
     btnRemove->setStyleSheet(AppStyle::dangerButtonStyle());
 
@@ -707,7 +708,7 @@ void SyncWidget::addPendingDeviceItem(const QString &deviceId, const QString &di
     lblName->setStyleSheet(QString("color: %1; font-weight: bold; background-color: transparent;").arg(AppStyle::WarningYellow()));
     lblName->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
-    QPushButton *btnAllow = new QPushButton("允许");
+    QPushButton *btnAllow = new QPushButton(AppText::tr("允许"));
     btnAllow->setCursor(Qt::PointingHandCursor);
     btnAllow->setStyleSheet(AppStyle::allowButtonStyle());
 
@@ -740,7 +741,7 @@ void SyncWidget::addWhitelistItem(const QString &deviceId) {
     lblId->setStyleSheet(QString("color: %1; background-color: transparent;").arg(AppStyle::MutedText()));
     lblId->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
-    QPushButton *btnRemove = new QPushButton("X");
+    QPushButton *btnRemove = new QPushButton(AppText::tr("X"));
     btnRemove->setCursor(Qt::PointingHandCursor);
     btnRemove->setStyleSheet(AppStyle::dangerButtonStyle());
 
@@ -773,7 +774,7 @@ void SyncWidget::addActiveClientItem(QTcpSocket *client, const QString &displayN
     lblName->setStyleSheet(QString("color: %1; font-weight: bold; background-color: transparent;").arg(AppStyle::AccentBlue()));
     lblName->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
-    QPushButton *btnKick = new QPushButton("断开");
+    QPushButton *btnKick = new QPushButton(AppText::tr("断开"));
     btnKick->setCursor(Qt::PointingHandCursor);
     btnKick->setStyleSheet(AppStyle::dangerButtonStyle());
 

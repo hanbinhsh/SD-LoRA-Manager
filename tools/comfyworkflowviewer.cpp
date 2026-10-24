@@ -1,3 +1,4 @@
+#include "utils/applanguage.h"
 #include "comfyworkflowviewer.h"
 
 #include "imagemetadataparser.h"
@@ -138,7 +139,7 @@ ComfyWorkflowViewerDialog::ComfyWorkflowViewerDialog(const QString &imagePath, Q
     : QDialog(parent)
     , imagePath(imagePath)
 {
-    setWindowTitle("ComfyUI Workflow 查看器");
+    setWindowTitle(AppText::tr("ComfyUI Workflow 查看器"));
     resize(1280, 780);
     buildUi();
     graph = parseImageWorkflow(imagePath);
@@ -160,25 +161,25 @@ void ComfyWorkflowViewerDialog::buildUi()
     auto *toolbar = new QToolBar(this);
     toolbar->setIconSize(QSize(16, 16));
 
-    auto *fitAction = toolbar->addAction("适应视图");
+    auto *fitAction = toolbar->addAction(AppText::tr("适应视图"));
     connect(fitAction, &QAction::triggered, this, &ComfyWorkflowViewerDialog::fitToView);
-    auto *resetAction = toolbar->addAction("重置缩放");
+    auto *resetAction = toolbar->addAction(AppText::tr("重置缩放"));
     connect(resetAction, &QAction::triggered, this, &ComfyWorkflowViewerDialog::resetZoom);
     toolbar->addSeparator();
 
     searchEdit = new QLineEdit(toolbar);
-    searchEdit->setPlaceholderText("搜索节点类型、标题或内容");
+    searchEdit->setPlaceholderText(AppText::tr("搜索节点类型、标题或内容"));
     searchEdit->setClearButtonEnabled(true);
     searchEdit->setMinimumWidth(260);
     toolbar->addWidget(searchEdit);
     connect(searchEdit, &QLineEdit::textChanged, this, &ComfyWorkflowViewerDialog::applySearch);
 
-    highlightCheck = new QCheckBox("高亮采样链", toolbar);
+    highlightCheck = new QCheckBox(AppText::tr("高亮采样链"), toolbar);
     highlightCheck->setChecked(true);
     toolbar->addWidget(highlightCheck);
     connect(highlightCheck, &QCheckBox::toggled, this, &ComfyWorkflowViewerDialog::toggleHighlights);
 
-    auto *copyAction = toolbar->addAction("复制节点 JSON");
+    auto *copyAction = toolbar->addAction(AppText::tr("复制节点 JSON"));
     connect(copyAction, &QAction::triggered, this, &ComfyWorkflowViewerDialog::copySelectedNodeJson);
 
     root->addWidget(toolbar);

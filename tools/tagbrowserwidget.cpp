@@ -1,3 +1,4 @@
+#include "utils/applanguage.h"
 #include "tagbrowserwidget.h"
 #include "widgets/tagsearchproxymodel.h"
 #include "styleconstants.h"
@@ -143,7 +144,7 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     setStyleSheet(AppStyle::loadToolPageQss());
 
     m_model->setColumnCount(4);
-    m_model->setHorizontalHeaderLabels({"Tag", "类别", "翻译", "优先级"});
+    m_model->setHorizontalHeaderLabels({AppText::tr("Tag"), AppText::tr("类别"), AppText::tr("翻译"), AppText::tr("优先级")});
 
     m_proxy->setSearchColumns(0, 2);
     m_proxy->setSourceModel(m_model);
@@ -176,7 +177,7 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     ui->tableTags->setSortingEnabled(false);
 
     m_userTagModel->setColumnCount(6);
-    m_userTagModel->setHorizontalHeaderLabels({"Tag", "类型", "类别", "翻译", "优先级", "使用次数"});
+    m_userTagModel->setHorizontalHeaderLabels({AppText::tr("Tag"), AppText::tr("类型"), AppText::tr("类别"), AppText::tr("翻译"), AppText::tr("优先级"), AppText::tr("使用次数")});
 
     m_userTagProxy->setSearchColumns(0, 3);
     m_userTagProxy->setSourceModel(m_userTagModel);
@@ -242,7 +243,7 @@ TagBrowserWidget::TagBrowserWidget(QWidget *parent)
     });
     connect(ui->tableTags, &QWidget::customContextMenuRequested,
             this, &TagBrowserWidget::showTagTableContextMenu);
-    auto *copyTagCellAction = new QAction("复制当前单元格", ui->tableTags);
+    auto *copyTagCellAction = new QAction(AppText::tr("复制当前单元格"), ui->tableTags);
     copyTagCellAction->setShortcut(QKeySequence::Copy);
     copyTagCellAction->setShortcutContext(Qt::WidgetShortcut);
     ui->tableTags->addAction(copyTagCellAction);
@@ -323,7 +324,7 @@ void TagBrowserWidget::setTranslationSources(const QVector<TagTranslationSource>
 
     QSignalBlocker blocker(ui->comboTranslationSource);
     ui->comboTranslationSource->clear();
-    ui->comboTranslationSource->addItem("合并结果", QString());
+    ui->comboTranslationSource->addItem(AppText::tr("合并结果"), QString());
     int selectedIndex = 0;
     for (int i = 0; i < m_translationSources.size(); ++i) {
         const TagTranslationSource &source = m_translationSources.at(i);
@@ -377,8 +378,8 @@ void TagBrowserWidget::setLoadingState(bool loading, const QString &message)
     ui->btnSave->setEnabled(!loading);
     ui->lblEmptyState->setVisible(loading || m_model->rowCount() == 0);
     if (loading) {
-        ui->lblEmptyState->setText(message.isEmpty() ? "正在加载词表，请稍候..." : message);
-        ui->lblStatus->setText("词表加载中...");
+        ui->lblEmptyState->setText(message.isEmpty() ? AppText::tr("正在加载词表，请稍候...") : message);
+        ui->lblStatus->setText(AppText::tr("词表加载中..."));
     }
 }
 
@@ -438,7 +439,7 @@ void TagBrowserWidget::loadCsv()
         m_model->removeRows(0, m_model->rowCount());
         m_pendingRows = rows;
         m_pendingRowIndex = 0;
-        ui->lblEmptyState->setText(QString("已读取 %1 条记录，正在填充表格...").arg(rows.size()));
+        ui->lblEmptyState->setText(AppText::tr("已读取 %1 条记录，正在填充表格...").arg(rows.size()));
         if (m_batchAppendTimer) {
             m_batchAppendTimer->start();
         } else {
@@ -498,7 +499,7 @@ void TagBrowserWidget::appendPendingRowsBatch()
     }
 
     if (m_pendingRowIndex < m_pendingRows.size()) {
-        ui->lblEmptyState->setText(QString("正在填充表格... %1 / %2").arg(m_pendingRowIndex).arg(m_pendingRows.size()));
+        ui->lblEmptyState->setText(AppText::tr("正在填充表格... %1 / %2").arg(m_pendingRowIndex).arg(m_pendingRows.size()));
         return;
     }
 
@@ -527,7 +528,7 @@ void TagBrowserWidget::appendPendingRowsBatch()
 void TagBrowserWidget::updateStatusLabel()
 {
     if (m_loading) {
-        ui->lblStatus->setText("词表加载中...");
+        ui->lblStatus->setText(AppText::tr("词表加载中..."));
         ui->lblEmptyState->setVisible(true);
         ui->tableTags->setMinimumHeight(220);
         return;
@@ -535,35 +536,35 @@ void TagBrowserWidget::updateStatusLabel()
 
     QString status;
     if (m_mergedSource && m_translationSources.isEmpty()) {
-        status = "未配置翻译表路径";
-        ui->lblEmptyState->setText("未配置 Tag 翻译表路径。请先在设置页配置词表。");
+        status = AppText::tr("未配置翻译表路径");
+        ui->lblEmptyState->setText(AppText::tr("未配置 Tag 翻译表路径。请先在设置页配置词表。"));
     } else if (m_mergedSource && !m_csvLoaded) {
-        status = "合并词表未加载";
-        ui->lblEmptyState->setText("为提升启动速度，合并词表将在进入本页面时后台加载。");
+        status = AppText::tr("合并词表未加载");
+        ui->lblEmptyState->setText(AppText::tr("为提升启动速度，合并词表将在进入本页面时后台加载。"));
     } else if (m_mergedSource && m_model->rowCount() == 0) {
-        status = "没有启用且可读取的翻译表";
-        ui->lblEmptyState->setText("当前没有启用且可读取的 Tag 翻译表，请在设置页检查词表状态。");
+        status = AppText::tr("没有启用且可读取的翻译表");
+        ui->lblEmptyState->setText(AppText::tr("当前没有启用且可读取的 Tag 翻译表，请在设置页检查词表状态。"));
     } else if (!m_mergedSource && !QFile::exists(m_csvPath)) {
-        status = "CSV 文件不存在";
-        ui->lblEmptyState->setText("找不到当前 CSV 文件。请检查路径，或点击“新增”手动创建后保存。");
+        status = AppText::tr("CSV 文件不存在");
+        ui->lblEmptyState->setText(AppText::tr("找不到当前 CSV 文件。请检查路径，或点击“新增”手动创建后保存。"));
     } else if (!m_csvLoaded) {
-        status = "词表未加载";
-        ui->lblEmptyState->setText("为提升启动速度，词表将于进入/操作本页面时自动加载。");
+        status = AppText::tr("词表未加载");
+        ui->lblEmptyState->setText(AppText::tr("为提升启动速度，词表将于进入/操作本页面时自动加载。"));
     } else {
         QString dirtyText;
         if (m_dirty) {
             dirtyText = m_mergedSource
-                ? QString("  |  %1 条未保存修改").arg(mergedDirtyRowCount())
-                : QStringLiteral("  |  未保存修改");
+                ? AppText::tr("  |  %1 条未保存修改").arg(mergedDirtyRowCount())
+                : AppText::tr("  |  未保存修改");
         }
-        status = QString("%1 · 共 %2 条 Tag 记录%3")
-                     .arg(m_mergedSource ? "合并结果（可编辑）" : QFileInfo(m_csvPath).fileName())
+        status = AppText::tr("%1 · 共 %2 条 Tag 记录%3")
+                     .arg(m_mergedSource ? AppText::tr("合并结果（可编辑）") : QFileInfo(m_csvPath).fileName())
                      .arg(m_model->rowCount())
                      .arg(dirtyText);
-        ui->lblEmptyState->setText("CSV 已加载，但当前没有任何 Tag 记录。可点击“新增”开始编辑。");
+        ui->lblEmptyState->setText(AppText::tr("CSV 已加载，但当前没有任何 Tag 记录。可点击“新增”开始编辑。"));
     }
-    if (m_csvLoaded) status += m_proxy->isSearching() ? "  |  搜索中..."
-        : QString("  |  匹配 %1 条").arg(m_proxy->rowCount());
+    if (m_csvLoaded) status += m_proxy->isSearching() ? AppText::tr("  |  搜索中...")
+        : AppText::tr("  |  匹配 %1 条").arg(m_proxy->rowCount());
     ui->lblStatus->setText(status);
     bool empty = (m_model->rowCount() == 0);
     ui->lblEmptyState->setVisible(empty);
@@ -637,9 +638,9 @@ void TagBrowserWidget::updateUserTagTranslations()
 void TagBrowserWidget::updateUserTagStatusLabel()
 {
     if (m_userTagsLoading) {
-        ui->lblUserTagEmptyState->setText("正在读取 user_gallery_cache.json 并统计 Tag...");
+        ui->lblUserTagEmptyState->setText(AppText::tr("正在读取 user_gallery_cache.json 并统计 Tag..."));
         ui->lblUserTagEmptyState->setVisible(true);
-        ui->lblUserTagStatus->setText("用户 Tag 加载中...");
+        ui->lblUserTagStatus->setText(AppText::tr("用户 Tag 加载中..."));
         ui->tableUserTags->setVisible(false);
         return;
     }
@@ -648,13 +649,13 @@ void TagBrowserWidget::updateUserTagStatusLabel()
     ui->lblUserTagEmptyState->setVisible(empty);
     ui->tableUserTags->setVisible(!empty);
     if (empty) {
-        ui->lblUserTagEmptyState->setText("未找到用户使用 Tag。请先扫描本地图库生成 user_gallery_cache.json。");
+        ui->lblUserTagEmptyState->setText(AppText::tr("未找到用户使用 Tag。请先扫描本地图库生成 user_gallery_cache.json。"));
     }
     ui->lblUserTagStatus->setText(m_userTagsLoaded
-        ? QString("共 %1 条用户使用 Tag 记录  |  %2").arg(m_userTagModel->rowCount())
-            .arg(m_userTagProxy->isSearching() ? QStringLiteral("搜索中...")
-                 : QString("匹配 %1 条").arg(m_userTagProxy->rowCount()))
-        : "用户 Tag 未加载");
+        ? AppText::tr("共 %1 条用户使用 Tag 记录  |  %2").arg(m_userTagModel->rowCount())
+            .arg(m_userTagProxy->isSearching() ? AppText::tr("搜索中...")
+                 : AppText::tr("匹配 %1 条").arg(m_userTagProxy->rowCount()))
+        : AppText::tr("用户 Tag 未加载"));
 }
 
 void TagBrowserWidget::loadUserTags()
@@ -697,7 +698,7 @@ void TagBrowserWidget::loadUserTags()
             QList<QStandardItem*> row;
 
             QStandardItem *tagItem = new QStandardItem(tag);
-            QStandardItem *kindItem = new QStandardItem(rowData.kind);
+            QStandardItem *kindItem = new QStandardItem(AppText::display(rowData.kind));
             QStandardItem *categoryItem = new QStandardItem(info.category);
             QStandardItem *translationItem = new QStandardItem(info.translation);
             QStandardItem *priorityItem = new QStandardItem(info.priority);
@@ -816,28 +817,28 @@ void TagBrowserWidget::showUserTagExportDialog()
 {
     const QVector<UserTagUsageRow> allRows = allUserTagRows();
     if (allRows.isEmpty()) {
-        QMessageBox::information(nullptr, "提示", "没有可导出的 Tag。");
+        QMessageBox::information(nullptr, AppText::tr("提示"), AppText::tr("没有可导出的 Tag。"));
         return;
     }
 
     const QVector<UserTagUsageRow> selectedRows = selectedUserTagRows();
     QDialog dlg;
-    dlg.setWindowTitle("批量导出 Tags");
+    dlg.setWindowTitle(AppText::tr("批量导出 Tags"));
     dlg.setMinimumWidth(420);
 
     QVBoxLayout *root = new QVBoxLayout(&dlg);
-    root->addWidget(new QLabel("导出范围:", &dlg));
+    root->addWidget(new QLabel(AppText::tr("导出范围:"), &dlg));
 
     QComboBox *rangeBox = new QComboBox(&dlg);
-    if (!selectedRows.isEmpty()) rangeBox->addItem("选中项", "selected");
-    rangeBox->addItem("当前筛选结果", "visible");
-    rangeBox->addItem("全部", "all");
-    rangeBox->addItem("Top K（按使用次数排序）", "top");
-    rangeBox->addItem("使用次数 >= K", "count");
+    if (!selectedRows.isEmpty()) rangeBox->addItem(AppText::tr("选中项"), "selected");
+    rangeBox->addItem(AppText::tr("当前筛选结果"), "visible");
+    rangeBox->addItem(AppText::tr("全部"), "all");
+    rangeBox->addItem(AppText::tr("Top K（按使用次数排序）"), "top");
+    rangeBox->addItem(AppText::tr("使用次数 >= K"), "count");
     root->addWidget(rangeBox);
 
     QHBoxLayout *valueRow = new QHBoxLayout();
-    QLabel *valueLabel = new QLabel("K:", &dlg);
+    QLabel *valueLabel = new QLabel(AppText::tr("K:"), &dlg);
     QSpinBox *valueSpin = new QSpinBox(&dlg);
     int maxCount = 1;
     for (const auto &row : allRows) maxCount = qMax(maxCount, row.count);
@@ -848,22 +849,22 @@ void TagBrowserWidget::showUserTagExportDialog()
     valueRow->addWidget(valueSpin, 1);
     root->addLayout(valueRow);
 
-    root->addWidget(new QLabel("输出方式:", &dlg));
+    root->addWidget(new QLabel(AppText::tr("输出方式:"), &dlg));
     QComboBox *outputBox = new QComboBox(&dlg);
-    outputBox->addItem("复制到剪贴板", "copy");
-    outputBox->addItem("导出 CSV", "csv");
+    outputBox->addItem(AppText::tr("复制到剪贴板"), "copy");
+    outputBox->addItem(AppText::tr("导出 CSV"), "csv");
     root->addWidget(outputBox);
 
-    QLabel *columnsLabel = new QLabel("CSV 导出列:", &dlg);
+    QLabel *columnsLabel = new QLabel(AppText::tr("CSV 导出列:"), &dlg);
     root->addWidget(columnsLabel);
     QHBoxLayout *columnsRow = new QHBoxLayout();
 
-    QCheckBox *chkTag = new QCheckBox("Tag", &dlg);
-    QCheckBox *chkType = new QCheckBox("类型", &dlg);
-    QCheckBox *chkCategory = new QCheckBox("类别", &dlg);
-    QCheckBox *chkTranslation = new QCheckBox("翻译", &dlg);
-    QCheckBox *chkPriority = new QCheckBox("优先级", &dlg);
-    QCheckBox *chkCount = new QCheckBox("使用次数", &dlg);
+    QCheckBox *chkTag = new QCheckBox(AppText::tr("Tag"), &dlg);
+    QCheckBox *chkType = new QCheckBox(AppText::tr("类型"), &dlg);
+    QCheckBox *chkCategory = new QCheckBox(AppText::tr("类别"), &dlg);
+    QCheckBox *chkTranslation = new QCheckBox(AppText::tr("翻译"), &dlg);
+    QCheckBox *chkPriority = new QCheckBox(AppText::tr("优先级"), &dlg);
+    QCheckBox *chkCount = new QCheckBox(AppText::tr("使用次数"), &dlg);
 
     chkTag->setChecked(true);
     chkType->setChecked(true);
@@ -888,11 +889,11 @@ void TagBrowserWidget::showUserTagExportDialog()
         valueLabel->setEnabled(needsValue);
         valueSpin->setEnabled(needsValue);
         if (mode == "top") {
-            valueLabel->setText("K:");
+            valueLabel->setText(AppText::tr("K:"));
             valueSpin->setRange(1, qMax(1, count));
             valueSpin->setValue(qMin(valueSpin->value(), count));
         } else if (mode == "count") {
-            valueLabel->setText("K:");
+            valueLabel->setText(AppText::tr("K:"));
             valueSpin->setRange(1, maxCount);
             valueSpin->setValue(qMin(valueSpin->value(), maxCount));
         }
@@ -944,7 +945,7 @@ void TagBrowserWidget::showUserTagExportDialog()
     }
 
     if (rows.isEmpty()) {
-        QMessageBox::information(nullptr, "提示", "没有符合条件的 Tag。");
+        QMessageBox::information(nullptr, AppText::tr("提示"), AppText::tr("没有符合条件的 Tag。"));
         return;
     }
 
@@ -956,7 +957,7 @@ void TagBrowserWidget::showUserTagExportDialog()
         return;
     }
 
-    QString fileName = QFileDialog::getSaveFileName(nullptr, "导出 Tags 到 CSV", "", "CSV Files (*.csv)");
+    QString fileName = QFileDialog::getSaveFileName(nullptr, AppText::tr("导出 Tags 到 CSV"), "", AppText::tr("CSV Files (*.csv)"));
     if (fileName.isEmpty()) return;
     if (!fileName.endsWith(".csv", Qt::CaseInsensitive)) fileName += ".csv";
 
@@ -968,13 +969,13 @@ void TagBrowserWidget::showUserTagExportDialog()
     if (chkPriority->isChecked()) headers << "Priority";
     if (chkCount->isChecked()) headers << "Count";
     if (headers.isEmpty()) {
-        QMessageBox::information(nullptr, "提示", "请至少选择一列导出。");
+        QMessageBox::information(nullptr, AppText::tr("提示"), AppText::tr("请至少选择一列导出。"));
         return;
     }
 
     QFile file(fileName);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QMessageBox::warning(nullptr, "错误", "无法写入文件。");
+        QMessageBox::warning(nullptr, AppText::tr("错误"), AppText::tr("无法写入文件。"));
         return;
     }
 
@@ -992,7 +993,7 @@ void TagBrowserWidget::showUserTagExportDialog()
         if (chkCount->isChecked()) values << QString::number(row.count);
         out << values.join(",") << "\n";
     }
-    QMessageBox::information(nullptr, "成功", "导出成功！");
+    QMessageBox::information(nullptr, AppText::tr("成功"), AppText::tr("导出成功！"));
 }
 
 void TagBrowserWidget::onUserTagContextMenu(const QPoint &pos)
@@ -1010,7 +1011,7 @@ void TagBrowserWidget::onUserTagContextMenu(const QPoint &pos)
 
     QMenu menu(this);
     if (!selectedUserTagRows().isEmpty()) {
-        QAction *copySelected = menu.addAction("复制选中 Tags");
+        QAction *copySelected = menu.addAction(AppText::tr("复制选中 Tags"));
         connect(copySelected, &QAction::triggered, this, [this]() {
             QStringList tags;
             const QVector<UserTagUsageRow> rows = selectedUserTagRows();
@@ -1020,7 +1021,7 @@ void TagBrowserWidget::onUserTagContextMenu(const QPoint &pos)
         });
     }
 
-    QAction *batchExport = menu.addAction("批量导出 Tags...");
+    QAction *batchExport = menu.addAction(AppText::tr("批量导出 Tags..."));
     connect(batchExport, &QAction::triggered, this, &TagBrowserWidget::showUserTagExportDialog);
     menu.exec(ui->tableUserTags->viewport()->mapToGlobal(pos));
 }
@@ -1064,11 +1065,11 @@ void TagBrowserWidget::showTagTableContextMenu(const QPoint &pos)
     }
 
     QMenu menu(this);
-    QAction *copyCell = menu.addAction("复制当前单元格");
+    QAction *copyCell = menu.addAction(AppText::tr("复制当前单元格"));
     copyCell->setEnabled(ui->tableTags->currentIndex().isValid());
     connect(copyCell, &QAction::triggered, this, &TagBrowserWidget::copyCurrentTagCell);
 
-    QAction *copyRows = menu.addAction("复制选中行");
+    QAction *copyRows = menu.addAction(AppText::tr("复制选中行"));
     copyRows->setEnabled(ui->tableTags->selectionModel()
                          && !ui->tableTags->selectionModel()->selectedRows().isEmpty());
     connect(copyRows, &QAction::triggered, this, &TagBrowserWidget::copySelectedTagRows);
@@ -1183,13 +1184,13 @@ void TagBrowserWidget::onSaveClicked()
 bool TagBrowserWidget::saveCurrentCsv()
 {
     if (m_loading) {
-        QMessageBox::information(nullptr, "提示", "词表仍在加载，请稍候再保存。");
+        QMessageBox::information(nullptr, AppText::tr("提示"), AppText::tr("词表仍在加载，请稍候再保存。"));
         return false;
     }
     if (m_mergedSource) return saveMergedCsvChanges();
     ensureCsvLoadedForEditing();
     if (m_csvPath.isEmpty()) {
-        QMessageBox::information(nullptr, "提示", "请先在设置中配置 Tag 翻译表 CSV 路径。");
+        QMessageBox::information(nullptr, AppText::tr("提示"), AppText::tr("请先在设置中配置 Tag 翻译表 CSV 路径。"));
         return false;
     }
 
@@ -1201,7 +1202,7 @@ bool TagBrowserWidget::saveCurrentCsv()
 
     QString errorMessage;
     if (!writeTranslationRows(m_csvPath, rows, &errorMessage)) {
-        QMessageBox::warning(nullptr, "错误", errorMessage);
+        QMessageBox::warning(nullptr, AppText::tr("错误"), errorMessage);
         return false;
     }
 
@@ -1409,8 +1410,8 @@ bool TagBrowserWidget::saveMergedCsvChanges()
 
     if (!failures.isEmpty()) {
         updateStatusLabel();
-        QMessageBox::warning(this, "部分词表未保存",
-                             "以下词表未写入，相关修改仍保留在表格中：\n\n" + failures.join("\n"));
+        QMessageBox::warning(this, AppText::tr("部分词表未保存"),
+                             AppText::tr("以下词表未写入，相关修改仍保留在表格中：\n\n") + failures.join("\n"));
         return false;
     }
 
@@ -1425,8 +1426,8 @@ bool TagBrowserWidget::saveMergedCsvChanges()
 bool TagBrowserWidget::confirmDiscardOrSaveChanges(int restoreIndex)
 {
     if (!m_dirty) return true;
-    QMessageBox box(QMessageBox::Question, "未保存修改",
-                    "当前词表有未保存修改，切换前要保存吗？",
+    QMessageBox box(QMessageBox::Question, AppText::tr("未保存修改"),
+                    AppText::tr("当前词表有未保存修改，切换前要保存吗？"),
                     QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, this);
     box.setDefaultButton(QMessageBox::Save);
     const int result = box.exec();

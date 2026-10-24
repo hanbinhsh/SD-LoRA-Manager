@@ -1,6 +1,8 @@
+#include "utils/applanguage.h"
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "utils/tagusage.h"
+#include "utils/modelbrowserurl.h"
 
 #include <QFileDialog>
 #include <QMessageBox>
@@ -588,8 +590,8 @@ MainWindow::MainWindow(QWidget *parent)
 
                 // 2. 弹窗提示
                 QMessageBox::StandardButton reply;
-                reply = QMessageBox::question(this, "未加载翻译",
-                                              "尚未加载翻译词表 (CSV)。\n是否现在前往设置页面进行设置？\n\n(格式: 英文,中文)",
+                reply = QMessageBox::question(this, AppText::tr("未加载翻译"),
+                                              AppText::tr("尚未加载翻译词表 (CSV)。\n是否现在前往设置页面进行设置？\n\n(格式: 英文,中文)"),
                                               QMessageBox::Yes|QMessageBox::No);
 
                 if (reply == QMessageBox::Yes) {
@@ -682,7 +684,7 @@ MainWindow::MainWindow(QWidget *parent)
     QTimer::singleShot(0, this, [this](){ refreshLoadedToolPageThemes(); });
 
     QTimer::singleShot(0, this, [this](){
-        ui->statusbar->showMessage("正在扫描本地模型库...");
+        ui->statusbar->showMessage(AppText::tr("正在扫描本地模型库..."));
         loadCollections();
         loadModelHighlightColors();
         loadModelUserNotes();
@@ -697,7 +699,7 @@ MainWindow::MainWindow(QWidget *parent)
             for (int i = 0; i < ui->modelList->count(); ++i) {
                 if (isModelListItem(ui->modelList->item(i))) modelCount++;
             }
-            ui->statusbar->showMessage(QString("加载完成，共 %1 个模型").arg(modelCount), 3000);
+            ui->statusbar->showMessage(AppText::tr("加载完成，共 %1 个模型").arg(modelCount), 3000);
             if (optAutoCheckUpdatesOnStartup) {
                 QTimer::singleShot(800, this, [this]() {
                     startAppUpdateCheck(true);
@@ -761,8 +763,8 @@ void MainWindow::closeEvent(QCloseEvent *event)
     if (optConfirmCloseWhileLauncherRunning && launcherWidget && launcherWidget->hasRunningProcess()) {
         const QMessageBox::StandardButton choice = QMessageBox::question(
             this,
-            "确认退出 / Confirm Exit",
-            "启动器中仍有 A1111/ComfyUI 进程正在运行，关闭软件会一并结束它们。\n确定要退出吗？",
+            AppText::tr("确认退出 / Confirm Exit"),
+            AppText::tr("启动器中仍有 A1111/ComfyUI 进程正在运行，关闭软件会一并结束它们。\n确定要退出吗？"),
             QMessageBox::Yes | QMessageBox::No,
             QMessageBox::No);
         if (choice != QMessageBox::Yes) {
@@ -911,7 +913,7 @@ void MainWindow::saveModelHighlightColors()
 void MainWindow::onCreateCollection()
 {
     bool ok;
-    QString text = QInputDialog::getText(this, "新建收藏夹", "收藏夹名称:", QLineEdit::Normal, "", &ok);
+    QString text = QInputDialog::getText(this, AppText::tr("新建收藏夹"), AppText::tr("收藏夹名称:"), QLineEdit::Normal, "", &ok);
     if (ok && !text.trimmed().isEmpty()) {
         if (!collections.contains(text)) {
             collections.insert(text, QStringList());
@@ -936,7 +938,7 @@ void MainWindow::refreshHomeCollectionsUI()
     ui->btnAddCollection->setProperty("class", "collectionBtn");
 
     // === 2. 添加 "全部" 按钮 ===
-    QPushButton *btnAll = new QPushButton("ALL\n全部");
+    QPushButton *btnAll = new QPushButton(AppText::tr("ALL\n全部"));
     btnAll->setFixedSize(90, 90);
     btnAll->setProperty("class", "collectionBtn");
     btnAll->setCheckable(true);
@@ -949,7 +951,7 @@ void MainWindow::refreshHomeCollectionsUI()
     layout->addWidget(btnAll);
 
     // === 未分类按钮 ===
-    QPushButton *btnUncat = new QPushButton("📦\n未分类");
+    QPushButton *btnUncat = new QPushButton(AppText::tr("📦\n未分类"));
     btnUncat->setFixedSize(90, 90);
     btnUncat->setProperty("class", "collectionBtn");
     btnUncat->setCheckable(true);
@@ -988,21 +990,21 @@ void MainWindow::refreshHomeCollectionsUI()
         connect(btn, &QPushButton::customContextMenuRequested, this, [this, btn, name](const QPoint &pos){
             QMenu menu;
 
-            QAction *title = menu.addAction(QString("管理: %1").arg(name));
+            QAction *title = menu.addAction(AppText::tr("管理: %1").arg(name));
             title->setEnabled(false);
             menu.addSeparator();
 
-            QAction *actRename = menu.addAction("重命名 / Rename");
-            QAction *actDelete = menu.addAction("删除 / Delete");
+            QAction *actRename = menu.addAction(AppText::tr("重命名 / Rename"));
+            QAction *actDelete = menu.addAction(AppText::tr("删除 / Delete"));
 
             QAction *selected = menu.exec(btn->mapToGlobal(pos));
 
             if (selected == actRename) {
                 bool ok;
-                QString newName = QInputDialog::getText(this, "重命名收藏夹", "新名称:", QLineEdit::Normal, name, &ok);
+                QString newName = QInputDialog::getText(this, AppText::tr("重命名收藏夹"), AppText::tr("新名称:"), QLineEdit::Normal, name, &ok);
                 if (ok && !newName.trimmed().isEmpty() && newName != name) {
                     if (collections.contains(newName)) {
-                        QMessageBox::warning(this, "错误", "该名称已存在！");
+                        QMessageBox::warning(this, AppText::tr("错误"), AppText::tr("该名称已存在！"));
                         return;
                     }
                     // 执行重命名：取出旧值，插入新键，删除旧键
@@ -1017,8 +1019,8 @@ void MainWindow::refreshHomeCollectionsUI()
                 }
             }
             else if (selected == actDelete) {
-                auto reply = QMessageBox::question(this, "确认删除",
-                                                   QString("确定要删除收藏夹 \"%1\" 吗？\n(里面的模型不会被删除，仅删除分类)").arg(name),
+                auto reply = QMessageBox::question(this, AppText::tr("确认删除"),
+                                                   AppText::tr("确定要删除收藏夹 \"%1\" 吗？\n(里面的模型不会被删除，仅删除分类)").arg(name),
                                                    QMessageBox::Yes | QMessageBox::No);
                 if (reply == QMessageBox::Yes) {
                     // 1. 从数据中移除
@@ -1069,8 +1071,8 @@ void MainWindow::refreshHomeGallery()
     connect(ui->homeGalleryList, &QListWidget::customContextMenuRequested, this, &MainWindow::onHomeGalleryContextMenu);
 
     QString searchText = ui->searchEdit->text().trimmed();
-    QString targetBaseModel = ui->comboBaseModel->currentText();
-    QString targetModelType = ui->comboModelType->currentText();
+    QString targetBaseModel = ui->comboBaseModel->currentIndex() == 0 ? "All" : ui->comboBaseModel->currentText();
+    QString targetModelType = ui->comboModelType->currentIndex() == 0 ? "All" : ui->comboModelType->currentText();
 
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *sideItem = ui->modelList->item(i);
@@ -1319,7 +1321,7 @@ void MainWindow::refreshHomeFilterChips()
     }
 
     if (currentHomeAuthorFilter.isEmpty() && currentHomeTagFilters.isEmpty()) {
-        QLabel *emptySummary = new QLabel("未启用主页作者/Tag 筛选");
+        QLabel *emptySummary = new QLabel(AppText::tr("未启用主页作者/Tag 筛选"));
         emptySummary->setStyleSheet(AppStyle::MutedBoldLabelStyle());
         emptySummary->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
@@ -1345,7 +1347,7 @@ void MainWindow::refreshHomeFilterChips()
     // 2. 展开 / 收起按钮和输入区
     // =========================
     ui->btnHomeFilterToggle->setChecked(homeFilterExpanded);
-    ui->btnHomeFilterToggle->setText(homeFilterExpanded ? "收起筛选" : "展开筛选");
+    ui->btnHomeFilterToggle->setText(homeFilterExpanded ? AppText::tr("收起筛选") : AppText::tr("展开筛选"));
 
     auto setLayoutVisible = [](QLayout *layout, bool visible) {
         if (!layout) return;
@@ -1406,10 +1408,10 @@ void MainWindow::refreshHomeFilterChips()
     FlowLayout *availableTagsLayout = new FlowLayout(availableTagsWidget, 0, 6, 6);
 
     if (ui->btnHomeTagSortMode) {
-        ui->btnHomeTagSortMode->setText(homeFilterTagsSortByCount ? "按次数" : "按字母");
+        ui->btnHomeTagSortMode->setText(homeFilterTagsSortByCount ? AppText::tr("按次数") : AppText::tr("按字母"));
         ui->btnHomeTagSortMode->setToolTip(homeFilterTagsSortByCount
-            ? "当前按出现次数排序，点击切换为字母序"
-            : "当前按字母序排序，点击切换为出现次数");
+            ? AppText::tr("当前按出现次数排序，点击切换为字母序")
+            : AppText::tr("当前按字母序排序，点击切换为出现次数"));
     }
 
     for (const HomeFilterTagInfo &info : availableTagInfos) {
@@ -1432,7 +1434,7 @@ void MainWindow::refreshHomeFilterChips()
         const QString sourceText = info.fromModel && info.fromUser
             ? "模型 Tag + 用户 Tag"
             : (info.fromUser ? "用户 Tag" : "模型 Tag");
-        tagButton->setToolTip(QString("%1，出现于 %2 个模型。点击添加/移除此 Tag 筛选。")
+        tagButton->setToolTip(AppText::tr("%1，出现于 %2 个模型。点击添加/移除此 Tag 筛选。")
                                   .arg(sourceText)
                                   .arg(info.count));
         tagButton->setMaximumWidth(180);
@@ -1462,7 +1464,7 @@ void MainWindow::refreshHomeFilterChips()
     }
 
     if (availableTagInfos.isEmpty()) {
-        QLabel *emptyTags = new QLabel("当前模型库没有可用模型 Tag");
+        QLabel *emptyTags = new QLabel(AppText::tr("当前模型库没有可用模型 Tag"));
         emptyTags->setStyleSheet(AppStyle::MutedLabelStyle());
         emptyTags->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         availableTagsLayout->addWidget(emptyTags);
@@ -1814,15 +1816,15 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
     ui->modelList->clear();
     ui->comboBaseModel->blockSignals(true);
     ui->comboBaseModel->clear();
-    ui->comboBaseModel->addItem("All");
+    ui->comboBaseModel->addItem(AppText::tr("All"));
     ui->comboBaseModel->blockSignals(false);
 
     ui->comboModelType->blockSignals(true);
     ui->comboModelType->clear();
-    ui->comboModelType->addItem("All");
+    ui->comboModelType->addItem(AppText::tr("All"));
     ui->comboModelType->blockSignals(false);
 
-    ui->statusbar->showMessage("正在扫描模型...");
+    ui->statusbar->showMessage(AppText::tr("正在扫描模型..."));
 
     const int token = ++modelScanToken;
     const bool recursive = optLoraRecursive;
@@ -1892,7 +1894,7 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
             }
         }
 
-        ui->statusbar->showMessage(QString("扫描完成，共 %1 个模型").arg(addedCount));
+        ui->statusbar->showMessage(AppText::tr("扫描完成，共 %1 个模型").arg(addedCount));
         ui->comboBaseModel->blockSignals(false);
 
         ui->comboModelType->blockSignals(true);
@@ -1929,8 +1931,8 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
         ui->btnOpenUrl->setVisible(true);
         ui->btnOpenUrl->setProperty("url", meta.modelUrl);
         ui->btnOpenUrl->setToolTip(meta.modelUrl.contains("civarchive.com", Qt::CaseInsensitive)
-                                   ? "访问 CivArchive"
-                                   : "访问 Civitai");
+                                   ? AppText::tr("访问 CivArchive")
+                                   : AppText::tr("访问 Civitai"));
     } else { ui->btnOpenUrl->setVisible(false); }
 
     // 2. 标签栏 (Badges)
@@ -1986,7 +1988,7 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
     QString addedStr = addedTime.toString("yyyy-MM-dd");
     ui->lblFileInfo->setWordWrap(true);
     const QString displayFileName = meta.fileNameServer.isEmpty() ? meta.fileName : meta.fileNameServer;
-    ui->lblFileInfo->setText(QString("Filename: %1\nSize: %2 MB\nSHA256: %3\nAdded: %4")
+    ui->lblFileInfo->setText(AppText::tr("Filename: %1\nSize: %2 MB\nSHA256: %3\nAdded: %4")
                                  .arg(forceWrap(displayFileName))
                                  .arg(meta.fileSizeMB, 0, 'f', 1)
                                  .arg(meta.sha256.left(10) + "...")
@@ -2054,7 +2056,7 @@ void MainWindow::beginGalleryBuild(const ModelMeta &meta)
     cancelGalleryBuild();
 
     if (meta.images.isEmpty()) {
-        ui->layoutGallery->addWidget(new QLabel("No preview images."));
+        ui->layoutGallery->addWidget(new QLabel(AppText::tr("No preview images.")));
         return;
     }
 
@@ -2152,20 +2154,20 @@ void MainWindow::addGalleryThumbButton(const ModelMeta &meta, int index, const Q
 
     const PreviewMetadataPayload previewPayload = PreviewImageStore::previewPayloadFromImageInfo(img);
     if (QFile::exists(effectivePath) && !(m_forceResyncPreview && index > 0 && !img.url.isEmpty())) {
-        thumbBtn->setText("Loading...");
+        thumbBtn->setText(AppText::tr("Loading..."));
         IconLoaderTask *task = new IconLoaderTask(effectivePath, 100, 0, this, effectivePath, true);
         task->setAutoDelete(true);
         threadPool->start(task);
     } else {
         if (m_skipPreviewSync) {
-            thumbBtn->setText("Skipped");
+            thumbBtn->setText(AppText::tr("Skipped"));
         } else if (img.url.isEmpty()) {
-            thumbBtn->setText("Missing");
+            thumbBtn->setText(AppText::tr("Missing"));
         } else {
             if (QFile::exists(strictLocalPath) && index > 0 && m_forceResyncPreview) {
                 QFile::remove(strictLocalPath);
             }
-            thumbBtn->setText(index == 0 ? "Downloading..." : "Queueing...");
+            thumbBtn->setText(index == 0 ? AppText::tr("Downloading...") : AppText::tr("Queueing..."));
             enqueueDownload(img.url, strictLocalPath, thumbBtn, baseName, index, previewPayload);
         }
     }
@@ -2182,10 +2184,10 @@ void MainWindow::addGalleryThumbButton(const ModelMeta &meta, int index, const Q
         const int imageIndex = thumbBtn->property("imageIndex").toInt();
 
         QMenu menu(this);
-        QAction *actRedownload = menu.addAction("重新下载 / Re-download");
+        QAction *actRedownload = menu.addAction(AppText::tr("重新下载 / Re-download"));
         actRedownload->setEnabled(!downloadUrl.isEmpty() && !savePath.isEmpty());
 
-        QAction *actOpenLocation = menu.addAction("打开所在位置 / Show in Folder");
+        QAction *actOpenLocation = menu.addAction(AppText::tr("打开所在位置 / Show in Folder"));
         actOpenLocation->setEnabled(!savePath.isEmpty());
 
         QAction *chosen = menu.exec(thumbBtn->mapToGlobal(pos));
@@ -2196,7 +2198,7 @@ void MainWindow::addGalleryThumbButton(const ModelMeta &meta, int index, const Q
                 QFile::remove(savePath);
             }
             thumbBtn->setIcon(QIcon());
-            thumbBtn->setText(imageIndex == 0 ? "Downloading..." : "Queueing...");
+            thumbBtn->setText(imageIndex == 0 ? AppText::tr("Downloading...") : AppText::tr("Queueing..."));
             PreviewMetadataPayload payload;
             if (imageIndex >= 0 && imageIndex < currentMeta.images.size()) {
                 payload = PreviewImageStore::previewPayloadFromImageInfo(currentMeta.images.at(imageIndex));
@@ -2317,7 +2319,7 @@ void MainWindow::refreshTriggerWordsPanel(const ModelMeta &meta)
         tb->setFixedHeight(90);
         tb->setStyleSheet(QString("QTextBrowser { border: 1px solid %1; border-radius: 8px; }").arg(accentColor));
 
-        QPushButton *btnCopy = new QPushButton("Copy");
+        QPushButton *btnCopy = new QPushButton(AppText::tr("Copy"));
         btnCopy->setFixedSize(60, 90);
         btnCopy->setCursor(Qt::PointingHandCursor);
         btnCopy->setProperty("class", "copyBtn");
@@ -2325,7 +2327,7 @@ void MainWindow::refreshTriggerWordsPanel(const ModelMeta &meta)
         connect(btnCopy, &QPushButton::clicked, this, [words, this]() {
             QClipboard *clip = QGuiApplication::clipboard();
             clip->setText(words);
-            ui->statusbar->showMessage("Copied trigger words!", 1500);
+            ui->statusbar->showMessage(AppText::tr("Copied trigger words!"), 1500);
         });
 
         rowLayout->addWidget(tb);
@@ -2335,7 +2337,7 @@ void MainWindow::refreshTriggerWordsPanel(const ModelMeta &meta)
     };
 
     if (meta.trainedWordsGroups.isEmpty() && customTriggerGroups.isEmpty()) {
-        QLabel *lbl = new QLabel("No trigger words provided.");
+        QLabel *lbl = new QLabel(AppText::tr("No trigger words provided."));
         lbl->setStyleSheet("color: #666; font-style: italic; margin-left: 10px;");
         ui->layoutTriggerStack->addWidget(lbl);
         return;
@@ -2345,7 +2347,7 @@ void MainWindow::refreshTriggerWordsPanel(const ModelMeta &meta)
         addTriggerGroup(words, "Civitai / Metadata", AppStyle::AccentBlue());
     }
     for (const QString &words : customTriggerGroups) {
-        addTriggerGroup(words, "Custom / 用户自定义", AppStyle::CustomTriggerGreen());
+        addTriggerGroup(words, AppText::tr("Custom / 用户自定义"), AppStyle::CustomTriggerGreen());
     }
 
     ui->layoutTriggerStack->addStretch(1);
@@ -2378,18 +2380,18 @@ void MainWindow::clearDetailView()
 {
     cancelGalleryBuild();
     editImagesNeedRefresh = false;
-    ui->lblModelName->setText("请选择一个模型 / Select a Model");
+    ui->lblModelName->setText(AppText::tr("请选择一个模型 / Select a Model"));
     setModelTitleNormal();
     ui->lblModelName->setStyleSheet(AppStyle::modelTitleNormalStyle());
     ui->textDescription->clear();
-    ui->textDescription->setPlaceholderText("暂无简介 / No description.");
-    ui->lblFileInfo->setText("Filename: --\nSize: --\nHash: --");
+    ui->textDescription->setPlaceholderText(AppText::tr("暂无简介 / No description."));
+    ui->lblFileInfo->setText(AppText::tr("Filename: --\nSize: --\nHash: --"));
     refreshModelAttributionPanel(ModelMeta());
     refreshModelUserNotePanel("");
 
     ui->textImgPrompt->clear();
     ui->textImgNegPrompt->clear();
-    ui->lblImgParams->setText("Resolution: -- | Steps: -- | CFG: --<br/>Sampler: -- | Seed: --");
+    ui->lblImgParams->setText(AppText::tr("Resolution: -- | Steps: -- | CFG: --<br/>Sampler: -- | Seed: --"));
 
     ui->btnOpenUrl->setVisible(false);
     ui->btnCopyLoraTag->setVisible(false);
@@ -2427,10 +2429,10 @@ void MainWindow::clearDetailView()
     ui->chkLocalNSFW->setChecked(false);
     ui->textLocalTriggers->clear();
     ui->textLocalDescription->clear();
-    ui->lblLocalMetaStatus->setText("状态: -");
+    ui->lblLocalMetaStatus->setText(AppText::tr("状态: -"));
     ui->listEditImages->clear();
-    ui->lblEditImagePath->setText("文件: -");
-    ui->lblEditImageSize->setText("尺寸: -");
+    ui->lblEditImagePath->setText(AppText::tr("文件: -"));
+    ui->lblEditImageSize->setText(AppText::tr("尺寸: -"));
     ui->textEditImgPrompt->clear();
     ui->textEditImgNegPrompt->clear();
     ui->editImgSampler->clear();
@@ -2449,7 +2451,7 @@ void MainWindow::setModelTitleNormal()
 
 void MainWindow::setModelTitleError(const QString &message)
 {
-    ui->lblModelName->setText(QString("连接失败 / Error: %1").arg(message));
+    ui->lblModelName->setText(AppText::tr("连接失败 / Error: %1").arg(message));
     ui->lblModelName->setStyleSheet(AppStyle::modelTitleErrorStyle());
 }
 
@@ -2467,7 +2469,7 @@ void MainWindow::showPendingLocalModelDetail(const ModelMeta &meta, const QStrin
     ui->textDescription->setPlainText(message);
     QFileInfo fi(meta.filePath);
     ui->lblFileInfo->setWordWrap(true);
-    ui->lblFileInfo->setText(QString("Filename: %1\nSize: %2 MB\nHash: --")
+    ui->lblFileInfo->setText(AppText::tr("Filename: %1\nSize: %2 MB\nHash: --")
                                  .arg(forceWrap(fi.fileName()))
                                  .arg(fi.exists() ? QString::number(fi.size() / 1024.0 / 1024.0, 'f', 2) : "--"));
     refreshModelAttributionPanel(meta);
@@ -2521,16 +2523,16 @@ void MainWindow::setLocalMetaStatus(const ModelMeta &meta)
     QString status;
     QString color = AppStyle::str("primaryText"); // 随主题（浅色下为深字）
     if (meta.isLocalOnly && meta.isLocalEdited) {
-        status = "状态: 本地模型 (已编辑)";
+        status = AppText::tr("状态: 本地模型 (已编辑)");
         color = AppStyle::WarningYellow();
     } else if (meta.isLocalEdited) {
-        status = "状态: 已编辑 (本地元数据)";
+        status = AppText::tr("状态: 已编辑 (本地元数据)");
         color = AppStyle::WarningYellow();
     } else if (meta.isLocalOnly) {
-        status = "状态: 本地模型";
+        status = AppText::tr("状态: 本地模型");
         color = AppStyle::str("accentBlue");
     } else {
-        status = "状态: Civitai 元数据";
+        status = AppText::tr("状态: Civitai 元数据");
     }
 
     QStringList details;
@@ -2547,36 +2549,36 @@ void MainWindow::setLocalMetaStatus(const ModelMeta &meta)
         QFileInfo modelInfo(filePath);
         baseName = modelInfo.completeBaseName();
         jsonPath = modelInfo.absoluteDir().filePath(baseName + ".json");
-        details << (QFileInfo::exists(jsonPath) ? "JSON: 已缓存" : "JSON: 未缓存");
+        details << (QFileInfo::exists(jsonPath) ? AppText::tr("JSON: 已缓存") : AppText::tr("JSON: 未缓存"));
     }
 
     if (meta.modelId > 0) details << QString("Model ID: %1").arg(meta.modelId);
     if (meta.versionId > 0) details << QString("Version ID: %1").arg(meta.versionId);
-    if (!meta.sha256.isEmpty()) details << "SHA256: 已记录";
+    if (!meta.sha256.isEmpty()) details << AppText::tr("SHA256: 已记录");
 
     if (ui && ui->modelList && ui->modelList->currentItem()) {
         QListWidgetItem *item = ui->modelList->currentItem();
         const int usageCount = item->data(ROLE_SORT_USAGE_COUNT).toInt();
         const qint64 lastUsed = item->data(ROLE_SORT_LAST_USED).toLongLong();
-        details << QString("本地返图: %1 张").arg(usageCount);
+        details << AppText::tr("本地返图: %1 张").arg(usageCount);
         if (lastUsed > 0) {
-            details << QString("最近使用: %1").arg(QDateTime::fromMSecsSinceEpoch(lastUsed).toString("yyyy-MM-dd"));
+            details << AppText::tr("最近使用: %1").arg(QDateTime::fromMSecsSinceEpoch(lastUsed).toString("yyyy-MM-dd"));
         }
     }
 
     if (!filePath.isEmpty() && modelSyncFailures.contains(filePath)) {
         const QString error = modelSyncFailures.value(filePath)["error"].toString();
-        details << (error.isEmpty() ? "同步失败缓存: 已记录" : QString("同步失败缓存: %1").arg(error));
+        details << (error.isEmpty() ? AppText::tr("同步失败缓存: 已记录") : AppText::tr("同步失败缓存: %1").arg(error));
         color = AppStyle::str("errorRed");
     } else if (!jsonPath.isEmpty() && !QFileInfo::exists(jsonPath)) {
-        details << "提示: 点击刷新模型详情可同步元数据";
+        details << AppText::tr("提示: 点击刷新模型详情可同步元数据");
     }
 
     if (!details.isEmpty()) {
         status += "\n" + details.join(" · ");
     }
     ui->lblLocalMetaStatus->setWordWrap(true);
-    ui->lblLocalMetaStatus->setText(status);
+    ui->lblLocalMetaStatus->setText(AppText::display(status));
     ui->lblLocalMetaStatus->setStyleSheet(QString("color: %1;").arg(color));
     ui->lblLocalMetaStatus->setToolTip(status);
 }
@@ -2815,7 +2817,7 @@ void MainWindow::refreshEditImages(const ModelMeta &meta)
     }
 
     for (int i = 0; i < images.size(); ++i) {
-        QString title = (i == 0) ? "封面 / Cover" : QString("预览 %1").arg(i);
+        QString title = (i == 0) ? AppText::tr("封面 / Cover") : AppText::tr("预览 %1").arg(i);
         QListWidgetItem *item = new QListWidgetItem(title);
         item->setData(Qt::UserRole, i);
         item->setData(ROLE_EDIT_IMAGE_PATH, QString());
@@ -2827,7 +2829,7 @@ void MainWindow::refreshEditImages(const ModelMeta &meta)
             item->setData(ROLE_EDIT_IMAGE_PATH, path);
             item->setIcon(placeholderIcon);
             item->setText(title);
-            item->setToolTip(title + " (Loading...)");
+            item->setToolTip(title + AppText::tr(" (Loading...)"));
 
             QString taskId = QString("EDITIMG|%1|%2|%3").arg(currentToken).arg(i).arg(path);
             IconLoaderTask *task = new IconLoaderTask(path, 100, 0, this, taskId, true);
@@ -2835,10 +2837,10 @@ void MainWindow::refreshEditImages(const ModelMeta &meta)
             threadPool->start(task);
         } else if (i < meta.images.size() && !meta.images[i].url.isEmpty()) {
             item->setText(title);
-            item->setToolTip(title + " (Remote)");
+            item->setToolTip(title + AppText::tr(" (Remote)"));
         } else {
             item->setText(title);
-            item->setToolTip(title + " (Missing)");
+            item->setToolTip(title + AppText::tr(" (Missing)"));
         }
 
         ui->listEditImages->addItem(item);
@@ -2847,8 +2849,8 @@ void MainWindow::refreshEditImages(const ModelMeta &meta)
     if (ui->listEditImages->count() > 0) {
         ui->listEditImages->setCurrentRow(0);
     } else {
-        ui->lblEditImagePath->setText("文件: -");
-        ui->lblEditImageSize->setText("尺寸: -");
+        ui->lblEditImagePath->setText(AppText::tr("文件: -"));
+        ui->lblEditImageSize->setText(AppText::tr("尺寸: -"));
         ui->textEditImgPrompt->clear();
         ui->textEditImgNegPrompt->clear();
         ui->editImgSampler->clear();
@@ -2882,13 +2884,13 @@ void MainWindow::loadEditImageFields(int index)
     QString path = editPreviewPathForIndex(index);
     ui->lblEditImagePath->setText(
         path.isEmpty()
-        ? "文件: -"
-        : "文件: " + forceWrap(path)
+        ? AppText::tr("文件: -")
+        : AppText::tr("文件: ") + forceWrap(path)
     );
     if (img.width > 0 && img.height > 0) {
-        ui->lblEditImageSize->setText(QString("尺寸: %1 x %2").arg(img.width).arg(img.height));
+        ui->lblEditImageSize->setText(AppText::tr("尺寸: %1 x %2").arg(img.width).arg(img.height));
     } else {
-        ui->lblEditImageSize->setText("尺寸: -");
+        ui->lblEditImageSize->setText(AppText::tr("尺寸: -"));
     }
 
     ui->textEditImgPrompt->setPlainText(img.prompt);
@@ -2926,8 +2928,8 @@ bool MainWindow::confirmLocalEditOverwrite(QListWidgetItem *item)
 
     QMessageBox::StandardButton reply = QMessageBox::warning(
         this,
-        "本地元数据提示",
-        "当前模型存在本地/已编辑元数据，继续同步将覆盖本地修改。\n是否继续？",
+        AppText::tr("本地元数据提示"),
+        AppText::tr("当前模型存在本地/已编辑元数据，继续同步将覆盖本地修改。\n是否继续？"),
         QMessageBox::Yes | QMessageBox::No,
         QMessageBox::No
     );
@@ -3058,7 +3060,7 @@ void MainWindow::saveModelUserNotes() const
 
 QString MainWindow::formatModelRating(double rating) const
 {
-    if (rating <= 0.0) return "未评分";
+    if (rating <= 0.0) return AppText::tr("未评分");
     return QString("%1 / 5").arg(rating, 0, 'f', (std::fmod(rating, 1.0) == 0.0) ? 0 : 1);
 }
 
@@ -3127,13 +3129,13 @@ void MainWindow::refreshModelUserNotePanel(const QString &filePath)
     const QString key = sourcePath.isEmpty() ? QString() : QFileInfo(sourcePath).absoluteFilePath();
     const ModelUserNote note = modelUserNotes.value(key);
 
-    ui->lblUserRating->setText("评分: " + formatModelRating(note.rating));
+    ui->lblUserRating->setText(AppText::tr("评分: ") + formatModelRating(note.rating));
     ui->textUserNotePreview->setPlainText(note.note);
-    ui->textUserNotePreview->setPlaceholderText("暂无备注 / No note.");
+    ui->textUserNotePreview->setPlaceholderText(AppText::tr("暂无备注 / No note."));
 
     clearLayout(ui->layoutUserTags);
     if (note.tags.isEmpty()) {
-        QLabel *empty = new QLabel("无用户标签");
+        QLabel *empty = new QLabel(AppText::tr("无用户标签"));
         empty->setStyleSheet(AppStyle::MutedLabelStyle());
         ui->layoutUserTags->addWidget(empty);
     } else {
@@ -3142,14 +3144,14 @@ void MainWindow::refreshModelUserNotePanel(const QString &filePath)
             button->setProperty("class", "filterChip");
             button->setProperty("tagSource", "user");
             button->setCursor(Qt::PointingHandCursor);
-            button->setToolTip("点击在主页添加该用户 Tag 筛选");
+            button->setToolTip(AppText::tr("点击在主页添加该用户 Tag 筛选"));
             button->setMaximumWidth(150);
             button->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
             connect(button, &QPushButton::clicked, this, [this, tag]() {
                 ui->rootStack->setCurrentWidget(ui->pageLibrary);
                 ui->mainStack->setCurrentWidget(ui->pageHome);
                 addHomeTagFilter(tag);
-                ui->statusbar->showMessage("已添加用户 Tag 筛选: " + tag, 2000);
+                ui->statusbar->showMessage(AppText::tr("已添加用户 Tag 筛选: ") + tag, 2000);
             });
             ui->layoutUserTags->addWidget(button);
         }
@@ -3165,28 +3167,28 @@ void MainWindow::refreshModelAttributionPanel(const ModelMeta &meta)
     clearLayout(ui->layoutModelTags);
 
     if (meta.creatorName.trimmed().isEmpty()) {
-        QLabel *empty = new QLabel("暂无作者信息");
+        QLabel *empty = new QLabel(AppText::tr("暂无作者信息"));
         empty->setStyleSheet(AppStyle::MutedLabelStyle());
         ui->layoutModelAuthor->addWidget(empty);
     } else {
         QPushButton *author = new QPushButton(forceWrap(meta.creatorName));
         author->setProperty("class", "filterChip");
         author->setCursor(Qt::PointingHandCursor);
-        author->setToolTip("点击在主页筛选该作者");
+        author->setToolTip(AppText::tr("点击在主页筛选该作者"));
         author->setMaximumWidth(260);
         author->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
         connect(author, &QPushButton::clicked, this, [this, name = meta.creatorName]() {
             ui->rootStack->setCurrentWidget(ui->pageLibrary);
             ui->mainStack->setCurrentWidget(ui->pageHome);
             setHomeAuthorFilter(name);
-            ui->statusbar->showMessage("已按作者筛选: " + name, 2000);
+            ui->statusbar->showMessage(AppText::tr("已按作者筛选: ") + name, 2000);
         });
         ui->layoutModelAuthor->addWidget(author);
     }
     ui->layoutModelAuthor->addStretch();
 
     if (meta.modelTags.isEmpty()) {
-        QLabel *empty = new QLabel("暂无模型标签");
+        QLabel *empty = new QLabel(AppText::tr("暂无模型标签"));
         empty->setStyleSheet(AppStyle::MutedLabelStyle());
         ui->layoutModelTags->addWidget(empty);
     } else {
@@ -3198,14 +3200,14 @@ void MainWindow::refreshModelAttributionPanel(const ModelMeta &meta)
             QPushButton *tagButton = new QPushButton(forceWrap(tag));
             tagButton->setProperty("class", "filterChip");
             tagButton->setCursor(Qt::PointingHandCursor);
-            tagButton->setToolTip("点击在主页添加该 Tag 筛选");
+            tagButton->setToolTip(AppText::tr("点击在主页添加该 Tag 筛选"));
             tagButton->setMaximumWidth(150);
             tagButton->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
             connect(tagButton, &QPushButton::clicked, this, [this, tag]() {
                 ui->rootStack->setCurrentWidget(ui->pageLibrary);
                 ui->mainStack->setCurrentWidget(ui->pageHome);
                 addHomeTagFilter(tag);
-                ui->statusbar->showMessage("已添加 Tag 筛选: " + tag, 2000);
+                ui->statusbar->showMessage(AppText::tr("已添加 Tag 筛选: ") + tag, 2000);
             });
             tagFlowLayout->addWidget(tagButton);
         }
@@ -3257,7 +3259,7 @@ void MainWindow::openModelNoteDialog(QListWidgetItem *item)
         restoredItem->setSelected(true);
         syncTreeSelection(filePath);
     }
-    ui->statusbar->showMessage("模型评分、备注与自定义触发词已保存。", 2000);
+    ui->statusbar->showMessage(AppText::tr("模型评分、备注与自定义触发词已保存。"), 2000);
 }
 
 void MainWindow::setUserRatingForItems(const QList<QListWidgetItem*> &items, double rating)
@@ -3394,14 +3396,14 @@ QString MainWindow::modelSyncFailureMessage(const QString &filePath) const
 void MainWindow::onScanLocalClicked() {
     int localCount = countLocalEditedModels();
     if (!optSuppressLocalWarnings && localCount > 0) {
-        QMessageBox::information(this, "提示",
-                                 QString("检测到 %1 个本地/已编辑模型。\n刷新不会删除本地元数据，但后续同步可能覆盖本地修改。").arg(localCount));
+        QMessageBox::information(this, AppText::tr("提示"),
+                                 AppText::tr("检测到 %1 个本地/已编辑模型。\n刷新不会删除本地元数据，但后续同步可能覆盖本地修改。").arg(localCount));
     }
     const QStringList activeLoraPaths = PathUtils::collectEnabledPaths(loraPaths, disabledLoraPaths);
     if (!activeLoraPaths.isEmpty()) {
         scanModels(activeLoraPaths);
     } else {
-        QMessageBox::information(this, "提示", "请先设置并启用至少一个 LoRA 路径。");
+        QMessageBox::information(this, AppText::tr("提示"), AppText::tr("请先设置并启用至少一个 LoRA 路径。"));
     }
     executeSort();
 }
@@ -3491,7 +3493,7 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
         if (!failedMessage.isEmpty()) {
             showPendingLocalModelDetail(
                 meta,
-                QString("上次同步失败，请点击刷新模型详情重新同步。\n%1").arg(failedMessage)
+                AppText::tr("上次同步失败，请点击刷新模型详情重新同步。\n%1").arg(failedMessage)
             );
             ui->btnForceUpdate->setEnabled(true);
             if (ui->detailContentStack->currentIndex() == 1) {
@@ -3504,12 +3506,12 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
             return;
         }
 
-        showPendingLocalModelDetail(meta, "正在分析模型文件 (计算 Hash)...");
+        showPendingLocalModelDetail(meta, AppText::tr("正在分析模型文件 (计算 Hash)..."));
 
         // === 情况 B: 无本地数据，需要计算 Hash 然后联网 ===
 
         // UI 状态反馈：显示“正在分析模型...”
-        ui->lblModelName->setText("正在分析模型文件 (计算 Hash)...");
+        ui->lblModelName->setText(AppText::tr("正在分析模型文件 (计算 Hash)..."));
         ui->btnForceUpdate->setEnabled(false);
         startModelHashSync(filePath, baseName, false);
     }
@@ -3534,8 +3536,8 @@ void MainWindow::onForceUpdateClicked() {
     if (!confirmLocalEditOverwrite(item)) return;
     int localCount = countLocalEditedModels();
     if (!optSuppressLocalWarnings && !item->data(ROLE_LOCAL_EDITED).toBool() && localCount > 0) {
-        QMessageBox::information(this, "提示",
-                                 QString("检测到 %1 个本地/已编辑模型。\n同步其它模型的元数据不会影响它们，但强制更新时请注意覆盖风险。").arg(localCount));
+        QMessageBox::information(this, AppText::tr("提示"),
+                                 AppText::tr("检测到 %1 个本地/已编辑模型。\n同步其它模型的元数据不会影响它们，但强制更新时请注意覆盖风险。").arg(localCount));
     }
 
     ui->btnForceUpdate->setEnabled(false);
@@ -3568,11 +3570,11 @@ void MainWindow::onForceUpdateClicked() {
     bool hasLocalPreview = !previewPath.isEmpty() && QFile::exists(previewPath);
     if (hasRemotePreview && hasLocalPreview) {
         QMessageBox msg(this);
-        msg.setWindowTitle("预览图同步");
-        msg.setText("检测到已同步的 Civitai 预览图，是否重新同步预览图？");
-        QPushButton *btnYes = msg.addButton("是", QMessageBox::YesRole);
-        QPushButton *btnMetaOnly = msg.addButton("仅元数据", QMessageBox::AcceptRole);
-        QPushButton *btnCancel = msg.addButton("取消同步", QMessageBox::RejectRole);
+        msg.setWindowTitle(AppText::tr("预览图同步"));
+        msg.setText(AppText::tr("检测到已同步的 Civitai 预览图，是否重新同步预览图？"));
+        QPushButton *btnYes = msg.addButton(AppText::tr("是"), QMessageBox::YesRole);
+        QPushButton *btnMetaOnly = msg.addButton(AppText::tr("仅元数据"), QMessageBox::AcceptRole);
+        QPushButton *btnCancel = msg.addButton(AppText::tr("取消同步"), QMessageBox::RejectRole);
         msg.setDefaultButton(btnMetaOnly);
         msg.exec();
 
@@ -3580,7 +3582,7 @@ void MainWindow::onForceUpdateClicked() {
             m_forceResyncPreview = false;
             m_skipPreviewSync = false;
             ui->btnForceUpdate->setEnabled(true);
-            ui->statusbar->showMessage("已取消同步", 2000);
+            ui->statusbar->showMessage(AppText::tr("已取消同步"), 2000);
             return;
         }
 
@@ -3607,7 +3609,7 @@ void MainWindow::onForceUpdateClicked() {
     meta.fileName = QFileInfo(filePath).fileName();
     meta.previewPath = item->data(ROLE_PREVIEW_PATH).toString();
     meta.isLocalOnly = true;
-    showPendingLocalModelDetail(meta, "正在重新同步模型详情 (计算 Hash)...");
+    showPendingLocalModelDetail(meta, AppText::tr("正在重新同步模型详情 (计算 Hash)..."));
     startModelHashSync(filePath, baseName, true);
 }
 
@@ -3615,7 +3617,7 @@ void MainWindow::onLocalMetaSaveClicked()
 {
     QListWidgetItem *item = ui->modelList->currentItem();
     if (!item) {
-        QMessageBox::information(this, "提示", "请先选择一个模型。");
+        QMessageBox::information(this, AppText::tr("提示"), AppText::tr("请先选择一个模型。"));
         return;
     }
 
@@ -3799,7 +3801,7 @@ void MainWindow::onLocalMetaSaveClicked()
 
     QFile saveFile(jsonPath);
     if (!saveFile.open(QIODevice::WriteOnly)) {
-        QMessageBox::warning(this, "保存失败", "无法写入本地元数据文件。");
+        QMessageBox::warning(this, AppText::tr("保存失败"), AppText::tr("无法写入本地元数据文件。"));
         return;
     }
     saveFile.write(QJsonDocument(root).toJson());
@@ -3828,7 +3830,7 @@ void MainWindow::onLocalMetaSaveClicked()
         item->setText(baseName);
     }
 
-    ui->statusbar->showMessage("本地元数据已保存。", 2000);
+    ui->statusbar->showMessage(AppText::tr("本地元数据已保存。"), 2000);
 }
 
 void MainWindow::onLocalMetaResetClicked()
@@ -3854,17 +3856,17 @@ void MainWindow::onLocalMetaResetClicked()
     if (QFile::exists(jsonPath) && ModelMetadata::readLocalJson(modelDir, baseName, meta)) {
         currentMeta = meta;
         updateDetailView(meta);
-        ui->statusbar->showMessage("已从本地元数据恢复。", 2000);
+        ui->statusbar->showMessage(AppText::tr("已从本地元数据恢复。"), 2000);
     } else {
         updateLocalEditorFromMeta(meta);
-        ui->statusbar->showMessage("未找到本地元数据文件，已恢复默认值。", 2000);
+        ui->statusbar->showMessage(AppText::tr("未找到本地元数据文件，已恢复默认值。"), 2000);
     }
 }
 
 void MainWindow::onEditMetaTabClicked()
 {
     if (!ui->modelList->currentItem()) {
-        QMessageBox::information(this, "提示", "请先选择一个模型。");
+        QMessageBox::information(this, AppText::tr("提示"), AppText::tr("请先选择一个模型。"));
         return;
     }
 
@@ -3891,15 +3893,15 @@ void MainWindow::onEditMetaTabClicked()
 void MainWindow::onEditAddImageClicked()
 {
     if (!ui->modelList->currentItem()) {
-        QMessageBox::information(this, "提示", "请先选择一个模型。");
+        QMessageBox::information(this, AppText::tr("提示"), AppText::tr("请先选择一个模型。"));
         return;
     }
 
     commitEditImageFields();
 
-    QString srcPath = QFileDialog::getOpenFileName(this, "选择预览图片",
+    QString srcPath = QFileDialog::getOpenFileName(this, AppText::tr("选择预览图片"),
                                                    currentEditModelDir(),
-                                                   "Image Files (*.png *.jpg *.jpeg *.webp)");
+                                                   AppText::tr("Image Files (*.png *.jpg *.jpeg *.webp)"));
     if (srcPath.isEmpty()) return;
 
     QString baseName = currentEditBaseName();
@@ -3909,7 +3911,7 @@ void MainWindow::onEditAddImageClicked()
 
     int w = 0, h = 0;
     if (!saveImageToPreviewPath(srcPath, destPath, w, h)) {
-        QMessageBox::warning(this, "错误", "图片保存失败，请检查文件格式。");
+        QMessageBox::warning(this, AppText::tr("错误"), AppText::tr("图片保存失败，请检查文件格式。"));
         return;
     }
 
@@ -3937,15 +3939,15 @@ void MainWindow::onEditReplaceImageClicked()
 
     commitEditImageFields();
 
-    QString srcPath = QFileDialog::getOpenFileName(this, "替换预览图片",
+    QString srcPath = QFileDialog::getOpenFileName(this, AppText::tr("替换预览图片"),
                                                    currentEditModelDir(),
-                                                   "Image Files (*.png *.jpg *.jpeg *.webp)");
+                                                   AppText::tr("Image Files (*.png *.jpg *.jpeg *.webp)"));
     if (srcPath.isEmpty()) return;
 
     QString destPath = editPreviewPathForIndex(row);
     int w = 0, h = 0;
     if (!saveImageToPreviewPath(srcPath, destPath, w, h)) {
-        QMessageBox::warning(this, "错误", "图片保存失败，请检查文件格式。");
+        QMessageBox::warning(this, AppText::tr("错误"), AppText::tr("图片保存失败，请检查文件格式。"));
         return;
     }
 
@@ -3966,7 +3968,7 @@ void MainWindow::onEditRemoveImageClicked()
     if (row < 0 || row >= currentMeta.images.size()) return;
 
     QMessageBox::StandardButton reply = QMessageBox::question(
-        this, "删除预览图", "确定删除选中的预览图吗？", QMessageBox::Yes | QMessageBox::No, QMessageBox::No
+        this, AppText::tr("删除预览图"), AppText::tr("确定删除选中的预览图吗？"), QMessageBox::Yes | QMessageBox::No, QMessageBox::No
     );
     if (reply != QMessageBox::Yes) return;
 
@@ -3984,7 +3986,7 @@ void MainWindow::onEditRemoveImageClicked()
                 --it;
                 QFile::rename(it.value().second, it.value().first);
             }
-            QMessageBox::warning(this, "删除失败", "无法安全暂存预览图，原文件未删除。");
+            QMessageBox::warning(this, AppText::tr("删除失败"), AppText::tr("无法安全暂存预览图，原文件未删除。"));
             return;
         }
         stagedFiles.insert(i, qMakePair(originalPath, stagedPath));
@@ -4015,9 +4017,9 @@ void MainWindow::onEditRemoveImageClicked()
                 restored = false;
             }
         }
-        QMessageBox::critical(this, "删除失败",
-                              restored ? "预览图重新编号失败，原文件已恢复。"
-                                       : "预览图重新编号失败，部分备份文件无法恢复，请检查模型目录。");
+        QMessageBox::critical(this, AppText::tr("删除失败"),
+                              restored ? AppText::tr("预览图重新编号失败，原文件已恢复。")
+                                       : AppText::tr("预览图重新编号失败，部分备份文件无法恢复，请检查模型目录。"));
         return;
     }
 
@@ -4046,27 +4048,27 @@ void MainWindow::onEditSetCoverClicked()
     QString path0 = editPreviewPathForIndex(0);
     QString pathN = editPreviewPathForIndex(row);
     if (!QFile::exists(path0) || !QFile::exists(pathN)) {
-        QMessageBox::warning(this, "设置封面失败", "封面或目标预览图文件不存在，未修改图片顺序。");
+        QMessageBox::warning(this, AppText::tr("设置封面失败"), AppText::tr("封面或目标预览图文件不存在，未修改图片顺序。"));
         return;
     }
 
     QString tempPath = path0 + ".swap-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
     if (!QFile::rename(path0, tempPath)) {
-        QMessageBox::warning(this, "设置封面失败", "无法暂存当前封面，原文件未修改。");
+        QMessageBox::warning(this, AppText::tr("设置封面失败"), AppText::tr("无法暂存当前封面，原文件未修改。"));
         return;
     }
     if (!QFile::rename(pathN, path0)) {
         QFile::rename(tempPath, path0);
-        QMessageBox::warning(this, "设置封面失败", "无法移动目标预览图，原封面已恢复。");
+        QMessageBox::warning(this, AppText::tr("设置封面失败"), AppText::tr("无法移动目标预览图，原封面已恢复。"));
         return;
     }
     if (!QFile::rename(tempPath, pathN)) {
         const bool restoredTarget = QFile::rename(path0, pathN);
         const bool restoredCover = QFile::rename(tempPath, path0);
-        QMessageBox::critical(this, "设置封面失败",
+        QMessageBox::critical(this, AppText::tr("设置封面失败"),
                               restoredTarget && restoredCover
-                                  ? "无法完成封面交换，原文件已恢复。"
-                                  : "无法完成封面交换，自动恢复失败，请检查模型目录。");
+                                  ? AppText::tr("无法完成封面交换，原文件已恢复。")
+                                  : AppText::tr("无法完成封面交换，自动恢复失败，请检查模型目录。"));
         return;
     }
 
@@ -4207,7 +4209,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
             clearLayout(ui->layoutTriggerStack); // 清空触发词区域
             const QString err = civitaiNetworkErrorMessage(reply);
             if (startDetailCivArchiveFallback(filePath, localBaseName, modelDir, err, currentSha256)) {
-                ui->statusbar->showMessage("Civitai 获取失败，正在尝试 CivArchive...", 4000);
+                ui->statusbar->showMessage(AppText::tr("Civitai 获取失败，正在尝试 CivArchive..."), 4000);
                 return;
             }
             recordModelSyncFailure(filePath, localBaseName, err);
@@ -4216,7 +4218,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
             transitionToImage("");
             m_forceResyncPreview = false;
             m_skipPreviewSync = false;
-            ui->statusbar->showMessage("元数据获取失败: " + err, 4000);
+            ui->statusbar->showMessage(AppText::tr("元数据获取失败: ") + err, 4000);
             return;
         }
     }
@@ -4228,7 +4230,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     if ((!usingVersionFallback && doc.isNull()) || root.isEmpty()) {
         const QString err = "返回数据为空或不是有效 JSON";
         if (startDetailCivArchiveFallback(filePath, localBaseName, modelDir, err, currentSha256)) {
-            ui->statusbar->showMessage("Civitai 元数据解析失败，正在尝试 CivArchive...", 4000);
+            ui->statusbar->showMessage(AppText::tr("Civitai 元数据解析失败，正在尝试 CivArchive..."), 4000);
             return;
         }
         recordModelSyncFailure(filePath, localBaseName, err);
@@ -4237,7 +4239,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
         transitionToImage("");
         m_forceResyncPreview = false;
         m_skipPreviewSync = false;
-        ui->statusbar->showMessage("元数据解析失败", 3000);
+        ui->statusbar->showMessage(AppText::tr("元数据解析失败"), 3000);
         return;
     }
 
@@ -4348,7 +4350,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
     });
     m_forceResyncPreview = false;
     m_skipPreviewSync = false;
-    ui->statusbar->showMessage("元数据已更新", 2000);
+    ui->statusbar->showMessage(AppText::tr("元数据已更新"), 2000);
 }
 
 void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const QString &savePath)
@@ -4482,8 +4484,8 @@ void MainWindow::startModelHashSync(const QString &filePath, const QString &base
             pendingHashSyncForceRefresh = forceRefresh;
         }
         ui->btnForceUpdate->setEnabled(false);
-        ui->statusbar->showMessage("正在等待上一项 Hash 计算完成...", 0);
-        ui->lblModelName->setText("正在等待模型文件分析...");
+        ui->statusbar->showMessage(AppText::tr("正在等待上一项 Hash 计算完成..."), 0);
+        ui->lblModelName->setText(AppText::tr("正在等待模型文件分析..."));
         return;
     }
 
@@ -4494,8 +4496,8 @@ void MainWindow::startModelHashSync(const QString &filePath, const QString &base
     ui->modelList->setProperty("current_processing_path", filePath);
     ui->modelList->setProperty("current_model_dir", QFileInfo(filePath).absolutePath());
     ui->btnForceUpdate->setEnabled(false);
-    ui->statusbar->showMessage("正在计算 Hash...", 0);
-    ui->lblModelName->setText("正在分析模型文件 (计算 Hash)...");
+    ui->statusbar->showMessage(AppText::tr("正在计算 Hash..."), 0);
+    ui->lblModelName->setText(AppText::tr("正在分析模型文件 (计算 Hash)..."));
 
     hashWatcher->setFuture(QtConcurrent::run(backgroundThreadPool, [filePath]() {
         return FileUtils::calculateSha256Hex(filePath);
@@ -4503,8 +4505,9 @@ void MainWindow::startModelHashSync(const QString &filePath, const QString &base
 }
 
 void MainWindow::onOpenUrlClicked() {
-    QString url = ui->btnOpenUrl->property("url").toString();
-    if (!url.isEmpty()) QDesktopServices::openUrl(QUrl(url));
+    const QString url = ui->btnOpenUrl->property("url").toString();
+    const QString host = settingsPage ? settingsPage->state().civitaiBrowserHost : QStringLiteral("civitai.red");
+    if (!url.isEmpty()) QDesktopServices::openUrl(ModelBrowser::preferredUrl(QUrl(url), host));
 }
 
 QString MainWindow::currentModelLoraTagName() const
@@ -4535,13 +4538,13 @@ void MainWindow::onCopyLoraTagClicked()
 {
     const QString tagName = currentModelLoraTagName();
     if (tagName.isEmpty()) {
-        ui->statusbar->showMessage("无法生成 LoRA 标签：未选中模型", 2500);
+        ui->statusbar->showMessage(AppText::tr("无法生成 LoRA 标签：未选中模型"), 2500);
         return;
     }
 
     const QString tag = QString("<lora:%1:1>").arg(tagName);
     QApplication::clipboard()->setText(tag);
-    ui->statusbar->showMessage("已复制 LoRA 标签: " + tag, 2500);
+    ui->statusbar->showMessage(AppText::tr("已复制 LoRA 标签: ") + tag, 2500);
 }
 
 void MainWindow::downloadThumbnail(const QString &url, const QString &savePath, QPushButton *button)
@@ -4567,13 +4570,13 @@ void MainWindow::downloadThumbnail(const QString &url, const QString &savePath, 
                     connect(retryReply, &QNetworkReply::finished, this, [this, retryReply, savePath, safeBtn]() {
                         retryReply->deleteLater();
                         if (retryReply->error() != QNetworkReply::NoError) {
-                            if (safeBtn) safeBtn->setText("Error");
+                            if (safeBtn) safeBtn->setText(AppText::tr("Error"));
                             qDebug() << "Download retry error:" << civitaiNetworkErrorMessage(retryReply);
                             return;
                         }
                         QByteArray data = retryReply->readAll();
                         if (data.isEmpty()) {
-                            if (safeBtn) safeBtn->setText("Empty");
+                            if (safeBtn) safeBtn->setText(AppText::tr("Empty"));
                             return;
                         }
                         QFile file(savePath);
@@ -4589,7 +4592,7 @@ void MainWindow::downloadThumbnail(const QString &url, const QString &savePath, 
                     return;
                 }
             }
-            if (safeBtn) safeBtn->setText("Error");
+            if (safeBtn) safeBtn->setText(AppText::tr("Error"));
             qDebug() << "Download error:" << civitaiNetworkErrorMessage(reply);
             return;
         }
@@ -4598,7 +4601,7 @@ void MainWindow::downloadThumbnail(const QString &url, const QString &savePath, 
 
         // 再次检查数据是否为空 (防止 User-Agent 还是被拦截的情况)
         if (data.isEmpty()) {
-            if (safeBtn) safeBtn->setText("Empty");
+            if (safeBtn) safeBtn->setText(AppText::tr("Empty"));
             return;
         }
 
@@ -4776,7 +4779,7 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
                     item->data(Qt::UserRole).toInt() == index &&
                     item->data(ROLE_EDIT_IMAGE_PATH).toString() == path) {
                     item->setIcon(QIcon(QPixmap::fromImage(image)));
-                    const QString title = (index == 0) ? "封面 / Cover" : QString("预览 %1").arg(index);
+                    const QString title = (index == 0) ? AppText::tr("封面 / Cover") : AppText::tr("预览 %1").arg(index);
                     item->setText(title);
                     item->setToolTip(path);
                 }
@@ -4997,8 +5000,8 @@ void MainWindow::onHashCalculated()
 
     // Hash 算完了，现在开始联网
     setModelTitleNormal();
-    ui->lblModelName->setText("Hash 计算完成，正在获取元数据...");
-    ui->statusbar->showMessage("Hash 计算完成，正在获取元数据...", 2000);
+    ui->lblModelName->setText(AppText::tr("Hash 计算完成，正在获取元数据..."));
+    ui->statusbar->showMessage(AppText::tr("Hash 计算完成，正在获取元数据..."), 2000);
     fetchModelInfoFromCivitai(hash); // 调用你原来的联网函数
     startPendingHashForCurrentModel();
 }
@@ -5047,8 +5050,8 @@ void MainWindow::updateBackgroundImage()
 void MainWindow::onSearchTextChanged(const QString &text)
 {
     QString query = text.trimmed();
-    QString targetBaseModel = ui->comboBaseModel->currentText();
-    QString targetModelType = ui->comboModelType->currentText();
+    QString targetBaseModel = ui->comboBaseModel->currentIndex() == 0 ? "All" : ui->comboBaseModel->currentText();
+    QString targetModelType = ui->comboModelType->currentIndex() == 0 ? "All" : ui->comboModelType->currentText();
 
     // 1. 自动重置收藏夹 (保留逻辑)
     if (!query.isEmpty() && !currentCollectionFilter.isEmpty()) {
@@ -5113,7 +5116,7 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
         QAction *titleAct = menu.addAction(name);
         titleAct->setEnabled(false);
     } else {
-        QAction *titleAct = menu.addAction(QString("已选中 %1 个模型").arg(modelItems.count()));
+        QAction *titleAct = menu.addAction(AppText::tr("已选中 %1 个模型").arg(modelItems.count()));
         titleAct->setEnabled(false);
     }
 
@@ -5127,10 +5130,10 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
         }
     }
 
-    QAction *actSetHighlightColor = menu.addAction("设置高亮颜色... / Set Highlight Color...");
+    QAction *actSetHighlightColor = menu.addAction(AppText::tr("设置高亮颜色... / Set Highlight Color..."));
     connect(actSetHighlightColor, &QAction::triggered, this, [this, modelItems, defaultColor]() {
         QColorDialog dialog(defaultColor, this);
-        dialog.setWindowTitle("设置模型高亮颜色");
+        dialog.setWindowTitle(AppText::tr("设置模型高亮颜色"));
         dialog.setOption(QColorDialog::ShowAlphaChannel, true);
         if (dialog.exec() != QDialog::Accepted) return;
 
@@ -5139,7 +5142,7 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
         setHighlightColorForItems(modelItems, color);
     });
 
-    QAction *actClearHighlightColor = menu.addAction("清除高亮颜色 / Clear Highlight Color");
+    QAction *actClearHighlightColor = menu.addAction(AppText::tr("清除高亮颜色 / Clear Highlight Color"));
     bool hasHighlightColor = false;
     for (QListWidgetItem *item : modelItems) {
         const QString filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
@@ -5155,14 +5158,14 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
 
     menu.addSeparator();
 
-    QAction *actEditUserNote = menu.addAction("编辑评分、备注与触发词... / Edit Rating, Note && Triggers...");
+    QAction *actEditUserNote = menu.addAction(AppText::tr("编辑评分、备注与触发词... / Edit Rating, Note && Triggers..."));
     actEditUserNote->setEnabled(modelItems.count() == 1);
     connect(actEditUserNote, &QAction::triggered, this, [this, modelItems]() {
         if (modelItems.count() == 1) openModelNoteDialog(modelItems.first());
     });
 
-    QMenu *ratingMenu = menu.addMenu("设置评分 / Set Rating");
-    QAction *clearRatingAct = ratingMenu->addAction("未评分 / Clear Rating");
+    QMenu *ratingMenu = menu.addMenu(AppText::tr("设置评分 / Set Rating"));
+    QAction *clearRatingAct = ratingMenu->addAction(AppText::tr("未评分 / Clear Rating"));
     connect(clearRatingAct, &QAction::triggered, this, [this, modelItems]() {
         setUserRatingForItems(modelItems, 0.0);
     });
@@ -5175,24 +5178,24 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
         });
     }
 
-    QAction *actAddUserTags = menu.addAction("添加用户标签... / Add User Tags...");
+    QAction *actAddUserTags = menu.addAction(AppText::tr("添加用户标签... / Add User Tags..."));
     connect(actAddUserTags, &QAction::triggered, this, [this, modelItems]() {
         bool ok = false;
         const QString text = QInputDialog::getMultiLineText(this,
-                                                            "添加用户标签",
-                                                            "输入标签，逗号或换行分隔：",
+                                                            AppText::tr("添加用户标签"),
+                                                            AppText::tr("输入标签，逗号或换行分隔："),
                                                             QString(),
                                                             &ok);
         if (!ok) return;
         addUserTagsForItems(modelItems, normalizeModelUserTagsText(text));
     });
 
-    QAction *actRemoveUserTags = menu.addAction("移除用户标签... / Remove User Tags...");
+    QAction *actRemoveUserTags = menu.addAction(AppText::tr("移除用户标签... / Remove User Tags..."));
     connect(actRemoveUserTags, &QAction::triggered, this, [this, modelItems]() {
         bool ok = false;
         const QString text = QInputDialog::getMultiLineText(this,
-                                                            "移除用户标签",
-                                                            "输入要移除的标签，逗号或换行分隔：",
+                                                            AppText::tr("移除用户标签"),
+                                                            AppText::tr("输入要移除的标签，逗号或换行分隔："),
                                                             QString(),
                                                             &ok);
         if (!ok) return;
@@ -5210,7 +5213,7 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
         if (!targetFilePaths.contains(path)) targetFilePaths.append(path);
     }
 
-    QAction *actOpenModelLocation = menu.addAction("打开模型位置 / Show Model in Folder");
+    QAction *actOpenModelLocation = menu.addAction(AppText::tr("打开模型位置 / Show Model in Folder"));
     actOpenModelLocation->setEnabled(!targetFilePaths.isEmpty());
     connect(actOpenModelLocation, &QAction::triggered, this, [this, targetFilePaths]() {
         if (targetFilePaths.isEmpty()) return;
@@ -5218,7 +5221,7 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
         const QString filePath = targetFilePaths.first();
         showFileInFolder(filePath);
         if (targetFilePaths.size() > 1) {
-            ui->statusbar->showMessage(QString("已打开首个模型位置（共选中 %1 个）").arg(targetFilePaths.size()), 2500);
+            ui->statusbar->showMessage(AppText::tr("已打开首个模型位置（共选中 %1 个）").arg(targetFilePaths.size()), 2500);
         }
     });
 
@@ -5234,7 +5237,7 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
     // =========================================================
     // 2. "从收藏夹移除..."
     // =========================================================
-    QMenu *removeMenu = menu.addMenu("从指定收藏夹移除...");
+    QMenu *removeMenu = menu.addMenu(AppText::tr("从指定收藏夹移除..."));
     bool canRemoveAny = false;
 
     for (auto it = collections.begin(); it != collections.end(); ++it) {
@@ -5264,7 +5267,7 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
                 saveCollections();
                 refreshHomeGallery();
                 refreshCollectionTreeView();
-                ui->statusbar->showMessage(QString("已从 %1 移除 %2 个模型").arg(colName).arg(removedCount), 2000);
+                ui->statusbar->showMessage(AppText::tr("已从 %1 移除 %2 个模型").arg(colName).arg(removedCount), 2000);
             });
         }
     }
@@ -5273,7 +5276,7 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
     // =========================================================
     // 3. "添加至收藏夹..."
     // =========================================================
-    QMenu *addMenu = menu.addMenu("添加至收藏夹...");
+    QMenu *addMenu = menu.addMenu(AppText::tr("添加至收藏夹..."));
 
     for (auto it = collections.begin(); it != collections.end(); ++it) {
         QString colName = it.key();
@@ -5307,7 +5310,7 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
                         count++;
                     }
                 }
-                ui->statusbar->showMessage(QString("已将 %1 个模型加入 %2").arg(count).arg(colName), 2000);
+                ui->statusbar->showMessage(AppText::tr("已将 %1 个模型加入 %2").arg(count).arg(colName), 2000);
             } else {
                 // 批量移除（取消勾选）
                 for (const QString &bn : targetBaseNames) {
@@ -5316,7 +5319,7 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
                         count++;
                     }
                 }
-                ui->statusbar->showMessage(QString("已从 %1 移除 %2 个模型").arg(colName).arg(count), 2000);
+                ui->statusbar->showMessage(AppText::tr("已从 %1 移除 %2 个模型").arg(colName).arg(count), 2000);
             }
             saveCollections();
 
@@ -5327,10 +5330,10 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
     }
 
     addMenu->addSeparator();
-    QAction *newAction = addMenu->addAction("新建收藏夹...");
+    QAction *newAction = addMenu->addAction(AppText::tr("新建收藏夹..."));
     connect(newAction, &QAction::triggered, this, [this, targetBaseNames](){
         bool ok;
-        QString text = QInputDialog::getText(this, "新建", "名称:", QLineEdit::Normal, "", &ok);
+        QString text = QInputDialog::getText(this, AppText::tr("新建"), AppText::tr("名称:"), QLineEdit::Normal, "", &ok);
         if(ok && !text.isEmpty()) {
             if(!collections.contains(text)) {
                 // 直接将选中的模型全部加入新收藏夹
@@ -5338,7 +5341,7 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
                 saveCollections();
                 refreshHomeCollectionsUI();
                 refreshCollectionTreeView();
-                ui->statusbar->showMessage(QString("新建收藏夹并加入 %1 个模型").arg(targetBaseNames.count()), 2000);
+                ui->statusbar->showMessage(AppText::tr("新建收藏夹并加入 %1 个模型").arg(targetBaseNames.count()), 2000);
             }
         }
     });
@@ -5388,7 +5391,7 @@ void MainWindow::setHighlightColorForItems(const QList<QListWidgetItem*> &items,
     saveModelHighlightColors();
     refreshCollectionTreeView();
     ui->modelList->viewport()->update();
-    ui->statusbar->showMessage(QString("已设置 %1 个模型的高亮颜色").arg(changed), 2000);
+    ui->statusbar->showMessage(AppText::tr("已设置 %1 个模型的高亮颜色").arg(changed), 2000);
 }
 
 void MainWindow::clearHighlightColorForItems(const QList<QListWidgetItem*> &items)
@@ -5408,7 +5411,7 @@ void MainWindow::clearHighlightColorForItems(const QList<QListWidgetItem*> &item
     saveModelHighlightColors();
     refreshCollectionTreeView();
     ui->modelList->viewport()->update();
-    ui->statusbar->showMessage(QString("已清除 %1 个模型的高亮颜色").arg(changed), 2000);
+    ui->statusbar->showMessage(AppText::tr("已清除 %1 个模型的高亮颜色").arg(changed), 2000);
 }
 
 void MainWindow::preloadItemMetadata(QListWidgetItem *item, const QString &jsonPath)
@@ -5780,18 +5783,18 @@ void MainWindow::rebuildSortFilterMenu() {
         }
     };
 
-    buildSubmenu("排序 / Sort", ui->comboSort, true);
+    buildSubmenu(AppText::tr("排序 / Sort"), ui->comboSort, true);
     menu->addSeparator();
-    buildSubmenu("底模 / Base", ui->comboBaseModel, false);
-    buildSubmenu("类型 / Type", ui->comboModelType, false);
+    buildSubmenu(AppText::tr("底模 / Base"), ui->comboBaseModel, false);
+    buildSubmenu(AppText::tr("类型 / Type"), ui->comboModelType, false);
 }
 
 // 用当前排序与已启用的筛选拼出按钮文案，方便用户不展开菜单也能看到当前状态。
 void MainWindow::updateSortFilterButtonText() {
     QString text = "⚙ " + ui->comboSort->currentText();
     QStringList active;
-    if (ui->comboBaseModel->currentText() != "All") active << ui->comboBaseModel->currentText();
-    if (ui->comboModelType->currentText() != "All") active << ui->comboModelType->currentText();
+    if (ui->comboBaseModel->currentIndex() > 0) active << ui->comboBaseModel->currentText();
+    if (ui->comboModelType->currentIndex() > 0) active << ui->comboModelType->currentText();
     if (!active.isEmpty()) text += " · " + active.join(" · ");
     ui->btnSortFilter->setText(text);
 }
@@ -5962,7 +5965,7 @@ void MainWindow::finishMetadataSyncBatch()
 {
     metadataSyncWaitingForPreviews = false;
     metadataSyncPreviewImages = false;
-    downloadsPage->setStatusText(QString("元信息同步完成，共处理 %1 个模型。").arg(metadataSyncTotal));
+    downloadsPage->setStatusText(AppText::tr("元信息同步完成，共处理 %1 个模型。").arg(metadataSyncTotal));
     refreshHomeGallery();
     refreshCollectionTreeView();
     startMetadataScan();
@@ -5975,7 +5978,7 @@ void MainWindow::markMetadataPreviewTaskFinished()
         --metadataPreviewTasksPending;
     }
     if (metadataSyncWaitingForPreviews && metadataPreviewTasksPending > 0 && downloadsPage) {
-        downloadsPage->setStatusText(QString("正在同步预览图元信息... 剩余 %1 个任务").arg(metadataPreviewTasksPending));
+        downloadsPage->setStatusText(AppText::tr("正在同步预览图元信息... 剩余 %1 个任务").arg(metadataPreviewTasksPending));
     }
     if (metadataSyncWaitingForPreviews && metadataPreviewTasksPending <= 0) {
         finishMetadataSyncBatch();
@@ -5995,7 +5998,7 @@ void MainWindow::processNextDownload()
         isDownloading = true;
 
         // 设置按钮状态
-        if (task.button) task.button->setText("Waiting...");
+        if (task.button) task.button->setText(AppText::tr("Waiting..."));
 
         QString cleanedSavePath = QFileInfo(task.savePath).absoluteFilePath();
 
@@ -6024,7 +6027,7 @@ void MainWindow::processNextDownload()
                     retryTask.allowNoButton = true;
                     downloadQueue.enqueue(retryTask);
                     if (downloadsPage && task.countForMetadataSync) {
-                        downloadsPage->setStatusText(QString("本地预览图元信息写入失败，正在重新下载: %1")
+                        downloadsPage->setStatusText(AppText::tr("本地预览图元信息写入失败，正在重新下载: %1")
                                                          .arg(QFileInfo(task.savePath).fileName()));
                     }
                 } else if (task.countForMetadataSync) {
@@ -6072,7 +6075,7 @@ void MainWindow::processNextDownload()
                 task.button->setText(QString("%1%\n%2").arg(percent).arg(speedStr));
             } else if (received > 0) {
                 // 如果总大小未知
-                task.button->setText(QString("%1 KB").arg(received / 1024));
+                task.button->setText(AppText::tr("%1 KB").arg(received / 1024));
             }
         });
 
@@ -6091,7 +6094,7 @@ void MainWindow::processNextDownload()
                     DownloadTask retryTask = task;
                     retryTask.url = civitaiUrlWithToken(QUrl(task.url)).toString();
                     downloadQueue.enqueue(retryTask);
-                    if (task.button) task.button->setText("Retrying...");
+                    if (task.button) task.button->setText(AppText::tr("Retrying..."));
                     QTimer::singleShot(0, this, &MainWindow::processNextDownload);
                     return;
                 }
@@ -6099,10 +6102,10 @@ void MainWindow::processNextDownload()
                 // --- 新增：暴露具体的 SSL / 网络错误到界面 ---
                 QString errStr = reply->errorString();
                 if (errStr.contains("TLS", Qt::CaseInsensitive) || errStr.contains("SSL", Qt::CaseInsensitive) || errStr.contains("handshake", Qt::CaseInsensitive)) {
-                    if (task.button) task.button->setText("SSL Error");
-                    ui->statusbar->showMessage("HTTPS 连接失败: 缺失 OpenSSL 运行库 (libcrypto / libssl)", 8000);
+                    if (task.button) task.button->setText(AppText::tr("SSL Error"));
+                    ui->statusbar->showMessage(AppText::tr("HTTPS 连接失败: 缺失 OpenSSL 运行库 (libcrypto / libssl)"), 8000);
                 } else {
-                    if (task.button) task.button->setText(QString("Err: %1").arg(status > 0 ? QString::number(status) : "Net"));
+                    if (task.button) task.button->setText(AppText::tr("Err: %1").arg(status > 0 ? QString::number(status) : "Net"));
                 }
 
                 qDebug() << "Queued preview download failed:" << civitaiNetworkErrorMessage(reply) << errStr;
@@ -6131,7 +6134,7 @@ void MainWindow::processNextDownload()
                     applyDownloadedPreviewToUi(task.localBaseName, cleanedSavePath);
                 } else {
                     ui->statusbar->showMessage(
-                        "预览图已保存，但未能写入可解析元信息: "
+                        AppText::tr("预览图已保存，但未能写入可解析元信息: ")
                             + QFileInfo(cleanedSavePath).fileName(),
                         5000);
                 }
@@ -6215,8 +6218,8 @@ void MainWindow::onClearUserGalleryCacheClicked()
 {
     QMessageBox::StandardButton reply = QMessageBox::question(
         this,
-        "清除图库缓存",
-        "这会删除本地图库提示词缓存文件，下次扫描图库时会重新解析所有图片。\n是否继续？",
+        AppText::tr("清除图库缓存"),
+        AppText::tr("这会删除本地图库提示词缓存文件，下次扫描图库时会重新解析所有图片。\n是否继续？"),
         QMessageBox::Yes | QMessageBox::No,
         QMessageBox::No
     );
@@ -6228,7 +6231,7 @@ void MainWindow::onClearUserGalleryCacheClicked()
     QString cachePath = qApp->applicationDirPath() + "/config/user_gallery_cache.json";
     QFile::remove(cachePath);
     refreshModelUsageStatsAsync();
-    ui->statusbar->showMessage("本地图库缓存已清除", 3000);
+    ui->statusbar->showMessage(AppText::tr("本地图库缓存已清除"), 3000);
     resumePendingUserGalleryScan();
 }
 
@@ -6326,7 +6329,7 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
         const QListWidgetItem *item = ui->modelList->currentItem();
         pendingUserGalleryModelPath = isModelListItem(item)
                                           ? item->data(ROLE_FILE_PATH).toString() : currentMeta.filePath;
-        ui->statusbar->showMessage("正在后台加载图库缓存，完成后开始扫描...");
+        ui->statusbar->showMessage(AppText::tr("正在后台加载图库缓存，完成后开始扫描..."));
         return;
     }
     const quint64 scanGeneration = ++userGalleryGeneration;
@@ -6342,8 +6345,8 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     const QStringList activeGalleryPaths = PathUtils::collectEnabledPaths(galleryPaths, disabledGalleryPaths);
     QStringList validGalleryPaths = PathUtils::collectValidPaths(activeGalleryPaths);
     if (validGalleryPaths.isEmpty()) {
-        ui->textUserPrompt->setText("<span style='color:orange'>请先点击右上方按钮设置并启用 Stable Diffusion 图片输出目录。</span>");
-        QMessageBox::warning(this, "目录无效", "设置的 SD 输出目录不存在、为空，或全部被禁用。");
+        ui->textUserPrompt->setText(AppText::tr("<span style='color:orange'>请先点击右上方按钮设置并启用 Stable Diffusion 图片输出目录。</span>"));
+        QMessageBox::warning(this, AppText::tr("目录无效"), AppText::tr("设置的 SD 输出目录不存在、为空，或全部被禁用。"));
         return;
     }
 
@@ -6483,7 +6486,7 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
         if (scanned < lastShown + 50) return;
         lastShown = (scanned / 50) * 50;
         const int matched = matchedCount->load(std::memory_order_relaxed);
-        ui->statusbar->showMessage(QString("%1... 已扫描 %2 张，匹配 %3 张")
+        ui->statusbar->showMessage(AppText::tr("%1... 已扫描 %2 张，匹配 %3 张")
                                        .arg(scanPrefix)
                                        .arg(scanned)
                                        .arg(matched));
@@ -6563,7 +6566,7 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
             ui->listUserImages->setUpdatesEnabled(true);
 
             if (*nextResultIndex < resultCount) {
-                ui->statusbar->showMessage(QString("正在显示扫描结果... %1/%2")
+                ui->statusbar->showMessage(AppText::tr("正在显示扫描结果... %1/%2")
                                                .arg(*nextResultIndex)
                                                .arg(resultCount));
                 return;
@@ -6575,7 +6578,7 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
             ui->listUserImages->viewport()->update();
             scheduleVisibleUserImageThumbLoad();
             refreshUserTagFlowStats();
-            ui->statusbar->showMessage(QString("扫描完成，共 %1 张").arg(resultCount), 3000);
+            ui->statusbar->showMessage(AppText::tr("扫描完成，共 %1 张").arg(resultCount), 3000);
         });
         batchTimer->start();
         watcher->deleteLater();
@@ -6886,7 +6889,7 @@ void MainWindow::applyUserGalleryTagFilter(const QSet<QString> &selectedTags,
     // QListView::Adjust may schedule another geometry pass after the first event.
     QTimer::singleShot(50, this, resetFilteredGalleryViewport);
 
-    ui->statusbar->showMessage(QString("筛选: %1 张图片符合条件").arg(visibleCount));
+    ui->statusbar->showMessage(AppText::tr("筛选: %1 张图片符合条件").arg(visibleCount));
 }
 
 void MainWindow::onGalleryButtonClicked()
@@ -6907,7 +6910,7 @@ void MainWindow::onGalleryButtonClicked()
     clearDetailView(); // 清空之前的模型信息
 
     // 自定义标题
-    ui->lblModelName->setText("Global User Gallery / 所有用户返图");
+    ui->lblModelName->setText(AppText::tr("Global User Gallery / 所有用户返图"));
     ui->lblModelName->setStyleSheet(AppStyle::globalGalleryTitleStyle());
 
     // 隐藏/禁用一些不相关的按钮
@@ -6942,18 +6945,18 @@ void MainWindow::initMenuBar() {
 
     // 2. 直接添加“库”按钮 (Action)
     // 这种直接 addAction 到 bar 的方式，效果就像是点击按钮，而不是弹出下拉菜单
-    QAction *actLib = new QAction("📚 库 / Library", this);
+    QAction *actLib = new QAction(AppText::tr("📚 库 / Library"), this);
     actLib->setShortcut(QKeySequence("Ctrl+1"));
     connect(actLib, &QAction::triggered, this, &MainWindow::onMenuSwitchToLibrary);
     bar->addAction(actLib);
 
     // 4. 直接添加“设置”按钮 (Action)
-    QAction *actSet = new QAction("⚙️ 设置 / Settings", this);
+    QAction *actSet = new QAction(AppText::tr("⚙️ 设置 / Settings"), this);
     actSet->setShortcut(QKeySequence("Ctrl+2"));
     connect(actSet, &QAction::triggered, this, &MainWindow::onMenuSwitchToSettings);
     bar->addAction(actSet);
 
-    QAction *actDownloads = new QAction("⬇️ 下载 / Downloads", this);
+    QAction *actDownloads = new QAction(AppText::tr("⬇️ 下载 / Downloads"), this);
     actDownloads->setShortcut(QKeySequence("Ctrl+3"));
     connect(actDownloads, &QAction::triggered, this, &MainWindow::onMenuSwitchToDownloads);
     bar->addAction(actDownloads);
@@ -6974,12 +6977,12 @@ void MainWindow::initMenuBar() {
             return page;
         };
 
-        toolsTabWidget->addTab(makeToolPlaceholder("点击后加载图片同步工具..."), "🔄 图片同步 / Sync");
-        toolsTabWidget->addTab(makeToolPlaceholder("点击后加载提示词解析工具..."), "📝 提示词解析 / Prompt");
-        toolsTabWidget->addTab(makeToolPlaceholder("点击后加载 Tag 浏览工具..."), "🏷️ Tag 浏览 / Tag");
-        toolsTabWidget->addTab(makeToolPlaceholder("点击后加载大模型提示词工具..."), "🤖 大模型提示词 / LLM");
-        toolsTabWidget->addTab(makeToolPlaceholder("点击后加载模型分析工具..."), "📊 模型分析 / Analysis");
-        toolsTabWidget->addTab(makeToolPlaceholder("点击后加载提示词模板库..."), "🧩 提示词模板 / Templates");
+        toolsTabWidget->addTab(makeToolPlaceholder(AppText::tr("点击后加载图片同步工具...")), AppText::tr("🔄 图片同步 / Sync"));
+        toolsTabWidget->addTab(makeToolPlaceholder(AppText::tr("点击后加载提示词解析工具...")), AppText::tr("📝 提示词解析 / Prompt"));
+        toolsTabWidget->addTab(makeToolPlaceholder(AppText::tr("点击后加载 Tag 浏览工具...")), AppText::tr("🏷️ Tag 浏览 / Tag"));
+        toolsTabWidget->addTab(makeToolPlaceholder(AppText::tr("点击后加载大模型提示词工具...")), AppText::tr("🤖 大模型提示词 / LLM"));
+        toolsTabWidget->addTab(makeToolPlaceholder(AppText::tr("点击后加载模型分析工具...")), AppText::tr("📊 模型分析 / Analysis"));
+        toolsTabWidget->addTab(makeToolPlaceholder(AppText::tr("点击后加载提示词模板库...")), AppText::tr("🧩 提示词模板 / Templates"));
         toolsTabWidget->setTabPosition(QTabWidget::West);
 
         toolsTabWidget->setAutoFillBackground(true);
@@ -6993,7 +6996,7 @@ void MainWindow::initMenuBar() {
         connect(toolsTabWidget, &QTabWidget::currentChanged, this, &MainWindow::ensureToolTabLoaded);
     }
 
-    QAction *actTools = new QAction("🛠️ 工具箱 / Tools", this);
+    QAction *actTools = new QAction(AppText::tr("🛠️ 工具箱 / Tools"), this);
     actTools->setShortcut(QKeySequence("Ctrl+4"));
     connect(actTools, &QAction::triggered, this, [this](){
         ui->rootStack->setCurrentWidget(toolsTabWidget);
@@ -7008,7 +7011,7 @@ void MainWindow::initMenuBar() {
         launcherWidget = new LauncherWidget(this);
         ui->rootStack->addWidget(launcherWidget);
     }
-    QAction *actLauncher = new QAction("🚀 启动器 / Launcher", this);
+    QAction *actLauncher = new QAction(AppText::tr("🚀 启动器 / Launcher"), this);
     actLauncher->setShortcut(QKeySequence("Ctrl+5"));
     connect(actLauncher, &QAction::triggered, this, [this](){
         ui->rootStack->setCurrentWidget(launcherWidget);
@@ -7016,7 +7019,7 @@ void MainWindow::initMenuBar() {
     bar->addAction(actLauncher);
 
     // 6. 关于按钮
-    QAction *btnAbout = new QAction("ℹ️ 关于 / About");
+    QAction *btnAbout = new QAction(AppText::tr("ℹ️ 关于 / About"));
     btnAbout->setShortcut(QKeySequence("Ctrl+6"));
     connect(btnAbout, &QAction::triggered, this, &MainWindow::onMenuSwitchToAbout);
     bar->addAction(btnAbout);
@@ -7119,11 +7122,11 @@ void MainWindow::onTestCivitaiApiKeyClicked()
     if (settingsPage) optCivitaiApiKey = settingsPage->state().civitaiApiKey;
     saveGlobalConfig();
     if (optCivitaiApiKey.isEmpty()) {
-        if (settingsPage) settingsPage->setCivitaiApiStatus("请先输入 Civitai API Key");
+        if (settingsPage) settingsPage->setCivitaiApiStatus(AppText::tr("请先输入 Civitai API Key"));
         return;
     }
     if (settingsPage) {
-        settingsPage->setCivitaiApiStatus("正在测试 API Key...");
+        settingsPage->setCivitaiApiStatus(AppText::tr("正在测试 API Key..."));
         settingsPage->setCivitaiApiTesting(true);
     }
 
@@ -7133,15 +7136,15 @@ void MainWindow::onTestCivitaiApiKeyClicked()
         reply->deleteLater();
         if (settingsPage) settingsPage->setCivitaiApiTesting(false);
         if (reply->error() != QNetworkReply::NoError) {
-            if (settingsPage) settingsPage->setCivitaiApiStatus("API Key 测试失败: " + civitaiNetworkErrorMessage(reply));
+            if (settingsPage) settingsPage->setCivitaiApiStatus(AppText::tr("API Key 测试失败: ") + civitaiNetworkErrorMessage(reply));
             return;
         }
         QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
         if (!doc.isObject()) {
-            if (settingsPage) settingsPage->setCivitaiApiStatus("API Key 测试失败: 返回不是有效 JSON");
+            if (settingsPage) settingsPage->setCivitaiApiStatus(AppText::tr("API Key 测试失败: 返回不是有效 JSON"));
             return;
         }
-        if (settingsPage) settingsPage->setCivitaiApiStatus("API Key 可用");
+        if (settingsPage) settingsPage->setCivitaiApiStatus(AppText::tr("API Key 可用"));
     });
 }
 
@@ -7221,7 +7224,7 @@ void MainWindow::initDownloadsPage()
             this, &MainWindow::openDownloadCivitaiPage);
     connect(downloadsPage, &DownloadsPage::downloadRequested, this, [this](const QString &filePath) {
         if (!downloadManager || !downloadManager->containsInfo(filePath)) {
-            downloadsPage->setStatusText("该模型还没有可下载的更新信息。");
+            downloadsPage->setStatusText(AppText::tr("该模型还没有可下载的更新信息。"));
             return;
         }
         const ModelUpdateInfo info = downloadManager->info(filePath);
@@ -7234,7 +7237,7 @@ void MainWindow::initDownloadsPage()
                 items << item;
                 checkUpdatesForItems(items);
             } else {
-                downloadsPage->setStatusText("模型已不在当前列表中，无法重新检测。");
+                downloadsPage->setStatusText(AppText::tr("模型已不在当前列表中，无法重新检测。"));
             }
             return;
         }
@@ -7282,7 +7285,7 @@ void MainWindow::checkUpdatesForItems(const QList<QListWidgetItem*> &items, bool
         return;
     }
     if (items.isEmpty()) {
-        if (downloadsPage) downloadsPage->setStatusText("没有可检查的模型。请先选择模型，或使用检查全部。");
+        if (downloadsPage) downloadsPage->setStatusText(AppText::tr("没有可检查的模型。请先选择模型，或使用检查全部。"));
         if (switchToDownloads) onMenuSwitchToDownloads();
         return;
     }
@@ -7316,13 +7319,13 @@ void MainWindow::checkUpdatesForItems(const QList<QListWidgetItem*> &items, bool
     }
     pendingUpdateChecks = pendingUpdateChecksQueue.size();
     if (pendingUpdateChecks <= 0) {
-        downloadsPage->setStatusText("没有可检查的模型。");
+        downloadsPage->setStatusText(AppText::tr("没有可检查的模型。"));
         downloadsPage->setUpdateCheckButtonsEnabled(true);
         detailUpdateCheckPending = false;
         detailUpdateCheckFilePath.clear();
         return;
     }
-    downloadsPage->setStatusText(QString("正在检查 %1 个模型的更新...").arg(pendingUpdateChecks));
+    downloadsPage->setStatusText(AppText::tr("正在检查 %1 个模型的更新...").arg(pendingUpdateChecks));
     QTimer::singleShot(0, this, &MainWindow::dispatchQueuedUpdateChecks);
 }
 
@@ -7453,9 +7456,9 @@ void MainWindow::markUpdateCheckFinished()
     if (pendingUpdateChecks <= 0) return;
     activeUpdateNetworkChecks = qMax(0, activeUpdateNetworkChecks - 1);
     ++completedUpdateChecks;
-    downloadsPage->setStatusText(QString("正在检查更新... %1/%2").arg(completedUpdateChecks).arg(pendingUpdateChecks));
+    downloadsPage->setStatusText(AppText::tr("正在检查更新... %1/%2").arg(completedUpdateChecks).arg(pendingUpdateChecks));
     if (completedUpdateChecks >= pendingUpdateChecks && activeUpdateHashChecks == 0 && pendingUpdateHashChecks.isEmpty()) {
-        downloadsPage->setStatusText(QString("更新检查完成，共 %1 个模型。").arg(pendingUpdateChecks));
+        downloadsPage->setStatusText(AppText::tr("更新检查完成，共 %1 个模型。").arg(pendingUpdateChecks));
         downloadsPage->setUpdateCheckButtonsEnabled(true);
         if (downloadManager) downloadManager->saveCache();
         if (detailUpdateCheckPending) {
@@ -7469,8 +7472,8 @@ void MainWindow::markUpdateCheckFinished()
             if (hasUpdate || coexisting) {
                 const QMessageBox::StandardButton choice = QMessageBox::question(
                     this,
-                    "检测到模型更新",
-                    QString("检测到该模型有可用更新。\n\n状态: %1\n\n是否跳转到下载任务列表？")
+                    AppText::tr("检测到模型更新"),
+                    AppText::tr("检测到该模型有可用更新。\n\n状态: %1\n\n是否跳转到下载任务列表？")
                         .arg(status.isEmpty() ? "发现新版本" : status),
                     QMessageBox::Yes | QMessageBox::No,
                     QMessageBox::Yes);
@@ -7482,8 +7485,8 @@ void MainWindow::markUpdateCheckFinished()
             } else {
                 QMessageBox::information(
                     this,
-                    "检查更新",
-                    status.isEmpty() ? "当前模型没有检测到可用更新。" : QString("当前模型状态: %1").arg(status));
+                    AppText::tr("检查更新"),
+                    status.isEmpty() ? AppText::tr("当前模型没有检测到可用更新。") : AppText::tr("当前模型状态: %1").arg(status));
             }
         }
         return;
@@ -7682,7 +7685,7 @@ void MainWindow::jumpToDownloadSource(const QString &filePath)
 {
     QListWidgetItem *item = findModelItemByFilePath(filePath);
     if (!item) {
-        downloadsPage->setStatusText("模型已不在当前列表中，无法跳转。");
+        downloadsPage->setStatusText(AppText::tr("模型已不在当前列表中，无法跳转。"));
         return;
     }
     onMenuSwitchToLibrary();
@@ -7694,6 +7697,7 @@ void MainWindow::jumpToDownloadSource(const QString &filePath)
 
 void MainWindow::openDownloadCivitaiPage(const QString &filePath)
 {
+    const QString browserHost = settingsPage ? settingsPage->state().civitaiBrowserHost : QStringLiteral("civitai.red");
     ModelUpdateInfo info = downloadManager ? downloadManager->info(filePath) : ModelUpdateInfo{};
     int modelId = info.modelId;
     QString sourceUrl = info.sourceUrl.trimmed();
@@ -7733,16 +7737,16 @@ void MainWindow::openDownloadCivitaiPage(const QString &filePath)
             return;
         }
     }
-    if (!sourceUrl.isEmpty() && modelId <= 0) {
-        QDesktopServices::openUrl(QUrl(sourceUrl));
+    if (!sourceUrl.isEmpty() && (modelId <= 0 || ModelBrowser::isCivitaiModelPage(QUrl(sourceUrl)))) {
+        QDesktopServices::openUrl(ModelBrowser::preferredUrl(QUrl(sourceUrl), browserHost));
         return;
     }
 
     if (modelId <= 0) {
-        downloadsPage->setStatusText("该任务没有可打开的 Civitai 模型 ID。");
+        downloadsPage->setStatusText(AppText::tr("该任务没有可打开的 Civitai 模型 ID。"));
         return;
     }
-    QDesktopServices::openUrl(QUrl(QString("https://civitai.com/models/%1").arg(modelId)));
+    QDesktopServices::openUrl(ModelBrowser::preferredUrl(QUrl(QString("https://civitai.com/models/%1").arg(modelId)), browserHost));
 }
 
 void MainWindow::showFileInFolder(const QString &filePath)
@@ -7816,7 +7820,7 @@ void MainWindow::startMetadataScan()
         const QVector<MetadataScanItem> items = metadataScanWatcher->result();
         downloadsPage->setMetadataScanItems(items);
         downloadsPage->setMetadataScanRunning(false);
-        downloadsPage->setStatusText(QString("元信息扫描完成，共 %1 个模型。").arg(items.size()));
+        downloadsPage->setStatusText(AppText::tr("元信息扫描完成，共 %1 个模型。").arg(items.size()));
     });
     metadataScanWatcher->setFuture(QtConcurrent::run(backgroundThreadPool, [seeds]() {
         return MetadataInspection::scan(seeds);
@@ -7836,7 +7840,7 @@ void MainWindow::runMetadataHealthCheck()
         const QVector<MetadataHealthIssue> issues = metadataHealthWatcher->result();
         downloadsPage->setHealthIssues(issues);
         downloadsPage->setHealthCheckRunning(false);
-        downloadsPage->setStatusText(QString("元数据健康检查完成，共 %1 条问题/提示。").arg(issues.size()));
+        downloadsPage->setStatusText(AppText::tr("元数据健康检查完成，共 %1 条问题/提示。").arg(issues.size()));
     });
     metadataHealthWatcher->setFuture(QtConcurrent::run(backgroundThreadPool, [seeds]() {
         return MetadataInspection::healthCheck(seeds);
@@ -7846,11 +7850,11 @@ void MainWindow::runMetadataHealthCheck()
 void MainWindow::startMetadataSyncForPaths(const QStringList &filePaths, bool updateExisting, bool archiveOnly)
 {
     if (!downloadsPage || filePaths.isEmpty()) {
-        if (downloadsPage) downloadsPage->setStatusText("请先勾选要处理的模型。");
+        if (downloadsPage) downloadsPage->setStatusText(AppText::tr("请先勾选要处理的模型。"));
         return;
     }
     if (metadataSyncRunning) {
-        downloadsPage->setStatusText("已有元信息同步任务正在运行。");
+        downloadsPage->setStatusText(AppText::tr("已有元信息同步任务正在运行。"));
         return;
     }
 
@@ -7866,25 +7870,25 @@ void MainWindow::startMetadataSyncForPaths(const QStringList &filePaths, bool up
     }
     if (hasLocalEdited) {
         const auto ret = QMessageBox::warning(this,
-                                              "覆盖本地元信息",
-                                              QString("选中的模型包含本地/已编辑 metadata。\n继续从 %1 同步会覆盖元信息，但会保留本地保护字段和用户私有数据。\n是否继续？").arg(source),
+                                              AppText::tr("覆盖本地元信息"),
+                                              AppText::tr("选中的模型包含本地/已编辑 metadata。\n继续从 %1 同步会覆盖元信息，但会保留本地保护字段和用户私有数据。\n是否继续？").arg(source),
                                               QMessageBox::Yes | QMessageBox::Cancel,
                                               QMessageBox::Cancel);
         if (ret != QMessageBox::Yes) return;
     }
 
     QMessageBox previewMsg(this);
-    previewMsg.setWindowTitle("同步预览图");
-    previewMsg.setText(QString("本次元信息同步是否同时同步 %1 预览图？\n\n"
+    previewMsg.setWindowTitle(AppText::tr("同步预览图"));
+    previewMsg.setText(AppText::tr("本次元信息同步是否同时同步 %1 预览图？\n\n"
                                "选择“是”会同步来源中可用的预览图及图片元信息。\n"
                                "选择“仅元数据”只更新 JSON，不下载或覆盖图片。").arg(source));
-    QPushButton *btnYes = previewMsg.addButton("是", QMessageBox::AcceptRole);
-    QPushButton *btnMetaOnly = previewMsg.addButton("仅元数据", QMessageBox::ActionRole);
-    previewMsg.addButton("取消同步", QMessageBox::RejectRole);
+    QPushButton *btnYes = previewMsg.addButton(AppText::tr("是"), QMessageBox::AcceptRole);
+    QPushButton *btnMetaOnly = previewMsg.addButton(AppText::tr("仅元数据"), QMessageBox::ActionRole);
+    previewMsg.addButton(AppText::tr("取消同步"), QMessageBox::RejectRole);
     previewMsg.setDefaultButton(btnMetaOnly);
     previewMsg.exec();
     if (previewMsg.clickedButton() != btnYes && previewMsg.clickedButton() != btnMetaOnly) {
-        downloadsPage->setStatusText("已取消元信息同步。");
+        downloadsPage->setStatusText(AppText::tr("已取消元信息同步。"));
         return;
     }
     metadataSyncPreviewImages = (previewMsg.clickedButton() == btnYes);
@@ -7906,10 +7910,10 @@ void MainWindow::startMetadataSyncForPaths(const QStringList &filePaths, bool up
     metadataSyncRunning = metadataSyncTotal > 0;
     if (!metadataSyncRunning) {
         metadataSyncPreviewImages = false;
-        downloadsPage->setStatusText("没有可同步的模型。");
+        downloadsPage->setStatusText(AppText::tr("没有可同步的模型。"));
         return;
     }
-    downloadsPage->setStatusText(QString("正在从 %1 同步元信息... 0/%2").arg(source).arg(metadataSyncTotal));
+    downloadsPage->setStatusText(AppText::tr("正在从 %1 同步元信息... 0/%2").arg(source).arg(metadataSyncTotal));
     processNextMetadataSyncJob();
 }
 
@@ -7920,7 +7924,7 @@ void MainWindow::processNextMetadataSyncJob()
         metadataSyncRunning = false;
         if (metadataSyncPreviewImages && metadataPreviewTasksPending > 0) {
             metadataSyncWaitingForPreviews = true;
-            downloadsPage->setStatusText(QString("正在同步预览图元信息... 剩余 %1 个任务").arg(metadataPreviewTasksPending));
+            downloadsPage->setStatusText(AppText::tr("正在同步预览图元信息... 剩余 %1 个任务").arg(metadataPreviewTasksPending));
             return;
         }
         finishMetadataSyncBatch();
@@ -8152,7 +8156,7 @@ void MainWindow::handleMetadataSyncModelReply(QNetworkReply *reply)
                                                 nowText,
                                                 "同步时间");
     ++metadataSyncDone;
-    downloadsPage->setStatusText(QString("正在同步元信息... %1/%2").arg(metadataSyncDone).arg(metadataSyncTotal));
+    downloadsPage->setStatusText(AppText::tr("正在同步元信息... %1/%2").arg(metadataSyncDone).arg(metadataSyncTotal));
     processNextMetadataSyncJob();
 }
 
@@ -8304,7 +8308,7 @@ void MainWindow::handleMetadataSyncCivArchiveReply(QNetworkReply *reply)
                                                 nowText,
                                                 "CivArchive");
     ++metadataSyncDone;
-    downloadsPage->setStatusText(QString("正在同步元信息... %1/%2").arg(metadataSyncDone).arg(metadataSyncTotal));
+    downloadsPage->setStatusText(AppText::tr("正在同步元信息... %1/%2").arg(metadataSyncDone).arg(metadataSyncTotal));
     processNextMetadataSyncJob();
 }
 
@@ -8312,14 +8316,14 @@ void MainWindow::finishMetadataSyncJobWithFailure(const MetadataSyncJob &job, co
 {
     if (downloadsPage) {
         downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, message, category);
-        downloadsPage->setStatusText(QString("正在同步元信息... %1/%2").arg(metadataSyncDone + 1).arg(metadataSyncTotal));
+        downloadsPage->setStatusText(AppText::tr("正在同步元信息... %1/%2").arg(metadataSyncDone + 1).arg(metadataSyncTotal));
     }
     recordModelSyncFailure(job.snapshot.filePath, job.snapshot.baseName, message);
     if (job.detailFallback) {
         setModelTitleError(message);
         ui->textDescription->setPlainText(QString("上次同步失败，请点击刷新模型详情重新同步。\n%1").arg(message));
         transitionToImage("");
-        ui->statusbar->showMessage("元数据获取失败: " + message, 4000);
+        ui->statusbar->showMessage(AppText::tr("元数据获取失败: ") + message, 4000);
         m_forceResyncPreview = false;
         m_skipPreviewSync = false;
     }
@@ -8418,11 +8422,11 @@ QString MainWindow::chooseModelDownloadTarget(const ModelUpdateInfo &info, bool 
     int policy = optModelUpdateDownloadPolicy;
     if (policy == 0) {
         QMessageBox msg(this);
-        msg.setWindowTitle("下载新版本");
-        msg.setText(QString("如何保存 %1 的新版本？").arg(info.displayName));
-        QPushButton *keepBtn = msg.addButton("保留旧版", QMessageBox::AcceptRole);
-        QPushButton *replaceBtn = msg.addButton("覆盖当前文件", QMessageBox::DestructiveRole);
-        msg.addButton("取消", QMessageBox::RejectRole);
+        msg.setWindowTitle(AppText::tr("下载新版本"));
+        msg.setText(AppText::tr("如何保存 %1 的新版本？").arg(info.displayName));
+        QPushButton *keepBtn = msg.addButton(AppText::tr("保留旧版"), QMessageBox::AcceptRole);
+        QPushButton *replaceBtn = msg.addButton(AppText::tr("覆盖当前文件"), QMessageBox::DestructiveRole);
+        msg.addButton(AppText::tr("取消"), QMessageBox::RejectRole);
         msg.exec();
         if (msg.clickedButton() == keepBtn) policy = 1;
         else if (msg.clickedButton() == replaceBtn) policy = 2;
@@ -8458,7 +8462,7 @@ void MainWindow::finishModelDownload(const ModelFileDownloadTask &task)
         }
     }
     if (downloadManager) downloadManager->saveCache();
-    downloadsPage->setStatusText("模型下载完成: " + QFileInfo(task.targetPath).fileName());
+    downloadsPage->setStatusText(AppText::tr("模型下载完成: ") + QFileInfo(task.targetPath).fileName());
 
     const QStringList activeLoraPaths = PathUtils::collectEnabledPaths(loraPaths, disabledLoraPaths);
     if (!activeLoraPaths.isEmpty()) scanModels(activeLoraPaths);
@@ -8604,7 +8608,7 @@ void MainWindow::loadGlobalConfig() {
     applyPathListsToUi();
 
     settingsPage->setState(settings);
-    settingsPage->setCivitaiApiStatus(optCivitaiApiKey.isEmpty() ? "API Key 未配置" : "API Key 未测试");
+    settingsPage->setCivitaiApiStatus(optCivitaiApiKey.isEmpty() ? AppText::tr("API Key 未配置") : AppText::tr("API Key 未测试"));
     applyApplicationTheme(optThemeId, optCustomThemePath, true);
     initSettingsPage();
 }
@@ -8643,18 +8647,18 @@ void MainWindow::downloadAiTagTranslateDictionary()
     const QString targetPath = QFileInfo(QDir(directory).filePath("AITagTranslate_autocomplete.txt")).absoluteFilePath();
     if (QFileInfo::exists(targetPath)) {
         const auto answer = QMessageBox::question(
-            this, "更新 AITagTranslate 词表",
-            "本地已经存在 AITagTranslate 词表。是否下载最新版本并替换？",
+            this, AppText::tr("更新 AITagTranslate 词表"),
+            AppText::tr("本地已经存在 AITagTranslate 词表。是否下载最新版本并替换？"),
             QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
         if (answer != QMessageBox::Yes) return;
     }
 
     if (!QDir().mkpath(directory)) {
-        QMessageBox::warning(this, "下载失败", "无法创建词表目录：\n" + directory);
+        QMessageBox::warning(this, AppText::tr("下载失败"), AppText::tr("无法创建词表目录：\n") + directory);
         return;
     }
 
-    if (settingsPage) settingsPage->setAiTagTranslateDownloadState(true, "正在下载 AITagTranslate 词表...");
+    if (settingsPage) settingsPage->setAiTagTranslateDownloadState(true, AppText::tr("正在下载 AITagTranslate 词表..."));
     QNetworkReply *reply = netManager->get(makeNetworkRequest(
         QUrl("https://raw.githubusercontent.com/hanbinhsh/AITagTranslate/main/autocomplete.txt"), false));
     connect(reply, &QNetworkReply::finished, this, [this, reply, targetPath]() {
@@ -8664,25 +8668,25 @@ void MainWindow::downloadAiTagTranslateDictionary()
         reply->deleteLater();
 
         if (!networkOk) {
-            if (settingsPage) settingsPage->setAiTagTranslateDownloadState(false, "下载失败：" + errorText);
-            QMessageBox::warning(this, "下载失败", "无法下载 AITagTranslate 词表：\n" + errorText);
+            if (settingsPage) settingsPage->setAiTagTranslateDownloadState(false, AppText::tr("下载失败：") + errorText);
+            QMessageBox::warning(this, AppText::tr("下载失败"), AppText::tr("无法下载 AITagTranslate 词表：\n") + errorText);
             return;
         }
 
         if (data.trimmed().startsWith('<')) {
-            if (settingsPage) settingsPage->setAiTagTranslateDownloadState(false, "下载内容不是有效的 Tag 词表。");
-            QMessageBox::warning(this, "下载失败", "GitHub 返回的内容不是有效的 AITagTranslate 词表，旧文件未被修改。");
+            if (settingsPage) settingsPage->setAiTagTranslateDownloadState(false, AppText::tr("下载内容不是有效的 Tag 词表。"));
+            QMessageBox::warning(this, AppText::tr("下载失败"), AppText::tr("GitHub 返回的内容不是有效的 AITagTranslate 词表，旧文件未被修改。"));
             return;
         }
 
-        if (settingsPage) settingsPage->setAiTagTranslateDownloadState(true, "下载完成，正在后台验证词表...");
+        if (settingsPage) settingsPage->setAiTagTranslateDownloadState(true, AppText::tr("下载完成，正在后台验证词表..."));
         auto *watcher = new QFutureWatcher<int>(this);
         connect(watcher, &QFutureWatcher<int>::finished, this, [this, watcher, data, targetPath]() {
             const int entryCount = watcher->result();
             watcher->deleteLater();
             if (entryCount < 10) {
-                if (settingsPage) settingsPage->setAiTagTranslateDownloadState(false, "下载内容不是有效的 Tag 词表。");
-                QMessageBox::warning(this, "下载失败", "GitHub 返回的内容不是有效的 AITagTranslate 词表，旧文件未被修改。");
+                if (settingsPage) settingsPage->setAiTagTranslateDownloadState(false, AppText::tr("下载内容不是有效的 Tag 词表。"));
+                QMessageBox::warning(this, AppText::tr("下载失败"), AppText::tr("GitHub 返回的内容不是有效的 AITagTranslate 词表，旧文件未被修改。"));
                 return;
             }
 
@@ -8691,8 +8695,8 @@ void MainWindow::downloadAiTagTranslateDictionary()
                 || output.write(data) != data.size()
                 || !output.commit()) {
                 const QString message = output.errorString();
-                if (settingsPage) settingsPage->setAiTagTranslateDownloadState(false, "保存失败：" + message);
-                QMessageBox::warning(this, "保存失败", "无法保存 AITagTranslate 词表：\n" + message);
+                if (settingsPage) settingsPage->setAiTagTranslateDownloadState(false, AppText::tr("保存失败：") + message);
+                QMessageBox::warning(this, AppText::tr("保存失败"), AppText::tr("无法保存 AITagTranslate 词表：\n") + message);
                 return;
             }
 
@@ -8718,9 +8722,9 @@ void MainWindow::downloadAiTagTranslateDictionary()
             saveGlobalConfig();
             if (settingsPage) {
                 settingsPage->setAiTagTranslateDownloadState(
-                    false, QString("已加载 %1 条记录，词表优先级位于最底部。").arg(entryCount));
+                    false, AppText::tr("已加载 %1 条记录，词表优先级位于最底部。").arg(entryCount));
             }
-            ui->statusbar->showMessage(QString("AITagTranslate 词表已更新：%1 条记录").arg(entryCount), 5000);
+            ui->statusbar->showMessage(AppText::tr("AITagTranslate 词表已更新：%1 条记录").arg(entryCount), 5000);
         });
         watcher->setFuture(QtConcurrent::run(backgroundThreadPool, [data]() {
             return static_cast<int>(TranslationCsv::parseUtf8(data).size());
@@ -8805,7 +8809,7 @@ void MainWindow::applySettingsState(SettingsState state)
     }
     if (galleryMatchChanged) refreshModelUsageStatsAsync();
     if (uiScaleChanged) {
-        ui->statusbar->showMessage(QString("缩放比例已设置为 %1x，重启后生效").arg(optUiScale), 3000);
+        ui->statusbar->showMessage(AppText::tr("缩放比例已设置为 %1x，重启后生效").arg(optUiScale), 3000);
     }
     if (themeChanged) {
         applyApplicationTheme(optThemeId, optCustomThemePath, true);
@@ -8816,9 +8820,9 @@ void MainWindow::resetFilterTagsToDefault()
 {
     const QMessageBox::StandardButton reply = QMessageBox::question(
         this,
-        "确认重置 / Confirm Reset",
-        "确定要将过滤提示词重置为默认值吗？\n此操作将覆盖当前的自定义设置。\n\n"
-        "Are you sure you want to reset filter tags to default?",
+        AppText::tr("确认重置 / Confirm Reset"),
+        AppText::tr("确定要将过滤提示词重置为默认值吗？\n此操作将覆盖当前的自定义设置。\n\n"
+        "Are you sure you want to reset filter tags to default?"),
         QMessageBox::Yes | QMessageBox::No);
     if (reply != QMessageBox::Yes) return;
 
@@ -8826,7 +8830,7 @@ void MainWindow::resetFilterTagsToDefault()
     optFilterTags = DEFAULT_FILTER_TAGS.split(',', Qt::SkipEmptyParts);
     for (QString &s : optFilterTags) s = s.trimmed();
     saveGlobalConfig();
-    ui->statusbar->showMessage("过滤词已重置", 2000);
+    ui->statusbar->showMessage(AppText::tr("过滤词已重置"), 2000);
 }
 
 void MainWindow::applyRandomUserAgent()
@@ -8862,7 +8866,7 @@ void MainWindow::applyApplicationTheme(const QString &themeId, const QString &cu
         settingsPage->setThemeStatus(bundle.status);
     }
     if (updateStatus && ui && ui->statusbar) {
-        ui->statusbar->showMessage(bundle.ok ? QString("已应用主题：%1").arg(themeDisplayName(themeId)) : bundle.status, 2500);
+        ui->statusbar->showMessage(bundle.ok ? AppText::tr("已应用主题：%1").arg(themeDisplayName(themeId)) : bundle.status, 2500);
     }
 }
 
@@ -8911,13 +8915,13 @@ void MainWindow::onThemeSaved(const QString &themeId)
 void MainWindow::onThemeDeleteRequested(const QString &themeId)
 {
     const QString name = themeDisplayName(themeId);
-    if (QMessageBox::question(this, "删除主题 / Delete Theme",
-                              QString("确定删除自定义主题“%1”吗？此操作不可撤销。").arg(name))
+    if (QMessageBox::question(this, AppText::tr("删除主题 / Delete Theme"),
+                              AppText::tr("确定删除自定义主题“%1”吗？此操作不可撤销。").arg(name))
         != QMessageBox::Yes)
         return;
     if (!AppStyle::deleteUserTheme(themeId)) {
-        QMessageBox::warning(this, "删除主题 / Delete Theme",
-                             "删除失败：内置主题不可删，或文件无法移除。");
+        QMessageBox::warning(this, AppText::tr("删除主题 / Delete Theme"),
+                             AppText::tr("删除失败：内置主题不可删，或文件无法移除。"));
         return;
     }
     AppStyle::reloadUserThemes();
@@ -9116,8 +9120,8 @@ void MainWindow::applyPathListsToUi()
 bool MainWindow::editLoraPaths(bool rescanAfter)
 {
     PathListDialog dlg(this);
-    dlg.setDialogTitle("LoRA 路径管理");
-    dlg.setHintText("可添加多个 LoRA 模型目录。通过右侧复选框控制是否启用扫描。");
+    dlg.setDialogTitle(AppText::tr("LoRA 路径管理"));
+    dlg.setHintText(AppText::tr("可添加多个 LoRA 模型目录。通过右侧复选框控制是否启用扫描。"));
     dlg.setPathEntries(PathUtils::buildPathEntries(loraPaths, disabledLoraPaths));
 
     if (dlg.exec() != QDialog::Accepted) return false;
@@ -9157,8 +9161,8 @@ bool MainWindow::editLoraPaths(bool rescanAfter)
 bool MainWindow::editGalleryPaths(bool rescanAfter)
 {
     PathListDialog dlg(this);
-    dlg.setDialogTitle("图库路径管理");
-    dlg.setHintText("可添加多个图库目录。通过右侧复选框控制是否启用扫描。");
+    dlg.setDialogTitle(AppText::tr("图库路径管理"));
+    dlg.setHintText(AppText::tr("可添加多个图库目录。通过右侧复选框控制是否启用扫描。"));
     dlg.setPathEntries(PathUtils::buildPathEntries(galleryPaths, disabledGalleryPaths));
 
     if (dlg.exec() != QDialog::Accepted) return false;
@@ -9186,7 +9190,7 @@ bool MainWindow::editGalleryPaths(bool rescanAfter)
 
 void MainWindow::onBrowseLoraPath() {
     if (editLoraPaths(false)) {
-        QMessageBox::information(this, "提示", "LoRA 路径已更新，请返回库界面点击刷新按钮。");
+        QMessageBox::information(this, AppText::tr("提示"), AppText::tr("LoRA 路径已更新，请返回库界面点击刷新按钮。"));
     }
 }
 
@@ -9266,15 +9270,15 @@ void MainWindow::recolorPlaceholderItems()
 // 浏览翻译文件
 void MainWindow::onBrowseTranslationPath() {
     if (editTranslationCsvPaths()) {
-        QMessageBox::information(this, "设置", "翻译词表已加载。");
+        QMessageBox::information(this, AppText::tr("设置"), AppText::tr("翻译词表已加载。"));
     }
 }
 
 bool MainWindow::editTranslationCsvPaths()
 {
     PathListDialog dlg(this);
-    dlg.setDialogTitle("Tag 翻译表管理");
-    dlg.setHintText("可添加多个 Tag 翻译 CSV。列表越靠上优先级越高，可通过右侧复选框临时停用。");
+    dlg.setDialogTitle(AppText::tr("Tag 翻译表管理"));
+    dlg.setHintText(AppText::tr("可添加多个 Tag 翻译 CSV。列表越靠上优先级越高，可通过右侧复选框临时停用。"));
     dlg.setSelectionMode(PathListDialog::FileMode, "CSV Files (*.csv);;All Files (*.*)");
     dlg.setPathEntries(PathUtils::buildPathEntries(translationCsvPaths, disabledTranslationCsvPaths));
 
@@ -9350,16 +9354,16 @@ void MainWindow::onUserGalleryContextMenu(const QPoint &pos)
 
     QMenu menu(this);
 
-    QAction *actCopyGenParams = menu.addAction("复制生成参数 / Copy Gen Params");
-    actCopyGenParams->setToolTip("复制符合SD WebUI格式的完整参数，\n粘贴进提示词框后可直接点击↙️按钮读取。");
+    QAction *actCopyGenParams = menu.addAction(AppText::tr("复制生成参数 / Copy Gen Params"));
+    actCopyGenParams->setToolTip(AppText::tr("复制符合SD WebUI格式的完整参数，\n粘贴进提示词框后可直接点击↙️按钮读取。"));
     menu.addSeparator(); // 分隔线
-    QAction *actOpenImg = menu.addAction("内置图片浏览器 / Image Viewer");
-    QAction *actOpenSystem = menu.addAction("使用系统程序打开 / Open with System");
-    QAction *actOpenDir = menu.addAction("打开文件位置 / Show in Folder");
-    QAction *actShowComfyWorkflow = menu.addAction("查看 ComfyUI Workflow / View Workflow");
-    QAction *actShowRawMetadata = menu.addAction("显示原始 Metadata / Raw Metadata");
+    QAction *actOpenImg = menu.addAction(AppText::tr("内置图片浏览器 / Image Viewer"));
+    QAction *actOpenSystem = menu.addAction(AppText::tr("使用系统程序打开 / Open with System"));
+    QAction *actOpenDir = menu.addAction(AppText::tr("打开文件位置 / Show in Folder"));
+    QAction *actShowComfyWorkflow = menu.addAction(AppText::tr("查看 ComfyUI Workflow / View Workflow"));
+    QAction *actShowRawMetadata = menu.addAction(AppText::tr("显示原始 Metadata / Raw Metadata"));
     menu.addSeparator();
-    QAction *actCopyPath = menu.addAction("复制路径 / Copy Path");
+    QAction *actCopyPath = menu.addAction(AppText::tr("复制路径 / Copy Path"));
 
     QAction *selected = menu.exec(ui->listUserImages->mapToGlobal(pos));
 
@@ -9388,7 +9392,7 @@ void MainWindow::onUserGalleryContextMenu(const QPoint &pos)
         QClipboard *clip = QGuiApplication::clipboard();
         clip->setText(fullParams);
 
-        ui->statusbar->showMessage("已复制 SD 生成参数到剪贴板", 2000);
+        ui->statusbar->showMessage(AppText::tr("已复制 SD 生成参数到剪贴板"), 2000);
     }
     else if (selected == actOpenImg) {
         openImageViewer(visibleUserGalleryImagePaths(), filePath);
@@ -9407,7 +9411,7 @@ void MainWindow::onUserGalleryContextMenu(const QPoint &pos)
     }
     else if (selected == actCopyPath) {
         QGuiApplication::clipboard()->setText(QDir::toNativeSeparators(filePath));
-        ui->statusbar->showMessage("路径已复制", 2000);
+        ui->statusbar->showMessage(AppText::tr("路径已复制"), 2000);
     }
 }
 
@@ -9428,12 +9432,12 @@ void MainWindow::showModelDescriptionDialog()
     probe.setHtml(descriptionHtml);
     const QString plainText = probe.toPlainText().trimmed();
     if (plainText.isEmpty() || plainText == "No description.") {
-        QMessageBox::information(this, "模型简介", "当前模型没有可显示的简介。");
+        QMessageBox::information(this, AppText::tr("模型简介"), AppText::tr("当前模型没有可显示的简介。"));
         return;
     }
 
     QDialog dialog(this);
-    dialog.setWindowTitle("模型简介 / Description");
+    dialog.setWindowTitle(AppText::tr("模型简介 / Description"));
     dialog.resize(820, 620);
 
     auto *layout = new QVBoxLayout(&dialog);
@@ -9451,9 +9455,9 @@ void MainWindow::showModelDescriptionDialog()
     layout->addWidget(textEdit, 1);
 
     auto *buttons = new QHBoxLayout();
-    auto *btnCopySelected = new QPushButton("复制选中 / Copy Selected", &dialog);
-    auto *btnCopyAll = new QPushButton("复制全部 / Copy All", &dialog);
-    auto *btnClose = new QPushButton("关闭 / Close", &dialog);
+    auto *btnCopySelected = new QPushButton(AppText::tr("复制选中 / Copy Selected"), &dialog);
+    auto *btnCopyAll = new QPushButton(AppText::tr("复制全部 / Copy All"), &dialog);
+    auto *btnClose = new QPushButton(AppText::tr("关闭 / Close"), &dialog);
     buttons->addWidget(btnCopySelected);
     buttons->addWidget(btnCopyAll);
     buttons->addStretch(1);
@@ -9469,16 +9473,16 @@ void MainWindow::showModelDescriptionDialog()
     connect(btnCopySelected, &QPushButton::clicked, &dialog, [this, textEdit, normalizeCopiedText]() {
         const QString selected = normalizeCopiedText(textEdit->textCursor().selectedText());
         if (selected.isEmpty()) {
-            ui->statusbar->showMessage("请先在简介中选中要复制的文本。", 2000);
+            ui->statusbar->showMessage(AppText::tr("请先在简介中选中要复制的文本。"), 2000);
             return;
         }
         QGuiApplication::clipboard()->setText(selected);
-        ui->statusbar->showMessage("已复制选中的简介文本。", 2000);
+        ui->statusbar->showMessage(AppText::tr("已复制选中的简介文本。"), 2000);
     });
 
     connect(btnCopyAll, &QPushButton::clicked, &dialog, [this, textEdit, normalizeCopiedText]() {
         QGuiApplication::clipboard()->setText(normalizeCopiedText(textEdit->toPlainText()));
-        ui->statusbar->showMessage("已复制完整简介。", 2000);
+        ui->statusbar->showMessage(AppText::tr("已复制完整简介。"), 2000);
     });
 
     connect(btnClose, &QPushButton::clicked, &dialog, &QDialog::accept);
@@ -9498,7 +9502,7 @@ void MainWindow::showRawImageMetadataDialog(const QString &filePath)
                           : sections.join("\n\n");
 
     QDialog dialog(this);
-    dialog.setWindowTitle("原始 Metadata / Raw Metadata");
+    dialog.setWindowTitle(AppText::tr("原始 Metadata / Raw Metadata"));
     dialog.resize(900, 650);
 
     QVBoxLayout *layout = new QVBoxLayout(&dialog);
@@ -9513,9 +9517,9 @@ void MainWindow::showRawImageMetadataDialog(const QString &filePath)
     layout->addWidget(textEdit, 1);
 
     QHBoxLayout *buttons = new QHBoxLayout();
-    QPushButton *btnCopy = new QPushButton("复制 / Copy", &dialog);
-    QPushButton *btnFormatJson = new QPushButton("格式化 JSON / Format JSON", &dialog);
-    QPushButton *btnClose = new QPushButton("关闭 / Close", &dialog);
+    QPushButton *btnCopy = new QPushButton(AppText::tr("复制 / Copy"), &dialog);
+    QPushButton *btnFormatJson = new QPushButton(AppText::tr("格式化 JSON / Format JSON"), &dialog);
+    QPushButton *btnClose = new QPushButton(AppText::tr("关闭 / Close"), &dialog);
     buttons->addWidget(btnCopy);
     buttons->addWidget(btnFormatJson);
     buttons->addStretch(1);
@@ -9552,7 +9556,7 @@ void MainWindow::showRawImageMetadataDialog(const QString &filePath)
             if (error.error == QJsonParseError::NoError && !doc.isNull()) {
                 textEdit->setPlainText(QString::fromUtf8(doc.toJson(QJsonDocument::Indented)));
             } else {
-                QMessageBox::information(textEdit, "格式化 JSON", "当前内容不是有效 JSON。");
+                QMessageBox::information(textEdit, AppText::tr("格式化 JSON"), AppText::tr("当前内容不是有效 JSON。"));
             }
             return;
         }
@@ -9598,7 +9602,7 @@ void MainWindow::onCollectionTreeItemClicked(QTreeWidgetItem *item, int column)
             displayName = item->data(0, ROLE_MODEL_ROOT_NAME).toString();
             if (displayName.isEmpty()) displayName = collectionName;
         } else {
-            displayName = (collectionName == FILTER_UNCATEGORIZED) ? "未分类 / Uncategorized" : collectionName;
+            displayName = (collectionName == FILTER_UNCATEGORIZED) ? AppText::tr("未分类 / Uncategorized") : collectionName;
         }
         QString prefix = (!wasExpanded) ? " - " : " + "; // 此时已切换状态
         QString newText = QString("%1%2 (%3)").arg(prefix).arg(displayName).arg(count);
@@ -9667,26 +9671,26 @@ void MainWindow::onCollectionTreeContextMenu(const QPoint &pos)
         QString collectionName = clickedItem->data(0, ROLE_COLLECTION_NAME).toString();
 
         QMenu menu(this);
-        QAction *title = menu.addAction(QString("管理收藏夹: %1").arg(collectionName));
+        QAction *title = menu.addAction(AppText::tr("管理收藏夹: %1").arg(collectionName));
         title->setEnabled(false);
         menu.addSeparator();
 
         if (collectionName == FILTER_UNCATEGORIZED) {
             // "未分类"特殊处理，不能重命名和删除
-            QAction *dummy = menu.addAction("无法操作此项");
+            QAction *dummy = menu.addAction(AppText::tr("无法操作此项"));
             dummy->setEnabled(false);
         } else {
-            QAction *actRename = menu.addAction("重命名 / Rename Collection");
-            QAction *actDelete = menu.addAction("删除 / Delete Collection");
+            QAction *actRename = menu.addAction(AppText::tr("重命名 / Rename Collection"));
+            QAction *actDelete = menu.addAction(AppText::tr("删除 / Delete Collection"));
 
             QAction *selected = menu.exec(ui->collectionTree->mapToGlobal(pos));
 
             if (selected == actRename) {
                 bool ok;
-                QString newName = QInputDialog::getText(this, "重命名收藏夹", "新名称:", QLineEdit::Normal, collectionName, &ok);
+                QString newName = QInputDialog::getText(this, AppText::tr("重命名收藏夹"), AppText::tr("新名称:"), QLineEdit::Normal, collectionName, &ok);
                 if (ok && !newName.trimmed().isEmpty() && newName != collectionName) {
                     if (collections.contains(newName)) {
-                        QMessageBox::warning(this, "错误", "该名称已存在！");
+                        QMessageBox::warning(this, AppText::tr("错误"), AppText::tr("该名称已存在！"));
                         return;
                     }
                     QStringList files = collections.value(collectionName);
@@ -9700,8 +9704,8 @@ void MainWindow::onCollectionTreeContextMenu(const QPoint &pos)
                     refreshCollectionTreeView(); // 刷新收藏夹树状视图
                 }
             } else if (selected == actDelete) {
-                auto reply = QMessageBox::question(this, "确认删除",
-                                                   QString("确定要删除收藏夹 \"%1\" 吗？\n(里面的模型不会被删除，仅删除分类)").arg(collectionName),
+                auto reply = QMessageBox::question(this, AppText::tr("确认删除"),
+                                                   AppText::tr("确定要删除收藏夹 \"%1\" 吗？\n(里面的模型不会被删除，仅删除分类)").arg(collectionName),
                                                    QMessageBox::Yes | QMessageBox::No);
                 if (reply == QMessageBox::Yes) {
                     collections.remove(collectionName);
@@ -9937,7 +9941,7 @@ void MainWindow::refreshCollectionTreeView()
         if (uncatCount > 0 || optShowEmptyCollections) {
             const QString key = optCollectionFolderTopLevel ? QString("folder:%1:%2").arg(folderPath, FILTER_UNCATEGORIZED)
                                                             : FILTER_UNCATEGORIZED;
-            QTreeWidgetItem *uncategorizedNode = makeTreeParent(parent, key, FILTER_UNCATEGORIZED, "未分类 / Uncategorized", uncatCount);
+            QTreeWidgetItem *uncategorizedNode = makeTreeParent(parent, key, FILTER_UNCATEGORIZED, AppText::tr("未分类 / Uncategorized"), uncatCount);
             std::sort(uncatModels.begin(), uncatModels.end(), rankSort);
             if (optCollectionFolderSecondLevel && !optCollectionFolderTopLevel) {
                 addFolderChildrenForCollection(uncategorizedNode, key, uncatModels);
@@ -10074,7 +10078,7 @@ void MainWindow::onCheckUpdateClicked()
 
 void MainWindow::startAppUpdateCheck(bool silentIfLatest)
 {
-    ui->statusbar->showMessage("正在连接 GitHub 检查更新...", 3000);
+    ui->statusbar->showMessage(AppText::tr("正在连接 GitHub 检查更新..."), 3000);
     if (aboutPage) aboutPage->setCheckingForUpdates(true);
 
     QNetworkRequest request((QUrl(GITHUB_REPO_API)));
@@ -10095,9 +10099,9 @@ void MainWindow::onUpdateApiReceived(QNetworkReply *reply)
 
     if (reply->error() != QNetworkReply::NoError) {
         if (silentIfLatest) {
-            ui->statusbar->showMessage("自动检查更新失败: " + reply->errorString(), 4000);
+            ui->statusbar->showMessage(AppText::tr("自动检查更新失败: ") + reply->errorString(), 4000);
         } else {
-            QMessageBox::warning(this, "检查失败", "无法连接到 GitHub API:\n" + reply->errorString());
+            QMessageBox::warning(this, AppText::tr("检查失败"), AppText::tr("无法连接到 GitHub API:\n") + reply->errorString());
         }
         return;
     }
@@ -10113,9 +10117,9 @@ void MainWindow::onUpdateApiReceived(QNetworkReply *reply)
 
     if (remoteTag.isEmpty()) {
         if (silentIfLatest) {
-            ui->statusbar->showMessage("自动检查更新失败: 无法解析版本信息", 4000);
+            ui->statusbar->showMessage(AppText::tr("自动检查更新失败: 无法解析版本信息"), 4000);
         } else {
-            QMessageBox::warning(this, "错误", "无法解析版本信息 (Rate Limit Exceeded?)。");
+            QMessageBox::warning(this, AppText::tr("错误"), AppText::tr("无法解析版本信息 (Rate Limit Exceeded?)。"));
         }
         return;
     }
@@ -10155,9 +10159,9 @@ void MainWindow::onUpdateApiReceived(QNetworkReply *reply)
     if (hasNewVersion) {
         // 发现新版本
         QMessageBox msgBox(this);
-        msgBox.setWindowTitle("发现新版本");
+        msgBox.setWindowTitle(AppText::tr("发现新版本"));
         msgBox.setTextFormat(Qt::RichText);
-        msgBox.setText(QString("<h3>🚀 发现新版本: %1</h3>"
+        msgBox.setText(AppText::tr("<h3>🚀 发现新版本: %1</h3>"
                                "<p>当前版本: %2</p>"
                                "<hr>"
                                "<p><b>更新日志:</b></p><pre style='font-size:11px'>%3</pre>")
@@ -10165,8 +10169,8 @@ void MainWindow::onUpdateApiReceived(QNetworkReply *reply)
                            .arg(CURRENT_VERSION)
                            .arg(body));
 
-        QPushButton *btnGo = msgBox.addButton("前往下载 / Download", QMessageBox::AcceptRole);
-        msgBox.addButton("稍后 / Later", QMessageBox::RejectRole);
+        QPushButton *btnGo = msgBox.addButton(AppText::tr("前往下载 / Download"), QMessageBox::AcceptRole);
+        msgBox.addButton(AppText::tr("稍后 / Later"), QMessageBox::RejectRole);
         msgBox.exec();
 
         if (msgBox.clickedButton() == btnGo) {
@@ -10174,9 +10178,9 @@ void MainWindow::onUpdateApiReceived(QNetworkReply *reply)
         }
     } else {
         if (silentIfLatest) {
-            ui->statusbar->showMessage(QString("当前已是最新版本 (%1)").arg(CURRENT_VERSION), 3000);
+            ui->statusbar->showMessage(AppText::tr("当前已是最新版本 (%1)").arg(CURRENT_VERSION), 3000);
         } else {
-            QMessageBox::information(this, "检查更新", QString("当前已是最新版本 (%1)。").arg(CURRENT_VERSION));
+            QMessageBox::information(this, AppText::tr("检查更新"), AppText::tr("当前已是最新版本 (%1)。").arg(CURRENT_VERSION));
         }
     }
 }

@@ -1,0 +1,5646 @@
+{
+  "\n\nNegative prompt:\n": {
+    "zh_CN": "\n\nNegative prompt:\n",
+    "en_US": "\n\nNegative prompt:\n"
+  },
+  "  |  %1 条未保存修改": {
+    "zh_CN": "  |  %1 条未保存修改",
+    "en_US": "  |  %1 unsaved changes"
+  },
+  "  |  匹配 %1 条": {
+    "zh_CN": "  |  匹配 %1 条",
+    "en_US": "  |  %1 matches"
+  },
+  "  |  搜索中...": {
+    "zh_CN": "  |  搜索中...",
+    "en_US": "  |  Searching..."
+  },
+  "  |  未保存修改": {
+    "zh_CN": "  |  未保存修改",
+    "en_US": "  |  Unsaved changes"
+  },
+  " (Loading...)": {
+    "zh_CN": " (Loading...)",
+    "en_US": " (Loading...)"
+  },
+  " (Missing)": {
+    "zh_CN": " (Missing)",
+    "en_US": " (Missing)"
+  },
+  " (Remote)": {
+    "zh_CN": " (Remote)",
+    "en_US": " (Remote)"
+  },
+  " / 5": {
+    "zh_CN": " / 5",
+    "en_US": " / 5"
+  },
+  " px": {
+    "zh_CN": " px",
+    "en_US": " px"
+  },
+  " 的提示词模板已重置": {
+    "zh_CN": " 的提示词模板已重置",
+    "en_US": " prompt template reset"
+  },
+  "%1 KB": {
+    "zh_CN": "%1 KB",
+    "en_US": "%1 KB"
+  },
+  "%1 · 共 %2 条 Tag 记录%3": {
+    "zh_CN": "%1 · 共 %2 条 Tag 记录%3",
+    "en_US": "%1 · %2 tag entries%3"
+  },
+  "%1 调用失败: %2": {
+    "zh_CN": "%1 调用失败: %2",
+    "en_US": "%1 request failed: %2"
+  },
+  "%1... 已扫描 %2 张，匹配 %3 张": {
+    "zh_CN": "%1... 已扫描 %2 张，匹配 %3 张",
+    "en_US": "%1... Scanned %2 images; matched %3"
+  },
+  "%1中已经包含选中的 Tag。": {
+    "zh_CN": "%1中已经包含选中的 Tag。",
+    "en_US": "%1 already contains the selected tags."
+  },
+  "%1对比：仅 A %2 个，仅 B %3 个，共同 %4 个。": {
+    "zh_CN": "%1对比：仅 A %2 个，仅 B %3 个，共同 %4 个。",
+    "en_US": "%1 comparison: %2 only in A, %3 only in B, %4 shared."
+  },
+  "%1（自定义）": {
+    "zh_CN": "%1（自定义）",
+    "en_US": "%1 (Custom)"
+  },
+  "%1，出现于 %2 个模型。点击添加/移除此 Tag 筛选。": {
+    "zh_CN": "%1，出现于 %2 个模型。点击添加/移除此 Tag 筛选。",
+    "en_US": "%1, used by %2 models. Click to add or remove this tag filter."
+  },
+  "%p%": {
+    "zh_CN": "%p%",
+    "en_US": "%p%"
+  },
+  "%p%  %1": {
+    "zh_CN": "%p%  %1",
+    "en_US": "%p%  %1"
+  },
+  "(Civitai 标准: 1=正常, >1 包含不同程度成人内容)": {
+    "zh_CN": "(Civitai 标准: 1=正常, >1 包含不同程度成人内容)",
+    "en_US": "(Civitai levels: 1 = safe; higher levels contain adult content)"
+  },
+  "+": {
+    "zh_CN": "+",
+    "en_US": "+"
+  },
+  "+\nNew": {
+    "zh_CN": "+\nNew",
+    "en_US": "+\nNew"
+  },
+  "-": {
+    "zh_CN": "-",
+    "en_US": "-"
+  },
+  "0": {
+    "zh_CN": "0",
+    "en_US": "0"
+  },
+  "0 / 0": {
+    "zh_CN": "0 / 0",
+    "en_US": "0 / 0"
+  },
+  "0 表示未评分；有效评分为 1-5 分，支持 0.5 分。": {
+    "zh_CN": "0 表示未评分；有效评分为 1-5 分，支持 0.5 分。",
+    "en_US": "0 means unrated. Ratings range from 1 to 5 in 0.5-point increments."
+  },
+  "0_0, (o)_(o), +_+, +_-, ._., <o>_<o>, <|>_<|>, =_=, >_<, 3_3, 6_9, >_o, @_@, ^_^, o_o, u_u, x_x, |_|, ||_||": {
+    "zh_CN": "0_0, (o)_(o), +_+, +_-, ._., <o>_<o>, <|>_<|>, =_=, >_<, 3_3, 6_9, >_o, @_@, ^_^, o_o, u_u, x_x, |_|, ||_||",
+    "en_US": "0_0, (o)_(o), +_+, +_-, ._., <o>_<o>, <|>_<|>, =_=, >_<, 3_3, 6_9, >_o, @_@, ^_^, o_o, u_u, x_x, |_|, ||_||"
+  },
+  "100%": {
+    "zh_CN": "100%",
+    "en_US": "100%"
+  },
+  "12345": {
+    "zh_CN": "12345",
+    "en_US": "12345"
+  },
+  "1girl, solo, sample_tag": {
+    "zh_CN": "1girl, solo, sample_tag",
+    "en_US": "1girl, solo, sample_tag"
+  },
+  "30px": {
+    "zh_CN": "30px",
+    "en_US": "30px"
+  },
+  "</>": {
+    "zh_CN": "</>",
+    "en_US": "</>"
+  },
+  "<h3>🚀 发现新版本: %1</h3><p>当前版本: %2</p><hr><p><b>更新日志:</b></p><pre style='font-size:11px'>%3</pre>": {
+    "zh_CN": "<h3>🚀 发现新版本: %1</h3><p>当前版本: %2</p><hr><p><b>更新日志:</b></p><pre style='font-size:11px'>%3</pre>",
+    "en_US": "<h3>🚀 New version: %1</h3><p>Current version: %2</p><hr><p><b>Release notes:</b></p><pre style='font-size:11px'>%3</pre>"
+  },
+  "<html><head/><body><p align=\"center\"><a href=\"https://github.com/hanbinhsh/SD-LoRA-Manager\"><span style=\" text-decoration: underline; color:#66c0f4;\">Visit GitHub Repository</span></a></p></body></html>": {
+    "zh_CN": "<html><head/><body><p align=\"center\"><a href=\"https://github.com/hanbinhsh/SD-LoRA-Manager\"><span style=\" text-decoration: underline; color:#66c0f4;\">Visit GitHub Repository</span></a></p></body></html>",
+    "en_US": "<html><head/><body><p align=\"center\"><a href=\"https://github.com/hanbinhsh/SD-LoRA-Manager\"><span style=\" text-decoration: underline; color:#66c0f4;\">Visit GitHub Repository</span></a></p></body></html>"
+  },
+  "<html><head/><body><p align=\"center\">一个轻量级、现代化的 Stable Diffusion 模型管理工具。<br/>A lightweight, modern model manager for Stable Diffusion.</p></body></html>": {
+    "zh_CN": "<html><head/><body><p align=\"center\">一个轻量级、现代化的 Stable Diffusion 模型管理工具。</p></body></html>",
+    "en_US": "<html><head/><body><p align=\"center\">A lightweight, modern model manager for Stable Diffusion.</p></body></html>"
+  },
+  "<span style='color:orange'>请先点击右上方按钮设置并启用 Stable Diffusion 图片输出目录。</span>": {
+    "zh_CN": "<span style='color:orange'>请先点击右上方按钮设置并启用 Stable Diffusion 图片输出目录。</span>",
+    "en_US": "<span style='color:orange'>Use the button above to configure and enable a Stable Diffusion output folder.</span>"
+  },
+  "ABOUT / 简介": {
+    "zh_CN": "简介",
+    "en_US": "ABOUT"
+  },
+  "AES Key:": {
+    "zh_CN": "AES Key:",
+    "en_US": "AES Key:"
+  },
+  "AITagTranslate 词表已更新：%1 条记录": {
+    "zh_CN": "AITagTranslate 词表已更新：%1 条记录",
+    "en_US": "AITagTranslate dictionary updated: %1 entries"
+  },
+  "ALL\n全部": {
+    "zh_CN": "全部",
+    "en_US": "ALL"
+  },
+  "API Endpoint": {
+    "zh_CN": "API 地址",
+    "en_US": "API Endpoint"
+  },
+  "API Key 可用": {
+    "zh_CN": "API Key 可用",
+    "en_US": "API key is valid"
+  },
+  "API Key 未测试": {
+    "zh_CN": "API Key 未测试",
+    "en_US": "API key not tested"
+  },
+  "API Key 未配置": {
+    "zh_CN": "API Key 未配置",
+    "en_US": "API key not configured"
+  },
+  "API Key 测试失败: ": {
+    "zh_CN": "API Key 测试失败: ",
+    "en_US": "API key test failed: "
+  },
+  "API Key 测试失败: 返回不是有效 JSON": {
+    "zh_CN": "API Key 测试失败: 返回不是有效 JSON",
+    "en_US": "API key test failed: response is not valid JSON"
+  },
+  "API 类型": {
+    "zh_CN": "API 类型",
+    "en_US": "API type"
+  },
+  "AUTHOR / 作者": {
+    "zh_CN": "作者",
+    "en_US": "AUTHOR"
+  },
+  "Add": {
+    "zh_CN": "添加",
+    "en_US": "Add"
+  },
+  "All": {
+    "zh_CN": "全部",
+    "en_US": "All"
+  },
+  "All Files (*.*)": {
+    "zh_CN": "All Files (*.*)",
+    "en_US": "All Files (*.*)"
+  },
+  "Base Model": {
+    "zh_CN": "底模",
+    "en_US": "Base Model"
+  },
+  "Browse": {
+    "zh_CN": "浏览",
+    "en_US": "Browse"
+  },
+  "CFG": {
+    "zh_CN": "CFG",
+    "en_US": "CFG"
+  },
+  "CSV Files (*.csv)": {
+    "zh_CN": "CSV Files (*.csv)",
+    "en_US": "CSV Files (*.csv)"
+  },
+  "CSV 导出列:": {
+    "zh_CN": "CSV 导出列:",
+    "en_US": "CSV columns:"
+  },
+  "CSV 已加载，但当前没有任何 Tag 记录。可点击“新增”开始编辑。": {
+    "zh_CN": "CSV 已加载，但当前没有任何 Tag 记录。可点击“新增”开始编辑。",
+    "en_US": "The CSV is loaded but contains no tags. Click Add to create an entry."
+  },
+  "CSV 文件不存在": {
+    "zh_CN": "CSV 文件不存在",
+    "en_US": "CSV file does not exist"
+  },
+  "Cancel": {
+    "zh_CN": "取消",
+    "en_US": "Cancel"
+  },
+  "CivArchive": {
+    "zh_CN": "CivArchive",
+    "en_US": "CivArchive"
+  },
+  "Civitai #%1": {
+    "zh_CN": "Civitai #%1",
+    "en_US": "Civitai #%1"
+  },
+  "Civitai API Key:": {
+    "zh_CN": "Civitai API Key:",
+    "en_US": "Civitai API Key:"
+  },
+  "Civitai creator username": {
+    "zh_CN": "Civitai creator username",
+    "en_US": "Civitai creator username"
+  },
+  "Civitai 元数据": {
+    "zh_CN": "Civitai 元数据",
+    "en_US": "Civitai metadata"
+  },
+  "Civitai 元数据解析失败，正在尝试 CivArchive...": {
+    "zh_CN": "Civitai 元数据解析失败，正在尝试 CivArchive...",
+    "en_US": "Could not parse Civitai metadata. Trying CivArchive..."
+  },
+  "Civitai 失败时尝试 CivArchive / Try CivArchive when Civitai metadata fails": {
+    "zh_CN": "Civitai 失败时尝试 CivArchive",
+    "en_US": "Try CivArchive when Civitai metadata fails"
+  },
+  "Civitai 模型网页：": {
+    "zh_CN": "Civitai 模型网页：",
+    "en_US": "Civitai model website:"
+  },
+  "Civitai 获取失败，正在尝试 CivArchive...": {
+    "zh_CN": "Civitai 获取失败，正在尝试 CivArchive...",
+    "en_US": "Civitai request failed. Trying CivArchive..."
+  },
+  "Collections": {
+    "zh_CN": "收藏夹",
+    "en_US": "Collections"
+  },
+  "ComfyUI Tag 词表:": {
+    "zh_CN": "ComfyUI Tag 词表:",
+    "en_US": "ComfyUI tag dictionary:"
+  },
+  "ComfyUI Workflow 查看器": {
+    "zh_CN": "ComfyUI Workflow 查看器",
+    "en_US": "ComfyUI Workflow Viewer"
+  },
+  "ComfyUI 无摘要时允许名称匹配模型 / Allow ComfyUI name fallback when Hash is missing": {
+    "zh_CN": "ComfyUI 无摘要时允许名称匹配模型",
+    "en_US": "Allow ComfyUI name fallback when Hash is missing"
+  },
+  "Copied trigger words!": {
+    "zh_CN": "Copied trigger words!",
+    "en_US": "Copied trigger words!"
+  },
+  "Copy": {
+    "zh_CN": "复制",
+    "en_US": "Copy"
+  },
+  "Count": {
+    "zh_CN": "Count",
+    "en_US": "Count"
+  },
+  "Created At": {
+    "zh_CN": "创建时间",
+    "en_US": "Created At"
+  },
+  "Creator": {
+    "zh_CN": "作者",
+    "en_US": "Creator"
+  },
+  "Custom / 用户自定义": {
+    "zh_CN": "用户自定义",
+    "en_US": "Custom"
+  },
+  "Custom QSS": {
+    "zh_CN": "自定义 QSS",
+    "en_US": "Custom QSS"
+  },
+  "Date (Newest)": {
+    "zh_CN": "日期（最新优先）",
+    "en_US": "Date (Newest)"
+  },
+  "Date Added (Local)": {
+    "zh_CN": "本地添加日期",
+    "en_US": "Date Added (Local)"
+  },
+  "Delete": {
+    "zh_CN": "删除",
+    "en_US": "Delete"
+  },
+  "Description": {
+    "zh_CN": "简介",
+    "en_US": "Description"
+  },
+  "Download": {
+    "zh_CN": "下载",
+    "en_US": "Download"
+  },
+  "Downloading...": {
+    "zh_CN": "正在下载…",
+    "en_US": "Downloading..."
+  },
+  "Downloads": {
+    "zh_CN": "下载量",
+    "en_US": "Downloads"
+  },
+  "Downloads (High)": {
+    "zh_CN": "下载量（从高到低）",
+    "en_US": "Downloads (High)"
+  },
+  "Edit": {
+    "zh_CN": "编辑",
+    "en_US": "Edit"
+  },
+  "Empty": {
+    "zh_CN": "空",
+    "en_US": "Empty"
+  },
+  "Err: %1": {
+    "zh_CN": "Err: %1",
+    "en_US": "Err: %1"
+  },
+  "Error": {
+    "zh_CN": "错误",
+    "en_US": "Error"
+  },
+  "FILE INFO / 文件": {
+    "zh_CN": "文件",
+    "en_US": "FILE INFO"
+  },
+  "Filename: %1\nSize: %2 MB\nHash: --": {
+    "zh_CN": "文件名：%1\n大小：%2 MB\n摘要：--",
+    "en_US": "Filename: %1\nSize: %2 MB\nHash: --"
+  },
+  "Filename: %1\nSize: %2 MB\nSHA256: %3\nAdded: %4": {
+    "zh_CN": "文件名：%1\n大小：%2 MB\nSHA256：%3\n添加时间：%4",
+    "en_US": "Filename: %1\nSize: %2 MB\nSHA256: %3\nAdded: %4"
+  },
+  "Filename: --\nSize: --\nHash: --": {
+    "zh_CN": "文件名：--\n大小：--\n摘要：--",
+    "en_US": "Filename: --\nSize: --\nHash: --"
+  },
+  "Filename: ...\nSize: ...\nHash: ...": {
+    "zh_CN": "文件名：...\n大小：...\n摘要：...",
+    "en_US": "Filename: ...\nSize: ...\nHash: ..."
+  },
+  "GitHub 返回的内容不是有效的 AITagTranslate 词表，旧文件未被修改。": {
+    "zh_CN": "GitHub 返回的内容不是有效的 AITagTranslate 词表，旧文件未被修改。",
+    "en_US": "GitHub did not return a valid AITagTranslate dictionary. The existing file was preserved."
+  },
+  "Global User Gallery / 所有用户返图": {
+    "zh_CN": "所有用户返图",
+    "en_US": "Global User Gallery"
+  },
+  "HOME / 主页": {
+    "zh_CN": "主页",
+    "en_US": "HOME"
+  },
+  "HTTPS 连接失败: 缺失 OpenSSL 运行库 (libcrypto / libssl)": {
+    "zh_CN": "HTTPS 连接失败: 缺失 OpenSSL 运行库 (libcrypto / libssl)",
+    "en_US": "HTTPS connection failed: missing OpenSSL libraries (libcrypto / libssl)"
+  },
+  "Hash 计算完成，正在获取元数据...": {
+    "zh_CN": "Hash 计算完成，正在获取元数据...",
+    "en_US": "Hash calculated. Fetching metadata..."
+  },
+  "High Contrast": {
+    "zh_CN": "高对比度",
+    "en_US": "High Contrast"
+  },
+  "IMAGE PREVIEWS & PROMPTS / 预览与提示词": {
+    "zh_CN": "预览与提示词",
+    "en_US": "IMAGE PREVIEWS & PROMPTS"
+  },
+  "Image Attachment Note 占位符内容": {
+    "zh_CN": "Image Attachment Note 占位符内容",
+    "en_US": "Image attachment note placeholder"
+  },
+  "Image Files (*.png *.jpg *.jpeg *.webp)": {
+    "zh_CN": "Image Files (*.png *.jpg *.jpeg *.webp)",
+    "en_US": "Image Files (*.png *.jpg *.jpeg *.webp)"
+  },
+  "Images (*.png *.jpg *.jpeg *.webp *.bmp)": {
+    "zh_CN": "Images (*.png *.jpg *.jpeg *.webp *.bmp)",
+    "en_US": "Images (*.png *.jpg *.jpeg *.webp *.bmp)"
+  },
+  "Images (*.png *.jpg *.jpeg *.webp)": {
+    "zh_CN": "Images (*.png *.jpg *.jpeg *.webp)",
+    "en_US": "Images (*.png *.jpg *.jpeg *.webp)"
+  },
+  "JSON 异常": {
+    "zh_CN": "JSON 异常",
+    "en_US": "Invalid JSON"
+  },
+  "JSON: 已缓存": {
+    "zh_CN": "JSON: 已缓存",
+    "en_US": "JSON: cached"
+  },
+  "JSON: 未缓存": {
+    "zh_CN": "JSON: 未缓存",
+    "en_US": "JSON: not cached"
+  },
+  "K:": {
+    "zh_CN": "K:",
+    "en_US": "K:"
+  },
+  "LLM 返回的 Markdown 结果会显示在这里。": {
+    "zh_CN": "LLM 返回的 Markdown 结果会显示在这里。",
+    "en_US": "The LLM's Markdown response will appear here."
+  },
+  "LM Studio": {
+    "zh_CN": "LM Studio",
+    "en_US": "LM Studio"
+  },
+  "LM Studio 暂不支持通过此按钮卸载模型，请在 LM Studio 中管理模型。": {
+    "zh_CN": "LM Studio 暂不支持通过此按钮卸载模型，请在 LM Studio 中管理模型。",
+    "en_US": "LM Studio does not support unloading through this button. Manage models in LM Studio."
+  },
+  "LM Studio 的 OpenAI 兼容接口没有等价的 unload/stop 命令，请在 LM Studio 界面中卸载模型。": {
+    "zh_CN": "LM Studio 的 OpenAI 兼容接口没有等价的 unload/stop 命令，请在 LM Studio 界面中卸载模型。",
+    "en_US": "LM Studio's OpenAI-compatible API has no unload or stop command. Unload the model in LM Studio."
+  },
+  "LOCAL SD OUTPUTS / 本地返图": {
+    "zh_CN": "本地返图",
+    "en_US": "LOCAL SD OUTPUTS"
+  },
+  "Label": {
+    "zh_CN": "Label",
+    "en_US": "Label"
+  },
+  "Light": {
+    "zh_CN": "浅色",
+    "en_US": "Light"
+  },
+  "Likes": {
+    "zh_CN": "点赞数",
+    "en_US": "Likes"
+  },
+  "Likes (High)": {
+    "zh_CN": "点赞数（从高到低）",
+    "en_US": "Likes (High)"
+  },
+  "LoRA": {
+    "zh_CN": "LoRA",
+    "en_US": "LoRA"
+  },
+  "LoRA Manager": {
+    "zh_CN": "LoRA Manager",
+    "en_US": "LoRA Manager"
+  },
+  "LoRA 候选": {
+    "zh_CN": "LoRA 候选",
+    "en_US": "LoRA candidates"
+  },
+  "LoRA 路径已更新，请返回库界面点击刷新按钮。": {
+    "zh_CN": "LoRA 路径已更新，请返回库界面点击刷新按钮。",
+    "en_US": "Model paths updated. Return to the Library and click Refresh."
+  },
+  "LoRA 路径管理": {
+    "zh_CN": "LoRA 路径管理",
+    "en_US": "Model paths"
+  },
+  "Loading...": {
+    "zh_CN": "正在加载…",
+    "en_US": "Loading..."
+  },
+  "MODEL METADATA / 模型元数据": {
+    "zh_CN": "模型元数据",
+    "en_US": "MODEL METADATA"
+  },
+  "MODEL TAGS / 模型标签": {
+    "zh_CN": "模型标签",
+    "en_US": "MODEL TAGS"
+  },
+  "Midnight Blue": {
+    "zh_CN": "午夜蓝",
+    "en_US": "Midnight Blue"
+  },
+  "Missing": {
+    "zh_CN": "缺失",
+    "en_US": "Missing"
+  },
+  "Model": {
+    "zh_CN": "模型",
+    "en_US": "Model"
+  },
+  "Model ID: %1 | Version ID: %2 | SHA256: %3": {
+    "zh_CN": "Model ID: %1 | Version ID: %2 | SHA256: %3",
+    "en_US": "Model ID: %1 | Version ID: %2 | SHA256: %3"
+  },
+  "Models": {
+    "zh_CN": "模型列表",
+    "en_US": "Models"
+  },
+  "Models 列表按文件夹分类 / Group Models by Folder": {
+    "zh_CN": "Models 列表按文件夹分类",
+    "en_US": "Group Models by Folder"
+  },
+  "Mozilla/5.0 ... (留空则使用随机生成的 UA)": {
+    "zh_CN": "Mozilla/5.0 ... (留空则使用随机生成的 UA)",
+    "en_US": "Mozilla/5.0 ... (leave blank for a random user agent)"
+  },
+  "NSFW": {
+    "zh_CN": "NSFW",
+    "en_US": "NSFW"
+  },
+  "NSFW Level": {
+    "zh_CN": "NSFW Level",
+    "en_US": "NSFW Level"
+  },
+  "Name": {
+    "zh_CN": "名称",
+    "en_US": "Name"
+  },
+  "Name (A-Z)": {
+    "zh_CN": "名称（A-Z）",
+    "en_US": "Name (A-Z)"
+  },
+  "Negative": {
+    "zh_CN": "负面",
+    "en_US": "Negative"
+  },
+  "Negative Prompt": {
+    "zh_CN": "负面提示词",
+    "en_US": "Negative Prompt"
+  },
+  "Negative Prompt / 负向提示词": {
+    "zh_CN": "负向提示词",
+    "en_US": "Negative Prompt"
+  },
+  "Negative Prompt:": {
+    "zh_CN": "负面提示词：",
+    "en_US": "Negative Prompt:"
+  },
+  "New": {
+    "zh_CN": "新建",
+    "en_US": "New"
+  },
+  "No description.": {
+    "zh_CN": "暂无简介。",
+    "en_US": "No description."
+  },
+  "No negative prompt.": {
+    "zh_CN": "无负面提示词。",
+    "en_US": "No negative prompt."
+  },
+  "No positive prompt.": {
+    "zh_CN": "无正面提示词。",
+    "en_US": "No positive prompt."
+  },
+  "No preview images.": {
+    "zh_CN": "No preview images.",
+    "en_US": "No preview images."
+  },
+  "No prompt.": {
+    "zh_CN": "无提示词。",
+    "en_US": "No prompt."
+  },
+  "No trigger words provided.": {
+    "zh_CN": "No trigger words provided.",
+    "en_US": "No trigger words provided."
+  },
+  "Ollama": {
+    "zh_CN": "Ollama",
+    "en_US": "Ollama"
+  },
+  "Ollama 会执行 ollama stop；LM Studio 需在其界面中停止": {
+    "zh_CN": "Ollama 会执行 ollama stop；LM Studio 需在其界面中停止",
+    "en_US": "Ollama runs ollama stop. Stop LM Studio models in LM Studio."
+  },
+  "Open": {
+    "zh_CN": "打开",
+    "en_US": "Open"
+  },
+  "Positive": {
+    "zh_CN": "正面",
+    "en_US": "Positive"
+  },
+  "Positive Prompt": {
+    "zh_CN": "正面提示词",
+    "en_US": "Positive Prompt"
+  },
+  "Positive Prompt:": {
+    "zh_CN": "正面提示词：",
+    "en_US": "Positive Prompt:"
+  },
+  "Positive prompt:\n": {
+    "zh_CN": "Positive prompt:\n",
+    "en_US": "Positive prompt:\n"
+  },
+  "Prompt / 正向提示词": {
+    "zh_CN": "正向提示词",
+    "en_US": "Prompt"
+  },
+  "Python (python.exe python);;Executable Files (*.exe);;All Files (*)": {
+    "zh_CN": "Python (python.exe python);;Executable Files (*.exe);;All Files (*)",
+    "en_US": "Python (python.exe python);;Executable Files (*.exe);;All Files (*)"
+  },
+  "Python Scripts (*.py);;All Files (*)": {
+    "zh_CN": "Python Scripts (*.py);;All Files (*)",
+    "en_US": "Python Scripts (*.py);;All Files (*)"
+  },
+  "Python 推理完成，正在整理结果...": {
+    "zh_CN": "Python 推理完成，正在整理结果...",
+    "en_US": "Inference finished. Processing results..."
+  },
+  "Python 路径": {
+    "zh_CN": "Python 路径",
+    "en_US": "Python path"
+  },
+  "QSS Files (*.qss);;All Files (*.*)": {
+    "zh_CN": "QSS Files (*.qss);;All Files (*.*)",
+    "en_US": "QSS Files (*.qss);;All Files (*.*)"
+  },
+  "Queueing...": {
+    "zh_CN": "正在排队…",
+    "en_US": "Queueing..."
+  },
+  "Rating (User)": {
+    "zh_CN": "用户评分",
+    "en_US": "Rating (User)"
+  },
+  "Recently Used": {
+    "zh_CN": "最近使用",
+    "en_US": "Recently Used"
+  },
+  "Refresh": {
+    "zh_CN": "刷新",
+    "en_US": "Refresh"
+  },
+  "Resolution: -- | Steps: -- | CFG: --<br/>Sampler: -- | Seed: --": {
+    "zh_CN": "分辨率：-- | 步数：-- | CFG：--<br/>采样器：-- | 种子：--",
+    "en_US": "Resolution: -- | Steps: -- | CFG: --<br/>Sampler: -- | Seed: --"
+  },
+  "Retrying...": {
+    "zh_CN": "Retrying...",
+    "en_US": "Retrying..."
+  },
+  "SD LoRA Manager": {
+    "zh_CN": "SD LoRA Manager",
+    "en_US": "SD LoRA Manager"
+  },
+  "SHA256: 已记录": {
+    "zh_CN": "SHA256: 已记录",
+    "en_US": "SHA256: cached"
+  },
+  "SSL Error": {
+    "zh_CN": "SSL Error",
+    "en_US": "SSL Error"
+  },
+  "Sampler": {
+    "zh_CN": "采样器",
+    "en_US": "Sampler"
+  },
+  "Sampler, Steps, CFG, Seed...": {
+    "zh_CN": "Sampler, Steps, CFG, Seed...",
+    "en_US": "Sampler, Steps, CFG, Seed..."
+  },
+  "Save": {
+    "zh_CN": "保存",
+    "en_US": "Save"
+  },
+  "Scheduler": {
+    "zh_CN": "调度器",
+    "en_US": "Scheduler"
+  },
+  "Seed": {
+    "zh_CN": "种子",
+    "en_US": "Seed"
+  },
+  "Settings": {
+    "zh_CN": "设置",
+    "en_US": "Settings"
+  },
+  "Skipped": {
+    "zh_CN": "已跳过",
+    "en_US": "Skipped"
+  },
+  "Source": {
+    "zh_CN": "来源",
+    "en_US": "Source"
+  },
+  "Start": {
+    "zh_CN": "启动",
+    "en_US": "Start"
+  },
+  "Steam Dark": {
+    "zh_CN": "Steam 深色",
+    "en_US": "Steam Dark"
+  },
+  "Steps": {
+    "zh_CN": "步数",
+    "en_US": "Steps"
+  },
+  "Stop": {
+    "zh_CN": "停止",
+    "en_US": "Stop"
+  },
+  "Sys: %1/%2 (%3%)": {
+    "zh_CN": "Sys: %1/%2 (%3%)",
+    "en_US": "Sys: %1/%2 (%3%)"
+  },
+  "Sys: --": {
+    "zh_CN": "Sys: --",
+    "en_US": "Sys: --"
+  },
+  "TRIGGER WORDS / 触发词": {
+    "zh_CN": "触发词",
+    "en_US": "TRIGGER WORDS"
+  },
+  "Tag": {
+    "zh_CN": "Tag",
+    "en_US": "Tag"
+  },
+  "Tag Picker": {
+    "zh_CN": "Tag 选取器",
+    "en_US": "Tag Picker"
+  },
+  "Tag 不能为空，也不能包含逗号或换行。": {
+    "zh_CN": "Tag 不能为空，也不能包含逗号或换行。",
+    "en_US": "A tag cannot be empty or contain commas or line breaks."
+  },
+  "Tag 差异": {
+    "zh_CN": "Tag 差异",
+    "en_US": "Tag differences"
+  },
+  "Tag 排序方式": {
+    "zh_CN": "Tag 排序方式",
+    "en_US": "Tag sort order"
+  },
+  "Tag 统计正在加载中...": {
+    "zh_CN": "Tag 统计正在加载中...",
+    "en_US": "Loading tag statistics..."
+  },
+  "Tag 翻译表": {
+    "zh_CN": "Tag 翻译表",
+    "en_US": "Tag translations"
+  },
+  "Tag 翻译表 (CSV，可多选):": {
+    "zh_CN": "Tag 翻译表 (CSV，可多选):",
+    "en_US": "Tag dictionaries (CSV; multiple files):"
+  },
+  "Tag 翻译表管理": {
+    "zh_CN": "Tag 翻译表管理",
+    "en_US": "Tag dictionary management"
+  },
+  "Tag:": {
+    "zh_CN": "Tag:",
+    "en_US": "Tag:"
+  },
+  "TagFlow 仅显示当前选中图片的 Tag": {
+    "zh_CN": "TagFlow 仅显示当前选中图片的 Tag",
+    "en_US": "Show tags from the selected image only"
+  },
+  "TagFlow 统计时包含负面提示词 Tag": {
+    "zh_CN": "TagFlow 统计时包含负面提示词 Tag",
+    "en_US": "Include negative tags in TagFlow statistics"
+  },
+  "Tag：": {
+    "zh_CN": "Tag：",
+    "en_US": "Tag："
+  },
+  "Task Guidance 占位符内容": {
+    "zh_CN": "Task Guidance 占位符内容",
+    "en_US": "Task guidance placeholder"
+  },
+  "Temperature": {
+    "zh_CN": "温度",
+    "en_US": "Temperature"
+  },
+  "Top K（按使用次数排序）": {
+    "zh_CN": "Top K（按使用次数排序）",
+    "en_US": "Top K (by usage count)"
+  },
+  "Top 数量": {
+    "zh_CN": "Top 数量",
+    "en_US": "Top count"
+  },
+  "Type": {
+    "zh_CN": "类型",
+    "en_US": "Type"
+  },
+  "URL": {
+    "zh_CN": "URL",
+    "en_US": "URL"
+  },
+  "USER NOTES / 用户备注": {
+    "zh_CN": "用户备注",
+    "en_US": "USER NOTES"
+  },
+  "Unknown": {
+    "zh_CN": "未知",
+    "en_US": "Unknown"
+  },
+  "Usage Count": {
+    "zh_CN": "使用次数",
+    "en_US": "Usage Count"
+  },
+  "Version ": {
+    "zh_CN": "Version ",
+    "en_US": "Version "
+  },
+  "Version 0": {
+    "zh_CN": "Version 0",
+    "en_US": "Version 0"
+  },
+  "WD14 Python 反推运行中...": {
+    "zh_CN": "WD14 Python 反推运行中...",
+    "en_US": "WD14 inference is running..."
+  },
+  "WD14 Python 进程启动失败: ": {
+    "zh_CN": "WD14 Python 进程启动失败: ",
+    "en_US": "Failed to start WD14: "
+  },
+  "WD14 反推": {
+    "zh_CN": "WD14 反推",
+    "en_US": "WD14 Tagger"
+  },
+  "WD14 反推失败。": {
+    "zh_CN": "WD14 反推失败。",
+    "en_US": "WD14 inference failed."
+  },
+  "WD14 反推完成，但历史记录保存失败: ": {
+    "zh_CN": "WD14 反推完成，但历史记录保存失败: ",
+    "en_US": "WD14 inference finished, but history could not be saved: "
+  },
+  "WD14 反推完成，共 %1 个标签。": {
+    "zh_CN": "WD14 反推完成，共 %1 个标签。",
+    "en_US": "WD14 finished: %1 tags."
+  },
+  "WD14 脚本路径": {
+    "zh_CN": "WD14 脚本路径",
+    "en_US": "WD14 script path"
+  },
+  "WELCOME": {
+    "zh_CN": "欢迎",
+    "en_US": "WELCOME"
+  },
+  "Waiting...": {
+    "zh_CN": "Waiting...",
+    "en_US": "Waiting..."
+  },
+  "X": {
+    "zh_CN": "X",
+    "en_US": "X"
+  },
+  "copyBtn": {
+    "zh_CN": "copyBtn",
+    "en_US": "copyBtn"
+  },
+  "default.json": {
+    "zh_CN": "default.json",
+    "en_US": "default.json"
+  },
+  "http://127.0.0.1:7860（留空则自动识别）": {
+    "zh_CN": "http://127.0.0.1:7860（留空则自动识别）",
+    "en_US": "http://127.0.0.1:7860 (leave blank to detect automatically)"
+  },
+  "http://127.0.0.1:8188（留空则自动识别）": {
+    "zh_CN": "http://127.0.0.1:8188（留空则自动识别）",
+    "en_US": "http://127.0.0.1:8188 (leave blank to detect automatically)"
+  },
+  "metadata JSON 解析失败: %1": {
+    "zh_CN": "metadata JSON 解析失败: %1",
+    "en_US": "Could not parse metadata JSON: %1"
+  },
+  "metadata 可用": {
+    "zh_CN": "metadata 可用",
+    "en_US": "Metadata available"
+  },
+  "px": {
+    "zh_CN": "px",
+    "en_US": "px"
+  },
+  "sectionTitle": {
+    "zh_CN": "sectionTitle",
+    "en_US": "sectionTitle"
+  },
+  "© 2025-2026 IceRinne (hanbinhsh). Open Source Project.": {
+    "zh_CN": "© 2025-2026 IceRinne (hanbinhsh). Open Source Project.",
+    "en_US": "© 2025-2026 IceRinne (hanbinhsh). Open Source Project."
+  },
+  "×": {
+    "zh_CN": "×",
+    "en_US": "×"
+  },
+  "ℹ️ 关于 / About": {
+    "zh_CN": "ℹ️ 关于",
+    "en_US": "ℹ️ About"
+  },
+  "↺": {
+    "zh_CN": "↺",
+    "en_US": "↺"
+  },
+  "↻": {
+    "zh_CN": "↻",
+    "en_US": "↻"
+  },
+  "−": {
+    "zh_CN": "−",
+    "en_US": "−"
+  },
+  "⏳ Checking...": {
+    "zh_CN": "⏳ Checking...",
+    "en_US": "⏳ Checking..."
+  },
+  "▶ 启动服务 / Start": {
+    "zh_CN": "▶ 启动服务",
+    "en_US": "▶ Start"
+  },
+  "▸ 高级（全部 token）/ Advanced": {
+    "zh_CN": "▸ 高级（全部 token）/ Advanced",
+    "en_US": "▸ Advanced (all tokens)"
+  },
+  "▾ 高级（全部 token）/ Advanced": {
+    "zh_CN": "▾ 高级（全部 token）/ Advanced",
+    "en_US": "▾ Advanced (all tokens)"
+  },
+  "◀ 上一张": {
+    "zh_CN": "◀ 上一张",
+    "en_US": "◀ Previous"
+  },
+  "♥": {
+    "zh_CN": "♥",
+    "en_US": "♥"
+  },
+  "⚙️ 设置 / Settings": {
+    "zh_CN": "⚙️ 设置",
+    "en_US": "⚙️ Settings"
+  },
+  "✎": {
+    "zh_CN": "✎",
+    "en_US": "✎"
+  },
+  "⬇": {
+    "zh_CN": "⬇",
+    "en_US": "⬇"
+  },
+  "⬇️ 下载 / Downloads": {
+    "zh_CN": "⬇️ 下载",
+    "en_US": "⬇️ Downloads"
+  },
+  "⬇️ 版本更新 / Version Updates": {
+    "zh_CN": "⬇️ 版本更新",
+    "en_US": "⬇️ Version Updates"
+  },
+  "一行一组触发词，例如：masterpiece, character name": {
+    "zh_CN": "一行一组触发词，例如：masterpiece, character name",
+    "en_US": "One trigger group per line, e.g. masterpiece, character name"
+  },
+  "上一张（←）": {
+    "zh_CN": "上一张（←）",
+    "en_US": "Previous (←)"
+  },
+  "上下文检索关键词，可留空自动从指令中提取": {
+    "zh_CN": "上下文检索关键词，可留空自动从指令中提取",
+    "en_US": "Context search terms; leave blank to extract from the instruction"
+  },
+  "上传图片": {
+    "zh_CN": "上传图片",
+    "en_US": "Upload image"
+  },
+  "上次发送内容": {
+    "zh_CN": "上次发送内容",
+    "en_US": "Last request"
+  },
+  "上次同步": {
+    "zh_CN": "上次同步",
+    "en_US": "Last synced"
+  },
+  "上次同步失败，请点击刷新模型详情重新同步。\n%1": {
+    "zh_CN": "上次同步失败，请点击刷新模型详情重新同步。\n%1",
+    "en_US": "The previous sync failed. Click Refresh model details to retry.\n%1"
+  },
+  "上移": {
+    "zh_CN": "上移",
+    "en_US": "Move up"
+  },
+  "下一张 ▶": {
+    "zh_CN": "下一张 ▶",
+    "en_US": "Next ▶"
+  },
+  "下一张（→）": {
+    "zh_CN": "下一张（→）",
+    "en_US": "Next (→)"
+  },
+  "下次启动时，保持当前收藏夹的展开状态和滚动条位置。": {
+    "zh_CN": "下次启动时，保持当前收藏夹的展开状态和滚动条位置。",
+    "en_US": "Restore collection expansion and scroll position on the next launch."
+  },
+  "下移": {
+    "zh_CN": "下移",
+    "en_US": "Move down"
+  },
+  "下载 / 更新": {
+    "zh_CN": "下载 / 更新",
+    "en_US": "Download / Update"
+  },
+  "下载 AITagTranslate autocomplete.txt，并以最低优先级加入词表。": {
+    "zh_CN": "下载 AITagTranslate autocomplete.txt，并以最低优先级加入词表。",
+    "en_US": "Download AITagTranslate autocomplete.txt and add it at the lowest priority."
+  },
+  "下载中": {
+    "zh_CN": "下载中",
+    "en_US": "Downloading"
+  },
+  "下载中...": {
+    "zh_CN": "下载中...",
+    "en_US": "Downloading..."
+  },
+  "下载内容不是有效的 Tag 词表。": {
+    "zh_CN": "下载内容不是有效的 Tag 词表。",
+    "en_US": "The downloaded content is not a valid tag dictionary."
+  },
+  "下载失败": {
+    "zh_CN": "下载失败",
+    "en_US": "Download failed"
+  },
+  "下载失败: %1": {
+    "zh_CN": "下载失败: %1",
+    "en_US": "Download failed: %1"
+  },
+  "下载失败: SHA256 校验失败": {
+    "zh_CN": "下载失败: SHA256 校验失败",
+    "en_US": "Download failed: SHA256 verification failed"
+  },
+  "下载失败: 下载器未初始化": {
+    "zh_CN": "下载失败: 下载器未初始化",
+    "en_US": "Download failed: downloader is not initialized"
+  },
+  "下载失败: 下载文件为空": {
+    "zh_CN": "下载失败: 下载文件为空",
+    "en_US": "Download failed: downloaded file is empty"
+  },
+  "下载失败: 写入文件失败%1": {
+    "zh_CN": "下载失败: 写入文件失败%1",
+    "en_US": "Download failed: file write failed%1"
+  },
+  "下载失败: 无法写入目标路径": {
+    "zh_CN": "下载失败: 无法写入目标路径",
+    "en_US": "Download failed: cannot write to the destination"
+  },
+  "下载失败: 无法备份原模型文件": {
+    "zh_CN": "下载失败: 无法备份原模型文件",
+    "en_US": "Download failed: cannot back up the original model"
+  },
+  "下载失败: 无法安装新版本": {
+    "zh_CN": "下载失败: 无法安装新版本",
+    "en_US": "Download failed: cannot install the new version"
+  },
+  "下载失败: 无法计算 SHA256": {
+    "zh_CN": "下载失败: 无法计算 SHA256",
+    "en_US": "Download failed: cannot calculate SHA256"
+  },
+  "下载失败: 目标文件已存在": {
+    "zh_CN": "下载失败: 目标文件已存在",
+    "en_US": "Download failed: destination file already exists"
+  },
+  "下载失败：": {
+    "zh_CN": "下载失败：",
+    "en_US": "Download failed: "
+  },
+  "下载完成": {
+    "zh_CN": "下载完成",
+    "en_US": "Download complete"
+  },
+  "下载完成，正在后台验证词表...": {
+    "zh_CN": "下载完成，正在后台验证词表...",
+    "en_US": "Download complete. Validating the dictionary in the background..."
+  },
+  "下载新版本": {
+    "zh_CN": "下载新版本",
+    "en_US": "Download new version"
+  },
+  "下载更新": {
+    "zh_CN": "下载更新",
+    "en_US": "Download update"
+  },
+  "下载管理 / Downloads": {
+    "zh_CN": "下载管理",
+    "en_US": "Downloads"
+  },
+  "下载选中更新": {
+    "zh_CN": "下载选中更新",
+    "en_US": "Download selected updates"
+  },
+  "不显示本地模型总量警告 / Hide Local Model Count Warning": {
+    "zh_CN": "不显示本地模型总量警告",
+    "en_US": "Hide Local Model Count Warning"
+  },
+  "两张图片共同存在的 Tag": {
+    "zh_CN": "两张图片共同存在的 Tag",
+    "en_US": "Tags present in both images"
+  },
+  "严格摘要匹配": {
+    "zh_CN": "严格摘要匹配",
+    "en_US": "Strict hash matching"
+  },
+  "为提升启动速度，合并词表将在进入本页面时后台加载。": {
+    "zh_CN": "为提升启动速度，合并词表将在进入本页面时后台加载。",
+    "en_US": "Merged dictionaries load in the background when this page is opened."
+  },
+  "为提升启动速度，词表将于进入/操作本页面时自动加载。": {
+    "zh_CN": "为提升启动速度，词表将于进入/操作本页面时自动加载。",
+    "en_US": "The dictionary loads when you open or use this page."
+  },
+  "主题 / Theme": {
+    "zh_CN": "主题",
+    "en_US": "Theme"
+  },
+  "主题名称无法转换为有效文件名，请换一个。": {
+    "zh_CN": "主题名称无法转换为有效文件名，请换一个。",
+    "en_US": "The theme name cannot be used as a filename. Choose another name."
+  },
+  "主题编辑器 / Theme Editor": {
+    "zh_CN": "主题编辑器",
+    "en_US": "Theme Editor"
+  },
+  "亮色 / Light": {
+    "zh_CN": "亮色",
+    "en_US": "Light"
+  },
+  "人物替换": {
+    "zh_CN": "人物替换",
+    "en_US": "Character replacement"
+  },
+  "仅元数据": {
+    "zh_CN": "仅元数据",
+    "en_US": "Metadata only"
+  },
+  "仅图片 A": {
+    "zh_CN": "仅图片 A",
+    "en_US": "Image A only"
+  },
+  "仅图片 A 中存在的 Tag": {
+    "zh_CN": "仅图片 A 中存在的 Tag",
+    "en_US": "Tags found only in image A"
+  },
+  "仅图片 B": {
+    "zh_CN": "仅图片 B",
+    "en_US": "Image B only"
+  },
+  "仅图片 B 中存在的 Tag": {
+    "zh_CN": "仅图片 B 中存在的 Tag",
+    "en_US": "Tags found only in image B"
+  },
+  "仅影响模型网页跳转；API、下载地址和 CivArchive 链接保持不变。": {
+    "zh_CN": "仅影响模型网页跳转；API、下载地址和 CivArchive 链接保持不变。",
+    "en_US": "Only changes model web links. API requests, downloads and CivArchive links are unchanged."
+  },
+  "仅显示 LoRA Tag": {
+    "zh_CN": "仅显示 LoRA Tag",
+    "en_US": "Show LoRA tags only"
+  },
+  "仅模型文件": {
+    "zh_CN": "仅模型文件",
+    "en_US": "Model files only"
+  },
+  "仅正面提示词": {
+    "zh_CN": "仅正面提示词",
+    "en_US": "Positive prompts only"
+  },
+  "仅负面提示词": {
+    "zh_CN": "仅负面提示词",
+    "en_US": "Negative prompts only"
+  },
+  "仅附属文件": {
+    "zh_CN": "仅附属文件",
+    "en_US": "Sidecar files only"
+  },
+  "从 AITagTranslate 下载 autocomplete.txt，自动启用并放到词表列表底部。": {
+    "zh_CN": "从 AITagTranslate 下载 autocomplete.txt，自动启用并放到词表列表底部。",
+    "en_US": "Download autocomplete.txt from AITagTranslate, enable it, and place it last in the dictionary list."
+  },
+  "从 CivArchive 补充": {
+    "zh_CN": "从 CivArchive 补充",
+    "en_US": "Fill from CivArchive"
+  },
+  "从历史图库分析": {
+    "zh_CN": "从历史图库分析",
+    "en_US": "Analyze gallery history"
+  },
+  "从启动脚本导入...": {
+    "zh_CN": "从启动脚本导入...",
+    "en_US": "Import from launch script..."
+  },
+  "从指定收藏夹移除...": {
+    "zh_CN": "从指定收藏夹移除...",
+    "en_US": "Remove from collection..."
+  },
+  "从模型中选择触发词并添加到当前正面提示词。": {
+    "zh_CN": "从模型中选择触发词并添加到当前正面提示词。",
+    "en_US": "Select model trigger words to add to the current positive prompt."
+  },
+  "从模型中选择触发词并添加到当前正面模板。": {
+    "zh_CN": "从模型中选择触发词并添加到当前正面模板。",
+    "en_US": "Select model trigger words to add to the current positive template."
+  },
+  "以下内容仅通过静态读取脚本获得，不会执行脚本。请选择要应用的安全字段。": {
+    "zh_CN": "以下内容仅通过静态读取脚本获得，不会执行脚本。请选择要应用的安全字段。",
+    "en_US": "These values were read without executing the script. Choose the fields to apply."
+  },
+  "以下词表未写入，相关修改仍保留在表格中：\n\n": {
+    "zh_CN": "以下词表未写入，相关修改仍保留在表格中：\n\n",
+    "en_US": "These dictionaries could not be saved. Their edits remain in the table:\n\n"
+  },
+  "以命令行风格输入参数。Ollama 会写入 options；LM Studio 会写入 OpenAI 兼容请求顶层。支持 --presence_penalty 1.0、--top_p 0.8、--top_k 20、--repeat_penalty 1.12 等。": {
+    "zh_CN": "以命令行风格输入参数。Ollama 会写入 options；LM Studio 会写入 OpenAI 兼容请求顶层。支持 --presence_penalty 1.0、--top_p 0.8、--top_k 20、--repeat_penalty 1.12 等。",
+    "en_US": "Enter command-line-style options. Ollama uses options; LM Studio uses top-level OpenAI-compatible fields. Supports --presence_penalty 1.0, --top_p 0.8, --top_k 20, --repeat_penalty 1.12, etc."
+  },
+  "以当前主题为起点，打开调色板编辑器新建/修改主题。": {
+    "zh_CN": "以当前主题为起点，打开调色板编辑器新建/修改主题。",
+    "en_US": "Open the palette editor using the current theme as a starting point."
+  },
+  "任务列表已清空。": {
+    "zh_CN": "任务列表已清空。",
+    "en_US": "Task list cleared."
+  },
+  "任务详情": {
+    "zh_CN": "任务详情",
+    "en_US": "Task details"
+  },
+  "任务输入": {
+    "zh_CN": "任务输入",
+    "en_US": "Task input"
+  },
+  "优先级": {
+    "zh_CN": "优先级",
+    "en_US": "Priority"
+  },
+  "会基于 user_gallery_cache.json 中的历史 prompt 统计高频 tag、LoRA 与负面词。": {
+    "zh_CN": "会基于 user_gallery_cache.json 中的历史 prompt 统计高频 tag、LoRA 与负面词。",
+    "en_US": "Analyze user_gallery_cache.json to find frequently used tags, LoRAs and negative tags."
+  },
+  "作者 / Author:": {
+    "zh_CN": "作者",
+    "en_US": "Author:"
+  },
+  "作者 / Creator": {
+    "zh_CN": "作者",
+    "en_US": "Creator"
+  },
+  "使用 Civitai 模型名称 / Use Civitai Name": {
+    "zh_CN": "使用 Civitai 模型名称",
+    "en_US": "Use Civitai Name"
+  },
+  "使用换行符作为分隔符 / Treat Newlines as Separators": {
+    "zh_CN": "使用换行符作为分隔符",
+    "en_US": "Treat Newlines as Separators"
+  },
+  "使用次数": {
+    "zh_CN": "使用次数",
+    "en_US": "Usage count"
+  },
+  "使用次数 >= K": {
+    "zh_CN": "使用次数 >= K",
+    "en_US": "Usage count >= K"
+  },
+  "使用空格代替下划线": {
+    "zh_CN": "使用空格代替下划线",
+    "en_US": "Replace underscores with spaces"
+  },
+  "使用系统浏览器打开手机版同步 App 的最新 GitHub Release 页面。": {
+    "zh_CN": "使用系统浏览器打开手机版同步 App 的最新 GitHub Release 页面。",
+    "en_US": "Open the latest mobile sync app release in your browser."
+  },
+  "使用系统程序打开 / Open with System": {
+    "zh_CN": "使用系统程序打开",
+    "en_US": "Open with System"
+  },
+  "例如 --listen --port 8188（可选）": {
+    "zh_CN": "例如 --listen --port 8188（可选）",
+    "en_US": "e.g. --listen --port 8188 (optional)"
+  },
+  "例如 --xformers --api（可选）": {
+    "zh_CN": "例如 --xformers --api（可选）",
+    "en_US": "e.g. --xformers --api (optional)"
+  },
+  "例如 run_nvidia_gpu.bat / main.py": {
+    "zh_CN": "例如 run_nvidia_gpu.bat",
+    "en_US": "main.py"
+  },
+  "例如 webui-user.bat / launch.py": {
+    "zh_CN": "例如 webui-user.bat",
+    "en_US": "launch.py"
+  },
+  "例如: BREAK, ADDCOMM, ADDBASE...": {
+    "zh_CN": "例如: BREAK, ADDCOMM, ADDBASE...",
+    "en_US": "e.g. BREAK, ADDCOMM, ADDBASE..."
+  },
+  "例如：, best quality": {
+    "zh_CN": "例如：, best quality",
+    "en_US": "e.g. , best quality"
+  },
+  "例如：--presence_penalty 1.0 --top_p 0.8 --top_k 20 --repeat_penalty 1.12": {
+    "zh_CN": "例如：--presence_penalty 1.0 --top_p 0.8 --top_k 20 --repeat_penalty 1.12",
+    "en_US": "e.g. --presence_penalty 1.0 --top_p 0.8 --top_k 20 --repeat_penalty 1.12"
+  },
+  "例如：my_trigger, ": {
+    "zh_CN": "例如：my_trigger, ",
+    "en_US": "e.g. my_trigger, "
+  },
+  "例如：把提示词里的人物 Arisu 换成 Mika，保留教室构图与蓝白色调，并尽量选择合适的 LoRA。": {
+    "zh_CN": "例如：把提示词里的人物 Arisu 换成 Mika，保留教室构图与蓝白色调，并尽量选择合适的 LoRA。",
+    "en_US": "e.g. Replace Arisu with Mika, preserve the classroom composition and blue-and-white palette, and select suitable LoRAs."
+  },
+  "例如：根据我历史常用 tag，生成一条偏向二次元、雨天窗边、细节丰富的人物 prompt。": {
+    "zh_CN": "例如：根据我历史常用 tag，生成一条偏向二次元、雨天窗边、细节丰富的人物 prompt。",
+    "en_US": "e.g. Use my tag history to generate a detailed anime character prompt set by a window on a rainy day."
+  },
+  "例如：这张图想保留整体构图，但把裙子从 striped skirt 改成更明确的 checkered skirt，并补全袜子与袖口细节。": {
+    "zh_CN": "例如：这张图想保留整体构图，但把裙子从 striped skirt 改成更明确的 checkered skirt，并补全袜子与袖口细节。",
+    "en_US": "e.g. Keep the composition, change striped skirt to checkered skirt, and add details to the socks and cuffs."
+  },
+  "保存": {
+    "zh_CN": "保存",
+    "en_US": "Save"
+  },
+  "保存 / Save": {
+    "zh_CN": "保存",
+    "en_US": "Save"
+  },
+  "保存后重启应用生效。": {
+    "zh_CN": "保存后重启应用生效。",
+    "en_US": "Restart the application to apply the saved language."
+  },
+  "保存失败": {
+    "zh_CN": "保存失败",
+    "en_US": "Save failed"
+  },
+  "保存失败：": {
+    "zh_CN": "保存失败：",
+    "en_US": "Save failed: "
+  },
+  "保存并应用": {
+    "zh_CN": "保存并应用",
+    "en_US": "Save and apply"
+  },
+  "保存并重新生成": {
+    "zh_CN": "保存并重新生成",
+    "en_US": "Save and regenerate"
+  },
+  "保存模板": {
+    "zh_CN": "保存模板",
+    "en_US": "Save template"
+  },
+  "保留旧版": {
+    "zh_CN": "保留旧版",
+    "en_US": "Keep old version"
+  },
+  "信息": {
+    "zh_CN": "信息",
+    "en_US": "Information"
+  },
+  "修改设置": {
+    "zh_CN": "修改设置",
+    "en_US": "Edit settings"
+  },
+  "候选数": {
+    "zh_CN": "候选数",
+    "en_US": "Candidates"
+  },
+  "候选显示数量": {
+    "zh_CN": "候选显示数量",
+    "en_US": "Suggestion limit"
+  },
+  "偏好提示词生成": {
+    "zh_CN": "偏好提示词生成",
+    "en_US": "Generate from preferences"
+  },
+  "停止": {
+    "zh_CN": "停止",
+    "en_US": "Stop"
+  },
+  "停止 / Stop": {
+    "zh_CN": "停止",
+    "en_US": "Stop"
+  },
+  "停止服务 / Stop": {
+    "zh_CN": "停止服务",
+    "en_US": "Stop"
+  },
+  "停止模型": {
+    "zh_CN": "停止模型",
+    "en_US": "Stop model"
+  },
+  "停止模型失败: ": {
+    "zh_CN": "停止模型失败: ",
+    "en_US": "Could not stop model: "
+  },
+  "停止生成": {
+    "zh_CN": "停止生成",
+    "en_US": "Stop generation"
+  },
+  "允许": {
+    "zh_CN": "允许",
+    "en_US": "Allow"
+  },
+  "元信息同步完成，共处理 %1 个模型。": {
+    "zh_CN": "元信息同步完成，共处理 %1 个模型。",
+    "en_US": "Metadata sync complete: %1 models processed."
+  },
+  "元信息扫描": {
+    "zh_CN": "元信息扫描",
+    "en_US": "Metadata scan"
+  },
+  "元信息扫描完成。": {
+    "zh_CN": "元信息扫描完成。",
+    "en_US": "Metadata scan complete."
+  },
+  "元信息扫描完成，共 %1 个模型。": {
+    "zh_CN": "元信息扫描完成，共 %1 个模型。",
+    "en_US": "Metadata scan complete: %1 models."
+  },
+  "元信息解析": {
+    "zh_CN": "元信息解析",
+    "en_US": "Metadata parser"
+  },
+  "元数据": {
+    "zh_CN": "元数据",
+    "en_US": "Metadata"
+  },
+  "元数据健康检查": {
+    "zh_CN": "元数据健康检查",
+    "en_US": "Metadata health check"
+  },
+  "元数据健康检查完成。": {
+    "zh_CN": "元数据健康检查完成。",
+    "en_US": "Metadata health check complete."
+  },
+  "元数据健康检查完成，共 %1 条问题/提示。": {
+    "zh_CN": "元数据健康检查完成，共 %1 条问题/提示。",
+    "en_US": "Metadata health check complete: %1 issues or notices."
+  },
+  "元数据已更新": {
+    "zh_CN": "元数据已更新",
+    "en_US": "Metadata updated"
+  },
+  "元数据获取失败: ": {
+    "zh_CN": "元数据获取失败: ",
+    "en_US": "Metadata request failed: "
+  },
+  "元数据解析失败": {
+    "zh_CN": "元数据解析失败",
+    "en_US": "Could not parse metadata"
+  },
+  "全局占位符定义，例如名称、显示名、文本/单选/多选类型。": {
+    "zh_CN": "全局占位符定义，例如名称、显示名、文本/单选/多选类型。",
+    "en_US": "Define global placeholders: name, label, text/single-choice/multiple-choice type."
+  },
+  "全选": {
+    "zh_CN": "全选",
+    "en_US": "Select all"
+  },
+  "全选 / 取消全选": {
+    "zh_CN": "全选 / 取消全选",
+    "en_US": "Select / Deselect all"
+  },
+  "全选 / 取消全选当前显示的 Tag": {
+    "zh_CN": "全选 / 取消全选当前显示的 Tag",
+    "en_US": "Select / Deselect all visible tags"
+  },
+  "全选当前 Tab": {
+    "zh_CN": "全选当前 Tab",
+    "en_US": "Select all in current tab"
+  },
+  "全选当前分类": {
+    "zh_CN": "全选当前分类",
+    "en_US": "Select all in category"
+  },
+  "全部": {
+    "zh_CN": "全部",
+    "en_US": "All"
+  },
+  "全部任务": {
+    "zh_CN": "全部任务",
+    "en_US": "All tasks"
+  },
+  "共 %1 条收藏。": {
+    "zh_CN": "共 %1 条收藏。",
+    "en_US": "%1 favorites."
+  },
+  "共 %1 条用户使用 Tag 记录  |  %2": {
+    "zh_CN": "共 %1 条用户使用 Tag 记录  |  %2",
+    "en_US": "%1 user tag entries | %2"
+  },
+  "共同 Tag": {
+    "zh_CN": "共同 Tag",
+    "en_US": "Shared tags"
+  },
+  "关键参数差异": {
+    "zh_CN": "关键参数差异",
+    "en_US": "Generation parameter differences"
+  },
+  "关闭 / Close": {
+    "zh_CN": "关闭",
+    "en_US": "Close"
+  },
+  "其他": {
+    "zh_CN": "其他",
+    "en_US": "Other"
+  },
+  "内容过滤 / NSFW Filter": {
+    "zh_CN": "内容过滤",
+    "en_US": "NSFW Filter"
+  },
+  "内置图片浏览器 / Image Viewer": {
+    "zh_CN": "内置图片浏览器",
+    "en_US": "Image Viewer"
+  },
+  "出错": {
+    "zh_CN": "出错",
+    "en_US": "Errors"
+  },
+  "分类": {
+    "zh_CN": "分类",
+    "en_US": "Category"
+  },
+  "分类，例如 Character / Outfit / Quality": {
+    "zh_CN": "分类，例如 Character / Outfit / Quality",
+    "en_US": "Category, e.g. Character / Outfit / Quality"
+  },
+  "切换 Tag 列表排序方式": {
+    "zh_CN": "切换 Tag 列表排序方式",
+    "en_US": "Change tag sort order"
+  },
+  "切换到此页面后会读取 user_gallery_cache.json 并统计用户使用过的 Tag。": {
+    "zh_CN": "切换到此页面后会读取 user_gallery_cache.json 并统计用户使用过的 Tag。",
+    "en_US": "Opening this page reads user_gallery_cache.json to count tags used in your images."
+  },
+  "切换到此页面后会读取用户图库缓存。": {
+    "zh_CN": "切换到此页面后会读取用户图库缓存。",
+    "en_US": "The gallery cache loads when this page is opened."
+  },
+  "删除": {
+    "zh_CN": "删除",
+    "en_US": "Delete"
+  },
+  "删除 / Delete": {
+    "zh_CN": "删除",
+    "en_US": "Delete"
+  },
+  "删除 / Delete Collection": {
+    "zh_CN": "删除",
+    "en_US": "Delete Collection"
+  },
+  "删除主题": {
+    "zh_CN": "删除主题",
+    "en_US": "Delete theme"
+  },
+  "删除主题 / Delete Theme": {
+    "zh_CN": "删除主题",
+    "en_US": "Delete Theme"
+  },
+  "删除反推历史": {
+    "zh_CN": "删除反推历史",
+    "en_US": "Delete inference history"
+  },
+  "删除失败": {
+    "zh_CN": "删除失败",
+    "en_US": "Delete failed"
+  },
+  "删除失败：内置主题不可删，或文件无法移除。": {
+    "zh_CN": "删除失败：内置主题不可删，或文件无法移除。",
+    "en_US": "Could not delete the theme. Built-in themes cannot be deleted, or the file is inaccessible."
+  },
+  "删除对话": {
+    "zh_CN": "删除对话",
+    "en_US": "Delete conversation"
+  },
+  "删除当前选中的用户自定义主题（内置主题不可删）。": {
+    "zh_CN": "删除当前选中的用户自定义主题（内置主题不可删）。",
+    "en_US": "Delete the selected custom theme. Built-in themes cannot be deleted."
+  },
+  "删除收藏": {
+    "zh_CN": "删除收藏",
+    "en_US": "Delete favorite"
+  },
+  "删除消息": {
+    "zh_CN": "删除消息",
+    "en_US": "Delete message"
+  },
+  "删除选中": {
+    "zh_CN": "删除选中",
+    "en_US": "Delete selected"
+  },
+  "删除预览图": {
+    "zh_CN": "删除预览图",
+    "en_US": "Delete preview"
+  },
+  "删除预设": {
+    "zh_CN": "删除预设",
+    "en_US": "Delete preset"
+  },
+  "刷新": {
+    "zh_CN": "刷新",
+    "en_US": "Refresh"
+  },
+  "刷新分析": {
+    "zh_CN": "刷新分析",
+    "en_US": "Refresh analysis"
+  },
+  "前后缀不会自动补逗号或空格。": {
+    "zh_CN": "前后缀不会自动补逗号或空格。",
+    "en_US": "Prefixes and suffixes do not add commas or spaces automatically."
+  },
+  "前往下载 / Download": {
+    "zh_CN": "前往下载",
+    "en_US": "Download"
+  },
+  "加载完成，共 %1 个模型": {
+    "zh_CN": "加载完成，共 %1 个模型",
+    "en_US": "Loaded %1 models"
+  },
+  "勾选后使用右侧文本框的内容作为 UA；未勾选则每次启动随机生成。": {
+    "zh_CN": "勾选后使用右侧文本框的内容作为 UA；未勾选则每次启动随机生成。",
+    "en_US": "Use the text on the right as the user agent. When disabled, generate a random one at startup."
+  },
+  "勾选后将搜索子目录下的图片文件。默认关闭以提高性能。": {
+    "zh_CN": "勾选后将搜索子目录下的图片文件。默认关闭以提高性能。",
+    "en_US": "Search subfolders for images. Disabled by default for faster scanning."
+  },
+  "勾选后将搜索子目录下的模型文件。": {
+    "zh_CN": "勾选后将搜索子目录下的模型文件。",
+    "en_US": "Search subfolders for models."
+  },
+  "勾选后，Collections 侧边栏先按 LoRA 根目录分组，再在每个文件夹下显示收藏夹。": {
+    "zh_CN": "勾选后，Collections 侧边栏先按 LoRA 根目录分组，再在每个文件夹下显示收藏夹。",
+    "en_US": "Group Collections by model root folder first, then by collection."
+  },
+  "勾选后，Collections 侧边栏先显示收藏夹，再在收藏夹下按 LoRA 根目录分组。": {
+    "zh_CN": "勾选后，Collections 侧边栏先显示收藏夹，再在收藏夹下按 LoRA 根目录分组。",
+    "en_US": "Show collections first, then group their models by root folder."
+  },
+  "勾选后，Models 列表会按已启用的 LoRA 根目录分组显示。": {
+    "zh_CN": "勾选后，Models 列表会按已启用的 LoRA 根目录分组显示。",
+    "en_US": "Group the Models list by enabled model root folders."
+  },
+  "勾选后，不再弹出“检测到 X 个本地/已编辑模型”的总量提醒；单个模型的覆盖确认仍会保留。": {
+    "zh_CN": "勾选后，不再弹出“检测到 X 个本地/已编辑模型”的总量提醒；单个模型的覆盖确认仍会保留。",
+    "en_US": "Hide the local/edited model count warning. Individual overwrite confirmations still appear."
+  },
+  "勾选后，如果本地存在 JSON 元数据，将显示模型的真实名称（如 'ChilloutMix [Pruned]'）而非文件名。": {
+    "zh_CN": "勾选后，如果本地存在 JSON 元数据，将显示模型的真实名称（如 'ChilloutMix [Pruned]'）而非文件名。",
+    "en_US": "Display the model's Civitai name from local JSON metadata instead of its filename."
+  },
+  "包含匹配": {
+    "zh_CN": "包含匹配",
+    "en_US": "Contains"
+  },
+  "匹配 %1 条": {
+    "zh_CN": "匹配 %1 条",
+    "en_US": "%1 matches"
+  },
+  "单图或批量 WD14 正在运行，请等待或先停止。": {
+    "zh_CN": "单图或批量 WD14 正在运行，请等待或先停止。",
+    "en_US": "Single-image or batch WD14 inference is running. Wait or stop it first."
+  },
+  "单选": {
+    "zh_CN": "单选",
+    "en_US": "Single choice"
+  },
+  "单选/多选的候选项。选项内容可以包含换行，也可以为空。": {
+    "zh_CN": "单选/多选的候选项。选项内容可以包含换行，也可以为空。",
+    "en_US": "Choices for single- or multiple-choice placeholders. A choice may contain line breaks or be empty."
+  },
+  "占位符": {
+    "zh_CN": "占位符",
+    "en_US": "Placeholders"
+  },
+  "占位符名称不能为空。": {
+    "zh_CN": "占位符名称不能为空。",
+    "en_US": "Placeholder name cannot be empty."
+  },
+  "占位符名称已存在。": {
+    "zh_CN": "占位符名称已存在。",
+    "en_US": "A placeholder with this name already exists."
+  },
+  "占位符名称，例如 character": {
+    "zh_CN": "占位符名称，例如 character",
+    "en_US": "Placeholder name, e.g. character"
+  },
+  "占位管理": {
+    "zh_CN": "占位管理",
+    "en_US": "Placeholder management"
+  },
+  "占位选项内容": {
+    "zh_CN": "占位选项内容",
+    "en_US": "Placeholder choice text"
+  },
+  "占比": {
+    "zh_CN": "占比",
+    "en_US": "Share"
+  },
+  "占用": {
+    "zh_CN": "占用",
+    "en_US": "Size"
+  },
+  "占用最大的模型": {
+    "zh_CN": "占用最大的模型",
+    "en_US": "Largest models"
+  },
+  "历史": {
+    "zh_CN": "历史",
+    "en_US": "History"
+  },
+  "历史图片已移动或删除\n请重新选择图片": {
+    "zh_CN": "历史图片已移动或删除\n请重新选择图片",
+    "en_US": "The history image was moved or deleted\nSelect another image"
+  },
+  "原始 Metadata / Raw Metadata": {
+    "zh_CN": "原始 Metadata",
+    "en_US": "Raw Metadata"
+  },
+  "原始提示词可留空；如果有想延续的 prompt，也可以粘贴进来。": {
+    "zh_CN": "原始提示词可留空；如果有想延续的 prompt，也可以粘贴进来。",
+    "en_US": "Original prompt (optional). Paste a prompt you want to build on."
+  },
+  "原始提示词，可为空；如果是人物/服装替换，建议粘贴原 prompt。": {
+    "zh_CN": "原始提示词，可为空；如果是人物/服装替换，建议粘贴原 prompt。",
+    "en_US": "Original prompt (optional). Recommended for character or outfit replacement."
+  },
+  "参数": {
+    "zh_CN": "参数",
+    "en_US": "Parameters"
+  },
+  "参数说明": {
+    "zh_CN": "参数说明",
+    "en_US": "Parameter help"
+  },
+  "参数辅助": {
+    "zh_CN": "参数辅助",
+    "en_US": "Parameter assistant"
+  },
+  "参考图片": {
+    "zh_CN": "参考图片",
+    "en_US": "Reference images"
+  },
+  "反推": {
+    "zh_CN": "反推",
+    "en_US": "Interrogate"
+  },
+  "反推完成后，这里显示最终标签文本。": {
+    "zh_CN": "反推完成后，这里显示最终标签文本。",
+    "en_US": "Final tags will appear here after inference."
+  },
+  "反推模型路径": {
+    "zh_CN": "反推模型路径",
+    "en_US": "Tagger model path"
+  },
+  "发现新版本": {
+    "zh_CN": "发现新版本",
+    "en_US": "New version available"
+  },
+  "发送": {
+    "zh_CN": "发送",
+    "en_US": "Send"
+  },
+  "发送参数": {
+    "zh_CN": "发送参数",
+    "en_US": "Request parameters"
+  },
+  "发送图片": {
+    "zh_CN": "发送图片",
+    "en_US": "Send images"
+  },
+  "取消": {
+    "zh_CN": "取消",
+    "en_US": "Cancel"
+  },
+  "取消全选当前 Tab": {
+    "zh_CN": "取消全选当前 Tab",
+    "en_US": "Deselect all in current tab"
+  },
+  "取消全选当前分类": {
+    "zh_CN": "取消全选当前分类",
+    "en_US": "Deselect all in category"
+  },
+  "取消同步": {
+    "zh_CN": "取消同步",
+    "en_US": "Cancel sync"
+  },
+  "取消忽略": {
+    "zh_CN": "取消忽略",
+    "en_US": "Unignore"
+  },
+  "取消所有选择": {
+    "zh_CN": "取消所有选择",
+    "en_US": "Deselect all"
+  },
+  "取消选中的 Tag": {
+    "zh_CN": "取消选中的 Tag",
+    "en_US": "Deselect tags"
+  },
+  "取消选择": {
+    "zh_CN": "取消选择",
+    "en_US": "Deselect"
+  },
+  "可在下载页元信息扫描中同步": {
+    "zh_CN": "可在下载页元信息扫描中同步",
+    "en_US": "Sync from the metadata scan tab in Downloads"
+  },
+  "可在详情页或元信息同步后重新同步预览图": {
+    "zh_CN": "可在详情页或元信息同步后重新同步预览图",
+    "en_US": "Resync previews from model details or metadata sync"
+  },
+  "可搜索英文 Tag 或中文翻译，空格和下划线视为相同": {
+    "zh_CN": "可搜索英文 Tag 或中文翻译，空格和下划线视为相同",
+    "en_US": "Search tags or translations. Spaces and underscores are equivalent."
+  },
+  "可添加多个 LoRA 模型目录。通过右侧复选框控制是否启用扫描。": {
+    "zh_CN": "可添加多个 LoRA 模型目录。通过右侧复选框控制是否启用扫描。",
+    "en_US": "Add multiple model folders. Use the checkboxes to enable or disable scanning."
+  },
+  "可添加多个 Tag 翻译 CSV。列表越靠上优先级越高，可通过右侧复选框临时停用。": {
+    "zh_CN": "可添加多个 Tag 翻译 CSV。列表越靠上优先级越高，可通过右侧复选框临时停用。",
+    "en_US": "Add multiple tag CSV dictionaries. Higher entries take priority; checkboxes temporarily disable entries."
+  },
+  "可添加多个图库目录。通过右侧复选框控制是否启用扫描。": {
+    "zh_CN": "可添加多个图库目录。通过右侧复选框控制是否启用扫描。",
+    "en_US": "Add multiple gallery folders. Use the checkboxes to enable or disable scanning."
+  },
+  "可添加多个路径。": {
+    "zh_CN": "可添加多个路径。",
+    "en_US": "Multiple paths are supported."
+  },
+  "可识别便携包 BAT 中的 Python 与 main.py 参数。": {
+    "zh_CN": "可识别便携包 BAT 中的 Python 与 main.py 参数。",
+    "en_US": "Detects Python and main.py arguments in portable BAT launchers."
+  },
+  "可选：用于认证下载和访问收藏资源": {
+    "zh_CN": "可选：用于认证下载和访问收藏资源",
+    "en_US": "Optional: authenticate downloads and access collection resources"
+  },
+  "可选：留空使用程序内置 scripts/wd14_tagger.py": {
+    "zh_CN": "可选：留空使用程序内置 scripts/wd14_tagger.py",
+    "en_US": "Optional: leave blank to use the bundled scripts/wd14_tagger.py"
+  },
+  "可选：管理多个 csv 文件，上方优先覆盖": {
+    "zh_CN": "可选：管理多个 csv 文件，上方优先覆盖",
+    "en_US": "Optional: manage multiple CSV files. Higher entries take priority."
+  },
+  "可选：选择 SD/WebUI/ComfyUI 环境中的 python.exe；留空则使用系统 python": {
+    "zh_CN": "可选：选择 SD/WebUI/ComfyUI 环境中的 python.exe；留空则使用系统 python",
+    "en_US": "Optional: select python.exe from SD/WebUI/ComfyUI. Leave blank to use system Python."
+  },
+  "合并结果": {
+    "zh_CN": "合并结果",
+    "en_US": "Merged dictionary"
+  },
+  "合并结果（可编辑）": {
+    "zh_CN": "合并结果（可编辑）",
+    "en_US": "Merged dictionary (editable)"
+  },
+  "合并词表未加载": {
+    "zh_CN": "合并词表未加载",
+    "en_US": "Merged dictionary not loaded"
+  },
+  "同时加载图片的数量。默认 4。设置过高可能会卡顿。": {
+    "zh_CN": "同时加载图片的数量。默认 4。设置过高可能会卡顿。",
+    "en_US": "Concurrent image loads. Default: 4. High values may cause lag."
+  },
+  "同步元数据时重新计算已有 Hash / Recalculate cached Hash when syncing metadata": {
+    "zh_CN": "同步元数据时重新计算已有 Hash",
+    "en_US": "Recalculate cached Hash when syncing metadata"
+  },
+  "同步失败": {
+    "zh_CN": "同步失败",
+    "en_US": "Sync failed"
+  },
+  "同步失败: %1": {
+    "zh_CN": "同步失败: %1",
+    "en_US": "Sync failed: %1"
+  },
+  "同步失败缓存: %1": {
+    "zh_CN": "同步失败缓存: %1",
+    "en_US": "Previous sync failure: %1"
+  },
+  "同步失败缓存: 已记录": {
+    "zh_CN": "同步失败缓存: 已记录",
+    "en_US": "Previous sync failure recorded"
+  },
+  "同步或更新前会按本地保护逻辑确认": {
+    "zh_CN": "同步或更新前会按本地保护逻辑确认",
+    "en_US": "Local protection asks for confirmation before syncing or updating"
+  },
+  "同步文件夹列表 / Sync Folders:": {
+    "zh_CN": "同步文件夹列表",
+    "en_US": "Sync Folders:"
+  },
+  "同步时间": {
+    "zh_CN": "同步时间",
+    "en_US": "Synced time"
+  },
+  "同步预览图": {
+    "zh_CN": "同步预览图",
+    "en_US": "Sync previews"
+  },
+  "名称": {
+    "zh_CN": "名称",
+    "en_US": "Name"
+  },
+  "名称 / Name:": {
+    "zh_CN": "名称",
+    "en_US": "Name:"
+  },
+  "名称:": {
+    "zh_CN": "名称:",
+    "en_US": "Name:"
+  },
+  "名称匹配": {
+    "zh_CN": "名称匹配",
+    "en_US": "Name matching"
+  },
+  "启动 / Start": {
+    "zh_CN": "启动",
+    "en_US": "Start"
+  },
+  "启动入口 (*.bat *.cmd *.py *.exe);;所有文件 (*)": {
+    "zh_CN": "启动入口 (*.bat *.cmd *.py *.exe);;所有文件 (*)",
+    "en_US": "Launchers (*.bat *.cmd *.py *.exe);;All files (*)"
+  },
+  "启动参数说明": {
+    "zh_CN": "启动参数说明",
+    "en_US": "Launcher parameter help"
+  },
+  "启动器": {
+    "zh_CN": "启动器",
+    "en_US": "Launcher"
+  },
+  "启动器中仍有 A1111/ComfyUI 进程正在运行，关闭软件会一并结束它们。\n确定要退出吗？": {
+    "zh_CN": "启动器中仍有 A1111/ComfyUI 进程正在运行，关闭软件会一并结束它们。\n确定要退出吗？",
+    "en_US": "A1111 or ComfyUI is still running. Closing the application will stop these processes.\nExit anyway?"
+  },
+  "启动器运行时关闭软件需确认 / Confirm on close while launcher is running": {
+    "zh_CN": "启动器运行时关闭软件需确认",
+    "en_US": "Confirm on close while launcher is running"
+  },
+  "启动时恢复菜单 / Restore Menu on Startup": {
+    "zh_CN": "启动时恢复菜单",
+    "en_US": "Restore Menu on Startup"
+  },
+  "启动时自动检查更新 / Auto check updates on startup": {
+    "zh_CN": "启动时自动检查更新",
+    "en_US": "Auto check updates on startup"
+  },
+  "启动服务 / Start": {
+    "zh_CN": "启动服务",
+    "en_US": "Start"
+  },
+  "启动脚本/程序": {
+    "zh_CN": "启动脚本/程序",
+    "en_US": "Launch script / program"
+  },
+  "启动脚本/程序 (*.bat *.cmd *.py *.exe);;所有文件 (*)": {
+    "zh_CN": "启动脚本/程序 (*.bat *.cmd *.py *.exe);;所有文件 (*)",
+    "en_US": "Launch scripts / programs (*.bat *.cmd *.py *.exe);;All files (*)"
+  },
+  "启动脚本/程序路径无效，请先选择有效的脚本或可执行文件。": {
+    "zh_CN": "启动脚本/程序路径无效，请先选择有效的脚本或可执行文件。",
+    "en_US": "The launch path is invalid. Select a valid script or executable."
+  },
+  "启动软件后自动检查 GitHub Release。只有发现新版本时弹窗提醒。": {
+    "zh_CN": "启动软件后自动检查 GitHub Release。只有发现新版本时弹窗提醒。",
+    "en_US": "Check GitHub Releases at startup. Notify only when a new version is available."
+  },
+  "启动软件时自动开启同步 / Auto Start": {
+    "zh_CN": "启动软件时自动开启同步",
+    "en_US": "Auto Start"
+  },
+  "启动配置": {
+    "zh_CN": "启动配置",
+    "en_US": "Launch configuration"
+  },
+  "启用": {
+    "zh_CN": "启用",
+    "en_US": "Enabled"
+  },
+  "启用自动补全的输入框：": {
+    "zh_CN": "启用自动补全的输入框：",
+    "en_US": "Enable autocomplete in:"
+  },
+  "命令行参数": {
+    "zh_CN": "命令行参数",
+    "en_US": "Command-line arguments"
+  },
+  "图库文件夹 / Gallery:": {
+    "zh_CN": "图库文件夹",
+    "en_US": "Gallery:"
+  },
+  "图库路径管理": {
+    "zh_CN": "图库路径管理",
+    "en_US": "Gallery paths"
+  },
+  "图片": {
+    "zh_CN": "图片",
+    "en_US": "Image"
+  },
+  "图片\n无法读取": {
+    "zh_CN": "图片\n无法读取",
+    "en_US": "Image\nCannot read"
+  },
+  "图片\n缺失": {
+    "zh_CN": "图片\n缺失",
+    "en_US": "Image\nMissing"
+  },
+  "图片 A": {
+    "zh_CN": "图片 A",
+    "en_US": "Image A"
+  },
+  "图片 A\n点击或拖入图片": {
+    "zh_CN": "图片 A\n点击或拖入图片",
+    "en_US": "Image A\nClick or drop an image"
+  },
+  "图片 A Tags": {
+    "zh_CN": "图片 A Tags",
+    "en_US": "Image A tags"
+  },
+  "图片 A 不存在。": {
+    "zh_CN": "图片 A 不存在。",
+    "en_US": "Image A does not exist."
+  },
+  "图片 A 未解析到可用元数据。": {
+    "zh_CN": "图片 A 未解析到可用元数据。",
+    "en_US": "No usable metadata found in image A."
+  },
+  "图片 B": {
+    "zh_CN": "图片 B",
+    "en_US": "Image B"
+  },
+  "图片 B\n点击或拖入图片": {
+    "zh_CN": "图片 B\n点击或拖入图片",
+    "en_US": "Image B\nClick or drop an image"
+  },
+  "图片 B Tags": {
+    "zh_CN": "图片 B Tags",
+    "en_US": "Image B tags"
+  },
+  "图片 B 不存在。": {
+    "zh_CN": "图片 B 不存在。",
+    "en_US": "Image B does not exist."
+  },
+  "图片 B 未解析到可用元数据。": {
+    "zh_CN": "图片 B 未解析到可用元数据。",
+    "en_US": "No usable metadata found in image B."
+  },
+  "图片不存在。": {
+    "zh_CN": "图片不存在。",
+    "en_US": "Image does not exist."
+  },
+  "图片保存失败，请检查文件格式。": {
+    "zh_CN": "图片保存失败，请检查文件格式。",
+    "en_US": "Could not save the image. Check its file format."
+  },
+  "图片元数据中没有解析出可用 Tag。": {
+    "zh_CN": "图片元数据中没有解析出可用 Tag。",
+    "en_US": "No usable tags were found in the image metadata."
+  },
+  "图片对比": {
+    "zh_CN": "图片对比",
+    "en_US": "Image comparison"
+  },
+  "图片提取提示词": {
+    "zh_CN": "图片提取提示词",
+    "en_US": "Extract image prompts"
+  },
+  "图片文件夹": {
+    "zh_CN": "图片文件夹",
+    "en_US": "Image folder"
+  },
+  "图片浏览器 / Image Viewer": {
+    "zh_CN": "图片浏览器",
+    "en_US": "Image Viewer"
+  },
+  "图片渲染线程数 / Render Threads:": {
+    "zh_CN": "图片渲染线程数",
+    "en_US": "Render Threads:"
+  },
+  "图片调整": {
+    "zh_CN": "图片调整",
+    "en_US": "Image adjustment"
+  },
+  "图片：%1 张（%2%3）": {
+    "zh_CN": "图片：%1 张（%2%3）",
+    "en_US": "Images: %1 (%2%3)"
+  },
+  "图片：未选择": {
+    "zh_CN": "图片：未选择",
+    "en_US": "Images: none selected"
+  },
+  "在“提示词生成”和“模板与占位管理”中编辑提示词时，输入会自动弹出候选词（含翻译）。候选来源于已加载的翻译词表，兼容 a1111 与 ComfyUI 词表格式。": {
+    "zh_CN": "在“提示词生成”和“模板与占位管理”中编辑提示词时，输入会自动弹出候选词（含翻译）。候选来源于已加载的翻译词表，兼容 a1111 与 ComfyUI 词表格式。",
+    "en_US": "Autocomplete suggestions, including translations, appear when editing prompts in Generate or Template Management. Suggestions use the loaded A1111 or ComfyUI dictionaries."
+  },
+  "在弹窗中查看完整简介并复制文本": {
+    "zh_CN": "在弹窗中查看完整简介并复制文本",
+    "en_US": "View and copy the full description in a dialog"
+  },
+  "在文本编辑与标签视图之间切换": {
+    "zh_CN": "在文本编辑与标签视图之间切换",
+    "en_US": "Switch between text editing and tag view"
+  },
+  "在文本编辑与标签视图之间切换（文本视图可编辑/复制/粘贴）": {
+    "zh_CN": "在文本编辑与标签视图之间切换（文本视图可编辑/复制/粘贴）",
+    "en_US": "Switch between text editing and tag view (edit, copy and paste in text view)"
+  },
+  "在结果中包含标签的匹配置信度": {
+    "zh_CN": "在结果中包含标签的匹配置信度",
+    "en_US": "Include tag confidence in the result"
+  },
+  "在这里编辑当前选项内容；可以包含换行，也可以留空作为空选项。": {
+    "zh_CN": "在这里编辑当前选项内容；可以包含换行，也可以留空作为空选项。",
+    "en_US": "Edit this choice. It may contain line breaks or be left blank."
+  },
+  "基于 / Base:": {
+    "zh_CN": "基于",
+    "en_US": "Base:"
+  },
+  "备注": {
+    "zh_CN": "备注",
+    "en_US": "Notes"
+  },
+  "复制": {
+    "zh_CN": "复制",
+    "en_US": "Copy"
+  },
+  "复制 \"": {
+    "zh_CN": "复制 \"",
+    "en_US": "Copy \""
+  },
+  "复制 / Copy": {
+    "zh_CN": "复制",
+    "en_US": "Copy"
+  },
+  "复制 LoRA 标签，例如 <lora:plana:1>": {
+    "zh_CN": "复制 LoRA 标签，例如 <lora:plana:1>",
+    "en_US": "Copy a LoRA tag, e.g. <lora:plana:1>"
+  },
+  "复制仅 A": {
+    "zh_CN": "复制仅 A",
+    "en_US": "Copy A only"
+  },
+  "复制仅 B": {
+    "zh_CN": "复制仅 B",
+    "en_US": "Copy B only"
+  },
+  "复制全部": {
+    "zh_CN": "复制全部",
+    "en_US": "Copy all"
+  },
+  "复制全部 / Copy All": {
+    "zh_CN": "复制全部",
+    "en_US": "Copy All"
+  },
+  "复制全部 Tags": {
+    "zh_CN": "复制全部 Tags",
+    "en_US": "Copy all tags"
+  },
+  "复制全部差异": {
+    "zh_CN": "复制全部差异",
+    "en_US": "Copy all differences"
+  },
+  "复制共同": {
+    "zh_CN": "复制共同",
+    "en_US": "Copy shared"
+  },
+  "复制到剪贴板": {
+    "zh_CN": "复制到剪贴板",
+    "en_US": "Copy to clipboard"
+  },
+  "复制已选中的 Tags": {
+    "zh_CN": "复制已选中的 Tags",
+    "en_US": "Copy selected tags"
+  },
+  "复制当前单元格": {
+    "zh_CN": "复制当前单元格",
+    "en_US": "Copy current cell"
+  },
+  "复制提示词": {
+    "zh_CN": "复制提示词",
+    "en_US": "Copy prompt"
+  },
+  "复制正面": {
+    "zh_CN": "复制正面",
+    "en_US": "Copy positive"
+  },
+  "复制消息": {
+    "zh_CN": "复制消息",
+    "en_US": "Copy message"
+  },
+  "复制生成参数 / Copy Gen Params": {
+    "zh_CN": "复制生成参数",
+    "en_US": "Copy Gen Params"
+  },
+  "复制符合SD WebUI格式的完整参数，\n粘贴进提示词框后可直接点击↙️按钮读取。": {
+    "zh_CN": "复制符合SD WebUI格式的完整参数，\n粘贴进提示词框后可直接点击↙️按钮读取。",
+    "en_US": "Copy complete SD WebUI parameters.\nPaste into the prompt field and click ↙️ to load them."
+  },
+  "复制结果": {
+    "zh_CN": "复制结果",
+    "en_US": "Copy result"
+  },
+  "复制节点 JSON": {
+    "zh_CN": "复制节点 JSON",
+    "en_US": "Copy node JSON"
+  },
+  "复制负面": {
+    "zh_CN": "复制负面",
+    "en_US": "Copy negative"
+  },
+  "复制路径 / Copy Path": {
+    "zh_CN": "复制路径",
+    "en_US": "Copy Path"
+  },
+  "复制选中 / Copy Selected": {
+    "zh_CN": "复制选中",
+    "en_US": "Copy Selected"
+  },
+  "复制选中 Tag": {
+    "zh_CN": "复制选中 Tag",
+    "en_US": "Copy selected tags"
+  },
+  "复制选中 Tags": {
+    "zh_CN": "复制选中 Tags",
+    "en_US": "Copy selected tags"
+  },
+  "复制选中行": {
+    "zh_CN": "复制选中行",
+    "en_US": "Copy selected rows"
+  },
+  "复制选中问题": {
+    "zh_CN": "复制选中问题",
+    "en_US": "Copy selected issues"
+  },
+  "外观 / Appearance": {
+    "zh_CN": "外观",
+    "en_US": "Appearance"
+  },
+  "外部 QSS / Custom QSS:": {
+    "zh_CN": "外部 QSS",
+    "en_US": "Custom QSS:"
+  },
+  "多选": {
+    "zh_CN": "多选",
+    "en_US": "Multiple choice"
+  },
+  "大小: ": {
+    "zh_CN": "大小: ",
+    "en_US": "Size: "
+  },
+  "失败": {
+    "zh_CN": "失败",
+    "en_US": "Failed"
+  },
+  "失败: %1": {
+    "zh_CN": "失败: %1",
+    "en_US": "Failed: %1"
+  },
+  "如何保存 %1 的新版本？": {
+    "zh_CN": "如何保存 %1 的新版本？",
+    "en_US": "How should the new version of %1 be saved?"
+  },
+  "如果取消勾选，不包含任何模型（或被搜索过滤后为空）的收藏夹将不会显示在侧边栏中。": {
+    "zh_CN": "如果取消勾选，不包含任何模型（或被搜索过滤后为空）的收藏夹将不会显示在侧边栏中。",
+    "en_US": "Hide collections with no models, including collections emptied by search filters."
+  },
+  "如果模型返回 reasoning / thinking 内容，会显示在这里。": {
+    "zh_CN": "如果模型返回 reasoning / thinking 内容，会显示在这里。",
+    "en_US": "Model reasoning or thinking content appears here."
+  },
+  "字母序": {
+    "zh_CN": "字母序",
+    "en_US": "Alphabetical"
+  },
+  "存在同步失败缓存": {
+    "zh_CN": "存在同步失败缓存",
+    "en_US": "Previous sync failure recorded"
+  },
+  "存在同步失败缓存: %1": {
+    "zh_CN": "存在同步失败缓存: %1",
+    "en_US": "Previous sync failed: %1"
+  },
+  "存在未填写占位符: ": {
+    "zh_CN": "存在未填写占位符: ",
+    "en_US": "Unfilled placeholders: "
+  },
+  "完全匹配": {
+    "zh_CN": "完全匹配",
+    "en_US": "Exact match"
+  },
+  "对话": {
+    "zh_CN": "对话",
+    "en_US": "Chat"
+  },
+  "对话标题:": {
+    "zh_CN": "对话标题:",
+    "en_US": "Conversation title:"
+  },
+  "导入仅静态读取脚本，不执行命令。": {
+    "zh_CN": "导入仅静态读取脚本，不执行命令。",
+    "en_US": "Import reads scripts without executing commands."
+  },
+  "导入启动参数": {
+    "zh_CN": "导入启动参数",
+    "en_US": "Import launch parameters"
+  },
+  "导出 CSV": {
+    "zh_CN": "导出 CSV",
+    "en_US": "Export CSV"
+  },
+  "导出 Tags 到 CSV": {
+    "zh_CN": "导出 Tags 到 CSV",
+    "en_US": "Export tags to CSV"
+  },
+  "导出使用分析 CSV": {
+    "zh_CN": "导出使用分析 CSV",
+    "en_US": "Export usage analysis CSV"
+  },
+  "导出成功！": {
+    "zh_CN": "导出成功！",
+    "en_US": "Export complete!"
+  },
+  "导出范围:": {
+    "zh_CN": "导出范围:",
+    "en_US": "Export scope:"
+  },
+  "封面 / Cover": {
+    "zh_CN": "封面",
+    "en_US": "Cover"
+  },
+  "封面或目标预览图文件不存在，未修改图片顺序。": {
+    "zh_CN": "封面或目标预览图文件不存在，未修改图片顺序。",
+    "en_US": "The cover or target preview file is missing. Image order was preserved."
+  },
+  "将文件夹作为收藏夹二级分类 / Folder as Second Collection Level": {
+    "zh_CN": "将文件夹作为收藏夹二级分类",
+    "en_US": "Folder as Second Collection Level"
+  },
+  "将文件夹作为收藏夹顶层分类 / Folder as Top Collection Level": {
+    "zh_CN": "将文件夹作为收藏夹顶层分类",
+    "en_US": "Folder as Top Collection Level"
+  },
+  "将结果中的括号进行转义处理": {
+    "zh_CN": "将结果中的括号进行转义处理",
+    "en_US": "Escape parentheses in the output"
+  },
+  "尚未加载翻译词表 (CSV)。\n是否现在前往设置页面进行设置？\n\n(格式: 英文,中文)": {
+    "zh_CN": "尚未加载翻译词表 (CSV)。\n是否现在前往设置页面进行设置？\n\n(格式: 英文,中文)",
+    "en_US": "No translation dictionary is loaded.\nOpen Settings to configure one?\n\n(Format: tag,translation)"
+  },
+  "尺寸: %1 x %2": {
+    "zh_CN": "尺寸: %1 x %2",
+    "en_US": "Size: %1 x %2"
+  },
+  "尺寸: -": {
+    "zh_CN": "尺寸: -",
+    "en_US": "Size: -"
+  },
+  "展开筛选": {
+    "zh_CN": "展开筛选",
+    "en_US": "Expand filters"
+  },
+  "工作目录(可选)": {
+    "zh_CN": "工作目录(可选)",
+    "en_US": "Working directory (optional)"
+  },
+  "已从 %1 移除 %2 个模型": {
+    "zh_CN": "已从 %1 移除 %2 个模型",
+    "en_US": "Removed %2 models from %1"
+  },
+  "已从本地元数据恢复。": {
+    "zh_CN": "已从本地元数据恢复。",
+    "en_US": "Restored from local metadata."
+  },
+  "已保存预设: ": {
+    "zh_CN": "已保存预设: ",
+    "en_US": "Preset saved: "
+  },
+  "已停止生成": {
+    "zh_CN": "已停止生成",
+    "en_US": "Generation stopped"
+  },
+  "已删除预设: ": {
+    "zh_CN": "已删除预设: ",
+    "en_US": "Preset deleted: "
+  },
+  "已刷新候选上下文: %1 个 LoRA, %2 张图片": {
+    "zh_CN": "已刷新候选上下文: %1 个 LoRA, %2 张图片",
+    "en_US": "Context refreshed: %1 LoRAs, %2 images"
+  },
+  "已加入下载队列": {
+    "zh_CN": "已加入下载队列",
+    "en_US": "Added to download queue"
+  },
+  "已加载 %1 个本地模型": {
+    "zh_CN": "已加载 %1 个本地模型",
+    "en_US": "Loaded %1 local models"
+  },
+  "已加载 %1 条记录，词表优先级位于最底部。": {
+    "zh_CN": "已加载 %1 条记录，词表优先级位于最底部。",
+    "en_US": "Loaded %1 entries. Dictionary added at the lowest priority."
+  },
+  "已加载预设: ": {
+    "zh_CN": "已加载预设: ",
+    "en_US": "Preset loaded: "
+  },
+  "已勾选 %1 / %2 个 LoRA": {
+    "zh_CN": "已勾选 %1 / %2 个 LoRA",
+    "en_US": "Selected %1 / %2 LoRAs"
+  },
+  "已勾选 %1 / %2 张图片": {
+    "zh_CN": "已勾选 %1 / %2 张图片",
+    "en_US": "Selected %1 / %2 images"
+  },
+  "已勾选 0 / 0 个 LoRA": {
+    "zh_CN": "已勾选 0 / 0 个 LoRA",
+    "en_US": "Selected 0 / 0 LoRAs"
+  },
+  "已勾选 0 / 0 张图片": {
+    "zh_CN": "已勾选 0 / 0 张图片",
+    "en_US": "Selected 0 / 0 images"
+  },
+  "已取消元信息同步。": {
+    "zh_CN": "已取消元信息同步。",
+    "en_US": "Metadata sync canceled."
+  },
+  "已取消同步": {
+    "zh_CN": "已取消同步",
+    "en_US": "Sync canceled"
+  },
+  "已取消选择所有候选 LoRA 和图片": {
+    "zh_CN": "已取消选择所有候选 LoRA 和图片",
+    "en_US": "All candidate LoRAs and images deselected"
+  },
+  "已复制 %1 个 WD14 Tag。": {
+    "zh_CN": "已复制 %1 个 WD14 Tag。",
+    "en_US": "Copied %1 WD14 tags."
+  },
+  "已复制 %1：%2 个 Tag。": {
+    "zh_CN": "已复制 %1：%2 个 Tag。",
+    "en_US": "Copied %1: %2 tags."
+  },
+  "已复制 LoRA 标签: ": {
+    "zh_CN": "已复制 LoRA 标签: ",
+    "en_US": "Copied LoRA tag: "
+  },
+  "已复制 SD 生成参数到剪贴板": {
+    "zh_CN": "已复制 SD 生成参数到剪贴板",
+    "en_US": "SD generation parameters copied to clipboard"
+  },
+  "已复制 WD14 Tag。": {
+    "zh_CN": "已复制 WD14 Tag。",
+    "en_US": "WD14 tags copied."
+  },
+  "已复制交给 LLM 的提示词": {
+    "zh_CN": "已复制交给 LLM 的提示词",
+    "en_US": "LLM prompt copied"
+  },
+  "已复制全部图片差异。": {
+    "zh_CN": "已复制全部图片差异。",
+    "en_US": "All image differences copied."
+  },
+  "已复制完整简介。": {
+    "zh_CN": "已复制完整简介。",
+    "en_US": "Full description copied."
+  },
+  "已复制收藏提示词。": {
+    "zh_CN": "已复制收藏提示词。",
+    "en_US": "Favorite prompts copied."
+  },
+  "已复制选中的简介文本。": {
+    "zh_CN": "已复制选中的简介文本。",
+    "en_US": "Selected description text copied."
+  },
+  "已存在同名用户主题“%1”，是否覆盖？": {
+    "zh_CN": "已存在同名用户主题“%1”，是否覆盖？",
+    "en_US": "A custom theme named \"%1\" already exists. Overwrite it?"
+  },
+  "已将 %1 个模型加入 %2": {
+    "zh_CN": "已将 %1 个模型加入 %2",
+    "en_US": "Added %1 models to %2"
+  },
+  "已应用主题：%1": {
+    "zh_CN": "已应用主题：%1",
+    "en_US": "Theme applied: %1"
+  },
+  "已应用该历史记录的模型与反推设置。": {
+    "zh_CN": "已应用该历史记录的模型与反推设置。",
+    "en_US": "Applied the model and inference settings from this history entry."
+  },
+  "已忽略": {
+    "zh_CN": "已忽略",
+    "en_US": "Ignored"
+  },
+  "已忽略更新": {
+    "zh_CN": "已忽略更新",
+    "en_US": "Update ignored"
+  },
+  "已恢复上次健康检查结果，共 %1 条问题/提示。": {
+    "zh_CN": "已恢复上次健康检查结果，共 %1 条问题/提示。",
+    "en_US": "Restored the previous health check: %1 issues or notices."
+  },
+  "已恢复上次元信息扫描结果，共 %1 个模型。": {
+    "zh_CN": "已恢复上次元信息扫描结果，共 %1 个模型。",
+    "en_US": "Restored the previous metadata scan: %1 models."
+  },
+  "已恢复历史结果，不会重新运行反推。": {
+    "zh_CN": "已恢复历史结果，不会重新运行反推。",
+    "en_US": "History result restored without running inference."
+  },
+  "已恢复历史结果，但原图片不存在。": {
+    "zh_CN": "已恢复历史结果，但原图片不存在。",
+    "en_US": "History result restored, but the original image is missing."
+  },
+  "已打开首个模型位置（共选中 %1 个）": {
+    "zh_CN": "已打开首个模型位置（共选中 %1 个）",
+    "en_US": "Opened the first model's location (%1 selected)"
+  },
+  "已按作者筛选: ": {
+    "zh_CN": "已按作者筛选: ",
+    "en_US": "Filtering by author: "
+  },
+  "已是最新": {
+    "zh_CN": "已是最新",
+    "en_US": "Up to date"
+  },
+  "已有 TXT": {
+    "zh_CN": "已有 TXT",
+    "en_US": "Existing TXT"
+  },
+  "已有元信息": {
+    "zh_CN": "已有元信息",
+    "en_US": "Existing metadata"
+  },
+  "已有元信息同步任务正在运行。": {
+    "zh_CN": "已有元信息同步任务正在运行。",
+    "en_US": "A metadata sync task is already running."
+  },
+  "已有生成任务正在进行，请先停止当前任务": {
+    "zh_CN": "已有生成任务正在进行，请先停止当前任务",
+    "en_US": "Generation is already running. Stop it first."
+  },
+  "已根据历史图库缓存生成人物偏好摘要": {
+    "zh_CN": "已根据历史图库缓存生成人物偏好摘要",
+    "en_US": "Character preference summary generated from gallery history"
+  },
+  "已添加 %1 个新 Tag 到%2。": {
+    "zh_CN": "已添加 %1 个新 Tag 到%2。",
+    "en_US": "Added %1 new tags to %2."
+  },
+  "已添加 %1 个新 Tag 到%2提示词。": {
+    "zh_CN": "已添加 %1 个新 Tag 到%2提示词。",
+    "en_US": "Added %1 new tags to the %2 prompt."
+  },
+  "已添加 %1 个新 Tag 到%2模板。": {
+    "zh_CN": "已添加 %1 个新 Tag 到%2模板。",
+    "en_US": "Added %1 new tags to the %2 template."
+  },
+  "已添加 %1 个触发词到%2。": {
+    "zh_CN": "已添加 %1 个触发词到%2。",
+    "en_US": "Added %1 trigger words to %2."
+  },
+  "已添加 Tag 筛选: ": {
+    "zh_CN": "已添加 Tag 筛选: ",
+    "en_US": "Added tag filter: "
+  },
+  "已添加到提示词收藏。": {
+    "zh_CN": "已添加到提示词收藏。",
+    "en_US": "Added to prompt favorites."
+  },
+  "已添加手动参考图片": {
+    "zh_CN": "已添加手动参考图片",
+    "en_US": "Manual reference image added"
+  },
+  "已添加用户 Tag 筛选: ": {
+    "zh_CN": "已添加用户 Tag 筛选: ",
+    "en_US": "Added user tag filter: "
+  },
+  "已清除 %1 个模型的高亮颜色": {
+    "zh_CN": "已清除 %1 个模型的高亮颜色",
+    "en_US": "Cleared highlight colors for %1 models"
+  },
+  "已用收藏替换当前提示词。": {
+    "zh_CN": "已用收藏替换当前提示词。",
+    "en_US": "Current prompts replaced with the favorite."
+  },
+  "已解析 %1 个正面 Tag，%2 个负面 Tag。": {
+    "zh_CN": "已解析 %1 个正面 Tag，%2 个负面 Tag。",
+    "en_US": "Parsed %1 positive and %2 negative tags."
+  },
+  "已解析 %1 个正面 Tag，%2 个负面 Tag，可选择后添加到当前模板。": {
+    "zh_CN": "已解析 %1 个正面 Tag，%2 个负面 Tag，可选择后添加到当前模板。",
+    "en_US": "Parsed %1 positive and %2 negative tags. Select tags to add to the current template."
+  },
+  "已许可白名单 / Permitted:": {
+    "zh_CN": "已许可白名单",
+    "en_US": "Permitted:"
+  },
+  "已设置 %1 个模型的高亮颜色": {
+    "zh_CN": "已设置 %1 个模型的高亮颜色",
+    "en_US": "Set highlight colors for %1 models"
+  },
+  "已请求停止模型: ": {
+    "zh_CN": "已请求停止模型: ",
+    "en_US": "Stop requested for model: "
+  },
+  "已读取 %1 条记录，正在填充表格...": {
+    "zh_CN": "已读取 %1 条记录，正在填充表格...",
+    "en_US": "Read %1 entries. Populating table..."
+  },
+  "已连接设备 / Connected:": {
+    "zh_CN": "已连接设备",
+    "en_US": "Connected:"
+  },
+  "已选中 %1 个模型": {
+    "zh_CN": "已选中 %1 个模型",
+    "en_US": "%1 models selected"
+  },
+  "已选择 0 个模型": {
+    "zh_CN": "已选择 0 个模型",
+    "en_US": "0 models selected"
+  },
+  "已选择图片: ": {
+    "zh_CN": "已选择图片: ",
+    "en_US": "Selected image: "
+  },
+  "常用色 / Key Colors": {
+    "zh_CN": "常用色",
+    "en_US": "Key Colors"
+  },
+  "应用启动入口": {
+    "zh_CN": "应用启动入口",
+    "en_US": "Apply launch entry"
+  },
+  "应用工作目录": {
+    "zh_CN": "应用工作目录",
+    "en_US": "Apply working directory"
+  },
+  "应用当时设置": {
+    "zh_CN": "应用当时设置",
+    "en_US": "Apply saved settings"
+  },
+  "应用环境变量": {
+    "zh_CN": "应用环境变量",
+    "en_US": "Apply environment variables"
+  },
+  "应用附加参数": {
+    "zh_CN": "应用附加参数",
+    "en_US": "Apply extra arguments"
+  },
+  "底模": {
+    "zh_CN": "底模",
+    "en_US": "Base model"
+  },
+  "底模 (Checkpoint)": {
+    "zh_CN": "底模 (Checkpoint)",
+    "en_US": "Checkpoint"
+  },
+  "底模 / Base": {
+    "zh_CN": "底模",
+    "en_US": "Base"
+  },
+  "底模 / Base:": {
+    "zh_CN": "底模",
+    "en_US": "Base:"
+  },
+  "底模分布": {
+    "zh_CN": "底模分布",
+    "en_US": "Base model distribution"
+  },
+  "建议": {
+    "zh_CN": "建议",
+    "en_US": "Suggestion"
+  },
+  "开启 NSFW 内容过滤 / Enable NSFW Filter": {
+    "zh_CN": "开启 NSFW 内容过滤",
+    "en_US": "Enable NSFW Filter"
+  },
+  "开启后会先将原图缩小再模糊，能极大提高大图背景的生成速度。": {
+    "zh_CN": "开启后会先将原图缩小再模糊，能极大提高大图背景的生成速度。",
+    "en_US": "Downscale images before blurring to generate backgrounds faster."
+  },
+  "开启思考": {
+    "zh_CN": "开启思考",
+    "en_US": "Enable thinking"
+  },
+  "开始打标": {
+    "zh_CN": "开始打标",
+    "en_US": "Start tagging"
+  },
+  "开始检查": {
+    "zh_CN": "开始检查",
+    "en_US": "Run check"
+  },
+  "强制更新元数据": {
+    "zh_CN": "强制更新元数据",
+    "en_US": "Force metadata refresh"
+  },
+  "当前 Tab 已选择 %1/%2 个模型\n全部已选择 %3 个模型": {
+    "zh_CN": "当前 Tab 已选择 %1/%2 个模型\n全部已选择 %3 个模型",
+    "en_US": "Current tab: %1/%2 models selected\nTotal selected: %3 models"
+  },
+  "当前 WD14 设置": {
+    "zh_CN": "当前 WD14 设置",
+    "en_US": "Current WD14 settings"
+  },
+  "当前: %1    最新: %2": {
+    "zh_CN": "当前: %1    最新: %2",
+    "en_US": "Current: %1    Latest: %2"
+  },
+  "当前主题：%1": {
+    "zh_CN": "当前主题：%1",
+    "en_US": "Current theme: %1"
+  },
+  "当前主题：Custom QSS (%1)": {
+    "zh_CN": "当前主题：Custom QSS (%1)",
+    "en_US": "Current theme: Custom QSS (%1)"
+  },
+  "当前使用默认主题。": {
+    "zh_CN": "当前使用默认主题。",
+    "en_US": "Using the default theme."
+  },
+  "当前内容不是有效 JSON。": {
+    "zh_CN": "当前内容不是有效 JSON。",
+    "en_US": "The content is not valid JSON."
+  },
+  "当前分类 %1/%2，全部已选择 %3 个模型。": {
+    "zh_CN": "当前分类 %1/%2，全部已选择 %3 个模型。",
+    "en_US": "Category: %1/%2; total selected: %3 models."
+  },
+  "当前图": {
+    "zh_CN": "当前图",
+    "en_US": "Current image"
+  },
+  "当前已是最新版本 (%1)": {
+    "zh_CN": "当前已是最新版本 (%1)",
+    "en_US": "Already up to date (%1)"
+  },
+  "当前已是最新版本 (%1)。": {
+    "zh_CN": "当前已是最新版本 (%1)。",
+    "en_US": "Already up to date (%1)."
+  },
+  "当前按出现次数排序，点击切换为字母序": {
+    "zh_CN": "当前按出现次数排序，点击切换为字母序",
+    "en_US": "Sorted by count. Click to sort alphabetically."
+  },
+  "当前按字母序排序，点击切换为出现次数": {
+    "zh_CN": "当前按字母序排序，点击切换为出现次数",
+    "en_US": "Sorted alphabetically. Click to sort by count."
+  },
+  "当前提示词为空，无法添加收藏。": {
+    "zh_CN": "当前提示词为空，无法添加收藏。",
+    "en_US": "The current prompts are empty and cannot be added to favorites."
+  },
+  "当前模型": {
+    "zh_CN": "当前模型",
+    "en_US": "Current model"
+  },
+  "当前模型存在本地/已编辑元数据，继续同步将覆盖本地修改。\n是否继续？": {
+    "zh_CN": "当前模型存在本地/已编辑元数据，继续同步将覆盖本地修改。\n是否继续？",
+    "en_US": "This model has local or edited metadata. Syncing will overwrite those changes.\nContinue?"
+  },
+  "当前模型库没有可用模型 Tag": {
+    "zh_CN": "当前模型库没有可用模型 Tag",
+    "en_US": "No model tags available in the library"
+  },
+  "当前模型没有可显示的简介。": {
+    "zh_CN": "当前模型没有可显示的简介。",
+    "en_US": "No description available for this model."
+  },
+  "当前模型没有检测到可用更新。": {
+    "zh_CN": "当前模型没有检测到可用更新。",
+    "en_US": "No usable update was found for this model."
+  },
+  "当前模型状态: %1": {
+    "zh_CN": "当前模型状态: %1",
+    "en_US": "Current model status: %1"
+  },
+  "当前模板任务": {
+    "zh_CN": "当前模板任务",
+    "en_US": "Current template task"
+  },
+  "当前模板对每个全局占位符的默认值，可按模板单独覆盖。": {
+    "zh_CN": "当前模板对每个全局占位符的默认值，可按模板单独覆盖。",
+    "en_US": "Per-template defaults for global placeholders."
+  },
+  "当前模板没有使用全局占位符。": {
+    "zh_CN": "当前模板没有使用全局占位符。",
+    "en_US": "This template does not use global placeholders."
+  },
+  "当前正负面提示词展示": {
+    "zh_CN": "当前正负面提示词展示",
+    "en_US": "Current positive and negative prompts"
+  },
+  "当前没有启用且可读取的 Tag 翻译表，请在设置页检查词表状态。": {
+    "zh_CN": "当前没有启用且可读取的 Tag 翻译表，请在设置页检查词表状态。",
+    "en_US": "No enabled tag dictionaries can be read. Check dictionary settings."
+  },
+  "当前筛选结果": {
+    "zh_CN": "当前筛选结果",
+    "en_US": "Current filtered results"
+  },
+  "当前词表有未保存修改，切换前要保存吗？": {
+    "zh_CN": "当前词表有未保存修改，切换前要保存吗？",
+    "en_US": "This dictionary has unsaved changes. Save before switching?"
+  },
+  "当前还没有可继续修改的模型输出。": {
+    "zh_CN": "当前还没有可继续修改的模型输出。",
+    "en_US": "There is no model output to continue editing yet."
+  },
+  "待命": {
+    "zh_CN": "待命",
+    "en_US": "Ready"
+  },
+  "待审核设备 / Pending Approval:": {
+    "zh_CN": "待审核设备",
+    "en_US": "Pending Approval:"
+  },
+  "忽略更新": {
+    "zh_CN": "忽略更新",
+    "en_US": "Ignore update"
+  },
+  "忽略选中模型更新": {
+    "zh_CN": "忽略选中模型更新",
+    "en_US": "Ignore selected updates"
+  },
+  "思考模式": {
+    "zh_CN": "思考模式",
+    "en_US": "Thinking mode"
+  },
+  "性能 / Performance": {
+    "zh_CN": "性能",
+    "en_US": "Performance"
+  },
+  "总占用 %1 · 模型 %2 个": {
+    "zh_CN": "总占用 %1 · 模型 %2 个",
+    "en_US": "Total size: %1 · %2 models"
+  },
+  "恢复排序": {
+    "zh_CN": "恢复排序",
+    "en_US": "Restore order"
+  },
+  "恢复结果": {
+    "zh_CN": "恢复结果",
+    "en_US": "Restore result"
+  },
+  "成功": {
+    "zh_CN": "成功",
+    "en_US": "Success"
+  },
+  "成功 %1 | 跳过 %2 | 失败 %3 | 未处理 %4": {
+    "zh_CN": "成功 %1 | 跳过 %2 | 失败 %3 | 未处理 %4",
+    "en_US": "Success %1 | Skipped %2 | Failed %3 | Pending %4"
+  },
+  "成功 0 | 跳过 0 | 失败 0 | 未处理 0": {
+    "zh_CN": "成功 0 | 跳过 0 | 失败 0 | 未处理 0",
+    "en_US": "Success 0 | Skipped 0 | Failed 0 | Pending 0"
+  },
+  "所有模型": {
+    "zh_CN": "所有模型",
+    "en_US": "All models"
+  },
+  "手动补充上下文": {
+    "zh_CN": "手动补充上下文",
+    "en_US": "Additional context"
+  },
+  "手动输入 LoRA 预览图提示词，供大模型参考人物特征、服装和风格。": {
+    "zh_CN": "手动输入 LoRA 预览图提示词，供大模型参考人物特征、服装和风格。",
+    "en_US": "Enter LoRA preview prompts to provide character, outfit and style context for the LLM."
+  },
+  "手动输入Lora提示词": {
+    "zh_CN": "手动输入Lora提示词",
+    "en_US": "Manual LoRA prompts"
+  },
+  "手动输入触发词": {
+    "zh_CN": "手动输入触发词",
+    "en_US": "Manual trigger words"
+  },
+  "手动输入触发词，多个用逗号或换行分隔。": {
+    "zh_CN": "手动输入触发词，多个用逗号或换行分隔。",
+    "en_US": "Enter trigger words separated by commas or line breaks."
+  },
+  "打开 TXT 位置": {
+    "zh_CN": "打开 TXT 位置",
+    "en_US": "Show TXT in folder"
+  },
+  "打开位置": {
+    "zh_CN": "打开位置",
+    "en_US": "Show in folder"
+  },
+  "打开图片位置": {
+    "zh_CN": "打开图片位置",
+    "en_US": "Show image in folder"
+  },
+  "打开失败": {
+    "zh_CN": "打开失败",
+    "en_US": "Open failed"
+  },
+  "打开所在位置 / Show in Folder": {
+    "zh_CN": "打开所在位置",
+    "en_US": "Show in Folder"
+  },
+  "打开文件位置": {
+    "zh_CN": "打开文件位置",
+    "en_US": "Show file in folder"
+  },
+  "打开文件位置 / Show in Folder": {
+    "zh_CN": "打开文件位置",
+    "en_US": "Show in Folder"
+  },
+  "打开模型位置 / Show Model in Folder": {
+    "zh_CN": "打开模型位置",
+    "en_US": "Show Model in Folder"
+  },
+  "打开界面 / Open": {
+    "zh_CN": "打开界面",
+    "en_US": "Open"
+  },
+  "扫描与解析 / Scan & Parsing": {
+    "zh_CN": "扫描与解析",
+    "en_US": "Scan & Parsing"
+  },
+  "扫描图片": {
+    "zh_CN": "扫描图片",
+    "en_US": "Scan images"
+  },
+  "扫描完成，共 %1 个模型": {
+    "zh_CN": "扫描完成，共 %1 个模型",
+    "en_US": "Scan complete: %1 models"
+  },
+  "扫描完成，共 %1 张": {
+    "zh_CN": "扫描完成，共 %1 张",
+    "en_US": "Scan complete: %1 images"
+  },
+  "扫描完成，共找到 %1 张图片。": {
+    "zh_CN": "扫描完成，共找到 %1 张图片。",
+    "en_US": "Scan complete: found %1 images."
+  },
+  "扫描本地文件夹": {
+    "zh_CN": "扫描本地文件夹",
+    "en_US": "Scan local folder"
+  },
+  "扫描模型元信息": {
+    "zh_CN": "扫描模型元信息",
+    "en_US": "Scan model metadata"
+  },
+  "扫描选项 / Scanning Options": {
+    "zh_CN": "扫描选项",
+    "en_US": "Scanning Options"
+  },
+  "批量 WD14 打标": {
+    "zh_CN": "批量 WD14 打标",
+    "en_US": "Batch WD14 tagging"
+  },
+  "批量 WD14 正在运行，请先停止或等待完成。": {
+    "zh_CN": "批量 WD14 正在运行，请先停止或等待完成。",
+    "en_US": "Batch WD14 is running. Stop it or wait until it finishes."
+  },
+  "批量任务已停止，可继续失败/未完成项。": {
+    "zh_CN": "批量任务已停止，可继续失败/未完成项。",
+    "en_US": "Batch stopped. Resume failed or pending tasks to continue."
+  },
+  "批量导出 Tags": {
+    "zh_CN": "批量导出 Tags",
+    "en_US": "Batch export tags"
+  },
+  "批量导出 Tags...": {
+    "zh_CN": "批量导出 Tags...",
+    "en_US": "Batch export tags..."
+  },
+  "批量打标完成。": {
+    "zh_CN": "批量打标完成。",
+    "en_US": "Batch tagging complete."
+  },
+  "批量进程异常结束 (exit %1)。": {
+    "zh_CN": "批量进程异常结束 (exit %1)。",
+    "en_US": "Batch process exited abnormally (exit %1)."
+  },
+  "找不到当前 CSV 文件。请检查路径，或点击“新增”手动创建后保存。": {
+    "zh_CN": "找不到当前 CSV 文件。请检查路径，或点击“新增”手动创建后保存。",
+    "en_US": "The CSV file is missing. Check its path, or add entries and save to create it."
+  },
+  "按字母": {
+    "zh_CN": "按字母",
+    "en_US": "By name"
+  },
+  "按文件夹": {
+    "zh_CN": "按文件夹",
+    "en_US": "By folder"
+  },
+  "按次数": {
+    "zh_CN": "按次数",
+    "en_US": "By count"
+  },
+  "按类别": {
+    "zh_CN": "按类别",
+    "en_US": "By category"
+  },
+  "按首字母顺序排序": {
+    "zh_CN": "按首字母顺序排序",
+    "en_US": "Sort alphabetically"
+  },
+  "排序 / Sort": {
+    "zh_CN": "排序",
+    "en_US": "Sort"
+  },
+  "排序 / Sort:": {
+    "zh_CN": "排序",
+    "en_US": "Sort:"
+  },
+  "排序 / 筛选": {
+    "zh_CN": "排序 / 筛选",
+    "en_US": "Sort / Filter"
+  },
+  "排除标签（逗号分隔）": {
+    "zh_CN": "排除标签（逗号分隔）",
+    "en_US": "Excluded tags (comma-separated)"
+  },
+  "排除（逗号分隔）": {
+    "zh_CN": "排除（逗号分隔）",
+    "en_US": "Exclude (comma-separated)"
+  },
+  "提示": {
+    "zh_CN": "提示",
+    "en_US": "Notice"
+  },
+  "提示: 点击刷新模型详情可同步元数据": {
+    "zh_CN": "提示: 点击刷新模型详情可同步元数据",
+    "en_US": "Tip: refresh model details to sync metadata"
+  },
+  "提示词文本（可编辑 / 复制 / 粘贴），切到“标签”视图可解析并翻译": {
+    "zh_CN": "提示词文本（可编辑 / 复制 / 粘贴），切到“标签”视图可解析并翻译",
+    "en_US": "Prompt text (edit / copy / paste). Switch to Tags to parse and translate."
+  },
+  "提示词生成": {
+    "zh_CN": "提示词生成",
+    "en_US": "Prompt generation"
+  },
+  "提示词生成 · 正面": {
+    "zh_CN": "提示词生成 · 正面",
+    "en_US": "Prompt generation · Positive"
+  },
+  "提示词生成 · 负面": {
+    "zh_CN": "提示词生成 · 负面",
+    "en_US": "Prompt generation · Negative"
+  },
+  "提示词生成完成": {
+    "zh_CN": "提示词生成完成",
+    "en_US": "Prompt generation complete"
+  },
+  "提示词生成完成，但停止模型失败": {
+    "zh_CN": "提示词生成完成，但停止模型失败",
+    "en_US": "Prompt generation complete, but the model could not be stopped"
+  },
+  "提示词生成完成，已请求停止模型": {
+    "zh_CN": "提示词生成完成，已请求停止模型",
+    "en_US": "Prompt generation complete. Model stop requested."
+  },
+  "提示词生成完成；LM Studio 需在其界面中手动停止或卸载模型": {
+    "zh_CN": "提示词生成完成；LM Studio 需在其界面中手动停止或卸载模型",
+    "en_US": "Prompt generation complete. Stop or unload the model in LM Studio."
+  },
+  "提示词解析 / Prompt Parsing": {
+    "zh_CN": "提示词解析",
+    "en_US": "Prompt Parsing"
+  },
+  "提示词设置": {
+    "zh_CN": "提示词设置",
+    "en_US": "Prompt settings"
+  },
+  "提示词顺序": {
+    "zh_CN": "提示词顺序",
+    "en_US": "Prompt order"
+  },
+  "插入正面": {
+    "zh_CN": "插入正面",
+    "en_US": "Insert into positive"
+  },
+  "插入负面": {
+    "zh_CN": "插入负面",
+    "en_US": "Insert into negative"
+  },
+  "搜索 Tag / 翻译...": {
+    "zh_CN": "搜索 Tag / 翻译...",
+    "en_US": "Search tags / translations..."
+  },
+  "搜索 Tag 或翻译...": {
+    "zh_CN": "搜索 Tag 或翻译...",
+    "en_US": "Search tags or translations..."
+  },
+  "搜索 Tag 或翻译，空格和下划线等价": {
+    "zh_CN": "搜索 Tag 或翻译，空格和下划线等价",
+    "en_US": "Search tags or translations; spaces and underscores are equivalent"
+  },
+  "搜索中...": {
+    "zh_CN": "搜索中...",
+    "en_US": "Searching..."
+  },
+  "搜索图片名、路径、模型或 Tag": {
+    "zh_CN": "搜索图片名、路径、模型或 Tag",
+    "en_US": "Search image name, path, model or tag"
+  },
+  "搜索对话": {
+    "zh_CN": "搜索对话",
+    "en_US": "Search conversations"
+  },
+  "搜索库 (Search)...": {
+    "zh_CN": "搜索库 (Search)...",
+    "en_US": "Search library..."
+  },
+  "搜索当前下载列表中的模型名称、版本、状态、Model ID 或文件路径": {
+    "zh_CN": "搜索当前下载列表中的模型名称、版本、状态、Model ID 或文件路径",
+    "en_US": "Search the current download list by model, version, status, model ID or path"
+  },
+  "搜索模型、底模、路径...": {
+    "zh_CN": "搜索模型、底模、路径...",
+    "en_US": "Search models, base models, paths..."
+  },
+  "搜索模型名或触发词": {
+    "zh_CN": "搜索模型名或触发词",
+    "en_US": "Search model names or trigger words"
+  },
+  "搜索模型名称、版本、状态或路径...": {
+    "zh_CN": "搜索模型名称、版本、状态或路径...",
+    "en_US": "Search model name, version, status or path..."
+  },
+  "搜索用户使用过的 Tag 或翻译...": {
+    "zh_CN": "搜索用户使用过的 Tag 或翻译...",
+    "en_US": "Search used tags or translations..."
+  },
+  "搜索节点类型、标题或内容": {
+    "zh_CN": "搜索节点类型、标题或内容",
+    "en_US": "Search node type, title or content"
+  },
+  "摘要/名称匹配": {
+    "zh_CN": "摘要/名称匹配",
+    "en_US": "Hash / name matching"
+  },
+  "支持纯文本描述": {
+    "zh_CN": "支持纯文本描述",
+    "en_US": "Plain text descriptions are supported"
+  },
+  "收藏": {
+    "zh_CN": "收藏",
+    "en_US": "Favorites"
+  },
+  "收藏名称:": {
+    "zh_CN": "收藏名称:",
+    "en_US": "Favorite name:"
+  },
+  "收藏夹 / Collections": {
+    "zh_CN": "收藏夹",
+    "en_US": "Collections"
+  },
+  "收藏夹名称:": {
+    "zh_CN": "收藏夹名称:",
+    "en_US": "Collection name:"
+  },
+  "收藏当前正负面提示词后，可在这里复制、替换或删除。": {
+    "zh_CN": "收藏当前正负面提示词后，可在这里复制、替换或删除。",
+    "en_US": "Save the current prompts to copy, replace or delete them here later."
+  },
+  "收起筛选": {
+    "zh_CN": "收起筛选",
+    "en_US": "Collapse filters"
+  },
+  "放大（+）": {
+    "zh_CN": "放大（+）",
+    "en_US": "Zoom in (+)"
+  },
+  "数量": {
+    "zh_CN": "数量",
+    "en_US": "Count"
+  },
+  "文": {
+    "zh_CN": "文",
+    "en_US": "Translate"
+  },
+  "文件: ": {
+    "zh_CN": "文件: ",
+    "en_US": "File: "
+  },
+  "文件: -": {
+    "zh_CN": "文件: -",
+    "en_US": "File: -"
+  },
+  "文件夹": {
+    "zh_CN": "文件夹",
+    "en_US": "Folder"
+  },
+  "文件时间": {
+    "zh_CN": "文件时间",
+    "en_US": "File timestamp"
+  },
+  "文本": {
+    "zh_CN": "文本",
+    "en_US": "Text"
+  },
+  "断开": {
+    "zh_CN": "断开",
+    "en_US": "Disconnect"
+  },
+  "新名称:": {
+    "zh_CN": "新名称:",
+    "en_US": "New name:"
+  },
+  "新增": {
+    "zh_CN": "新增",
+    "en_US": "Add"
+  },
+  "新对话": {
+    "zh_CN": "新对话",
+    "en_US": "New conversation"
+  },
+  "新建": {
+    "zh_CN": "新建",
+    "en_US": "New"
+  },
+  "新建收藏夹": {
+    "zh_CN": "新建收藏夹",
+    "en_US": "New collection"
+  },
+  "新建收藏夹...": {
+    "zh_CN": "新建收藏夹...",
+    "en_US": "New collection..."
+  },
+  "新建收藏夹并加入 %1 个模型": {
+    "zh_CN": "新建收藏夹并加入 %1 个模型",
+    "en_US": "Create a collection and add %1 models"
+  },
+  "无法下载 AITagTranslate 词表：\n": {
+    "zh_CN": "无法下载 AITagTranslate 词表：\n",
+    "en_US": "Could not download the AITagTranslate dictionary:\n"
+  },
+  "无法保存 AITagTranslate 词表：\n": {
+    "zh_CN": "无法保存 AITagTranslate 词表：\n",
+    "en_US": "Could not save the AITagTranslate dictionary:\n"
+  },
+  "无法写入 config/prompt_templates.json。": {
+    "zh_CN": "无法写入 config/prompt_templates.json。",
+    "en_US": "Could not write config/prompt_templates.json."
+  },
+  "无法写入 wd14_history.jsonl，历史记录未删除。": {
+    "zh_CN": "无法写入 wd14_history.jsonl，历史记录未删除。",
+    "en_US": "Could not write wd14_history.jsonl. History was preserved."
+  },
+  "无法写入文件。": {
+    "zh_CN": "无法写入文件。",
+    "en_US": "Could not write the file."
+  },
+  "无法写入本地元数据文件。": {
+    "zh_CN": "无法写入本地元数据文件。",
+    "en_US": "Could not write the local metadata file."
+  },
+  "无法创建批量图片清单: ": {
+    "zh_CN": "无法创建批量图片清单: ",
+    "en_US": "Could not create the batch image manifest: "
+  },
+  "无法创建词表目录：\n": {
+    "zh_CN": "无法创建词表目录：\n",
+    "en_US": "Could not create the dictionary directory:\n"
+  },
+  "无法安全暂存预览图，原文件未删除。": {
+    "zh_CN": "无法安全暂存预览图，原文件未删除。",
+    "en_US": "Could not stage the preview safely. The original was preserved."
+  },
+  "无法完成封面交换，原文件已恢复。": {
+    "zh_CN": "无法完成封面交换，原文件已恢复。",
+    "en_US": "Cover swap failed. The original files were restored."
+  },
+  "无法完成封面交换，自动恢复失败，请检查模型目录。": {
+    "zh_CN": "无法完成封面交换，自动恢复失败，请检查模型目录。",
+    "en_US": "Cover swap and automatic recovery failed. Check the model folder."
+  },
+  "无法执行 ollama stop，请检查 Ollama 是否可用。": {
+    "zh_CN": "无法执行 ollama stop，请检查 Ollama 是否可用。",
+    "en_US": "Could not run ollama stop. Check that Ollama is available."
+  },
+  "无法操作此项": {
+    "zh_CN": "无法操作此项",
+    "en_US": "This item cannot be modified"
+  },
+  "无法暂存当前封面，原文件未修改。": {
+    "zh_CN": "无法暂存当前封面，原文件未修改。",
+    "en_US": "Could not stage the current cover. The original was preserved."
+  },
+  "无法清空历史文件，历史记录未删除。": {
+    "zh_CN": "无法清空历史文件，历史记录未删除。",
+    "en_US": "Could not clear the history file. History was preserved."
+  },
+  "无法生成 LoRA 标签：未选中模型": {
+    "zh_CN": "无法生成 LoRA 标签：未选中模型",
+    "en_US": "Cannot create a LoRA tag: no model selected"
+  },
+  "无法移动目标预览图，原封面已恢复。": {
+    "zh_CN": "无法移动目标预览图，原封面已恢复。",
+    "en_US": "Could not move the target preview. The original cover was restored."
+  },
+  "无法编辑": {
+    "zh_CN": "无法编辑",
+    "en_US": "Cannot edit"
+  },
+  "无法解析版本信息 (Rate Limit Exceeded?)。": {
+    "zh_CN": "无法解析版本信息 (Rate Limit Exceeded?)。",
+    "en_US": "Could not parse version information (rate limit exceeded?)."
+  },
+  "无法读取 metadata JSON": {
+    "zh_CN": "无法读取 metadata JSON",
+    "en_US": "Could not read metadata JSON"
+  },
+  "无法调用系统浏览器，请手动访问：\n": {
+    "zh_CN": "无法调用系统浏览器，请手动访问：\n",
+    "en_US": "Could not open the browser. Visit this address manually:\n"
+  },
+  "无法连接到 GitHub API:\n": {
+    "zh_CN": "无法连接到 GitHub API:\n",
+    "en_US": "Could not connect to the GitHub API:\n"
+  },
+  "无用户标签": {
+    "zh_CN": "无用户标签",
+    "en_US": "No user tags"
+  },
+  "旧版共存": {
+    "zh_CN": "旧版共存",
+    "en_US": "Older versions"
+  },
+  "旧版共存：已存在同模型的更新版本": {
+    "zh_CN": "旧版共存：已存在同模型的更新版本",
+    "en_US": "Older version: a newer version of this model is installed"
+  },
+  "旧版共存：本地已存在新版本": {
+    "zh_CN": "旧版共存：本地已存在新版本",
+    "en_US": "Older version: a newer version is installed locally"
+  },
+  "时间：最新优先": {
+    "zh_CN": "时间：最新优先",
+    "en_US": "Time: newest first"
+  },
+  "时间：最早优先": {
+    "zh_CN": "时间：最早优先",
+    "en_US": "Time: oldest first"
+  },
+  "是": {
+    "zh_CN": "是",
+    "en_US": "Yes"
+  },
+  "显示": {
+    "zh_CN": "显示",
+    "en_US": "Show"
+  },
+  "显示 %1 / %2 个模型": {
+    "zh_CN": "显示 %1 / %2 个模型",
+    "en_US": "Showing %1 / %2 models"
+  },
+  "显示 %1 / %2 条历史，已选择 %3 条。": {
+    "zh_CN": "显示 %1 / %2 条历史，已选择 %3 条。",
+    "en_US": "Showing %1 / %2 history entries; %3 selected."
+  },
+  "显示 %1 个模型，共 %2 条触发词。": {
+    "zh_CN": "显示 %1 个模型，共 %2 条触发词。",
+    "en_US": "Showing %1 models with %2 trigger groups."
+  },
+  "显示 %1 条常用 Tag": {
+    "zh_CN": "显示 %1 条常用 Tag",
+    "en_US": "Showing %1 frequently used tags"
+  },
+  "显示/隐藏 Tag 翻译": {
+    "zh_CN": "显示/隐藏 Tag 翻译",
+    "en_US": "Show / hide tag translations"
+  },
+  "显示/隐藏选项翻译": {
+    "zh_CN": "显示/隐藏选项翻译",
+    "en_US": "Show / hide choice translations"
+  },
+  "显示为 100%（0）": {
+    "zh_CN": "显示为 100%（0）",
+    "en_US": "Show at 100% (0)"
+  },
+  "显示原始 Metadata / Raw Metadata": {
+    "zh_CN": "显示原始 Metadata",
+    "en_US": "Raw Metadata"
+  },
+  "显示名称，例如 角色": {
+    "zh_CN": "显示名称，例如 角色",
+    "en_US": "Display label, e.g. Character"
+  },
+  "显示思考": {
+    "zh_CN": "显示思考",
+    "en_US": "Show thinking"
+  },
+  "显示思考内容": {
+    "zh_CN": "显示思考内容",
+    "en_US": "Show reasoning"
+  },
+  "显示空的收藏夹 / Show Empty Collections": {
+    "zh_CN": "显示空的收藏夹",
+    "en_US": "Show Empty Collections"
+  },
+  "显示翻译": {
+    "zh_CN": "显示翻译",
+    "en_US": "Show translations"
+  },
+  "显示范围:": {
+    "zh_CN": "显示范围:",
+    "en_US": "Show:"
+  },
+  "显示负面 Tag 对比": {
+    "zh_CN": "显示负面 Tag 对比",
+    "en_US": "Compare negative tags"
+  },
+  "暂无 WD14 反推历史。": {
+    "zh_CN": "暂无 WD14 反推历史。",
+    "en_US": "No WD14 history yet."
+  },
+  "暂无作者信息": {
+    "zh_CN": "暂无作者信息",
+    "en_US": "No author information"
+  },
+  "暂无可复制的 WD14 Tag。": {
+    "zh_CN": "暂无可复制的 WD14 Tag。",
+    "en_US": "No WD14 tags available to copy."
+  },
+  "暂无备注 / No note.": {
+    "zh_CN": "暂无备注",
+    "en_US": "No note."
+  },
+  "暂无收藏。可在右侧当前提示词区域点击“添加至收藏”。": {
+    "zh_CN": "暂无收藏。可在右侧当前提示词区域点击“添加至收藏”。",
+    "en_US": "No favorites yet. Use Add to favorites beside the current prompts."
+  },
+  "暂无模型标签": {
+    "zh_CN": "暂无模型标签",
+    "en_US": "No model tags"
+  },
+  "暂无简介 / No description.": {
+    "zh_CN": "暂无简介",
+    "en_US": "No description."
+  },
+  "暗色 / Dark": {
+    "zh_CN": "暗色",
+    "en_US": "Dark"
+  },
+  "更新": {
+    "zh_CN": "更新",
+    "en_US": "Update"
+  },
+  "更新 AITagTranslate 词表": {
+    "zh_CN": "更新 AITagTranslate 词表",
+    "en_US": "Update AITagTranslate dictionary"
+  },
+  "更新检查完成，共 %1 个模型。": {
+    "zh_CN": "更新检查完成，共 %1 个模型。",
+    "en_US": "Update check complete: %1 models."
+  },
+  "更新选中元信息": {
+    "zh_CN": "更新选中元信息",
+    "en_US": "Update selected metadata"
+  },
+  "替换图片": {
+    "zh_CN": "替换图片",
+    "en_US": "Replace image"
+  },
+  "替换预览图片": {
+    "zh_CN": "替换预览图片",
+    "en_US": "Replace preview image"
+  },
+  "最近使用": {
+    "zh_CN": "最近使用",
+    "en_US": "Recently used"
+  },
+  "最近使用: %1": {
+    "zh_CN": "最近使用: %1",
+    "en_US": "Last used: %1"
+  },
+  "有新版本": {
+    "zh_CN": "有新版本",
+    "en_US": "New version available"
+  },
+  "有更新": {
+    "zh_CN": "有更新",
+    "en_US": "Updates available"
+  },
+  "有返图使用": {
+    "zh_CN": "有返图使用",
+    "en_US": "Used in gallery images"
+  },
+  "服务日志 / Log:": {
+    "zh_CN": "服务日志",
+    "en_US": "Log:"
+  },
+  "服装替换": {
+    "zh_CN": "服装替换",
+    "en_US": "Outfit replacement"
+  },
+  "未从图片中解析到可用 Tag。": {
+    "zh_CN": "未从图片中解析到可用 Tag。",
+    "en_US": "No usable tags found in the image."
+  },
+  "未使用": {
+    "zh_CN": "未使用",
+    "en_US": "Unused"
+  },
+  "未保存修改": {
+    "zh_CN": "未保存修改",
+    "en_US": "Unsaved changes"
+  },
+  "未分类": {
+    "zh_CN": "未分类",
+    "en_US": "Uncategorized"
+  },
+  "未分类 / Uncategorized": {
+    "zh_CN": "未分类",
+    "en_US": "Uncategorized"
+  },
+  "未加载到 Tag 数据。请先在设置中配置 CSV，或点击“新增”手动创建。": {
+    "zh_CN": "未加载到 Tag 数据。请先在设置中配置 CSV，或点击“新增”手动创建。",
+    "en_US": "No tag data loaded. Configure a CSV in Settings or click Add to create entries."
+  },
+  "未加载翻译": {
+    "zh_CN": "未加载翻译",
+    "en_US": "Translations not loaded"
+  },
+  "未加载翻译词表，请在设置中配置 CSV 文件。": {
+    "zh_CN": "未加载翻译词表，请在设置中配置 CSV 文件。",
+    "en_US": "No dictionary loaded. Configure CSV files in Settings."
+  },
+  "未发现可用模型": {
+    "zh_CN": "未发现可用模型",
+    "en_US": "No models found"
+  },
+  "未启用主页作者/Tag 筛选": {
+    "zh_CN": "未启用主页作者/Tag 筛选",
+    "en_US": "Author / tag filters are inactive"
+  },
+  "未在当前提示词文本中找到对应的 Tag。": {
+    "zh_CN": "未在当前提示词文本中找到对应的 Tag。",
+    "en_US": "The tag could not be found in the current prompt text."
+  },
+  "未找到 WD14 脚本: ": {
+    "zh_CN": "未找到 WD14 脚本: ",
+    "en_US": "WD14 script not found: "
+  },
+  "未找到常用 Tag。请先扫描本地图库，或调整搜索条件。": {
+    "zh_CN": "未找到常用 Tag。请先扫描本地图库，或调整搜索条件。",
+    "en_US": "No frequently used tags found. Scan the local gallery or adjust the search."
+  },
+  "未找到本地元数据文件，已恢复默认值。": {
+    "zh_CN": "未找到本地元数据文件，已恢复默认值。",
+    "en_US": "No local metadata file found. Defaults restored."
+  },
+  "未找到生成参数 / No generation parameters found.": {
+    "zh_CN": "未找到生成参数",
+    "en_US": "No generation parameters found."
+  },
+  "未找到用户使用 Tag。请先扫描本地图库生成 user_gallery_cache.json。": {
+    "zh_CN": "未找到用户使用 Tag。请先扫描本地图库生成 user_gallery_cache.json。",
+    "en_US": "No used tags found. Scan the local gallery to create user_gallery_cache.json."
+  },
+  "未能自动获取 %1 模型: %2": {
+    "zh_CN": "未能自动获取 %1 模型: %2",
+    "en_US": "Could not automatically load %1 models: %2"
+  },
+  "未评分": {
+    "zh_CN": "未评分",
+    "en_US": "Unrated"
+  },
+  "未评分 / Clear Rating": {
+    "zh_CN": "未评分",
+    "en_US": "Clear Rating"
+  },
+  "未选择任务": {
+    "zh_CN": "未选择任务",
+    "en_US": "No task selected"
+  },
+  "未选择图片": {
+    "zh_CN": "未选择图片",
+    "en_US": "No image selected"
+  },
+  "未选择对话": {
+    "zh_CN": "未选择对话",
+    "en_US": "No conversation selected"
+  },
+  "未选择模型": {
+    "zh_CN": "未选择模型",
+    "en_US": "No model selected"
+  },
+  "未配置 Tag 翻译表路径。请先在设置页配置词表。": {
+    "zh_CN": "未配置 Tag 翻译表路径。请先在设置页配置词表。",
+    "en_US": "No dictionary paths configured. Add dictionaries in Settings."
+  },
+  "未配置翻译表路径": {
+    "zh_CN": "未配置翻译表路径",
+    "en_US": "No dictionary paths configured"
+  },
+  "本地/已编辑": {
+    "zh_CN": "本地/已编辑",
+    "en_US": "Local / Edited"
+  },
+  "本地/已编辑 metadata": {
+    "zh_CN": "本地/已编辑 metadata",
+    "en_US": "Local / edited metadata"
+  },
+  "本地/已编辑模型": {
+    "zh_CN": "本地/已编辑模型",
+    "en_US": "Local / edited model"
+  },
+  "本地/跳过": {
+    "zh_CN": "本地/跳过",
+    "en_US": "Local / Skipped"
+  },
+  "本地元数据已保存。": {
+    "zh_CN": "本地元数据已保存。",
+    "en_US": "Local metadata saved."
+  },
+  "本地元数据提示": {
+    "zh_CN": "本地元数据提示",
+    "en_US": "Local metadata notice"
+  },
+  "本地图库缓存已清除": {
+    "zh_CN": "本地图库缓存已清除",
+    "en_US": "Local gallery cache cleared"
+  },
+  "本地已经存在 AITagTranslate 词表。是否下载最新版本并替换？": {
+    "zh_CN": "本地已经存在 AITagTranslate 词表。是否下载最新版本并替换？",
+    "en_US": "An AITagTranslate dictionary already exists. Download the latest version and replace it?"
+  },
+  "本地返图: %1 张": {
+    "zh_CN": "本地返图: %1 张",
+    "en_US": "Local gallery: %1 images"
+  },
+  "本地返图模型匹配逻辑 / Match Mode:": {
+    "zh_CN": "本地返图模型匹配逻辑",
+    "en_US": "Match Mode:"
+  },
+  "本地预览图元信息写入失败，正在重新下载: %1": {
+    "zh_CN": "本地预览图元信息写入失败，正在重新下载: %1",
+    "en_US": "Could not write local preview metadata. Downloading again: %1"
+  },
+  "本次元信息同步是否同时同步 %1 预览图？\n\n选择“是”会同步来源中可用的预览图及图片元信息。\n选择“仅元数据”只更新 JSON，不下载或覆盖图片。": {
+    "zh_CN": "本次元信息同步是否同时同步 %1 预览图？\n\n选择“是”会同步来源中可用的预览图及图片元信息。\n选择“仅元数据”只更新 JSON，不下载或覆盖图片。",
+    "en_US": "Also sync previews from %1?\n\nYes syncs available previews and their image metadata.\nMetadata only updates JSON without downloading or replacing images."
+  },
+  "来源": {
+    "zh_CN": "来源",
+    "en_US": "Source"
+  },
+  "查看 ComfyUI Workflow / View Workflow": {
+    "zh_CN": "查看 ComfyUI Workflow",
+    "en_US": "View Workflow"
+  },
+  "查看本地生成的返图": {
+    "zh_CN": "查看本地生成的返图",
+    "en_US": "View locally generated images"
+  },
+  "标签": {
+    "zh_CN": "标签",
+    "en_US": "Tags"
+  },
+  "标签置信度和翻译": {
+    "zh_CN": "标签置信度和翻译",
+    "en_US": "Tag confidence and translations"
+  },
+  "校验中...": {
+    "zh_CN": "校验中...",
+    "en_US": "Verifying..."
+  },
+  "格式化 JSON": {
+    "zh_CN": "格式化 JSON",
+    "en_US": "Format JSON"
+  },
+  "格式化 JSON / Format JSON": {
+    "zh_CN": "格式化 JSON",
+    "en_US": "Format JSON"
+  },
+  "检查 Civitai 新版本": {
+    "zh_CN": "检查 Civitai 新版本",
+    "en_US": "Check for Civitai updates"
+  },
+  "检查 JSON 文件或重新同步 metadata": {
+    "zh_CN": "检查 JSON 文件或重新同步 metadata",
+    "en_US": "Check the JSON file or resync metadata"
+  },
+  "检查中...": {
+    "zh_CN": "检查中...",
+    "en_US": "Checking..."
+  },
+  "检查全部模型更新": {
+    "zh_CN": "检查全部模型更新",
+    "en_US": "Check all models for updates"
+  },
+  "检查失败": {
+    "zh_CN": "检查失败",
+    "en_US": "Check failed"
+  },
+  "检查失败: %1": {
+    "zh_CN": "检查失败: %1",
+    "en_US": "Check failed: %1"
+  },
+  "检查完成，共发现 %1 条问题/提示。": {
+    "zh_CN": "检查完成，共发现 %1 条问题/提示。",
+    "en_US": "Check complete: %1 issues or notices."
+  },
+  "检查更新": {
+    "zh_CN": "检查更新",
+    "en_US": "Check for updates"
+  },
+  "检查模型路径或从列表移除失效项": {
+    "zh_CN": "检查模型路径或从列表移除失效项",
+    "en_US": "Check the model path or remove the missing entry"
+  },
+  "检查选中模型更新": {
+    "zh_CN": "检查选中模型更新",
+    "en_US": "Check selected models for updates"
+  },
+  "检测到 %1 个本地/已编辑模型。\n刷新不会删除本地元数据，但后续同步可能覆盖本地修改。": {
+    "zh_CN": "检测到 %1 个本地/已编辑模型。\n刷新不会删除本地元数据，但后续同步可能覆盖本地修改。",
+    "en_US": "Found %1 local or edited models.\nRefreshing does not delete local metadata, but subsequent syncing may overwrite local edits."
+  },
+  "检测到 %1 个本地/已编辑模型。\n同步其它模型的元数据不会影响它们，但强制更新时请注意覆盖风险。": {
+    "zh_CN": "检测到 %1 个本地/已编辑模型。\n同步其它模型的元数据不会影响它们，但强制更新时请注意覆盖风险。",
+    "en_US": "Found %1 local or edited models.\nSyncing other models will not affect them. Force updates may overwrite local edits."
+  },
+  "检测到已同步的 Civitai 预览图，是否重新同步预览图？": {
+    "zh_CN": "检测到已同步的 Civitai 预览图，是否重新同步预览图？",
+    "en_US": "Civitai previews are already synced. Sync previews again?"
+  },
+  "检测到模型更新": {
+    "zh_CN": "检测到模型更新",
+    "en_US": "Model update available"
+  },
+  "检测到该模型有可用更新。\n\n状态: %1\n\n是否跳转到下载任务列表？": {
+    "zh_CN": "检测到该模型有可用更新。\n\n状态: %1\n\n是否跳转到下载任务列表？",
+    "en_US": "An update is available for this model.\n\nStatus: %1\n\nOpen the download task list?"
+  },
+  "检测更新": {
+    "zh_CN": "检测更新",
+    "en_US": "Check for updates"
+  },
+  "模型": {
+    "zh_CN": "模型",
+    "en_US": "Model"
+  },
+  "模型 + 附属文件": {
+    "zh_CN": "模型 + 附属文件",
+    "en_US": "Models + sidecar files"
+  },
+  "模型 / 触发词": {
+    "zh_CN": "模型 / 触发词",
+    "en_US": "Model / Trigger words"
+  },
+  "模型 Tags / Model Tags": {
+    "zh_CN": "模型 Tags",
+    "en_US": "Model Tags"
+  },
+  "模型: %1 | 预设: %2 | 阈值: %3 | 附加: %4 | 排除: %5 | %6 / %7 / %8 / %9": {
+    "zh_CN": "模型: %1 | 预设: %2 | 阈值: %3 | 附加: %4 | 排除: %5 | %6 / %7 / %8 / %9",
+    "en_US": "Model: %1 | Preset: %2 | Threshold: %3 | Add: %4 | Exclude: %5 | %6 / %7 / %8 / %9"
+  },
+  "模型: 未设置 | 预设: default.json | 阈值: 0.35": {
+    "zh_CN": "模型: 未设置 | 预设: default.json | 阈值: 0.35",
+    "en_US": "Model: not set | Preset: default.json | Threshold: 0.35"
+  },
+  "模型下载完成: ": {
+    "zh_CN": "模型下载完成: ",
+    "en_US": "Model download complete: "
+  },
+  "模型使用分析": {
+    "zh_CN": "模型使用分析",
+    "en_US": "Model usage analysis"
+  },
+  "模型列表项不存在，无法判断": {
+    "zh_CN": "模型列表项不存在，无法判断",
+    "en_US": "Model is no longer listed; cannot determine update status"
+  },
+  "模型名 / Model": {
+    "zh_CN": "模型名",
+    "en_US": "Model"
+  },
+  "模型已不在当前列表中，无法跳转。": {
+    "zh_CN": "模型已不在当前列表中，无法跳转。",
+    "en_US": "The model is no longer in the current list and cannot be opened."
+  },
+  "模型已不在当前列表中，无法重新检测。": {
+    "zh_CN": "模型已不在当前列表中，无法重新检测。",
+    "en_US": "The model is no longer in the current list and cannot be checked again."
+  },
+  "模型已加载，正在处理 %1 张图片...": {
+    "zh_CN": "模型已加载，正在处理 %1 张图片...",
+    "en_US": "Model loaded. Processing %1 images..."
+  },
+  "模型总数": {
+    "zh_CN": "模型总数",
+    "en_US": "Total models"
+  },
+  "模型文件不存在": {
+    "zh_CN": "模型文件不存在",
+    "en_US": "Model file does not exist"
+  },
+  "模型文件夹 / Model:": {
+    "zh_CN": "模型文件夹",
+    "en_US": "Model:"
+  },
+  "模型更新下载策略:": {
+    "zh_CN": "模型更新下载策略:",
+    "en_US": "Model update download policy:"
+  },
+  "模型空间占用分析": {
+    "zh_CN": "模型空间占用分析",
+    "en_US": "Model storage analysis"
+  },
+  "模型简介": {
+    "zh_CN": "模型简介",
+    "en_US": "Model description"
+  },
+  "模型简介 / Description": {
+    "zh_CN": "模型简介",
+    "en_US": "Description"
+  },
+  "模型触发词": {
+    "zh_CN": "模型触发词",
+    "en_US": "Model trigger words"
+  },
+  "模型评分、备注与自定义触发词已保存。": {
+    "zh_CN": "模型评分、备注与自定义触发词已保存。",
+    "en_US": "Model rating, notes and custom trigger words saved."
+  },
+  "模型评分、备注与触发词": {
+    "zh_CN": "模型评分、备注与触发词",
+    "en_US": "Model rating, notes and trigger words"
+  },
+  "模型详情": {
+    "zh_CN": "模型详情",
+    "en_US": "Model details"
+  },
+  "模型路径: %1\nModel ID: %2\nVersion ID: %3\nSHA256: %4": {
+    "zh_CN": "模型路径: %1\nModel ID: %2\nVersion ID: %3\nSHA256: %4",
+    "en_US": "Model path: %1\nModel ID: %2\nVersion ID: %3\nSHA256: %4"
+  },
+  "模型：%1": {
+    "zh_CN": "模型：%1",
+    "en_US": "Model: %1"
+  },
+  "模型：未设置": {
+    "zh_CN": "模型：未设置",
+    "en_US": "Model: not set"
+  },
+  "模板与占位管理": {
+    "zh_CN": "模板与占位管理",
+    "en_US": "Templates and placeholders"
+  },
+  "模板名称": {
+    "zh_CN": "模板名称",
+    "en_US": "Template name"
+  },
+  "模板已渲染。": {
+    "zh_CN": "模板已渲染。",
+    "en_US": "Template rendered."
+  },
+  "模板编辑": {
+    "zh_CN": "模板编辑",
+    "en_US": "Template editor"
+  },
+  "模板编辑 · 正面": {
+    "zh_CN": "模板编辑 · 正面",
+    "en_US": "Template editor · Positive"
+  },
+  "模板编辑 · 负面": {
+    "zh_CN": "模板编辑 · 负面",
+    "en_US": "Template editor · Negative"
+  },
+  "模板选择": {
+    "zh_CN": "模板选择",
+    "en_US": "Template selection"
+  },
+  "模糊 / Blur": {
+    "zh_CN": "模糊",
+    "en_US": "Blur"
+  },
+  "模糊前缩放图片 / Scale before blur": {
+    "zh_CN": "模糊前缩放图片",
+    "en_US": "Scale before blur"
+  },
+  "正在下载 AITagTranslate 词表...": {
+    "zh_CN": "正在下载 AITagTranslate 词表...",
+    "en_US": "Downloading AITagTranslate dictionary..."
+  },
+  "正在从 %1 同步元信息... 0/%2": {
+    "zh_CN": "正在从 %1 同步元信息... 0/%2",
+    "en_US": "Syncing metadata from %1... 0/%2"
+  },
+  "正在停止批量任务...": {
+    "zh_CN": "正在停止批量任务...",
+    "en_US": "Stopping batch tasks..."
+  },
+  "正在停止生成...": {
+    "zh_CN": "正在停止生成...",
+    "en_US": "Stopping generation..."
+  },
+  "正在分析模型文件 (计算 Hash)...": {
+    "zh_CN": "正在分析模型文件 (计算 Hash)...",
+    "en_US": "Analyzing model file (calculating hash)..."
+  },
+  "正在加载 WD14 反推历史...": {
+    "zh_CN": "正在加载 WD14 反推历史...",
+    "en_US": "Loading WD14 inference history..."
+  },
+  "正在加载分类视图…": {
+    "zh_CN": "正在加载分类视图…",
+    "en_US": "Loading category view..."
+  },
+  "正在加载词表，请稍候...": {
+    "zh_CN": "正在加载词表，请稍候...",
+    "en_US": "Loading dictionary. Please wait..."
+  },
+  "正在同步元信息... %1/%2": {
+    "zh_CN": "正在同步元信息... %1/%2",
+    "en_US": "Syncing metadata... %1/%2"
+  },
+  "正在同步预览图元信息... 剩余 %1 个任务": {
+    "zh_CN": "正在同步预览图元信息... 剩余 %1 个任务",
+    "en_US": "Syncing preview metadata... %1 tasks remaining"
+  },
+  "正在后台加载图库缓存，完成后开始扫描...": {
+    "zh_CN": "正在后台加载图库缓存，完成后开始扫描...",
+    "en_US": "Loading gallery cache in the background. Scanning will start afterward..."
+  },
+  "正在后台扫描图片...": {
+    "zh_CN": "正在后台扫描图片...",
+    "en_US": "Scanning images in the background..."
+  },
+  "正在后台扫描模型元信息...": {
+    "zh_CN": "正在后台扫描模型元信息...",
+    "en_US": "Scanning model metadata in the background..."
+  },
+  "正在后台检查元数据...": {
+    "zh_CN": "正在后台检查元数据...",
+    "en_US": "Checking metadata in the background..."
+  },
+  "正在启动批量打标，共 %1 张图片...": {
+    "zh_CN": "正在启动批量打标，共 %1 张图片...",
+    "en_US": "Starting batch tagging: %1 images..."
+  },
+  "正在填充表格... %1 / %2": {
+    "zh_CN": "正在填充表格... %1 / %2",
+    "en_US": "Populating table... %1 / %2"
+  },
+  "正在扫描本地模型库...": {
+    "zh_CN": "正在扫描本地模型库...",
+    "en_US": "Scanning local model library..."
+  },
+  "正在扫描模型...": {
+    "zh_CN": "正在扫描模型...",
+    "en_US": "Scanning models..."
+  },
+  "正在显示扫描结果... %1/%2": {
+    "zh_CN": "正在显示扫描结果... %1/%2",
+    "en_US": "Displaying scan results... %1/%2"
+  },
+  "正在检查 %1 个模型的更新...": {
+    "zh_CN": "正在检查 %1 个模型的更新...",
+    "en_US": "Checking %1 models for updates..."
+  },
+  "正在检查更新... %1/%2": {
+    "zh_CN": "正在检查更新... %1/%2",
+    "en_US": "Checking for updates... %1/%2"
+  },
+  "正在测试 API Key...": {
+    "zh_CN": "正在测试 API Key...",
+    "en_US": "Testing API key..."
+  },
+  "正在等待上一项 Hash 计算完成...": {
+    "zh_CN": "正在等待上一项 Hash 计算完成...",
+    "en_US": "Waiting for the previous hash calculation..."
+  },
+  "正在等待模型文件分析...": {
+    "zh_CN": "正在等待模型文件分析...",
+    "en_US": "Waiting for model file analysis..."
+  },
+  "正在计算 Hash...": {
+    "zh_CN": "正在计算 Hash...",
+    "en_US": "Calculating hash..."
+  },
+  "正在读取 %1 模型...": {
+    "zh_CN": "正在读取 %1 模型...",
+    "en_US": "Loading %1 models..."
+  },
+  "正在读取 user_gallery_cache.json 并统计 Tag...": {
+    "zh_CN": "正在读取 user_gallery_cache.json 并统计 Tag...",
+    "en_US": "Reading user_gallery_cache.json and counting tags..."
+  },
+  "正在读取 user_gallery_cache.json 并统计常用 Tag...": {
+    "zh_CN": "正在读取 user_gallery_cache.json 并统计常用 Tag...",
+    "en_US": "Reading user_gallery_cache.json and counting frequently used tags..."
+  },
+  "正在调用 %1 生成提示词...": {
+    "zh_CN": "正在调用 %1 生成提示词...",
+    "en_US": "Calling %1 to generate prompts..."
+  },
+  "正在连接 GitHub 检查更新...": {
+    "zh_CN": "正在连接 GitHub 检查更新...",
+    "en_US": "Connecting to GitHub to check for updates..."
+  },
+  "正在重新同步模型详情 (计算 Hash)...": {
+    "zh_CN": "正在重新同步模型详情 (计算 Hash)...",
+    "en_US": "Resyncing model details (calculating hash)..."
+  },
+  "正在预览 %1 的历史结果。": {
+    "zh_CN": "正在预览 %1 的历史结果。",
+    "en_US": "Previewing history result for %1."
+  },
+  "正面": {
+    "zh_CN": "正面",
+    "en_US": "Positive"
+  },
+  "正面 + 负面": {
+    "zh_CN": "正面 + 负面",
+    "en_US": "Positive + Negative"
+  },
+  "正面 Tag": {
+    "zh_CN": "正面 Tag",
+    "en_US": "Positive tags"
+  },
+  "正面和负面提示词": {
+    "zh_CN": "正面和负面提示词",
+    "en_US": "Positive and negative prompts"
+  },
+  "正面提示词": {
+    "zh_CN": "正面提示词",
+    "en_US": "Positive prompt"
+  },
+  "正面提示词 / Positive Tags:": {
+    "zh_CN": "正面提示词",
+    "en_US": "Positive Tags:"
+  },
+  "正面模板，例如 masterpiece, {character}, {outfit}": {
+    "zh_CN": "正面模板，例如 masterpiece, {character}, {outfit}",
+    "en_US": "Positive template, e.g. masterpiece, {character}, {outfit}"
+  },
+  "每次询问": {
+    "zh_CN": "每次询问",
+    "en_US": "Ask each time"
+  },
+  "每行 KEY=VALUE，可用 %VAR% 引用现有变量，例如：\nHF_ENDPOINT=https://hf-mirror.com": {
+    "zh_CN": "每行 KEY=VALUE，可用 %VAR% 引用现有变量，例如：\nHF_ENDPOINT=https://hf-mirror.com",
+    "en_US": "One KEY=VALUE per line. Use %VAR% to reference existing variables, e.g.\nHF_ENDPOINT=https://hf-mirror.com"
+  },
+  "每行 KEY=VALUE，可用 %VAR% 引用现有变量，例如：\nHF_ENDPOINT=https://hf-mirror.com\nPATH=D:\\novel-ai\\novelai-webui-aki-v3\\git\\bin;%PATH%": {
+    "zh_CN": "每行 KEY=VALUE，可用 %VAR% 引用现有变量，例如：\nHF_ENDPOINT=https://hf-mirror.com\nPATH=D:\\novel-ai\\novelai-webui-aki-v3\\git\\bin;%PATH%",
+    "en_US": "One KEY=VALUE per line. Use %VAR% to reference existing variables, e.g.\nHF_ENDPOINT=https://hf-mirror.com\nPATH=D:\\novel-ai\\novelai-webui-aki-v3\\git\\bin;%PATH%"
+  },
+  "每行一个 Tag，或使用逗号分隔": {
+    "zh_CN": "每行一个 Tag，或使用逗号分隔",
+    "en_US": "One tag per line, or separate with commas"
+  },
+  "每行一组，或使用逗号分隔": {
+    "zh_CN": "每行一组，或使用逗号分隔",
+    "en_US": "One group per line, or separate with commas"
+  },
+  "没有可删除的预设。": {
+    "zh_CN": "没有可删除的预设。",
+    "en_US": "No preset available to delete."
+  },
+  "没有可同步的模型。": {
+    "zh_CN": "没有可同步的模型。",
+    "en_US": "No models to sync."
+  },
+  "没有可导出的 Tag。": {
+    "zh_CN": "没有可导出的 Tag。",
+    "en_US": "No tags available to export."
+  },
+  "没有可显示的模型触发词。请先同步模型元数据或编辑自定义触发词。": {
+    "zh_CN": "没有可显示的模型触发词。请先同步模型元数据或编辑自定义触发词。",
+    "en_US": "No model trigger words available. Sync model metadata or add custom trigger words first."
+  },
+  "没有可检查的模型。": {
+    "zh_CN": "没有可检查的模型。",
+    "en_US": "No models to check."
+  },
+  "没有可检查的模型。请先选择模型，或使用检查全部。": {
+    "zh_CN": "没有可检查的模型。请先选择模型，或使用检查全部。",
+    "en_US": "No models to check. Select models or use Check all."
+  },
+  "没有可用的 %1 模型，请先启动服务或手动填写模型名。": {
+    "zh_CN": "没有可用的 %1 模型，请先启动服务或手动填写模型名。",
+    "en_US": "No %1 models available. Start the service or enter a model name."
+  },
+  "没有启用且可读取的翻译表": {
+    "zh_CN": "没有启用且可读取的翻译表",
+    "en_US": "No enabled dictionaries can be read"
+  },
+  "没有符合条件的 Tag。": {
+    "zh_CN": "没有符合条件的 Tag。",
+    "en_US": "No matching tags."
+  },
+  "没有需要处理的图片。": {
+    "zh_CN": "没有需要处理的图片。",
+    "en_US": "No images need processing."
+  },
+  "测试": {
+    "zh_CN": "测试",
+    "en_US": "Test"
+  },
+  "浏览": {
+    "zh_CN": "浏览",
+    "en_US": "Browse"
+  },
+  "浏览...": {
+    "zh_CN": "浏览...",
+    "en_US": "Browse..."
+  },
+  "浏览…": {
+    "zh_CN": "浏览…",
+    "en_US": "Browse..."
+  },
+  "添加": {
+    "zh_CN": "添加",
+    "en_US": "Add"
+  },
+  "添加 Tag": {
+    "zh_CN": "添加 Tag",
+    "en_US": "Add tag"
+  },
+  "添加到收藏夹 (右键管理)": {
+    "zh_CN": "添加到收藏夹 (右键管理)",
+    "en_US": "Add to collection (right-click to manage)"
+  },
+  "添加到正面": {
+    "zh_CN": "添加到正面",
+    "en_US": "Add to positive"
+  },
+  "添加到正面模板": {
+    "zh_CN": "添加到正面模板",
+    "en_US": "Add to positive template"
+  },
+  "添加到负面": {
+    "zh_CN": "添加到负面",
+    "en_US": "Add to negative"
+  },
+  "添加图片": {
+    "zh_CN": "添加图片",
+    "en_US": "Add images"
+  },
+  "添加提示词收藏": {
+    "zh_CN": "添加提示词收藏",
+    "en_US": "Add prompt favorite"
+  },
+  "添加文件夹 / Add": {
+    "zh_CN": "添加文件夹",
+    "en_US": "Add"
+  },
+  "添加模型触发词时，同时添加该模型的 LoRA 标签（例如 <lora:name:1>）": {
+    "zh_CN": "添加模型触发词时，同时添加该模型的 LoRA 标签（例如 <lora:name:1>）",
+    "en_US": "Include the model's LoRA tag when adding trigger words (e.g. <lora:name:1>)"
+  },
+  "添加正面到模板": {
+    "zh_CN": "添加正面到模板",
+    "en_US": "Add positive to template"
+  },
+  "添加用户标签": {
+    "zh_CN": "添加用户标签",
+    "en_US": "Add user tags"
+  },
+  "添加用户标签... / Add User Tags...": {
+    "zh_CN": "添加用户标签...",
+    "en_US": "Add User Tags..."
+  },
+  "添加至收藏": {
+    "zh_CN": "添加至收藏",
+    "en_US": "Add to favorites"
+  },
+  "添加至收藏夹...": {
+    "zh_CN": "添加至收藏夹...",
+    "en_US": "Add to collection..."
+  },
+  "添加负面到模板": {
+    "zh_CN": "添加负面到模板",
+    "en_US": "Add negative to template"
+  },
+  "清空 / Clear": {
+    "zh_CN": "清空",
+    "en_US": "Clear"
+  },
+  "清空列表": {
+    "zh_CN": "清空列表",
+    "en_US": "Clear list"
+  },
+  "清空历史": {
+    "zh_CN": "清空历史",
+    "en_US": "Clear history"
+  },
+  "清空反推历史": {
+    "zh_CN": "清空反推历史",
+    "en_US": "Clear inference history"
+  },
+  "清空图片": {
+    "zh_CN": "清空图片",
+    "en_US": "Clear image"
+  },
+  "清空已完成": {
+    "zh_CN": "清空已完成",
+    "en_US": "Clear completed"
+  },
+  "清空输入": {
+    "zh_CN": "清空输入",
+    "en_US": "Clear inputs"
+  },
+  "清除": {
+    "zh_CN": "清除",
+    "en_US": "Clear"
+  },
+  "清除 `user_gallery_cache.json`，下次扫描会重新解析本地图库提示词。": {
+    "zh_CN": "清除 `user_gallery_cache.json`，下次扫描会重新解析本地图库提示词。",
+    "en_US": "Clear user_gallery_cache.json. Image prompts will be parsed again during the next scan."
+  },
+  "清除图库缓存": {
+    "zh_CN": "清除图库缓存",
+    "en_US": "Clear gallery cache"
+  },
+  "清除缓存:": {
+    "zh_CN": "清除缓存:",
+    "en_US": "Clear cache:"
+  },
+  "清除高亮颜色 / Clear Highlight Color": {
+    "zh_CN": "清除高亮颜色",
+    "en_US": "Clear Highlight Color"
+  },
+  "点击上方图片查看提示词...": {
+    "zh_CN": "点击上方图片查看提示词...",
+    "en_US": "Click an image above to view its prompt..."
+  },
+  "点击取色": {
+    "zh_CN": "点击取色",
+    "en_US": "Click to pick a color"
+  },
+  "点击后加载 Tag 浏览工具...": {
+    "zh_CN": "点击后加载 Tag 浏览工具...",
+    "en_US": "Open to load the tag browser..."
+  },
+  "点击后加载图片同步工具...": {
+    "zh_CN": "点击后加载图片同步工具...",
+    "en_US": "Open to load image sync..."
+  },
+  "点击后加载大模型提示词工具...": {
+    "zh_CN": "点击后加载大模型提示词工具...",
+    "en_US": "Open to load the LLM prompt tool..."
+  },
+  "点击后加载提示词模板库...": {
+    "zh_CN": "点击后加载提示词模板库...",
+    "en_US": "Open to load the prompt template library..."
+  },
+  "点击后加载提示词解析工具...": {
+    "zh_CN": "点击后加载提示词解析工具...",
+    "en_US": "Open to load the prompt parser..."
+  },
+  "点击后加载模型分析工具...": {
+    "zh_CN": "点击后加载模型分析工具...",
+    "en_US": "Open to load model analysis..."
+  },
+  "点击在主页添加该 Tag 筛选": {
+    "zh_CN": "点击在主页添加该 Tag 筛选",
+    "en_US": "Click to filter the home page by this tag"
+  },
+  "点击在主页添加该用户 Tag 筛选": {
+    "zh_CN": "点击在主页添加该用户 Tag 筛选",
+    "en_US": "Click to filter the home page by this user tag"
+  },
+  "点击在主页筛选该作者": {
+    "zh_CN": "点击在主页筛选该作者",
+    "en_US": "Click to filter the home page by this author"
+  },
+  "点击开始检查后，将在后台检查本地 metadata 与预览图状态。": {
+    "zh_CN": "点击开始检查后，将在后台检查本地 metadata 与预览图状态。",
+    "en_US": "Start a background check of local metadata and preview images."
+  },
+  "点击或拖拽图片到此处\nClick or Drag Image Here": {
+    "zh_CN": "点击或拖拽图片到此处",
+    "en_US": "Click or drag an image here"
+  },
+  "点击扫描后，将在后台读取本地模型元信息状态。": {
+    "zh_CN": "点击扫描后，将在后台读取本地模型元信息状态。",
+    "en_US": "Scan to check local model metadata in the background."
+  },
+  "版本 / Version": {
+    "zh_CN": "版本",
+    "en_US": "Version"
+  },
+  "版本ID %1": {
+    "zh_CN": "版本ID %1",
+    "en_US": "Version ID %1"
+  },
+  "版本更新": {
+    "zh_CN": "版本更新",
+    "en_US": "Version updates"
+  },
+  "状态": {
+    "zh_CN": "状态",
+    "en_US": "Status"
+  },
+  "状态 / Status": {
+    "zh_CN": "状态",
+    "en_US": "Status"
+  },
+  "状态: -": {
+    "zh_CN": "状态: -",
+    "en_US": "Status: -"
+  },
+  "状态: Civitai 元数据": {
+    "zh_CN": "状态: Civitai 元数据",
+    "en_US": "Status: Civitai metadata"
+  },
+  "状态: 已编辑 (本地元数据)": {
+    "zh_CN": "状态: 已编辑 (本地元数据)",
+    "en_US": "Status: edited local metadata"
+  },
+  "状态: 本地模型": {
+    "zh_CN": "状态: 本地模型",
+    "en_US": "Status: local model"
+  },
+  "状态: 本地模型 (已编辑)": {
+    "zh_CN": "状态: 本地模型 (已编辑)",
+    "en_US": "Status: local model (edited)"
+  },
+  "环境变量": {
+    "zh_CN": "环境变量",
+    "en_US": "Environment variables"
+  },
+  "生成一个随机的现代浏览器 UA 填入框中": {
+    "zh_CN": "生成一个随机的现代浏览器 UA 填入框中",
+    "en_US": "Generate a random modern browser user agent"
+  },
+  "生成参数 / Generation Parameters:": {
+    "zh_CN": "生成参数",
+    "en_US": "Generation Parameters:"
+  },
+  "生成后停止": {
+    "zh_CN": "生成后停止",
+    "en_US": "Stop model after generation"
+  },
+  "生成提示词": {
+    "zh_CN": "生成提示词",
+    "en_US": "Generate prompt"
+  },
+  "生成时加入偏好摘要": {
+    "zh_CN": "生成时加入偏好摘要",
+    "en_US": "Include preference summary"
+  },
+  "生成结果": {
+    "zh_CN": "生成结果",
+    "en_US": "Generated result"
+  },
+  "生成范围": {
+    "zh_CN": "生成范围",
+    "en_US": "Generation scope"
+  },
+  "用图片原始提示词覆盖当前文本（丢弃已做的修改）": {
+    "zh_CN": "用图片原始提示词覆盖当前文本（丢弃已做的修改）",
+    "en_US": "Restore the image's original prompt and discard edits"
+  },
+  "用户 Tag 加载中...": {
+    "zh_CN": "用户 Tag 加载中...",
+    "en_US": "Loading user tags..."
+  },
+  "用户 Tag 未加载": {
+    "zh_CN": "用户 Tag 未加载",
+    "en_US": "User tags not loaded"
+  },
+  "用户使用 Tag": {
+    "zh_CN": "用户使用 Tag",
+    "en_US": "Used tags"
+  },
+  "用户偏好摘要": {
+    "zh_CN": "用户偏好摘要",
+    "en_US": "User preference summary"
+  },
+  "用户常用 Tag": {
+    "zh_CN": "用户常用 Tag",
+    "en_US": "Frequently used tags"
+  },
+  "用时: %1 sec.": {
+    "zh_CN": "用时: %1 sec.",
+    "en_US": "Elapsed: %1 sec."
+  },
+  "用时: -- sec.": {
+    "zh_CN": "用时: -- sec.",
+    "en_US": "Elapsed: -- sec."
+  },
+  "用时: 计算中...": {
+    "zh_CN": "用时: 计算中...",
+    "en_US": "Elapsed: calculating..."
+  },
+  "用英文逗号分隔。这些词在统计 Tag 时会被自动忽略。": {
+    "zh_CN": "用英文逗号分隔。这些词在统计 Tag 时会被自动忽略。",
+    "en_US": "Separate with commas. These tags are excluded from tag statistics."
+  },
+  "界面地址(可选)": {
+    "zh_CN": "界面地址(可选)",
+    "en_US": "Web UI address (optional)"
+  },
+  "界面语言": {
+    "zh_CN": "界面语言",
+    "en_US": "Interface language"
+  },
+  "留空则使用脚本所在目录": {
+    "zh_CN": "留空则使用脚本所在目录",
+    "en_US": "Leave blank to use the script's folder"
+  },
+  "白名单验证 / Whitelist": {
+    "zh_CN": "白名单验证",
+    "en_US": "Whitelist"
+  },
+  "目录无效": {
+    "zh_CN": "目录无效",
+    "en_US": "Invalid folder"
+  },
+  "目标: ": {
+    "zh_CN": "目标: ",
+    "en_US": "Target: "
+  },
+  "目标中已经包含该触发词。": {
+    "zh_CN": "目标中已经包含该触发词。",
+    "en_US": "The target already contains this trigger word."
+  },
+  "目标中已经包含选中的触发词。": {
+    "zh_CN": "目标中已经包含选中的触发词。",
+    "en_US": "The target already contains the selected trigger words."
+  },
+  "确定删除当前占位符吗？模板中的 {name} 文本会保留，方便之后手动处理。": {
+    "zh_CN": "确定删除当前占位符吗？模板中的 {name} 文本会保留，方便之后手动处理。",
+    "en_US": "Delete this placeholder? Its {name} references will remain in templates for manual editing."
+  },
+  "确定删除当前对话吗？": {
+    "zh_CN": "确定删除当前对话吗？",
+    "en_US": "Delete the current conversation?"
+  },
+  "确定删除当前模板吗？": {
+    "zh_CN": "确定删除当前模板吗？",
+    "en_US": "Delete the current template?"
+  },
+  "确定删除收藏“%1”吗？": {
+    "zh_CN": "确定删除收藏“%1”吗？",
+    "en_US": "Delete favorite \"%1\"?"
+  },
+  "确定删除自定义主题“%1”吗？此操作不可撤销。": {
+    "zh_CN": "确定删除自定义主题“%1”吗？此操作不可撤销。",
+    "en_US": "Delete custom theme \"%1\"? This cannot be undone."
+  },
+  "确定删除选中的 %1 条 WD14 反推历史吗？": {
+    "zh_CN": "确定删除选中的 %1 条 WD14 反推历史吗？",
+    "en_US": "Delete %1 selected WD14 history entries?"
+  },
+  "确定删除选中的预览图吗？": {
+    "zh_CN": "确定删除选中的预览图吗？",
+    "en_US": "Delete the selected preview image?"
+  },
+  "确定清空全部 WD14 反推历史吗？此操作无法撤销。": {
+    "zh_CN": "确定清空全部 WD14 反推历史吗？此操作无法撤销。",
+    "en_US": "Clear all WD14 inference history? This cannot be undone."
+  },
+  "确定清空所有对话历史吗？": {
+    "zh_CN": "确定清空所有对话历史吗？",
+    "en_US": "Clear all conversation history?"
+  },
+  "确定要删除收藏夹 \"%1\" 吗？\n(里面的模型不会被删除，仅删除分类)": {
+    "zh_CN": "确定要删除收藏夹 \"%1\" 吗？\n(里面的模型不会被删除，仅删除分类)",
+    "en_US": "Delete collection \"%1\"?\nOnly the collection is removed; its model files are preserved."
+  },
+  "确定要删除预设 \"%1\" 吗？": {
+    "zh_CN": "确定要删除预设 \"%1\" 吗？",
+    "en_US": "Delete preset \"%1\"?"
+  },
+  "确定要将过滤提示词重置为默认值吗？\n此操作将覆盖当前的自定义设置。\n\nAre you sure you want to reset filter tags to default?": {
+    "zh_CN": "确定要将过滤提示词重置为默认值吗？\n此操作将覆盖当前的自定义设置。",
+    "en_US": "Reset filter tags to their defaults?\nThis will replace your current custom settings."
+  },
+  "确认删除": {
+    "zh_CN": "确认删除",
+    "en_US": "Confirm deletion"
+  },
+  "确认退出 / Confirm Exit": {
+    "zh_CN": "确认退出",
+    "en_US": "Confirm Exit"
+  },
+  "确认重置 / Confirm Reset": {
+    "zh_CN": "确认重置",
+    "en_US": "Confirm Reset"
+  },
+  "移除用户标签": {
+    "zh_CN": "移除用户标签",
+    "en_US": "Remove user tags"
+  },
+  "移除用户标签... / Remove User Tags...": {
+    "zh_CN": "移除用户标签...",
+    "en_US": "Remove User Tags..."
+  },
+  "程序主题 / App Theme:": {
+    "zh_CN": "程序主题",
+    "en_US": "App Theme:"
+  },
+  "稍后 / Later": {
+    "zh_CN": "稍后",
+    "en_US": "Later"
+  },
+  "空选项": {
+    "zh_CN": "空选项",
+    "en_US": "Empty choice"
+  },
+  "窗口基调 / Window base:": {
+    "zh_CN": "窗口基调",
+    "en_US": "Window base:"
+  },
+  "端口 / Port:": {
+    "zh_CN": "端口",
+    "en_US": "Port:"
+  },
+  "端口被占用或启动失败": {
+    "zh_CN": "端口被占用或启动失败",
+    "en_US": "Port is in use or the service failed to start"
+  },
+  "等待检查更新。": {
+    "zh_CN": "等待检查更新。",
+    "en_US": "Waiting to check for updates."
+  },
+  "等待模型库数据。": {
+    "zh_CN": "等待模型库数据。",
+    "en_US": "Waiting for model library data."
+  },
+  "筛选: %1 张图片符合条件": {
+    "zh_CN": "筛选: %1 张图片符合条件",
+    "en_US": "Filter: %1 matching images"
+  },
+  "简介 / Description": {
+    "zh_CN": "简介",
+    "en_US": "Description"
+  },
+  "管理: %1": {
+    "zh_CN": "管理: %1",
+    "en_US": "Manage: %1"
+  },
+  "管理收藏夹: %1": {
+    "zh_CN": "管理收藏夹: %1",
+    "en_US": "Manage collection: %1"
+  },
+  "类别": {
+    "zh_CN": "类别",
+    "en_US": "Category"
+  },
+  "类型": {
+    "zh_CN": "类型",
+    "en_US": "Type"
+  },
+  "类型 / Type": {
+    "zh_CN": "类型",
+    "en_US": "Type"
+  },
+  "类型 / Type:": {
+    "zh_CN": "类型",
+    "en_US": "Type:"
+  },
+  "系统提示词": {
+    "zh_CN": "系统提示词",
+    "en_US": "System prompt"
+  },
+  "级别": {
+    "zh_CN": "级别",
+    "en_US": "Severity"
+  },
+  "结果已复制到剪贴板": {
+    "zh_CN": "结果已复制到剪贴板",
+    "en_US": "Result copied to clipboard"
+  },
+  "统计范围": {
+    "zh_CN": "统计范围",
+    "en_US": "Scope"
+  },
+  "继续失败/未完成项": {
+    "zh_CN": "继续失败/未完成项",
+    "en_US": "Resume failed / pending"
+  },
+  "继续该对话": {
+    "zh_CN": "继续该对话",
+    "en_US": "Continue conversation"
+  },
+  "继续输入修改要求，例如：保持整体不变，把裙子改成棋盘格，并补全袜子和袖口细节。": {
+    "zh_CN": "继续输入修改要求，例如：保持整体不变，把裙子改成棋盘格，并补全袜子和袖口细节。",
+    "en_US": "Enter further changes, e.g. keep the composition, change the skirt to a checkered pattern, and refine the socks and cuffs."
+  },
+  "编辑 / 新建主题…": {
+    "zh_CN": "编辑 / 新建主题…",
+    "en_US": "Edit / New theme..."
+  },
+  "编辑元数据": {
+    "zh_CN": "编辑元数据",
+    "en_US": "Edit metadata"
+  },
+  "编辑发给系统的提示词模板。": {
+    "zh_CN": "编辑发给系统的提示词模板。",
+    "en_US": "Edit the system prompt template."
+  },
+  "编辑并重新生成": {
+    "zh_CN": "编辑并重新生成",
+    "en_US": "Edit and regenerate"
+  },
+  "编辑当前任务在发送参考图片时附带的说明文字。": {
+    "zh_CN": "编辑当前任务在发送参考图片时附带的说明文字。",
+    "en_US": "Edit the note sent with reference images for the current task."
+  },
+  "编辑当前任务的 task_guidance 内容。": {
+    "zh_CN": "编辑当前任务的 task_guidance 内容。",
+    "en_US": "Edit task_guidance for the current task."
+  },
+  "编辑提示词时自动补全弹窗最多显示的候选数量。": {
+    "zh_CN": "编辑提示词时自动补全弹窗最多显示的候选数量。",
+    "en_US": "Maximum autocomplete suggestions when editing prompts."
+  },
+  "编辑正面 Tag": {
+    "zh_CN": "编辑正面 Tag",
+    "en_US": "Edit positive tag"
+  },
+  "编辑消息": {
+    "zh_CN": "编辑消息",
+    "en_US": "Edit message"
+  },
+  "编辑用户私有模型信息": {
+    "zh_CN": "编辑用户私有模型信息",
+    "en_US": "Edit private model information"
+  },
+  "编辑评分、备注与触发词... / Edit Rating, Note && Triggers...": {
+    "zh_CN": "编辑评分、备注与触发词...",
+    "en_US": "Edit Rating, Note && Triggers..."
+  },
+  "编辑负面 Tag": {
+    "zh_CN": "编辑负面 Tag",
+    "en_US": "Edit negative tag"
+  },
+  "缩小（-）": {
+    "zh_CN": "缩小（-）",
+    "en_US": "Zoom out (-)"
+  },
+  "缩放比例已设置为 %1x，重启后生效": {
+    "zh_CN": "缩放比例已设置为 %1x，重启后生效",
+    "en_US": "UI scale set to %1x. Restart to apply."
+  },
+  "缺失元信息": {
+    "zh_CN": "缺失元信息",
+    "en_US": "Missing metadata"
+  },
+  "缺少 Civitai 识别字段": {
+    "zh_CN": "缺少 Civitai 识别字段",
+    "en_US": "Missing Civitai identifiers"
+  },
+  "缺少 metadata JSON": {
+    "zh_CN": "缺少 metadata JSON",
+    "en_US": "Missing metadata JSON"
+  },
+  "缺少 modelId/versionId/SHA256": {
+    "zh_CN": "缺少 modelId/versionId/SHA256",
+    "en_US": "Missing modelId/versionId/SHA256"
+  },
+  "缺少 modelId/versionId/sha256，更新检测可能无法判断": {
+    "zh_CN": "缺少 modelId/versionId/sha256，更新检测可能无法判断",
+    "en_US": "Missing modelId/versionId/sha256; update detection may fail"
+  },
+  "缺少本地封面预览图": {
+    "zh_CN": "缺少本地封面预览图",
+    "en_US": "Missing local cover preview"
+  },
+  "缺少识别字段": {
+    "zh_CN": "缺少识别字段",
+    "en_US": "Missing identifiers"
+  },
+  "网络 / Network": {
+    "zh_CN": "网络",
+    "en_US": "Network"
+  },
+  "网络请求设置 / Network & User Agent": {
+    "zh_CN": "网络请求设置",
+    "en_US": "Network & User Agent"
+  },
+  "置信度": {
+    "zh_CN": "置信度",
+    "en_US": "Confidence"
+  },
+  "翻译": {
+    "zh_CN": "翻译",
+    "en_US": "Translate"
+  },
+  "翻译词表已加载。": {
+    "zh_CN": "翻译词表已加载。",
+    "en_US": "Translation dictionary loaded."
+  },
+  "背景模糊半径 / Blur Radius:": {
+    "zh_CN": "背景模糊半径",
+    "en_US": "Blur Radius:"
+  },
+  "自动勾选": {
+    "zh_CN": "自动勾选",
+    "en_US": "Auto-select"
+  },
+  "自动检查更新失败: ": {
+    "zh_CN": "自动检查更新失败: ",
+    "en_US": "Automatic update check failed: "
+  },
+  "自动检查更新失败: 无法解析版本信息": {
+    "zh_CN": "自动检查更新失败: 无法解析版本信息",
+    "en_US": "Automatic update check failed: invalid version information"
+  },
+  "自动补全": {
+    "zh_CN": "自动补全",
+    "en_US": "Autocomplete"
+  },
+  "自定义 QSS 读取失败，已保留 Steam Dark。": {
+    "zh_CN": "自定义 QSS 读取失败，已保留 Steam Dark。",
+    "en_US": "Could not read custom QSS. Steam Dark is retained."
+  },
+  "自定义 UA / Custom User-Agent:": {
+    "zh_CN": "自定义 UA",
+    "en_US": "Custom User-Agent:"
+  },
+  "自定义主题名称（将保存为 config/themes 下的 JSON）": {
+    "zh_CN": "自定义主题名称（将保存为 config/themes 下的 JSON）",
+    "en_US": "Custom theme name (saved as JSON under config/themes)"
+  },
+  "自定义前缀（原样）": {
+    "zh_CN": "自定义前缀（原样）",
+    "en_US": "Custom prefix (verbatim)"
+  },
+  "自定义参数": {
+    "zh_CN": "自定义参数",
+    "en_US": "Custom parameters"
+  },
+  "自定义后缀（原样）": {
+    "zh_CN": "自定义后缀（原样）",
+    "en_US": "Custom suffix (verbatim)"
+  },
+  "自定义触发词": {
+    "zh_CN": "自定义触发词",
+    "en_US": "Custom trigger words"
+  },
+  "获取手机版 App": {
+    "zh_CN": "获取手机版 App",
+    "en_US": "Get mobile app"
+  },
+  "覆盖": {
+    "zh_CN": "覆盖",
+    "en_US": "Overwrite"
+  },
+  "覆盖当前文件": {
+    "zh_CN": "覆盖当前文件",
+    "en_US": "Overwrite current file"
+  },
+  "覆盖本地元信息": {
+    "zh_CN": "覆盖本地元信息",
+    "en_US": "Overwrite local metadata"
+  },
+  "覆盖确认": {
+    "zh_CN": "覆盖确认",
+    "en_US": "Confirm overwrite"
+  },
+  "解析": {
+    "zh_CN": "解析",
+    "en_US": "Parse"
+  },
+  "触发词": {
+    "zh_CN": "触发词",
+    "en_US": "Trigger words"
+  },
+  "触发词 / Trigger Words": {
+    "zh_CN": "触发词",
+    "en_US": "Trigger Words"
+  },
+  "警告": {
+    "zh_CN": "警告",
+    "en_US": "Warning"
+  },
+  "计算 Hash 中...": {
+    "zh_CN": "计算 Hash 中...",
+    "en_US": "Calculating hash..."
+  },
+  "认证重试中...": {
+    "zh_CN": "认证重试中...",
+    "en_US": "Retrying with authentication..."
+  },
+  "训练 Caption 输出": {
+    "zh_CN": "训练 Caption 输出",
+    "en_US": "Training caption output"
+  },
+  "记录触发词补充、推荐权重、使用心得等。": {
+    "zh_CN": "记录触发词补充、推荐权重、使用心得等。",
+    "en_US": "Record additional trigger words, recommended weights and usage notes."
+  },
+  "设为封面": {
+    "zh_CN": "设为封面",
+    "en_US": "Set as cover"
+  },
+  "设置": {
+    "zh_CN": "设置",
+    "en_US": "Settings"
+  },
+  "设置封面失败": {
+    "zh_CN": "设置封面失败",
+    "en_US": "Could not set cover"
+  },
+  "设置已自动保存，部分设置需重新扫描或重启生效。": {
+    "zh_CN": "设置已自动保存，部分设置需重新扫描或重启生效。",
+    "en_US": "Settings are saved automatically. Some require a rescan or restart."
+  },
+  "设置模型高亮颜色": {
+    "zh_CN": "设置模型高亮颜色",
+    "en_US": "Set model highlight color"
+  },
+  "设置的 SD 输出目录不存在、为空，或全部被禁用。": {
+    "zh_CN": "设置的 SD 输出目录不存在、为空，或全部被禁用。",
+    "en_US": "Configured output folders do not exist, are empty, or are all disabled."
+  },
+  "设置评分 / Set Rating": {
+    "zh_CN": "设置评分",
+    "en_US": "Set Rating"
+  },
+  "设置高亮颜色... / Set Highlight Color...": {
+    "zh_CN": "设置高亮颜色...",
+    "en_US": "Set Highlight Color..."
+  },
+  "访问 CivArchive": {
+    "zh_CN": "访问 CivArchive",
+    "en_US": "Visit CivArchive"
+  },
+  "访问 Civitai": {
+    "zh_CN": "访问 Civitai",
+    "en_US": "Visit Civitai"
+  },
+  "评分": {
+    "zh_CN": "评分",
+    "en_US": "Rating"
+  },
+  "评分: ": {
+    "zh_CN": "评分: ",
+    "en_US": "Rating: "
+  },
+  "评分: 未评分": {
+    "zh_CN": "评分: 未评分",
+    "en_US": "Rating: unrated"
+  },
+  "评分置信度": {
+    "zh_CN": "评分置信度",
+    "en_US": "Rating confidence"
+  },
+  "词匹配": {
+    "zh_CN": "词匹配",
+    "en_US": "Whole words"
+  },
+  "词表仍在加载，请稍候再保存。": {
+    "zh_CN": "词表仍在加载，请稍候再保存。",
+    "en_US": "The dictionary is still loading. Wait before saving."
+  },
+  "词表加载中...": {
+    "zh_CN": "词表加载中...",
+    "en_US": "Loading dictionary..."
+  },
+  "词表未加载": {
+    "zh_CN": "词表未加载",
+    "en_US": "Dictionary not loaded"
+  },
+  "词表路径与启用状态请在设置页管理": {
+    "zh_CN": "词表路径与启用状态请在设置页管理",
+    "en_US": "Manage dictionary paths and enabled states in Settings"
+  },
+  "该任务没有可打开的 Civitai 模型 ID。": {
+    "zh_CN": "该任务没有可打开的 Civitai 模型 ID。",
+    "en_US": "This task has no Civitai model ID to open."
+  },
+  "该名称与内置主题冲突，请换一个名称。": {
+    "zh_CN": "该名称与内置主题冲突，请换一个名称。",
+    "en_US": "This name conflicts with a built-in theme. Choose another name."
+  },
+  "该名称已存在！": {
+    "zh_CN": "该名称已存在！",
+    "en_US": "This name already exists!"
+  },
+  "该模型还没有可下载的更新信息。": {
+    "zh_CN": "该模型还没有可下载的更新信息。",
+    "en_US": "This model has no downloadable update information yet."
+  },
+  "详情": {
+    "zh_CN": "详情",
+    "en_US": "Details"
+  },
+  "语言：": {
+    "zh_CN": "语言：",
+    "en_US": "Language:"
+  },
+  "请先勾选要处理的模型。": {
+    "zh_CN": "请先勾选要处理的模型。",
+    "en_US": "Select the models to process first."
+  },
+  "请先在 WD14 设置中选择有效模型目录。": {
+    "zh_CN": "请先在 WD14 设置中选择有效模型目录。",
+    "en_US": "Select a valid model directory in WD14 Settings first."
+  },
+  "请先在正面 TagFlow 中选择要添加到模板的 Tag。": {
+    "zh_CN": "请先在正面 TagFlow 中选择要添加到模板的 Tag。",
+    "en_US": "Select positive tags to add to the template first."
+  },
+  "请先在正面 TagFlow 中选择要添加的 Tag。": {
+    "zh_CN": "请先在正面 TagFlow 中选择要添加的 Tag。",
+    "en_US": "Select positive tags to add first."
+  },
+  "请先在简介中选中要复制的文本。": {
+    "zh_CN": "请先在简介中选中要复制的文本。",
+    "en_US": "Select description text to copy first."
+  },
+  "请先在表格中选择 Tag。": {
+    "zh_CN": "请先在表格中选择 Tag。",
+    "en_US": "Select tags in the table first."
+  },
+  "请先在设置中配置 Tag 翻译表 CSV 路径。": {
+    "zh_CN": "请先在设置中配置 Tag 翻译表 CSV 路径。",
+    "en_US": "Configure tag dictionary CSV paths in Settings first."
+  },
+  "请先在负面 TagFlow 中选择要添加到模板的 Tag。": {
+    "zh_CN": "请先在负面 TagFlow 中选择要添加到模板的 Tag。",
+    "en_US": "Select negative tags to add to the template first."
+  },
+  "请先在负面 TagFlow 中选择要添加的 Tag。": {
+    "zh_CN": "请先在负面 TagFlow 中选择要添加的 Tag。",
+    "en_US": "Select negative tags to add first."
+  },
+  "请先填写主题名称。": {
+    "zh_CN": "请先填写主题名称。",
+    "en_US": "Enter a theme name first."
+  },
+  "请先扫描图片文件夹。": {
+    "zh_CN": "请先扫描图片文件夹。",
+    "en_US": "Scan an image folder first."
+  },
+  "请先设置并启用至少一个 LoRA 路径。": {
+    "zh_CN": "请先设置并启用至少一个 LoRA 路径。",
+    "en_US": "Configure and enable at least one model path first."
+  },
+  "请先输入 Civitai API Key": {
+    "zh_CN": "请先输入 Civitai API Key",
+    "en_US": "Enter a Civitai API key first"
+  },
+  "请先输入生成指令。": {
+    "zh_CN": "请先输入生成指令。",
+    "en_US": "Enter a generation instruction first."
+  },
+  "请先选择 WD14 模型目录。": {
+    "zh_CN": "请先选择 WD14 模型目录。",
+    "en_US": "Select a WD14 model directory first."
+  },
+  "请先选择一个模型。": {
+    "zh_CN": "请先选择一个模型。",
+    "en_US": "Select a model first."
+  },
+  "请先选择存在的图片。": {
+    "zh_CN": "请先选择存在的图片。",
+    "en_US": "Select an existing image first."
+  },
+  "请先选择或输入模型名。": {
+    "zh_CN": "请先选择或输入模型名。",
+    "en_US": "Select or enter a model name first."
+  },
+  "请先选择或输入要停止的模型": {
+    "zh_CN": "请先选择或输入要停止的模型",
+    "en_US": "Select or enter the model to stop first"
+  },
+  "请先选择模型触发词。": {
+    "zh_CN": "请先选择模型触发词。",
+    "en_US": "Select model trigger words first."
+  },
+  "请先选择需要反推的图片。": {
+    "zh_CN": "请先选择需要反推的图片。",
+    "en_US": "Select an image to interrogate first."
+  },
+  "请先选择需要复制的 WD14 Tag。": {
+    "zh_CN": "请先选择需要复制的 WD14 Tag。",
+    "en_US": "Select WD14 tags to copy first."
+  },
+  "请至少选择一列导出。": {
+    "zh_CN": "请至少选择一列导出。",
+    "en_US": "Select at least one column to export."
+  },
+  "请选择一个模型 / Select a Model": {
+    "zh_CN": "请选择一个模型",
+    "en_US": "Select a Model"
+  },
+  "请选择两张包含元数据的图片。": {
+    "zh_CN": "请选择两张包含元数据的图片。",
+    "en_US": "Select two images containing metadata."
+  },
+  "请选择两张图片进行对比。": {
+    "zh_CN": "请选择两张图片进行对比。",
+    "en_US": "Select two images to compare."
+  },
+  "请选择图片和 WD14 模型目录。": {
+    "zh_CN": "请选择图片和 WD14 模型目录。",
+    "en_US": "Select an image and a WD14 model directory."
+  },
+  "请选择图片文件夹并扫描。": {
+    "zh_CN": "请选择图片文件夹并扫描。",
+    "en_US": "Select an image folder and scan it."
+  },
+  "请选择有效的图片文件夹。": {
+    "zh_CN": "请选择有效的图片文件夹。",
+    "en_US": "Select a valid image folder."
+  },
+  "读取 %1 模型失败: %2": {
+    "zh_CN": "读取 %1 模型失败: %2",
+    "en_US": "Could not load %1 models: %2"
+  },
+  "负面": {
+    "zh_CN": "负面",
+    "en_US": "Negative"
+  },
+  "负面 Tag": {
+    "zh_CN": "负面 Tag",
+    "en_US": "Negative tags"
+  },
+  "负面提示词": {
+    "zh_CN": "负面提示词",
+    "en_US": "Negative prompt"
+  },
+  "负面提示词 / Negative Tags:": {
+    "zh_CN": "负面提示词",
+    "en_US": "Negative Tags:"
+  },
+  "负面模板，例如 low quality, {negative_extra}": {
+    "zh_CN": "负面模板，例如 low quality, {negative_extra}",
+    "en_US": "Negative template, e.g. low quality, {negative_extra}"
+  },
+  "路径": {
+    "zh_CN": "路径",
+    "en_US": "Path"
+  },
+  "路径 / Paths": {
+    "zh_CN": "路径",
+    "en_US": "Paths"
+  },
+  "路径: %1\nModel ID: %2\nVersion ID: %3\nSHA256: %4": {
+    "zh_CN": "路径: %1\nModel ID: %2\nVersion ID: %3\nSHA256: %4",
+    "en_US": "Path: %1\nModel ID: %2\nVersion ID: %3\nSHA256: %4"
+  },
+  "路径已复制": {
+    "zh_CN": "路径已复制",
+    "en_US": "Path copied"
+  },
+  "路径管理": {
+    "zh_CN": "路径管理",
+    "en_US": "Path management"
+  },
+  "路径设置 / Paths": {
+    "zh_CN": "路径设置",
+    "en_US": "Paths"
+  },
+  "跳转模型": {
+    "zh_CN": "跳转模型",
+    "en_US": "Open model"
+  },
+  "跳过": {
+    "zh_CN": "跳过",
+    "en_US": "Skip"
+  },
+  "跳过 Civitai，直接尝试从 CivArchive 为选中模型补充元信息。": {
+    "zh_CN": "跳过 Civitai，直接尝试从 CivArchive 为选中模型补充元信息。",
+    "en_US": "Skip Civitai and try CivArchive directly for selected models."
+  },
+  "软件缩放 (重启后生效) / UI Scale (Need Restart)": {
+    "zh_CN": "软件缩放 (重启后生效)",
+    "en_US": "UI Scale (Need Restart)"
+  },
+  "输入作者名，或从详情页点击作者": {
+    "zh_CN": "输入作者名，或从详情页点击作者",
+    "en_US": "Enter an author name or click an author in model details"
+  },
+  "输入标签，逗号或换行分隔：": {
+    "zh_CN": "输入标签，逗号或换行分隔：",
+    "en_US": "Enter tags separated by commas or line breaks:"
+  },
+  "输入模型 Tag，多个 Tag 为全部满足": {
+    "zh_CN": "输入模型 Tag，多个 Tag 为全部满足",
+    "en_US": "Enter model tags; all selected tags must match"
+  },
+  "输入生成这张图时使用的原始 prompt，便于 AI 找出哪里描述不足或写错。": {
+    "zh_CN": "输入生成这张图时使用的原始 prompt，便于 AI 找出哪里描述不足或写错。",
+    "en_US": "Enter the original prompt so the AI can identify missing or incorrect descriptions."
+  },
+  "输入要移除的标签，逗号或换行分隔：": {
+    "zh_CN": "输入要移除的标签，逗号或换行分隔：",
+    "en_US": "Enter tags to remove, separated by commas or line breaks:"
+  },
+  "输出方式:": {
+    "zh_CN": "输出方式:",
+    "en_US": "Output mode:"
+  },
+  "输出示例": {
+    "zh_CN": "输出示例",
+    "en_US": "Output example"
+  },
+  "过滤关键词 / Filter Tags:": {
+    "zh_CN": "过滤关键词",
+    "en_US": "Filter Tags:"
+  },
+  "过滤模式 / Filter Mode:": {
+    "zh_CN": "过滤模式",
+    "en_US": "Filter Mode:"
+  },
+  "过滤等级阈值 (Level > X):": {
+    "zh_CN": "过滤等级阈值 (Level > X):",
+    "en_US": "Filter level threshold (Level > X):"
+  },
+  "过滤词已重置": {
+    "zh_CN": "过滤词已重置",
+    "en_US": "Filter tags reset"
+  },
+  "这会删除本地图库提示词缓存文件，下次扫描图库时会重新解析所有图片。\n是否继续？": {
+    "zh_CN": "这会删除本地图库提示词缓存文件，下次扫描图库时会重新解析所有图片。\n是否继续？",
+    "en_US": "Delete the local gallery prompt cache? All images will be parsed again during the next scan.\nContinue?"
+  },
+  "这里会显示上次发给大模型的请求内容。": {
+    "zh_CN": "这里会显示上次发给大模型的请求内容。",
+    "en_US": "The last request sent to the LLM appears here."
+  },
+  "连接与模型": {
+    "zh_CN": "连接与模型",
+    "en_US": "Connection and model"
+  },
+  "连接失败 / Error: %1": {
+    "zh_CN": "连接失败：%1",
+    "en_US": "Error: %1"
+  },
+  "追加并去重": {
+    "zh_CN": "追加并去重",
+    "en_US": "Append and deduplicate"
+  },
+  "适应窗口": {
+    "zh_CN": "适应窗口",
+    "en_US": "Fit to window"
+  },
+  "适应窗口（F）": {
+    "zh_CN": "适应窗口（F）",
+    "en_US": "Fit to window (F)"
+  },
+  "适应视图": {
+    "zh_CN": "适应视图",
+    "en_US": "Fit view"
+  },
+  "选中的 Tag 已存在于正面提示词中。": {
+    "zh_CN": "选中的 Tag 已存在于正面提示词中。",
+    "en_US": "The selected tags are already in the positive prompt."
+  },
+  "选中的 Tag 已存在于正面模板中。": {
+    "zh_CN": "选中的 Tag 已存在于正面模板中。",
+    "en_US": "The selected tags are already in the positive template."
+  },
+  "选中的 Tag 已存在于负面提示词中。": {
+    "zh_CN": "选中的 Tag 已存在于负面提示词中。",
+    "en_US": "The selected tags are already in the negative prompt."
+  },
+  "选中的 Tag 已存在于负面模板中。": {
+    "zh_CN": "选中的 Tag 已存在于负面模板中。",
+    "en_US": "The selected tags are already in the negative template."
+  },
+  "选中的模型包含本地/已编辑 metadata。\n继续从 %1 同步会覆盖元信息，但会保留本地保护字段和用户私有数据。\n是否继续？": {
+    "zh_CN": "选中的模型包含本地/已编辑 metadata。\n继续从 %1 同步会覆盖元信息，但会保留本地保护字段和用户私有数据。\n是否继续？",
+    "en_US": "Selected models contain local or edited metadata.\nSyncing from %1 will overwrite metadata while retaining protection fields and private user data.\nContinue?"
+  },
+  "选中项": {
+    "zh_CN": "选中项",
+    "en_US": "Selected items"
+  },
+  "选择": {
+    "zh_CN": "选择",
+    "en_US": "Select"
+  },
+  "选择 Python": {
+    "zh_CN": "选择 Python",
+    "en_US": "Select Python"
+  },
+  "选择 QSS 主题文件": {
+    "zh_CN": "选择 QSS 主题文件",
+    "en_US": "Select QSS theme file"
+  },
+  "选择 SD 输出文件夹": {
+    "zh_CN": "选择 SD 输出文件夹",
+    "en_US": "Select SD output folder"
+  },
+  "选择 WD14 Python 脚本": {
+    "zh_CN": "选择 WD14 Python 脚本",
+    "en_US": "Select WD14 Python script"
+  },
+  "选择 WD14 模型目录": {
+    "zh_CN": "选择 WD14 模型目录",
+    "en_US": "Select WD14 model directory"
+  },
+  "选择一个 .qss 文件作为自定义主题覆盖": {
+    "zh_CN": "选择一个 .qss 文件作为自定义主题覆盖",
+    "en_US": "Select a .qss file to override application styling"
+  },
+  "选择任务后显示标签或错误信息。": {
+    "zh_CN": "选择任务后显示标签或错误信息。",
+    "en_US": "Select a task to view its tags or error."
+  },
+  "选择全部": {
+    "zh_CN": "选择全部",
+    "en_US": "Select all"
+  },
+  "选择内置主题，或选择 Custom QSS 后使用外部 .qss 文件覆盖程序样式。": {
+    "zh_CN": "选择内置主题，或选择 Custom QSS 后使用外部 .qss 文件覆盖程序样式。",
+    "en_US": "Select a built-in theme, or choose Custom QSS to load an external stylesheet."
+  },
+  "选择包含 model.onnx 与 selected_tags.csv 的目录": {
+    "zh_CN": "选择包含 model.onnx 与 selected_tags.csv 的目录",
+    "en_US": "Select a directory containing model.onnx and selected_tags.csv"
+  },
+  "选择匹配方式后搜索 Tag 或翻译": {
+    "zh_CN": "选择匹配方式后搜索 Tag 或翻译",
+    "en_US": "Choose a match mode to search tags or translations"
+  },
+  "选择匹配方式后搜索用户 Tag 或翻译": {
+    "zh_CN": "选择匹配方式后搜索用户 Tag 或翻译",
+    "en_US": "Choose a match mode to search used tags or translations"
+  },
+  "选择参考图片": {
+    "zh_CN": "选择参考图片",
+    "en_US": "Select reference images"
+  },
+  "选择启动脚本/程序": {
+    "zh_CN": "选择启动脚本/程序",
+    "en_US": "Select launch script / program"
+  },
+  "选择图片": {
+    "zh_CN": "选择图片",
+    "en_US": "Select image"
+  },
+  "选择图片 A": {
+    "zh_CN": "选择图片 A",
+    "en_US": "Select image A"
+  },
+  "选择图片 B": {
+    "zh_CN": "选择图片 B",
+    "en_US": "Select image B"
+  },
+  "选择图片以读取元数据并提取 Tag": {
+    "zh_CN": "选择图片以读取元数据并提取 Tag",
+    "en_US": "Select an image to read metadata and extract tags"
+  },
+  "选择图片后解析，选中 Tag 并添加到当前提示词。": {
+    "zh_CN": "选择图片后解析，选中 Tag 并添加到当前提示词。",
+    "en_US": "Select an image, choose its tags, and add them to the current prompt."
+  },
+  "选择图片后解析，选中 Tag 并添加到当前模板。": {
+    "zh_CN": "选择图片后解析，选中 Tag 并添加到当前模板。",
+    "en_US": "Select an image, choose its tags, and add them to the current template."
+  },
+  "选择图片查看参数...": {
+    "zh_CN": "选择图片查看参数...",
+    "en_US": "Select an image to view parameters..."
+  },
+  "选择工作目录": {
+    "zh_CN": "选择工作目录",
+    "en_US": "Select working directory"
+  },
+  "选择或拖入图片以读取元数据 Tag": {
+    "zh_CN": "选择或拖入图片以读取元数据 Tag",
+    "en_US": "Select or drop an image to extract metadata tags"
+  },
+  "选择批量 WD14 图片文件夹": {
+    "zh_CN": "选择批量 WD14 图片文件夹",
+    "en_US": "Select batch WD14 image folder"
+  },
+  "选择文件": {
+    "zh_CN": "选择文件",
+    "en_US": "Select file"
+  },
+  "选择文件夹": {
+    "zh_CN": "选择文件夹",
+    "en_US": "Select folder"
+  },
+  "选择模型详情及下载页打开 Civitai 模型网页时使用的站点，修改后立即生效。": {
+    "zh_CN": "选择模型详情及下载页打开 Civitai 模型网页时使用的站点，修改后立即生效。",
+    "en_US": "Choose the Civitai website opened from model details and Downloads. Changes apply immediately."
+  },
+  "选择模板后填写占位符即可生成提示词。": {
+    "zh_CN": "选择模板后填写占位符即可生成提示词。",
+    "en_US": "Select a template and fill its placeholders to generate prompts."
+  },
+  "选择要读取的启动脚本": {
+    "zh_CN": "选择要读取的启动脚本",
+    "en_US": "Select launch script to read"
+  },
+  "选择需要批量打标的图片文件夹": {
+    "zh_CN": "选择需要批量打标的图片文件夹",
+    "en_US": "Select the image folder to tag"
+  },
+  "选择预览图片": {
+    "zh_CN": "选择预览图片",
+    "en_US": "Select preview image"
+  },
+  "选择颜色": {
+    "zh_CN": "选择颜色",
+    "en_US": "Select color"
+  },
+  "选项": {
+    "zh_CN": "选项",
+    "en_US": "Choices"
+  },
+  "递归扫描 LoRA 子文件夹 / Recursive Scan for LoRA": {
+    "zh_CN": "递归扫描 LoRA 子文件夹",
+    "en_US": "Recursive Scan for LoRA"
+  },
+  "递归扫描图库子文件夹 / Recursive Scan for Gallery": {
+    "zh_CN": "递归扫描图库子文件夹",
+    "en_US": "Recursive Scan for Gallery"
+  },
+  "递归扫描子目录": {
+    "zh_CN": "递归扫描子目录",
+    "en_US": "Scan subfolders recursively"
+  },
+  "逗号或换行分隔，例如：常用, 写实, 服装参考": {
+    "zh_CN": "逗号或换行分隔，例如：常用, 写实, 服装参考",
+    "en_US": "Separate with commas or line breaks, e.g. favorite, realistic, outfit reference"
+  },
+  "部分词表未保存": {
+    "zh_CN": "部分词表未保存",
+    "en_US": "Some dictionaries were not saved"
+  },
+  "重命名": {
+    "zh_CN": "重命名",
+    "en_US": "Rename"
+  },
+  "重命名 / Rename": {
+    "zh_CN": "重命名",
+    "en_US": "Rename"
+  },
+  "重命名 / Rename Collection": {
+    "zh_CN": "重命名",
+    "en_US": "Rename Collection"
+  },
+  "重命名对话": {
+    "zh_CN": "重命名对话",
+    "en_US": "Rename conversation"
+  },
+  "重命名收藏夹": {
+    "zh_CN": "重命名收藏夹",
+    "en_US": "Rename collection"
+  },
+  "重复摘要：%1...，共 %2 个": {
+    "zh_CN": "重复摘要：%1...，共 %2 个",
+    "en_US": "Duplicate hash: %1..., %2 models"
+  },
+  "重复模型": {
+    "zh_CN": "重复模型",
+    "en_US": "Duplicate models"
+  },
+  "重新下载 / Re-download": {
+    "zh_CN": "重新下载",
+    "en_US": "Re-download"
+  },
+  "重新加载": {
+    "zh_CN": "重新加载",
+    "en_US": "Reload"
+  },
+  "重新生成回答": {
+    "zh_CN": "重新生成回答",
+    "en_US": "Regenerate answer"
+  },
+  "重置 / Reset": {
+    "zh_CN": "重置",
+    "en_US": "Reset"
+  },
+  "重置为默认值": {
+    "zh_CN": "重置为默认值",
+    "en_US": "Reset to defaults"
+  },
+  "重置模板": {
+    "zh_CN": "重置模板",
+    "en_US": "Reset template"
+  },
+  "重置缩放": {
+    "zh_CN": "重置缩放",
+    "en_US": "Reset zoom"
+  },
+  "重试失败任务": {
+    "zh_CN": "重试失败任务",
+    "en_US": "Retry failed tasks"
+  },
+  "错误": {
+    "zh_CN": "错误",
+    "en_US": "Error"
+  },
+  "问题": {
+    "zh_CN": "问题",
+    "en_US": "Issue"
+  },
+  "阈值": {
+    "zh_CN": "阈值",
+    "en_US": "Threshold"
+  },
+  "附加标签（逗号分隔）": {
+    "zh_CN": "附加标签（逗号分隔）",
+    "en_US": "Additional tags (comma-separated)"
+  },
+  "随机 / Random": {
+    "zh_CN": "随机",
+    "en_US": "Random"
+  },
+  "隐藏": {
+    "zh_CN": "隐藏",
+    "en_US": "Hide"
+  },
+  "隐藏 / Hide": {
+    "zh_CN": "隐藏",
+    "en_US": "Hide"
+  },
+  "隐藏思考": {
+    "zh_CN": "隐藏思考",
+    "en_US": "Hide thinking"
+  },
+  "隐藏思考内容": {
+    "zh_CN": "隐藏思考内容",
+    "en_US": "Hide reasoning"
+  },
+  "需与手机端一致": {
+    "zh_CN": "需与手机端一致",
+    "en_US": "Must match the mobile app"
+  },
+  "预览 %1": {
+    "zh_CN": "预览 %1",
+    "en_US": "Preview %1"
+  },
+  "预览图同步": {
+    "zh_CN": "预览图同步",
+    "en_US": "Preview sync"
+  },
+  "预览图已保存，但未能写入可解析元信息: ": {
+    "zh_CN": "预览图已保存，但未能写入可解析元信息: ",
+    "en_US": "Preview saved, but readable metadata could not be written: "
+  },
+  "预览图提示词": {
+    "zh_CN": "预览图提示词",
+    "en_US": "Preview prompt"
+  },
+  "预览图片 / Preview Images": {
+    "zh_CN": "预览图片",
+    "en_US": "Preview Images"
+  },
+  "预览图重新编号失败，原文件已恢复。": {
+    "zh_CN": "预览图重新编号失败，原文件已恢复。",
+    "en_US": "Preview renumbering failed. The original files were restored."
+  },
+  "预览图重新编号失败，部分备份文件无法恢复，请检查模型目录。": {
+    "zh_CN": "预览图重新编号失败，部分备份文件无法恢复，请检查模型目录。",
+    "en_US": "Preview renumbering failed and some backups could not be restored. Check the model folder."
+  },
+  "预设": {
+    "zh_CN": "预设",
+    "en_US": "Preset"
+  },
+  "预设保存失败。": {
+    "zh_CN": "预设保存失败。",
+    "en_US": "Could not save preset."
+  },
+  "预设删除失败: ": {
+    "zh_CN": "预设删除失败: ",
+    "en_US": "Could not delete preset: "
+  },
+  "预设文件不存在: ": {
+    "zh_CN": "预设文件不存在: ",
+    "en_US": "Preset file not found: "
+  },
+  "首次进入时加载反推历史。": {
+    "zh_CN": "首次进入时加载反推历史。",
+    "en_US": "Inference history loads when first opened."
+  },
+  "首页": {
+    "zh_CN": "首页",
+    "en_US": "Home"
+  },
+  "高亮采样链": {
+    "zh_CN": "高亮采样链",
+    "en_US": "Highlight sampling chain"
+  },
+  "默认值": {
+    "zh_CN": "默认值",
+    "en_US": "Default"
+  },
+  "默认关闭。关闭时如果模型已有 SHA256 缓存，元信息同步会直接复用该 Hash，避免重新读取大模型文件。": {
+    "zh_CN": "默认关闭。关闭时如果模型已有 SHA256 缓存，元信息同步会直接复用该 Hash，避免重新读取大模型文件。",
+    "en_US": "Disabled by default. Reuse a cached SHA256 during metadata sync to avoid rereading large models."
+  },
+  "默认开启。ComfyUI 图片通常只保存 Checkpoint/LoRA 名称而没有 Hash；开启后在摘要匹配或严格摘要匹配下，如果图片没有对应摘要，将允许用名称匹配该 ComfyUI 图片。": {
+    "zh_CN": "默认开启。ComfyUI 图片通常只保存 Checkpoint/LoRA 名称而没有 Hash；开启后在摘要匹配或严格摘要匹配下，如果图片没有对应摘要，将允许用名称匹配该 ComfyUI 图片。",
+    "en_US": "Enabled by default. ComfyUI images usually contain model names without hashes. Allow name matching when the image has no matching hash, including in strict hash mode."
+  },
+  "默认开启。如果提示词之间使用了换行符而没有逗号，开启此项可正确识别为两个独立的 Tag。": {
+    "zh_CN": "默认开启。如果提示词之间使用了换行符而没有逗号，开启此项可正确识别为两个独立的 Tag。",
+    "en_US": "Enabled by default. Treat line breaks as separators when prompts have no commas."
+  },
+  "默认开启。当 Civitai 元信息同步失败或模型已删除时，尝试从 CivArchive 补充元信息。": {
+    "zh_CN": "默认开启。当 Civitai 元信息同步失败或模型已删除时，尝试从 CivArchive 补充元信息。",
+    "en_US": "Enabled by default. Try CivArchive when Civitai metadata syncing fails or the model has been deleted."
+  },
+  "默认开启。当启动器中有 A1111/ComfyUI 进程正在运行时，关闭软件会弹窗确认（关闭软件会一并结束这些进程）。": {
+    "zh_CN": "默认开启。当启动器中有 A1111/ComfyUI 进程正在运行时，关闭软件会弹窗确认（关闭软件会一并结束这些进程）。",
+    "en_US": "Enabled by default. Ask before exiting while A1111 or ComfyUI is running, since exiting also stops these processes."
+  },
+  "（空）": {
+    "zh_CN": "（空）",
+    "en_US": "(empty)"
+  },
+  "🌐": {
+    "zh_CN": "🌐",
+    "en_US": "🌐"
+  },
+  "🌐 网络 / Network": {
+    "zh_CN": "🌐 网络",
+    "en_US": "🌐 Network"
+  },
+  "🎨": {
+    "zh_CN": "🎨",
+    "en_US": "🎨"
+  },
+  "🎨 A1111 / WebUI": {
+    "zh_CN": "🎨 A1111 / WebUI",
+    "en_US": "🎨 A1111 / WebUI"
+  },
+  "🎨 外观 / Appearance": {
+    "zh_CN": "🎨 外观",
+    "en_US": "🎨 Appearance"
+  },
+  "🏷️ Tag 浏览 / Tag": {
+    "zh_CN": "🏷️ Tag 浏览",
+    "en_US": "🏷️ Tag"
+  },
+  "📁 路径 / Paths": {
+    "zh_CN": "📁 路径",
+    "en_US": "📁 Paths"
+  },
+  "📂": {
+    "zh_CN": "📂",
+    "en_US": "📂"
+  },
+  "📊 模型分析 / Analysis": {
+    "zh_CN": "📊 模型分析",
+    "en_US": "📊 Analysis"
+  },
+  "📋 元信息扫描 / Metadata Scan": {
+    "zh_CN": "📋 元信息扫描",
+    "en_US": "📋 Metadata Scan"
+  },
+  "📚 库 / Library": {
+    "zh_CN": "📚 库",
+    "en_US": "📚 Library"
+  },
+  "📝 提示词解析 / Prompt": {
+    "zh_CN": "📝 提示词解析",
+    "en_US": "📝 Prompt"
+  },
+  "📦\n未分类": {
+    "zh_CN": "📦\n未分类",
+    "en_US": "📦\nUncategorized"
+  },
+  "🔄 图片同步 / Sync": {
+    "zh_CN": "🔄 图片同步",
+    "en_US": "🔄 Sync"
+  },
+  "🔍 扫描与解析 / Scan & Parsing": {
+    "zh_CN": "🔍 扫描与解析",
+    "en_US": "🔍 Scan & Parsing"
+  },
+  "🚀 启动器 / Launcher": {
+    "zh_CN": "🚀 启动器",
+    "en_US": "🚀 Launcher"
+  },
+  "🚀 检查更新 / Check for Updates": {
+    "zh_CN": "🚀 检查更新",
+    "en_US": "🚀 Check for Updates"
+  },
+  "🛠️ 工具箱 / Tools": {
+    "zh_CN": "🛠️ 工具箱",
+    "en_US": "🛠️ Tools"
+  },
+  "🤖 大模型提示词 / LLM": {
+    "zh_CN": "🤖 大模型提示词",
+    "en_US": "🤖 LLM"
+  },
+  "🧩 ComfyUI": {
+    "zh_CN": "🧩 ComfyUI",
+    "en_US": "🧩 ComfyUI"
+  },
+  "🧩 提示词模板 / Templates": {
+    "zh_CN": "🧩 提示词模板",
+    "en_US": "🧩 Templates"
+  },
+  "🩺 元数据健康检查 / Metadata Health Check": {
+    "zh_CN": "🩺 元数据健康检查",
+    "en_US": "🩺 Metadata Health Check"
+  }
+}

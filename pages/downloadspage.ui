@@ -33,7 +33,7 @@
      </property>
      <widget class="QWidget" name="pageDownloadVersionUpdatesRoot">
       <attribute name="title">
-       <string>版本更新</string>
+       <string>⬇️ 版本更新 / Version Updates</string>
       </attribute>
       <layout class="QHBoxLayout" name="horizontalLayout_DownloadsRoot">
        <property name="spacing">
@@ -661,7 +661,7 @@
      </widget>
      <widget class="QWidget" name="pageMetadataScan">
       <attribute name="title">
-       <string>元信息扫描</string>
+       <string>📋 元信息扫描 / Metadata Scan</string>
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_MetadataScan">
        <property name="leftMargin">
@@ -866,7 +866,7 @@
      </widget>
      <widget class="QWidget" name="pageMetadataHealth">
       <attribute name="title">
-       <string>元数据健康检查</string>
+       <string>🩺 元数据健康检查 / Metadata Health Check</string>
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayoutHealth">
        <property name="leftMargin">
