@@ -98,17 +98,29 @@ void checkSettings()
 {
     SettingsState state = SettingsState::fromJson({}, "BREAK");
     check(state.uiLanguage == "zh_CN", "old configs default to Chinese");
+    check(!state.imageViewerNewWindow, "old configs reuse the image viewer by default");
     check(state.civitaiBrowserHost == "civitai.red", "old configs default model browser links to civitai.red");
     state.uiLanguage = "en-US";
+    state.imageViewerNewWindow = true;
     state.civitaiBrowserHost = "civitai.com";
     QJsonObject config{{"unrelated", 123}};
     state.writeToJson(config);
     check(config.value("ui_language") == "en_US" && config.value("unrelated") == 123,
           "language persists canonically without overwriting other settings");
     check(config.value("civitai_browser_host") == "civitai.com", "model browser preference persists");
+    check(config.value("image_viewer_new_window").toBool(), "image viewer mode persists");
     QString changedHost;
     SettingsPage page;
     page.setState(SettingsState::fromJson(config, "BREAK"));
+    auto *viewerMode = page.findChild<QComboBox*>("comboImageViewerOpenMode");
+    check(viewerMode && viewerMode->currentIndex() == 1 && page.state().imageViewerNewWindow,
+          "image viewer mode restores from config");
+    bool modeChanged = false;
+    const auto modeConnection = QObject::connect(&page, &SettingsPage::stateChanged, &page,
+        [&](const SettingsState &changed) { modeChanged = !changed.imageViewerNewWindow; });
+    if (viewerMode) viewerMode->setCurrentIndex(0);
+    check(modeChanged && !page.state().imageViewerNewWindow, "image viewer mode changes immediately");
+    QObject::disconnect(modeConnection);
     auto *languages = page.findChild<QComboBox*>("comboUiLanguage");
     check(languages && languages->currentData() == "en_US", "language control restores English");
     check(page.state().uiLanguage == "en_US", "settings state reads language by stable ID");

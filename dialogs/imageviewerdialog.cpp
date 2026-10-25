@@ -28,7 +28,6 @@ ImageViewerDialog::ImageViewerDialog(const QStringList &imagePaths,
                                      QWidget *parent)
     : QDialog(parent)
     , ui(new Ui::ImageViewerDialog)
-    , paths(imagePaths)
 {
     ui->setupUi(this);
     setAttribute(Qt::WA_DeleteOnClose, false);
@@ -53,14 +52,19 @@ ImageViewerDialog::ImageViewerDialog(const QStringList &imagePaths,
     connect(ui->btnFit, &QPushButton::clicked, this, &ImageViewerDialog::fitToWindow);
     connect(ui->btnActualSize, &QPushButton::clicked, this, &ImageViewerDialog::showActualSize);
 
-    currentIndex = paths.isEmpty() ? -1 : qBound(0, initialIndex, paths.size() - 1);
-    updateControls();
-    requestCurrentImage();
+    setImages(imagePaths, initialIndex);
 }
 
 ImageViewerDialog::~ImageViewerDialog()
 {
     delete ui;
+}
+
+void ImageViewerDialog::setImages(const QStringList &imagePaths, int initialIndex)
+{
+    paths = imagePaths;
+    currentIndex = paths.isEmpty() ? -1 : qBound(0, initialIndex, paths.size() - 1);
+    requestCurrentImage();
 }
 
 ImageViewerLoadResult ImageViewerDialog::loadImage(const QString &path)

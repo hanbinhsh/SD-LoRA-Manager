@@ -2332,6 +2332,10 @@ Paste into the prompt field and click ↙️ to load them.</translation>
       <translation>Copy selected issues</translation>
     </message>
     <message>
+      <source>复用已有窗口（默认）</source>
+      <translation>Reuse existing window (default)</translation>
+    </message>
+    <message>
       <source>外观 / Appearance</source>
       <translation>Appearance</translation>
     </message>
@@ -2342,6 +2346,14 @@ Paste into the prompt field and click ↙️ to load them.</translation>
     <message>
       <source>多选</source>
       <translation>Multiple choice</translation>
+    </message>
+    <message>
+      <source>大图打开方式：</source>
+      <translation>Open images:</translation>
+    </message>
+    <message>
+      <source>大图浏览器</source>
+      <translation>Image viewer</translation>
     </message>
     <message>
       <source>大小: </source>
@@ -4180,6 +4192,10 @@ SHA256: %4</translation>
       <translation>Positive template, e.g. masterpiece, {character}, {outfit}</translation>
     </message>
     <message>
+      <source>每次打开新窗口</source>
+      <translation>Open a new window each time</translation>
+    </message>
+    <message>
       <source>每次询问</source>
       <translation>Ask each time</translation>
     </message>
@@ -5307,6 +5323,10 @@ Continue?</translation>
     <message>
       <source>适应视图</source>
       <translation>Fit view</translation>
+    </message>
+    <message>
+      <source>适用于模型预览图和图库大图，修改后立即生效，两种方式都不会阻塞主界面。</source>
+      <translation>Applies immediately to model previews and gallery images. Neither mode blocks the main window.</translation>
     </message>
     <message>
       <source>选中的 Tag 已存在于正面提示词中。</source>

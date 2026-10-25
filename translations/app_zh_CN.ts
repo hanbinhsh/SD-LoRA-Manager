@@ -2332,6 +2332,10 @@ Hash: ...</source>
       <translation>复制选中问题</translation>
     </message>
     <message>
+      <source>复用已有窗口（默认）</source>
+      <translation>复用已有窗口（默认）</translation>
+    </message>
+    <message>
       <source>外观 / Appearance</source>
       <translation>外观</translation>
     </message>
@@ -2342,6 +2346,14 @@ Hash: ...</source>
     <message>
       <source>多选</source>
       <translation>多选</translation>
+    </message>
+    <message>
+      <source>大图打开方式：</source>
+      <translation>大图打开方式：</translation>
+    </message>
+    <message>
+      <source>大图浏览器</source>
+      <translation>大图浏览器</translation>
     </message>
     <message>
       <source>大小: </source>
@@ -4180,6 +4192,10 @@ SHA256: %4</translation>
       <translation>正面模板，例如 masterpiece, {character}, {outfit}</translation>
     </message>
     <message>
+      <source>每次打开新窗口</source>
+      <translation>每次打开新窗口</translation>
+    </message>
+    <message>
       <source>每次询问</source>
       <translation>每次询问</translation>
     </message>
@@ -5307,6 +5323,10 @@ SHA256: %4</translation>
     <message>
       <source>适应视图</source>
       <translation>适应视图</translation>
+    </message>
+    <message>
+      <source>适用于模型预览图和图库大图，修改后立即生效，两种方式都不会阻塞主界面。</source>
+      <translation>适用于模型预览图和图库大图，修改后立即生效，两种方式都不会阻塞主界面。</translation>
     </message>
     <message>
       <source>选中的 Tag 已存在于正面提示词中。</source>

@@ -210,6 +210,17 @@ if(BUILD_GALLERY_INTERACTION_TESTS)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
     add_test(NAME gallery_interaction_test COMMAND gallery_interaction_test)
     set_tests_properties(gallery_interaction_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
+
+    add_executable(image_viewer_test
+        tests/image_viewer_test.cpp
+        dialogs/imageviewerdialog.cpp dialogs/imageviewerdialog.h dialogs/imageviewerdialog.ui)
+    target_include_directories(image_viewer_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(image_viewer_test PRIVATE Qt6::Widgets Qt6::Concurrent)
+    set_target_properties(image_viewer_test PROPERTIES
+        AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/dialogs"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
+    add_test(NAME image_viewer_test COMMAND image_viewer_test)
+    set_tests_properties(image_viewer_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
 endif()
 
 if(BUILD_TAG_BROWSER_TESTS)

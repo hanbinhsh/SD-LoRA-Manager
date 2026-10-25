@@ -33,6 +33,7 @@ SettingsState SettingsState::fromJson(const QJsonObject &root, const QString &de
     SettingsState state;
     state.uiLanguage = AppLanguage::normalized(root["ui_language"].toString());
     state.uiScale = root["ui_scale"].toDouble(1.0);
+    state.imageViewerNewWindow = root["image_viewer_new_window"].toBool(false);
     state.filterNSFW = root["nsfw_filter"].toBool(false);
     state.nsfwMode = root["nsfw_mode"].toInt(1);
     state.nsfwLevel = root["nsfw_level_threshold"].toInt(1);
@@ -74,6 +75,7 @@ void SettingsState::writeToJson(QJsonObject &root) const
     normalized.normalize();
 
     root["ui_scale"] = normalized.uiScale;
+    root["image_viewer_new_window"] = normalized.imageViewerNewWindow;
     root["ui_language"] = normalized.uiLanguage;
     root["lora_recursive"] = normalized.loraRecursive;
     root["gallery_recursive"] = normalized.galleryRecursive;
@@ -145,6 +147,8 @@ SettingsPage::SettingsPage(QWidget *parent)
     ui->setupUi(this);
     ui->comboUiLanguage->setItemData(0, "zh_CN");
     ui->comboUiLanguage->setItemData(1, "en_US");
+    connect(ui->comboImageViewerOpenMode, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &SettingsPage::emitStateChanged);
     ui->comboCivitaiBrowserHost->setItemData(0, "civitai.red");
     ui->comboCivitaiBrowserHost->setItemData(1, "civitai.com");
     connect(ui->comboCivitaiBrowserHost, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -318,6 +322,7 @@ SettingsState SettingsPage::state() const
     s.tryCivArchiveOnMetadataFail = !ui->chkTryCivArchiveOnMetadataFail || ui->chkTryCivArchiveOnMetadataFail->isChecked();
     s.confirmCloseWhileLauncherRunning = !ui->chkConfirmCloseLauncherRunning || ui->chkConfirmCloseLauncherRunning->isChecked();
     s.uiScale = ui->spinUiScale ? ui->spinUiScale->value() : 1.0;
+    s.imageViewerNewWindow = ui->comboImageViewerOpenMode->currentIndex() == 1;
     s.uiLanguage = ui->comboUiLanguage->currentData().toString();
     s.themeId = currentThemeId();
     s.customThemePath = ui->editCustomThemePath ? ui->editCustomThemePath->text().trimmed() : QString();
@@ -334,6 +339,7 @@ void SettingsPage::setState(const SettingsState &state)
 
     if (ui->chkRecursiveLora) ui->chkRecursiveLora->setChecked(state.loraRecursive);
     ui->comboUiLanguage->setCurrentIndex(qMax(0, ui->comboUiLanguage->findData(AppLanguage::normalized(state.uiLanguage))));
+    ui->comboImageViewerOpenMode->setCurrentIndex(state.imageViewerNewWindow ? 1 : 0);
     ui->comboCivitaiBrowserHost->setCurrentIndex(qMax(0, ui->comboCivitaiBrowserHost->findData(ModelBrowser::normalizedCivitaiHost(state.civitaiBrowserHost))));
     if (ui->chkRecursiveGallery) ui->chkRecursiveGallery->setChecked(state.galleryRecursive);
     if (ui->sliderBlur) ui->sliderBlur->setValue(state.blurRadius);

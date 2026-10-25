@@ -98,7 +98,7 @@ const int ROLE_COLLECTION_EXPAND_KEY  = Qt::UserRole + 63;  // 存储收藏夹�
 const int ROLE_PREVIEW_PLACEHOLDER    = Qt::UserRole + 64;  // 该项当前显示占位图（切主题需重染）
 const int ROLE_MODEL_PREVIEW_STATE    = Qt::UserRole + 65;  // ModelPreviewState，区分明确无预览与缺失/未知
 
-const QString CURRENT_VERSION = "1.5.15";
+const QString CURRENT_VERSION = "1.6.0";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
@@ -113,6 +113,7 @@ class LlmPromptWidget;
 class UsageAnalysisWidget;
 class PromptTemplateLibraryWidget;
 class LauncherWidget;
+class ImageViewerDialog;
 class DownloadsPage;
 class DownloadManager;
 
@@ -215,6 +216,7 @@ private:
     LauncherWidget *launcherWidget = nullptr;
     DownloadsPage *downloadsPage = nullptr;
     SettingsPage *settingsPage = nullptr;
+    QPointer<ImageViewerDialog> imageViewer;
     AboutPage *aboutPage = nullptr;
     QSet<int> pendingToolTabLoads;
     QNetworkAccessManager *netManager = nullptr;

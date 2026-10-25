@@ -2279,6 +2279,10 @@
     "zh_CN": "复制选中问题",
     "en_US": "Copy selected issues"
   },
+  "复用已有窗口（默认）": {
+    "zh_CN": "复用已有窗口（默认）",
+    "en_US": "Reuse existing window (default)"
+  },
   "外观 / Appearance": {
     "zh_CN": "外观",
     "en_US": "Appearance"
@@ -2290,6 +2294,14 @@
   "多选": {
     "zh_CN": "多选",
     "en_US": "Multiple choice"
+  },
+  "大图打开方式：": {
+    "zh_CN": "大图打开方式：",
+    "en_US": "Open images:"
+  },
+  "大图浏览器": {
+    "zh_CN": "大图浏览器",
+    "en_US": "Image viewer"
   },
   "大小: ": {
     "zh_CN": "大小: ",
@@ -4083,6 +4095,10 @@
     "zh_CN": "正面模板，例如 masterpiece, {character}, {outfit}",
     "en_US": "Positive template, e.g. masterpiece, {character}, {outfit}"
   },
+  "每次打开新窗口": {
+    "zh_CN": "每次打开新窗口",
+    "en_US": "Open a new window each time"
+  },
   "每次询问": {
     "zh_CN": "每次询问",
     "en_US": "Ask each time"
@@ -5190,6 +5206,10 @@
   "适应视图": {
     "zh_CN": "适应视图",
     "en_US": "Fit view"
+  },
+  "适用于模型预览图和图库大图，修改后立即生效，两种方式都不会阻塞主界面。": {
+    "zh_CN": "适用于模型预览图和图库大图，修改后立即生效，两种方式都不会阻塞主界面。",
+    "en_US": "Applies immediately to model previews and gallery images. Neither mode blocks the main window."
   },
   "选中的 Tag 已存在于正面提示词中。": {
     "zh_CN": "选中的 Tag 已存在于正面提示词中。",

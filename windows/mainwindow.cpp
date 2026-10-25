@@ -4708,8 +4708,24 @@ void MainWindow::openImageViewer(const QStringList &paths, const QString &curren
         }
     }
 
-    ImageViewerDialog dialog(normalizedPaths, initialIndex, this);
-    dialog.exec();
+    const bool newWindow = settingsPage && settingsPage->state().imageViewerNewWindow;
+    if (!newWindow && imageViewer) {
+        imageViewer->setImages(normalizedPaths, initialIndex);
+        if (imageViewer->isMinimized()) imageViewer->showNormal();
+        else imageViewer->show();
+        imageViewer->raise();
+        imageViewer->activateWindow();
+        return;
+    }
+
+    auto *dialog = new ImageViewerDialog(normalizedPaths, initialIndex, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    imageViewer = dialog;
+    connect(dialog, &QDialog::finished, this, [this, dialog]() {
+        // A closed window may still be waiting for its deferred deletion.
+        if (imageViewer == dialog) imageViewer.clear();
+    });
+    dialog->show();
 }
 
 void MainWindow::openImageViewerForPath(const QString &currentPath)

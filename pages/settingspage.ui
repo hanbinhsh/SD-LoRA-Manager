@@ -286,20 +286,36 @@
           </item>
           <item row="4" column="0">
            <widget class="QLabel" name="lblCivitaiBrowserHost">
-            <property name="text"><string>Civitai 模型网页：</string></property>
+            <property name="text">
+             <string>Civitai 模型网页：</string>
+            </property>
            </widget>
           </item>
           <item row="4" column="1">
            <widget class="QComboBox" name="comboCivitaiBrowserHost">
-            <property name="toolTip"><string>选择模型详情及下载页打开 Civitai 模型网页时使用的站点，修改后立即生效。</string></property>
-            <item><property name="text"><string notr="true">civitai.red</string></property></item>
-            <item><property name="text"><string notr="true">civitai.com</string></property></item>
+            <property name="toolTip">
+             <string>选择模型详情及下载页打开 Civitai 模型网页时使用的站点，修改后立即生效。</string>
+            </property>
+            <item>
+             <property name="text">
+              <string notr="true">civitai.red</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string notr="true">civitai.com</string>
+             </property>
+            </item>
            </widget>
           </item>
           <item row="5" column="0" colspan="4">
            <widget class="QLabel" name="lblCivitaiBrowserHostHint">
-            <property name="text"><string>仅影响模型网页跳转；API、下载地址和 CivArchive 链接保持不变。</string></property>
-            <property name="wordWrap"><bool>true</bool></property>
+            <property name="text">
+             <string>仅影响模型网页跳转；API、下载地址和 CivArchive 链接保持不变。</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
            </widget>
           </item>
           <item row="0" column="1">
@@ -386,19 +402,81 @@
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_AppearanceTab">
        <item>
-        <widget class="QGroupBox" name="groupLanguage">
-         <property name="title"><string>界面语言</string></property>
-         <layout class="QHBoxLayout" name="layoutUiLanguage">
-          <item><widget class="QLabel" name="lblUiLanguage"><property name="text"><string>语言：</string></property></widget></item>
-          <item>
-           <widget class="QComboBox" name="comboUiLanguage">
-            <item><property name="text"><string notr="true">简体中文</string></property></item>
-            <item><property name="text"><string notr="true">English</string></property></item>
-           </widget>
-          </item>
-          <item><widget class="QLabel" name="lblUiLanguageHint"><property name="text"><string>保存后重启应用生效。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
-         </layout>
-        </widget>
+        <layout class="QHBoxLayout" name="horizontalLayout_5">
+         <item>
+          <widget class="QGroupBox" name="groupLanguage">
+           <property name="title">
+            <string>界面语言</string>
+           </property>
+           <layout class="QHBoxLayout" name="layoutUiLanguage">
+            <item>
+             <widget class="QLabel" name="lblUiLanguage">
+              <property name="text">
+               <string>语言：</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblUiLanguageHint">
+              <property name="text">
+               <string>保存后重启应用生效。</string>
+              </property>
+              <property name="wordWrap">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboUiLanguage">
+              <item>
+               <property name="text">
+                <string notr="true">简体中文</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string notr="true">English</string>
+               </property>
+              </item>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item>
+          <widget class="QGroupBox" name="groupImageViewer">
+           <property name="title">
+            <string>大图浏览器</string>
+           </property>
+           <layout class="QHBoxLayout" name="layoutImageViewerOpenMode">
+            <item>
+             <widget class="QLabel" name="lblImageViewerOpenMode">
+              <property name="text">
+               <string>大图打开方式：</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboImageViewerOpenMode">
+              <property name="toolTip">
+               <string>适用于模型预览图和图库大图，修改后立即生效，两种方式都不会阻塞主界面。</string>
+              </property>
+              <item>
+               <property name="text">
+                <string>复用已有窗口（默认）</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>每次打开新窗口</string>
+               </property>
+              </item>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+        </layout>
        </item>
        <item>
         <widget class="QGroupBox" name="groupTheme">
@@ -494,7 +572,7 @@
             <item>
              <spacer name="spacerThemeButtons">
               <property name="orientation">
-               <enum>Qt::Horizontal</enum>
+               <enum>Qt::Orientation::Horizontal</enum>
               </property>
               <property name="sizeHint" stdset="0">
                <size>

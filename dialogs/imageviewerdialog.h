@@ -32,6 +32,7 @@ public:
                                int initialIndex = 0,
                                QWidget *parent = nullptr);
     ~ImageViewerDialog() override;
+    void setImages(const QStringList &imagePaths, int initialIndex = 0);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;

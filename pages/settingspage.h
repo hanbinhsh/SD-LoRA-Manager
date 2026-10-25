@@ -42,6 +42,7 @@ struct SettingsState {
     bool tryCivArchiveOnMetadataFail = true;
     bool confirmCloseWhileLauncherRunning = true;   // 启动器有进程运行时，关闭软件是否弹窗确认
     double uiScale = 1.0;
+    bool imageViewerNewWindow = false;
     QString uiLanguage = "zh_CN";
     QString themeId = "steam_dark";
     QString customThemePath;

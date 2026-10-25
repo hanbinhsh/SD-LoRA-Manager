@@ -19,6 +19,9 @@
   <property name="windowTitle">
    <string>图片浏览器 / Image Viewer</string>
   </property>
+  <property name="windowModality">
+   <enum>Qt::WindowModality::NonModal</enum>
+  </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="spacing">
     <number>8</number>
