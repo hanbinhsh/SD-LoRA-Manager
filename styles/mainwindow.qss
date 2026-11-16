@@ -55,7 +55,11 @@ QPushButton[class="copyBtn"]:pressed { background-color: @copyBtnPressed; }
 #btnSetSdFolder,
 #btnRescanUser,
 #btnTranslate,
-#btnClearUserTagSelection {
+#btnClearUserTagSelection,
+#btnGalleryPromptTranslate,
+#btnGalleryPromptSelectAll,
+#btnGalleryPromptDeselect,
+#btnGalleryPromptToggle {
     background-color: @rgba(overlayFg, 16);
     color: @primaryText;
     border: 1px solid @rgba(overlayFg, 16);
@@ -67,10 +71,16 @@ QPushButton[class="copyBtn"]:pressed { background-color: @copyBtnPressed; }
 #btnSetSdFolder:hover,
 #btnRescanUser:hover,
 #btnTranslate:hover,
-#btnClearUserTagSelection:hover {
+#btnClearUserTagSelection:hover,
+#btnGalleryPromptTranslate:hover,
+#btnGalleryPromptSelectAll:hover,
+#btnGalleryPromptDeselect:hover,
+#btnGalleryPromptToggle:hover {
     background-color: @rgba(overlayFg, 42);
 }
-#btnTranslate:checked {
+#btnTranslate:checked,
+#btnGalleryPromptTranslate:checked,
+#btnGalleryPromptToggle:checked {
     background-color: @rgba(overlayFg, 64);
     color: @primaryText;
 }
@@ -183,12 +193,33 @@ QWidget#DownloadsPage QTableWidget#tableHealth QScrollBar::sub-page {
     background: transparent;
 }
 
-#textUserPrompt, #textImgPrompt, #textImgNegPrompt {
+#textUserPrompt, #textImgPrompt, #textImgNegPrompt, #scrollAreaGalleryPromptTags {
     background-color: @rgba(black, 30);
     border: 1px solid @groupBorder;
     border-radius: 4px;
-    padding: 10px;
+    padding: 8px;
     color: @bodyText;
+}
+
+#galleryPromptTagsContent, #galleryParamsChipContainer {
+    background-color: transparent;
+}
+
+#lblGalleryPosTitle, #lblGalleryNegTitle, #lblGalleryParamsTitle {
+    color: @primaryText;
+    font-size: 12px;
+}
+
+#lblGalleryParamsPlain {
+    color: @bodyText;
+    font-size: 11px;
+    font-family: Consolas, monospace;
+    background-color: transparent;
+    padding: 2px 0px;
+}
+
+#galleryParamsChipContainer QPushButton[class="filterChip"] {
+    margin: 2px 2px;
 }
 
 #splitterUser::handle, #splitterParameter::handle {

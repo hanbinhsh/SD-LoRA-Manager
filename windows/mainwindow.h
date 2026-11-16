@@ -35,6 +35,9 @@
 #include <QFrame>
 #include <QProgressBar>
 #include <QVBoxLayout>
+#include <QStackedWidget>
+#include <QComboBox>
+#include <QTextBrowser>
 #include <functional>
 
 #include "pages/downloadmodels.h"
@@ -98,7 +101,7 @@ const int ROLE_COLLECTION_EXPAND_KEY  = Qt::UserRole + 63;  // 存储收藏夹�
 const int ROLE_PREVIEW_PLACEHOLDER    = Qt::UserRole + 64;  // 该项当前显示占位图（切主题需重染）
 const int ROLE_MODEL_PREVIEW_STATE    = Qt::UserRole + 65;  // ModelPreviewState，区分明确无预览与缺失/未知
 
-const QString CURRENT_VERSION = "1.6.0";
+const QString CURRENT_VERSION = "1.6.1";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
@@ -478,6 +481,31 @@ private:
     bool detailUpdateCheckPending = false;
 
     TagFlowWidget *tagFlowWidget = nullptr;
+
+    // === 图库提示词标签视图 ===
+    TagFlowWidget *m_galleryPosTagWidget = nullptr;   // 正面提示词 TagFlow
+    TagFlowWidget *m_galleryNegTagWidget = nullptr;   // 负面提示词 TagFlow
+    QLayout *m_galleryParamsChipLayout = nullptr;     // 生图参数模型/LoRA Chip 流式布局
+    bool m_galleryTagViewActive = false;               // 当前是否为标签视图
+    QString m_galleryCurrentPrompt;                    // 当前图正面提示词原文
+    QString m_galleryCurrentNegative;                  // 当前图负面提示词原文
+    QString m_galleryCurrentParams;                    // 当前图参数原文
+    QString m_galleryCurrentImagePath;                 // 当前选中图片路径
+    QStringList m_galleryPosTagOrder;                  // 当前图正面提示词的原始顺序
+    QStringList m_galleryNegTagOrder;                  // 当前图负面提示词的原始顺序
+
+    void setupGalleryPromptToolbar();                  // 初始化图库提示词工具栏及信号连接
+    void setGalleryTagViewActive(bool tagView);        // 切换文本/标签视图
+    void updateGalleryPromptTagView();                 // 更新标签视图内容
+    void applyGalleryPromptSortMode();                 // 应用提示词排序
+    void jumpToModelOrLora(const QString &name, const QString &hash = QString()); // 点击模型/LoRA chip 跳转
+    void clearGalleryPromptView();                     // 清空提示词及参数展示
+    QListWidgetItem *findModelItemByNameOrHash(const QString &name, const QString &hash = QString()) const;
+
+    // 滚动防穿透
+    bool isCursorInsideGalleryScrollAreas() const;
+    bool isGalleryScrollWidget(QObject *watched) const;
+    void handleGalleryWheelScroll(QObject *watched, QWheelEvent *event);
 
     void scanForUserImages(const QString &loraBaseName);
     void parsePngInfo(const QString &path, UserImageInfo &info);

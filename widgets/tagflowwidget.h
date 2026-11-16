@@ -40,6 +40,7 @@ struct TagState {
     int count;
     bool selected;
     QRect rect;
+    bool isFullLine = false;
 };
 
 class TagFlowWidget : public QWidget {
@@ -334,6 +335,9 @@ protected:
     void invalidateLayoutAndCache() {
         m_layoutDirty = true;
         m_cacheDirty = true;
+        if (width() > 10) {
+            ensureLayout();
+        }
         updateGeometry();
         update();
     }
@@ -345,6 +349,15 @@ protected:
         m_layoutWidth = widgetWidth;
         m_layoutDirty = false;
         m_cacheDirty = true;
+
+        if (m_tags.isEmpty()) {
+            if (m_calculatedHeight != 50) {
+                m_calculatedHeight = 50;
+                setMinimumHeight(50);
+                updateGeometry();
+            }
+            return;
+        }
 
         int x = 0;
         int y = 0;
@@ -360,7 +373,10 @@ protected:
 
         QFontMetrics fmEn(fontEn);
         QFontMetrics fmCn(fontCn);
-        const int itemH = m_showTranslation ? 42 : 26;
+
+        const int maxLineWidth = qMax(40, widgetWidth - marginX * 2);
+        const int defaultItemH = m_showTranslation ? 42 : 26;
+        int currentLineH = defaultItemH;
 
         for (int i = 0; i < m_tags.size(); ++i) {
             TagState &tag = m_tags[i];
@@ -374,18 +390,57 @@ protected:
             if (!line2.isEmpty()) {
                 textW = qMax(textW, fmCn.horizontalAdvance(line2));
             }
+            const int normalItemW = textW + paddingX * 2 + 4;
 
-            const int itemW = textW + paddingX * 2;
+            // 仅当单个 tag 非常长需占据整行时，折行并增高
+            if (normalItemW >= maxLineWidth) {
+                tag.isFullLine = true;
+                if (x > 0) {
+                    x = 0;
+                    y += currentLineH + marginY;
+                    currentLineH = defaultItemH;
+                }
+
+                const int itemW = maxLineWidth;
+                const int innerW = qMax(20, itemW - paddingX * 2);
+
+                QRect b1 = fmEn.boundingRect(QRect(0, 0, innerW, 10000),
+                                             Qt::AlignCenter | Qt::TextWordWrap | Qt::TextWrapAnywhere,
+                                             line1);
+                int h = b1.height() + 8;
+                if (!line2.isEmpty()) {
+                    QRect b2 = fmCn.boundingRect(QRect(0, 0, innerW, 10000),
+                                                 Qt::AlignCenter | Qt::TextWordWrap | Qt::TextWrapAnywhere,
+                                                 line2);
+                    h += b2.height() + 4;
+                }
+
+                const int itemH = qMax(defaultItemH, h);
+                tag.rect = QRect(0, y, itemW, itemH);
+
+                y += itemH + marginY;
+                x = 0;
+                currentLineH = defaultItemH;
+                continue;
+            }
+
+            // 普通 tag：单行，保持标准统一高度，绝不折行
+            tag.isFullLine = false;
+            const int itemW = normalItemW;
+            const int itemH = defaultItemH;
+
             if (x + itemW > widgetWidth && x > 0) {
                 x = 0;
-                y += itemH + marginY;
+                y += currentLineH + marginY;
+                currentLineH = defaultItemH;
             }
 
             tag.rect = QRect(x, y, itemW, itemH);
             x += itemW + marginX;
+            currentLineH = qMax(currentLineH, itemH);
         }
 
-        const int newHeight = m_tags.isEmpty() ? 50 : (y + itemH + 20);
+        const int newHeight = y + (x > 0 ? currentLineH : 0) + marginY;
         if (m_calculatedHeight != newHeight) {
             m_calculatedHeight = newHeight;
             if (minimumHeight() != m_calculatedHeight) {
@@ -412,6 +467,9 @@ protected:
 
         QFont fontCn = font();
         fontCn.setPixelSize(10);
+        QFontMetrics fmEn(fontEn);
+
+        const int paddingX = 10;
 
         for (const TagState &tag : m_tags) {
             if (!clipRect.isNull() && !tag.rect.intersects(clipRect.adjusted(-4, -4, 4, 4))) {
@@ -433,22 +491,50 @@ protected:
             p.setPen(Qt::NoPen);
             p.drawRoundedRect(tag.rect, 4, 4);
 
+            const QRect innerRect = tag.rect.adjusted(paddingX, 2, -paddingX, -2);
+
             if (m_showTranslation) {
                 p.setFont(fontEn);
                 p.setPen(tag.selected ? AppStyle::color("onAccentText") : AppStyle::color("bodyText"));
-                QRect rectLine1(tag.rect.x(), tag.rect.y() + 2, tag.rect.width(), 20);
-                p.drawText(rectLine1, Qt::AlignCenter, line1);
 
-                if (!line2.isEmpty()) {
-                    p.setFont(fontCn);
-                    p.setPen(tag.selected ? AppStyle::color("thumbBorder") : AppStyle::color("mutedText"));
-                    QRect rectLine2(tag.rect.x(), tag.rect.y() + 20, tag.rect.width(), 18);
-                    p.drawText(rectLine2, Qt::AlignCenter, line2);
+                if (!tag.isFullLine) {
+                    // 普通 tag：绝对单行，严禁换行
+                    QRect r1(innerRect.x(), innerRect.y() + 2, innerRect.width(), 18);
+                    p.drawText(r1, Qt::AlignCenter | Qt::TextSingleLine, line1);
+
+                    if (!line2.isEmpty()) {
+                        p.setFont(fontCn);
+                        p.setPen(tag.selected ? AppStyle::color("thumbBorder") : AppStyle::color("mutedText"));
+                        QRect r2(innerRect.x(), r1.bottom() + 2, innerRect.width(), 16);
+                        p.drawText(r2, Qt::AlignCenter | Qt::TextSingleLine, line2);
+                    }
+                } else {
+                    // 独占整行超长 tag：多行折行排布
+                    if (line2.isEmpty()) {
+                        p.drawText(innerRect, Qt::AlignCenter | Qt::TextWordWrap | Qt::TextWrapAnywhere, line1);
+                    } else {
+                        QRect b1 = fmEn.boundingRect(QRect(0, 0, innerRect.width(), 10000),
+                                                     Qt::AlignCenter | Qt::TextWordWrap | Qt::TextWrapAnywhere, line1);
+                        int h1 = qMax(18, b1.height());
+                        QRect r1(innerRect.x(), innerRect.y() + 2, innerRect.width(), h1);
+                        p.drawText(r1, Qt::AlignCenter | Qt::TextWordWrap | Qt::TextWrapAnywhere, line1);
+
+                        p.setFont(fontCn);
+                        p.setPen(tag.selected ? AppStyle::color("thumbBorder") : AppStyle::color("mutedText"));
+                        QRect r2(innerRect.x(), r1.bottom() + 4, innerRect.width(), qMax(14, innerRect.bottom() - r1.bottom()));
+                        p.drawText(r2, Qt::AlignCenter | Qt::TextWordWrap | Qt::TextWrapAnywhere, line2);
+                    }
                 }
             } else {
                 p.setFont(fontEn);
                 p.setPen(tag.selected ? AppStyle::color("onAccentText") : AppStyle::color("bodyText"));
-                p.drawText(tag.rect, Qt::AlignCenter, line1);
+
+                if (tag.isFullLine) {
+                    p.drawText(innerRect, Qt::AlignCenter | Qt::TextWordWrap | Qt::TextWrapAnywhere, line1);
+                } else {
+                    // 普通 tag：绝对单行，严禁换行
+                    p.drawText(innerRect, Qt::AlignCenter | Qt::TextSingleLine, line1);
+                }
             }
         }
     }

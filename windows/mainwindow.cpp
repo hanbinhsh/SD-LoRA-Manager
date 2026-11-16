@@ -16,6 +16,7 @@
 #include <QDialog>
 #include <QPainter>
 #include <QPushButton>
+#include <QStyleOptionButton>
 #include <QLabel>
 #include <QScrollBar>
 #include <QScrollArea>
@@ -172,6 +173,92 @@ ThemeBundle loadThemeBundle(const QString &themeId, const QString &customPath)
     return bundle;
 }
 
+class FlowChipButton : public QPushButton
+{
+public:
+    explicit FlowChipButton(const QString &text, QWidget *parent = nullptr)
+        : QPushButton(parent), m_fullText(text)
+    {
+        setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    }
+
+    void setChipText(const QString &text)
+    {
+        m_fullText = text;
+        update();
+        updateGeometry();
+    }
+
+    QString chipText() const { return m_fullText; }
+
+    void setFullLine(bool fullLine)
+    {
+        if (m_isFullLine != fullLine) {
+            m_isFullLine = fullLine;
+            update();
+        }
+    }
+
+    bool isFullLine() const { return m_isFullLine; }
+
+    QSize calculateSizeForWidth(int availableW) const
+    {
+        const int padX = 22;
+        const int padY = 8;
+        QFontMetrics fm = fontMetrics();
+        const int singleW = fm.horizontalAdvance(m_fullText) + padX;
+        const int defaultH = qMax(24, fm.height() + padY);
+
+        if (availableW <= 0 || singleW < availableW) {
+            return QSize(singleW, defaultH);
+        }
+
+        // 仅当单个 tag 非常长需占据整行时，折行并增高
+        const int innerW = qMax(20, availableW - padX);
+        QRect bound = fm.boundingRect(QRect(0, 0, innerW, 10000),
+                                      Qt::AlignCenter | Qt::TextWordWrap | Qt::TextWrapAnywhere,
+                                      m_fullText);
+        return QSize(availableW, qMax(defaultH, bound.height() + padY));
+    }
+
+    QSize sizeHint() const override
+    {
+        return calculateSizeForWidth(-1);
+    }
+
+    QSize minimumSizeHint() const override
+    {
+        return QSize(40, 24);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        Q_UNUSED(event);
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setRenderHint(QPainter::TextAntialiasing);
+
+        QStyleOptionButton opt;
+        initStyleOption(&opt);
+        opt.text.clear();
+        style()->drawControl(QStyle::CE_PushButton, &opt, &p, this);
+
+        const QRect textRect = rect().adjusted(9, 4, -9, -4);
+        p.setFont(font());
+        p.setPen(opt.palette.buttonText().color());
+        if (m_isFullLine) {
+            p.drawText(textRect, Qt::AlignCenter | Qt::TextWordWrap | Qt::TextWrapAnywhere, m_fullText);
+        } else {
+            p.drawText(textRect, Qt::AlignCenter | Qt::TextSingleLine, m_fullText);
+        }
+    }
+
+private:
+    QString m_fullText;
+    bool m_isFullLine = false;
+};
+
 class FlowLayout : public QLayout
 {
 public:
@@ -201,13 +288,9 @@ public:
     int heightForWidth(int width) const override { return doLayout(QRect(0, 0, width, 0), true); }
     QSize minimumSize() const override
     {
-        QSize size;
-        for (QLayoutItem *item : itemList) size = size.expandedTo(item->minimumSize());
-        const QMargins margins = contentsMargins();
-        size += QSize(margins.left() + margins.right(), margins.top() + margins.bottom());
-        return size;
+        return QSize(50, 24);
     }
-    QSize sizeHint() const override { return minimumSize(); }
+    QSize sizeHint() const override { return QSize(100, 24); }
     void setGeometry(const QRect &rect) override
     {
         QLayout::setGeometry(rect);
@@ -219,26 +302,71 @@ private:
     {
         const QMargins margins = contentsMargins();
         QRect effectiveRect = rect.adjusted(margins.left(), margins.top(), -margins.right(), -margins.bottom());
+        const int maxLineWidth = qMax(40, effectiveRect.width());
+        const int spaceX = m_hSpace;
+        const int spaceY = m_vSpace;
+
         int x = effectiveRect.x();
         int y = effectiveRect.y();
         int lineHeight = 0;
 
         for (QLayoutItem *item : itemList) {
-            const int spaceX = m_hSpace;
-            const int spaceY = m_vSpace;
-            const QSize itemSize = item->sizeHint();
+            QWidget *w = item->widget();
+            FlowChipButton *chip = dynamic_cast<FlowChipButton*>(w);
+
+            QSize itemSize;
+            bool isFullLine = false;
+
+            if (chip) {
+                itemSize = chip->calculateSizeForWidth(maxLineWidth);
+                if (itemSize.width() >= maxLineWidth) {
+                    isFullLine = true;
+                    itemSize.setWidth(maxLineWidth);
+                    chip->setFullLine(true);
+                } else {
+                    chip->setFullLine(false);
+                }
+            } else {
+                itemSize = item->sizeHint();
+                if (itemSize.width() >= maxLineWidth) {
+                    isFullLine = true;
+                    itemSize.setWidth(maxLineWidth);
+                }
+            }
+
+            if (isFullLine) {
+                // 如果当前行已有其他 tag，先换行
+                if (x > effectiveRect.x()) {
+                    x = effectiveRect.x();
+                    y += lineHeight + spaceY;
+                    lineHeight = 0;
+                }
+                if (!testOnly) {
+                    item->setGeometry(QRect(QPoint(effectiveRect.x(), y), itemSize));
+                }
+                y += itemSize.height() + spaceY;
+                x = effectiveRect.x();
+                lineHeight = 0;
+                continue;
+            }
+
+            // 普通单行组件
             int nextX = x + itemSize.width() + spaceX;
-            if (nextX - spaceX > effectiveRect.right() && lineHeight > 0) {
+            if (nextX - spaceX > effectiveRect.right() && x > effectiveRect.x()) {
                 x = effectiveRect.x();
                 y += lineHeight + spaceY;
                 nextX = x + itemSize.width() + spaceX;
                 lineHeight = 0;
             }
-            if (!testOnly) item->setGeometry(QRect(QPoint(x, y), itemSize));
+            if (!testOnly) {
+                item->setGeometry(QRect(QPoint(x, y), itemSize));
+            }
             x = nextX;
             lineHeight = qMax(lineHeight, itemSize.height());
         }
-        return y + lineHeight - rect.y() + margins.bottom();
+
+        int totalH = (lineHeight > 0) ? (y + lineHeight) : (y > effectiveRect.y() ? (y - spaceY) : y);
+        return totalH - rect.y() + margins.bottom();
     }
 
     QList<QLayoutItem*> itemList;
@@ -560,6 +688,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->scrollAreaTags->verticalScrollBar(), &QScrollBar::valueChanged,
             ui->scrollAreaTags->viewport(), [this](){
                 ui->scrollAreaTags->viewport()->update();});
+
+    // 初始化图库提示词展示区的工具栏及标签视图
+    setupGalleryPromptToolbar();
     // 设置右键菜单策略
     ui->listUserImages->setContextMenuPolicy(Qt::CustomContextMenu);
     // 连接右键信号
@@ -653,6 +784,11 @@ MainWindow::MainWindow(QWidget *parent)
     // 设置 Splitter
     ui->splitter->setSizes(QList<int>() << 260 << 1000);
     ui->splitterUser->setSizes(QList<int>() << 480 << 435);
+    if (ui->splitterParameter) {
+        ui->splitterParameter->setStretchFactor(0, 0);
+        ui->splitterParameter->setStretchFactor(1, 1);
+        ui->splitterParameter->setSizes(QList<int>() << 185 << 380);
+    }
 
     // 默认显示主页 (Page 0)
     ui->rootStack->setCurrentIndex(0);          // 库页面
@@ -1742,6 +1878,13 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     if (watched == ui->listUserImages->viewport() &&
         (event->type() == QEvent::Resize || event->type() == QEvent::Show)) {
         scheduleVisibleUserImageThumbLoad();
+    }
+
+    if (event->type() == QEvent::Wheel) {
+        if (isGalleryScrollWidget(watched)) {
+            handleGalleryWheelScroll(watched, static_cast<QWheelEvent*>(event));
+            return true; // 拦截事件，防止穿透到外层的 scrollArea
+        }
     }
 
     if (event->type() == QEvent::MouseButtonDblClick) {
@@ -3500,7 +3643,7 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
                 scanForUserImages(baseName);
             } else {
                 ui->listUserImages->clear();
-                ui->textUserPrompt->clear();
+                clearGalleryPromptView();
                 tagFlowWidget->setData({});
             }
             return;
@@ -3523,7 +3666,7 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
     } else {
         // 如果在主详情页，先清空返图页的旧数据，防止用户等会儿切过去看到上一个模型的图
         ui->listUserImages->clear();
-        ui->textUserPrompt->clear();
+        clearGalleryPromptView();
         tagFlowWidget->setData({});
     }
 }
@@ -6353,7 +6496,7 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     userGalleryGlobalMode = loraBaseName.isEmpty();
     placeholderIcon = generatePlaceholderIcon(); // 用当前主题色重建，保证占位X颜色正确
     ui->listUserImages->clear();
-    ui->textUserPrompt->clear();
+    clearGalleryPromptView();
     tagFlowWidget->setData({}); // 清空 Tag
     resetUserImageThumbLoading();
 
@@ -6686,6 +6829,11 @@ void MainWindow::onUserImageClicked(QListWidgetItem *item) {
     QString neg = item->data(ROLE_USER_IMAGE_NEG).toString();
     QString params = item->data(ROLE_USER_IMAGE_PARAMS).toString();
 
+    m_galleryCurrentImagePath = path;
+    m_galleryCurrentPrompt = prompt;
+    m_galleryCurrentNegative = neg;
+    m_galleryCurrentParams = params;
+
     QString safePrompt = prompt.toHtmlEscaped();
     QString safeNeg = neg.toHtmlEscaped();
     // 参数部分：让“每个参数单独成行”。先按已有换行拆，再把每行按“不在引号内的逗号”拆开。
@@ -6742,6 +6890,10 @@ void MainWindow::onUserImageClicked(QListWidgetItem *item) {
 
     ui->textUserPrompt->setHtml(html);
 
+    if (m_galleryTagViewActive) {
+        updateGalleryPromptTagView();
+    }
+
     // 联动更新顶部 Hero 大图
     ui->heroFrame->setProperty("fullImagePath", path);
     transitionToImage(path);
@@ -6752,6 +6904,626 @@ void MainWindow::onUserImageClicked(QListWidgetItem *item) {
         // path resets the vertical scroll position to the top.
         refreshUserTagFlowStats(false);
     }
+}
+
+void MainWindow::setupGalleryPromptToolbar()
+{
+    if (m_galleryPosTagWidget) return;
+
+    // 1. 在 UI 预留的容器中装配流式标签控件
+    m_galleryPosTagWidget = new TagFlowWidget(ui->galleryPosTagContainer);
+    m_galleryPosTagWidget->setTranslationMap(&translationMap);
+    m_galleryPosTagWidget->setObjectName("galleryPosTagWidget");
+    m_galleryPosTagWidget->setAttribute(Qt::WA_TranslucentBackground);
+    m_galleryPosTagWidget->setEditingEnabled(false);
+    ui->layoutGalleryPosTags->addWidget(m_galleryPosTagWidget);
+
+    m_galleryNegTagWidget = new TagFlowWidget(ui->galleryNegTagContainer);
+    m_galleryNegTagWidget->setTranslationMap(&translationMap);
+    m_galleryNegTagWidget->setObjectName("galleryNegTagWidget");
+    m_galleryNegTagWidget->setAttribute(Qt::WA_TranslucentBackground);
+    m_galleryNegTagWidget->setDefaultVisualRole(TagFlowWidget::VisualNegative);
+    m_galleryNegTagWidget->setEditingEnabled(false);
+    ui->layoutGalleryNegTags->addWidget(m_galleryNegTagWidget);
+
+    // 2. 为参数模型/LoRA Chip 容器配置 FlowLayout
+    if (ui->galleryParamsChipContainer) {
+        m_galleryParamsChipLayout = new FlowLayout(ui->galleryParamsChipContainer, 0, 6, 6);
+    }
+
+    // 3. 绑定工具栏按钮信号
+    if (ui->comboGalleryPromptSortMode) {
+        connect(ui->comboGalleryPromptSortMode, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this, [this](int) {
+                    applyGalleryPromptSortMode();
+                });
+    }
+
+    if (ui->btnGalleryPromptTranslate) {
+        connect(ui->btnGalleryPromptTranslate, &QPushButton::toggled, this, [this](bool checked) {
+            if (checked && translationMap.isEmpty()) {
+                QMessageBox::warning(this, AppText::tr("提示"), AppText::tr("未加载翻译词表，请在设置中配置 CSV 文件。"));
+                QSignalBlocker blocker(ui->btnGalleryPromptTranslate);
+                ui->btnGalleryPromptTranslate->setChecked(false);
+                return;
+            }
+            if (m_galleryPosTagWidget) m_galleryPosTagWidget->setShowTranslation(checked);
+            if (m_galleryNegTagWidget) m_galleryNegTagWidget->setShowTranslation(checked);
+        });
+    }
+
+    if (ui->btnGalleryPromptSelectAll) {
+        connect(ui->btnGalleryPromptSelectAll, &QPushButton::clicked, this, [this]() {
+            if (m_galleryPosTagWidget) m_galleryPosTagWidget->selectAllVisibleTags();
+            if (m_galleryNegTagWidget) m_galleryNegTagWidget->selectAllVisibleTags();
+        });
+    }
+
+    if (ui->btnGalleryPromptDeselect) {
+        connect(ui->btnGalleryPromptDeselect, &QPushButton::clicked, this, [this]() {
+            if (m_galleryPosTagWidget) m_galleryPosTagWidget->clearSelectedTags();
+            if (m_galleryNegTagWidget) m_galleryNegTagWidget->clearSelectedTags();
+        });
+    }
+
+    if (ui->btnGalleryPromptToggle) {
+        connect(ui->btnGalleryPromptToggle, &QPushButton::toggled, this, [this](bool tagView) {
+            setGalleryTagViewActive(tagView);
+        });
+    }
+
+    // 4. 为图库内部所有滚动部件安装防滚动穿透事件过滤器
+    auto installAntiScrollLeak = [this](QWidget *w) {
+        if (!w) return;
+        w->installEventFilter(this);
+        if (auto *scrollArea = qobject_cast<QAbstractScrollArea*>(w)) {
+            if (scrollArea->viewport()) scrollArea->viewport()->installEventFilter(this);
+        }
+    };
+
+    installAntiScrollLeak(ui->listUserImages);
+    installAntiScrollLeak(ui->scrollAreaTags);
+    installAntiScrollLeak(ui->scrollAreaGalleryPromptTags);
+    installAntiScrollLeak(ui->textUserPrompt);
+    installAntiScrollLeak(ui->scrollArea); // 主滚动区域，用于阻断穿透
+    installAntiScrollLeak(m_galleryPosTagWidget);
+    installAntiScrollLeak(m_galleryNegTagWidget);
+    installAntiScrollLeak(tagFlowWidget);
+    if (ui->galleryPromptTagsContent) ui->galleryPromptTagsContent->installEventFilter(this);
+    if (ui->tagFlowContainer) ui->tagFlowContainer->installEventFilter(this);
+    if (ui->galleryParamsChipContainer) ui->galleryParamsChipContainer->installEventFilter(this);
+    if (ui->lblGalleryParamsPlain) ui->lblGalleryParamsPlain->installEventFilter(this);
+
+    // 5. 初始默认保持文本视图
+    setGalleryTagViewActive(false);
+}
+
+void MainWindow::setGalleryTagViewActive(bool tagView)
+{
+    m_galleryTagViewActive = tagView;
+    if (ui->galleryPromptStack) {
+        ui->galleryPromptStack->setCurrentIndex(tagView ? 1 : 0);
+    }
+    if (ui->comboGalleryPromptSortMode) ui->comboGalleryPromptSortMode->setVisible(tagView);
+    if (ui->btnGalleryPromptTranslate) ui->btnGalleryPromptTranslate->setVisible(tagView);
+    if (ui->btnGalleryPromptSelectAll) ui->btnGalleryPromptSelectAll->setVisible(tagView);
+    if (ui->btnGalleryPromptDeselect) ui->btnGalleryPromptDeselect->setVisible(tagView);
+
+    if (ui->btnGalleryPromptToggle) {
+        ui->btnGalleryPromptToggle->setText(tagView ? AppText::tr("文本") : AppText::tr("标签"));
+        ui->btnGalleryPromptToggle->setToolTip(tagView ? AppText::tr("切换为纯文本视图") : AppText::tr("切换为标签视图"));
+    }
+
+    if (tagView) {
+        updateGalleryPromptTagView();
+    }
+}
+
+void MainWindow::updateGalleryPromptTagView()
+{
+    if (!m_galleryPosTagWidget || !m_galleryNegTagWidget) return;
+
+    // 1. 正面提示词 Tag
+    QMap<QString, int> posCounts;
+    m_galleryPosTagOrder.clear();
+    QSet<QString> posSeen;
+    const QStringList posParts = TagUtils::splitPromptParts(m_galleryCurrentPrompt, optSplitOnNewline);
+    for (const QString &part : posParts) {
+        const QString clean = TagUtils::cleanPromptTag(part);
+        if (!clean.isEmpty()) {
+            posCounts[clean]++;
+            if (!posSeen.contains(clean)) {
+                posSeen.insert(clean);
+                m_galleryPosTagOrder << clean;
+            }
+        }
+    }
+
+    // 2. 负面提示词 Tag
+    QMap<QString, int> negCounts;
+    m_galleryNegTagOrder.clear();
+    QSet<QString> negSeen;
+    const QStringList negParts = TagUtils::splitPromptParts(m_galleryCurrentNegative, optSplitOnNewline);
+    for (const QString &part : negParts) {
+        const QString clean = TagUtils::cleanPromptTag(part);
+        if (!clean.isEmpty()) {
+            negCounts[clean]++;
+            if (!negSeen.contains(clean)) {
+                negSeen.insert(clean);
+                m_galleryNegTagOrder << clean;
+            }
+        }
+    }
+
+    m_galleryPosTagWidget->setData(posCounts);
+    m_galleryNegTagWidget->setData(negCounts);
+
+    applyGalleryPromptSortMode();
+
+    // 3. 清理旧的 Chip
+    if (m_galleryParamsChipLayout) {
+        QLayoutItem *item;
+        while ((item = m_galleryParamsChipLayout->takeAt(0)) != nullptr) {
+            if (item->widget()) delete item->widget();
+            delete item;
+        }
+    }
+
+    // 4. 解析参数中的模型/LoRA
+    QString modelName;
+    QString modelHash;
+
+    static const QRegularExpression modelRegex("(?:^|[,\\n\\r])\\s*Model\\s*:\\s*([^,\\n\\r]+)",
+                                               QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatch modelMatch = modelRegex.match(m_galleryCurrentParams);
+    if (modelMatch.hasMatch()) {
+        modelName = modelMatch.captured(1).trimmed();
+    }
+
+    static const QRegularExpression checkpointRegex("(?:^|[,\\n\\r])\\s*Checkpoint\\s*:\\s*([^,\\n\\r]+)",
+                                                    QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatch ckptMatch = checkpointRegex.match(m_galleryCurrentParams);
+    if (ckptMatch.hasMatch() && modelName.isEmpty()) {
+        modelName = ckptMatch.captured(1).trimmed();
+    }
+
+    static const QRegularExpression modelHashRegex("(?:^|[,\\n\\r])\\s*Model\\s+hash\\s*:\\s*([A-Fa-f0-9]+)",
+                                                   QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatch hashMatch = modelHashRegex.match(m_galleryCurrentParams);
+    if (hashMatch.hasMatch()) {
+        modelHash = hashMatch.captured(1).trimmed();
+    }
+
+    struct LoraEntry {
+        QString name;
+        QString hash;
+        QString weight;
+    };
+    QList<LoraEntry> loras;
+    QSet<QString> seenLoraNames;
+
+    // (a) 从正面提示词中提取 <lora:name:weight>
+    static const QRegularExpression promptLoraRegex("<\\s*(?:lora|lyco)\\s*:\\s*([^:>]+)(?::([^:>]+))?",
+                                                    QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatchIterator promptIt = promptLoraRegex.globalMatch(m_galleryCurrentPrompt);
+    while (promptIt.hasNext()) {
+        QRegularExpressionMatch m = promptIt.next();
+        QString name = m.captured(1).trimmed();
+        QString weight = m.captured(2).trimmed();
+        if (!name.isEmpty()) {
+            const QString norm = name.toLower();
+            if (!seenLoraNames.contains(norm)) {
+                seenLoraNames.insert(norm);
+                loras.append({name, QString(), weight});
+            }
+        }
+    }
+
+    // (b) 从参数中的 Lora hashes 提取
+    static const QRegularExpression loraHashesBlockRegex("(?:^|[,\\n\\r])\\s*Lora\\s+hashes\\s*:\\s*(\"[^\"]*\"|[^\\n\\r]*)",
+                                                         QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatch blockMatch = loraHashesBlockRegex.match(m_galleryCurrentParams);
+    if (blockMatch.hasMatch()) {
+        QString block = blockMatch.captured(1).trimmed();
+        if (block.startsWith('"') && block.endsWith('"') && block.size() >= 2) {
+            block = block.mid(1, block.size() - 2);
+        }
+        static const QRegularExpression pairRegex("([^:,]+?)\\s*:\\s*([A-Fa-f0-9]+)");
+        QRegularExpressionMatchIterator pairIt = pairRegex.globalMatch(block);
+        while (pairIt.hasNext()) {
+            QRegularExpressionMatch m = pairIt.next();
+            QString name = m.captured(1).trimmed();
+            QString hash = m.captured(2).trimmed();
+            if (!name.isEmpty()) {
+                const QString norm = name.toLower();
+                bool found = false;
+                for (LoraEntry &entry : loras) {
+                    if (entry.name.toLower() == norm) {
+                        if (entry.hash.isEmpty()) entry.hash = hash;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found && !seenLoraNames.contains(norm)) {
+                    seenLoraNames.insert(norm);
+                    loras.append({name, hash, QString()});
+                }
+            }
+        }
+    }
+
+    // (c) 从 ComfyUI LoRAs 提取
+    static const QRegularExpression comfyLoraRegex("(?:^|[,\\n\\r])\\s*ComfyUI\\s+LoRAs\\s*:\\s*([^\\n\\r]*)",
+                                                   QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatch comfyMatch = comfyLoraRegex.match(m_galleryCurrentParams);
+    if (comfyMatch.hasMatch()) {
+        const QStringList entries = comfyMatch.captured(1).split(',', Qt::SkipEmptyParts);
+        for (QString entry : entries) {
+            entry = entry.trimmed();
+            QString weight;
+            const int colon = entry.indexOf(':');
+            if (colon > 0) {
+                weight = entry.mid(colon + 1).trimmed();
+                entry = entry.left(colon).trimmed();
+            }
+            if (!entry.isEmpty()) {
+                const QString norm = entry.toLower();
+                if (!seenLoraNames.contains(norm)) {
+                    seenLoraNames.insert(norm);
+                    loras.append({entry, QString(), weight});
+                }
+            }
+        }
+    }
+
+    // (d) 从 AddNet 提取
+    static const QRegularExpression addNetRegex("(?:^|[,\\n\\r])\\s*AddNet\\s+Model\\s+\\d+\\s*:\\s*([^,\\n\\r]+)",
+                                                QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatchIterator addNetIt = addNetRegex.globalMatch(m_galleryCurrentParams);
+    while (addNetIt.hasNext()) {
+        QString name = addNetIt.next().captured(1).trimmed();
+        if (!name.isEmpty()) {
+            const QString norm = name.toLower();
+            if (!seenLoraNames.contains(norm)) {
+                seenLoraNames.insert(norm);
+                loras.append({name, QString(), QString()});
+            }
+        }
+    }
+
+    // 5. 创建模型/Checkpoint Chip 按钮
+    if (m_galleryParamsChipLayout && ui->galleryParamsChipContainer) {
+        if (!modelName.isEmpty() || !modelHash.isEmpty()) {
+            const QString displayName = modelName.isEmpty() ? modelHash : modelName;
+            QString labelText = QString("📦 %1").arg(displayName);
+            if (!modelHash.isEmpty() && !modelName.isEmpty()) {
+                labelText += QString(" (%1)").arg(modelHash);
+            }
+            FlowChipButton *chipBtn = new FlowChipButton(labelText, ui->galleryParamsChipContainer);
+            chipBtn->setProperty("class", "filterChip");
+            chipBtn->setProperty("tagSource", "model");
+            chipBtn->setCursor(Qt::PointingHandCursor);
+            chipBtn->setToolTip(AppText::tr("底模: %1 (点击跳转)").arg(displayName));
+            connect(chipBtn, &QPushButton::clicked, this, [this, modelName, modelHash]() {
+                jumpToModelOrLora(modelName, modelHash);
+            });
+            m_galleryParamsChipLayout->addWidget(chipBtn);
+        }
+
+        // 6. 创建 LoRA Chip 按钮
+        for (const LoraEntry &lora : loras) {
+            QString labelText = QString("🏷️ %1").arg(lora.name);
+            if (!lora.weight.isEmpty()) {
+                labelText += QString(" [%1]").arg(lora.weight);
+            }
+            if (!lora.hash.isEmpty()) {
+                labelText += QString(" (%1)").arg(lora.hash);
+            }
+            FlowChipButton *chipBtn = new FlowChipButton(labelText, ui->galleryParamsChipContainer);
+            chipBtn->setProperty("class", "filterChip");
+            chipBtn->setCursor(Qt::PointingHandCursor);
+            chipBtn->setToolTip(AppText::tr("LoRA: %1 (点击跳转)").arg(lora.name));
+            connect(chipBtn, &QPushButton::clicked, this, [this, name = lora.name, hash = lora.hash]() {
+                jumpToModelOrLora(name, hash);
+            });
+            m_galleryParamsChipLayout->addWidget(chipBtn);
+        }
+    }
+
+    // 7. 渲染常规参数纯文本
+    if (ui->lblGalleryParamsPlain) {
+        QString plainHtml;
+
+        // 分辨率
+        if (!m_galleryCurrentImagePath.isEmpty()) {
+            QImageReader reader(m_galleryCurrentImagePath);
+            const QSize sz = reader.size();
+            if (sz.isValid()) {
+                plainHtml += QString("<div style='margin: 3px 0; word-break: break-all;'><b>Resolution / 分辨率:</b> %1 × %2</div>")
+                                .arg(sz.width()).arg(sz.height());
+            }
+        }
+
+        auto splitTopLevelCommas = [](const QString &s) {
+            QStringList out;
+            QString cur;
+            bool inQuotes = false;
+            for (const QChar c : s) {
+                if (c == '"') { inQuotes = !inQuotes; cur += c; }
+                else if (c == ',' && !inQuotes) { out << cur; cur.clear(); }
+                else cur += c;
+            }
+            out << cur;
+            return out;
+        };
+
+        const QStringList rawLines = m_galleryCurrentParams.split('\n');
+        for (const QString &line : rawLines) {
+            for (const QString &seg : splitTopLevelCommas(line)) {
+                const QString t = seg.trimmed();
+                if (t.isEmpty()) continue;
+                if (t.startsWith("Lora hashes:", Qt::CaseInsensitive)) continue;
+                if (t.startsWith("ComfyUI LoRAs:", Qt::CaseInsensitive)) continue;
+                if (t.startsWith("ComfyUI Lora hashes:", Qt::CaseInsensitive)) continue;
+                if (t.startsWith("Model:", Qt::CaseInsensitive)) continue;
+                if (t.startsWith("Model hash:", Qt::CaseInsensitive)) continue;
+                if (t.startsWith("Checkpoint:", Qt::CaseInsensitive)) continue;
+                plainHtml += QString("<div style='margin: 2px 0; word-break: break-all;'>%1</div>").arg(t.toHtmlEscaped());
+            }
+        }
+
+        ui->lblGalleryParamsPlain->setText(plainHtml);
+        ui->lblGalleryParamsPlain->setVisible(!plainHtml.trimmed().isEmpty());
+    }
+
+    if (ui->galleryParamsChipContainer) {
+        const bool hasChips = (m_galleryParamsChipLayout && m_galleryParamsChipLayout->count() > 0);
+        ui->galleryParamsChipContainer->setVisible(hasChips);
+        ui->galleryParamsChipContainer->updateGeometry();
+    }
+
+    if (ui->lblGalleryParamsTitle) {
+        const bool hasParams = (!m_galleryCurrentParams.trimmed().isEmpty() ||
+                                (m_galleryParamsChipLayout && m_galleryParamsChipLayout->count() > 0));
+        ui->lblGalleryParamsTitle->setVisible(hasParams);
+    }
+
+    if (ui->lblGalleryPosTitle) ui->lblGalleryPosTitle->setVisible(!posCounts.isEmpty());
+    if (ui->galleryPosTagContainer) ui->galleryPosTagContainer->setVisible(!posCounts.isEmpty());
+    if (ui->lblGalleryNegTitle) ui->lblGalleryNegTitle->setVisible(!negCounts.isEmpty());
+    if (ui->galleryNegTagContainer) ui->galleryNegTagContainer->setVisible(!negCounts.isEmpty());
+}
+
+void MainWindow::applyGalleryPromptSortMode()
+{
+    if (!m_galleryPosTagWidget || !m_galleryNegTagWidget || !ui->comboGalleryPromptSortMode) return;
+
+    TagFlowWidget::SortMode mode = TagFlowWidget::SortByGivenOrder;
+    const int index = ui->comboGalleryPromptSortMode->currentIndex();
+    if (index == 1) mode = TagFlowWidget::SortByCount;
+    else if (index == 2) mode = TagFlowWidget::SortAlphabetically;
+    else if (index == 3) mode = TagFlowWidget::SortByCategory;
+
+    m_galleryPosTagWidget->setGivenOrder(m_galleryPosTagOrder);
+    m_galleryNegTagWidget->setGivenOrder(m_galleryNegTagOrder);
+    m_galleryPosTagWidget->setSortMode(mode);
+    m_galleryNegTagWidget->setSortMode(mode);
+}
+
+void MainWindow::clearGalleryPromptView()
+{
+    m_galleryCurrentPrompt.clear();
+    m_galleryCurrentNegative.clear();
+    m_galleryCurrentParams.clear();
+    m_galleryCurrentImagePath.clear();
+    m_galleryPosTagOrder.clear();
+    m_galleryNegTagOrder.clear();
+
+    if (ui->textUserPrompt) ui->textUserPrompt->clear();
+    if (m_galleryPosTagWidget) m_galleryPosTagWidget->setData({});
+    if (m_galleryNegTagWidget) m_galleryNegTagWidget->setData({});
+
+    if (m_galleryParamsChipLayout) {
+        QLayoutItem *item;
+        while ((item = m_galleryParamsChipLayout->takeAt(0)) != nullptr) {
+            if (item->widget()) delete item->widget();
+            delete item;
+        }
+    }
+    if (ui->lblGalleryParamsPlain) {
+        ui->lblGalleryParamsPlain->clear();
+    }
+}
+
+QListWidgetItem *MainWindow::findModelItemByNameOrHash(const QString &name, const QString &hash) const
+{
+    const QString cleanHash = hash.trimmed().toLower();
+
+    // 1. 优先根据 sha256 匹配
+    if (!cleanHash.isEmpty() && cleanHash.length() >= 6) {
+        for (int i = 0; i < ui->modelList->count(); ++i) {
+            QListWidgetItem *item = ui->modelList->item(i);
+            if (!isModelListItem(item)) continue;
+            const QString itemSha = item->data(ROLE_CIVITAI_SHA256).toString().trimmed().toLower();
+            if (!itemSha.isEmpty()) {
+                if (itemSha.startsWith(cleanHash) || cleanHash.startsWith(itemSha)) {
+                    return item;
+                }
+            }
+        }
+    }
+
+    // 2. 根据名称匹配
+    if (name.trimmed().isEmpty()) return nullptr;
+
+    auto normalizeName = [](QString s) -> QString {
+        s = s.trimmed();
+        if (s.endsWith(".safetensors", Qt::CaseInsensitive) ||
+            s.endsWith(".ckpt", Qt::CaseInsensitive) ||
+            s.endsWith(".pt", Qt::CaseInsensitive)) {
+            s = QFileInfo(s).completeBaseName();
+        }
+        return s.toLower();
+    };
+
+    const QString searchNorm = normalizeName(name);
+
+    // (a) 精确 baseName / modelName 匹配
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (!isModelListItem(item)) continue;
+        const QString itemName = normalizeName(item->data(ROLE_MODEL_NAME).toString());
+        const QString itemFile = normalizeName(QFileInfo(item->data(ROLE_FILE_PATH).toString()).completeBaseName());
+        if ((!itemName.isEmpty() && itemName == searchNorm) ||
+            (!itemFile.isEmpty() && itemFile == searchNorm)) {
+            return item;
+        }
+    }
+
+    // (b) Civitai model name 匹配
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (!isModelListItem(item)) continue;
+        const QString civModel = normalizeName(item->data(ROLE_CIVITAI_NAME).toString());
+        if (!civModel.isEmpty() && civModel == searchNorm) {
+            return item;
+        }
+    }
+
+    // (c) 模糊包含匹配
+    for (int i = 0; i < ui->modelList->count(); ++i) {
+        QListWidgetItem *item = ui->modelList->item(i);
+        if (!isModelListItem(item)) continue;
+        const QString itemName = normalizeName(item->data(ROLE_MODEL_NAME).toString());
+        const QString itemFile = normalizeName(QFileInfo(item->data(ROLE_FILE_PATH).toString()).completeBaseName());
+        const QString civModel = normalizeName(item->data(ROLE_CIVITAI_NAME).toString());
+        if ((!itemName.isEmpty() && (itemName.contains(searchNorm) || searchNorm.contains(itemName))) ||
+            (!itemFile.isEmpty() && (itemFile.contains(searchNorm) || searchNorm.contains(itemFile))) ||
+            (!civModel.isEmpty() && (civModel.contains(searchNorm) || searchNorm.contains(civModel)))) {
+            return item;
+        }
+    }
+
+    return nullptr;
+}
+
+void MainWindow::jumpToModelOrLora(const QString &name, const QString &hash)
+{
+    QListWidgetItem *item = findModelItemByNameOrHash(name, hash);
+    if (!item) {
+        ui->statusbar->showMessage(AppText::tr("未在本地模型库中找到对应的模型/LoRA: %1").arg(name.isEmpty() ? hash : name), 3500);
+        return;
+    }
+
+    onMenuSwitchToLibrary();
+    ui->modelList->setCurrentItem(item);
+    item->setSelected(true);
+    ui->modelList->scrollToItem(item, QAbstractItemView::PositionAtCenter);
+    onModelListClicked(item);
+    ui->statusbar->showMessage(AppText::tr("已定位并跳转至模型: %1").arg(item->text()), 3500);
+}
+
+bool MainWindow::isCursorInsideGalleryScrollAreas() const
+{
+    const QPoint globalPos = QCursor::pos();
+    auto isInside = [&globalPos](QWidget *w) -> bool {
+        if (!w || !w->isVisible()) return false;
+        return w->rect().contains(w->mapFromGlobal(globalPos));
+    };
+
+    // 1. 左侧图片列表
+    if (isInside(ui->listUserImages)) return true;
+    // 2. 右侧上方用户 Tag 区域
+    if (isInside(ui->scrollAreaTags)) return true;
+    // 3. 右侧下方提示词与参数区域（文本模式 或 标签模式）
+    if (isInside(ui->textUserPrompt)) return true;
+    if (isInside(ui->scrollAreaGalleryPromptTags)) return true;
+
+    return false;
+}
+
+bool MainWindow::isGalleryScrollWidget(QObject *watched) const
+{
+    if (!watched) return false;
+
+    // 1. 如果事件目标是外层主滚动区（或其直接承载内容）
+    if (watched == ui->scrollArea || (ui->scrollArea && watched == ui->scrollArea->viewport()) || watched == ui->scrollAreaWidgetContents) {
+        if (ui->pageLocalGallery && ui->pageLocalGallery->isVisible()) {
+            // 仅当光标在图库界面的3个实际内部滚动区域内部时，才阻断穿透；
+            // 如果光标在3个滚动区域外部，放行给外层主滚动区正常滚动整个页面！
+            return isCursorInsideGalleryScrollAreas();
+        }
+        return false;
+    }
+
+    // 2. 如果 watched 是 QWidget，检查它是否属于图库的3个滚动子区域之一（包括其所有深层子组件）
+    QWidget *w = qobject_cast<QWidget*>(watched);
+    if (!w) return false;
+
+    if (ui->listUserImages && (w == ui->listUserImages || ui->listUserImages->isAncestorOf(w))) {
+        return true;
+    }
+    if (ui->scrollAreaTags && (w == ui->scrollAreaTags || ui->scrollAreaTags->isAncestorOf(w))) {
+        return true;
+    }
+    if (ui->textUserPrompt && (w == ui->textUserPrompt || ui->textUserPrompt->isAncestorOf(w))) {
+        return true;
+    }
+    if (ui->scrollAreaGalleryPromptTags && (w == ui->scrollAreaGalleryPromptTags || ui->scrollAreaGalleryPromptTags->isAncestorOf(w))) {
+        return true;
+    }
+
+    return false;
+}
+
+void MainWindow::handleGalleryWheelScroll(QObject *watched, QWheelEvent *event)
+{
+    if (!event) return;
+
+    QScrollBar *vBar = nullptr;
+    QWidget *w = qobject_cast<QWidget*>(watched);
+
+    if (w) {
+        if (ui->listUserImages && (w == ui->listUserImages || ui->listUserImages->isAncestorOf(w))) {
+            vBar = ui->listUserImages->verticalScrollBar();
+        } else if (ui->scrollAreaTags && (w == ui->scrollAreaTags || ui->scrollAreaTags->isAncestorOf(w))) {
+            vBar = ui->scrollAreaTags->verticalScrollBar();
+        } else if (ui->textUserPrompt && (w == ui->textUserPrompt || ui->textUserPrompt->isAncestorOf(w))) {
+            vBar = ui->textUserPrompt->verticalScrollBar();
+        } else if (ui->scrollAreaGalleryPromptTags && (w == ui->scrollAreaGalleryPromptTags || ui->scrollAreaGalleryPromptTags->isAncestorOf(w))) {
+            vBar = ui->scrollAreaGalleryPromptTags->verticalScrollBar();
+        }
+    }
+
+    if (!vBar) {
+        const QPoint globalPos = QCursor::pos();
+        if (ui->scrollAreaGalleryPromptTags && ui->scrollAreaGalleryPromptTags->isVisible() &&
+            ui->scrollAreaGalleryPromptTags->rect().contains(ui->scrollAreaGalleryPromptTags->mapFromGlobal(globalPos))) {
+            vBar = ui->scrollAreaGalleryPromptTags->verticalScrollBar();
+        } else if (ui->textUserPrompt && ui->textUserPrompt->isVisible() &&
+                   ui->textUserPrompt->rect().contains(ui->textUserPrompt->mapFromGlobal(globalPos))) {
+            vBar = ui->textUserPrompt->verticalScrollBar();
+        } else if (ui->scrollAreaTags && ui->scrollAreaTags->isVisible() &&
+                   ui->scrollAreaTags->rect().contains(ui->scrollAreaTags->mapFromGlobal(globalPos))) {
+            vBar = ui->scrollAreaTags->verticalScrollBar();
+        } else if (ui->listUserImages && ui->listUserImages->isVisible() &&
+                   ui->listUserImages->rect().contains(ui->listUserImages->mapFromGlobal(globalPos))) {
+            vBar = ui->listUserImages->verticalScrollBar();
+        }
+    }
+
+    if (vBar && vBar->isEnabled() && vBar->maximum() > vBar->minimum()) {
+        const int delta = event->angleDelta().y();
+        if (delta != 0) {
+            int step = vBar->singleStep();
+            if (step <= 0) step = 20;
+            int deltaValue = -(delta / 120) * step * 3;
+            if (deltaValue == 0) deltaValue = (delta > 0) ? -step : step;
+            vBar->setValue(vBar->value() + deltaValue);
+        }
+    }
+
+    event->accept();
 }
 
 void MainWindow::onTagFilterChanged(const QSet<QString> &selectedTags) {
@@ -9341,6 +10113,8 @@ void MainWindow::reloadTranslationMaps(bool notifyWidgets, bool asynchronous)
             if (promptTemplateLibraryWidget) promptTemplateLibraryWidget->setTranslationMap(&translationMap);
             if (tagBrowserWidget) tagBrowserWidget->setMergedTranslationMap(&translationMap);
             if (tagFlowWidget) tagFlowWidget->setTranslationMap(&translationMap);
+            if (m_galleryPosTagWidget) m_galleryPosTagWidget->setTranslationMap(&translationMap);
+            if (m_galleryNegTagWidget) m_galleryNegTagWidget->setTranslationMap(&translationMap);
         }
         qDebug() << "Loaded translation entries:" << translationMap.size() << "from" << activePaths.size() << "CSV file(s)";
     };
