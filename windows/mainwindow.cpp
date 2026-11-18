@@ -1811,8 +1811,10 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         if (event->type() == QEvent::Paint) {
             QPainter painter(ui->heroFrame);
 
-            // 绘制背景黑底（防止透明度叠加时看到底色）
-            painter.fillRect(ui->heroFrame->rect(), Qt::black);
+            // 绘制背景底色（浅色主题下使用浅色底，深色主题下保持黑底）
+            const bool isLightTheme = AppStyle::color("windowBg").lightness() > 128;
+            const QColor heroFallbackBg = isLightTheme ? AppStyle::color("headerBg") : QColor(Qt::black);
+            painter.fillRect(ui->heroFrame->rect(), heroFallbackBg);
 
             // 辅助 Lambda：用于绘制单张图片 (Cover 模式)
             auto drawPix = [&](const QPixmap &pix, qreal opacity) {
@@ -7119,8 +7121,8 @@ void MainWindow::updateGalleryPromptTagView()
         }
     }
 
-    // (b) 从参数中的 Lora hashes 提取
-    static const QRegularExpression loraHashesBlockRegex("(?:^|[,\\n\\r])\\s*Lora\\s+hashes\\s*:\\s*(\"[^\"]*\"|[^\\n\\r]*)",
+    // (b) 从参数中的 Lora hashes 提取（兼容 A1111 和 ComfyUI）
+    static const QRegularExpression loraHashesBlockRegex("(?:^|[,\\n\\r])\\s*(?:ComfyUI\\s+)?Lora\\s+hashes\\s*:\\s*(\"[^\"]*\"|[^\\n\\r]*)",
                                                          QRegularExpression::CaseInsensitiveOption);
     QRegularExpressionMatch blockMatch = loraHashesBlockRegex.match(m_galleryCurrentParams);
     if (blockMatch.hasMatch()) {
@@ -7138,7 +7140,9 @@ void MainWindow::updateGalleryPromptTagView()
                 const QString norm = name.toLower();
                 bool found = false;
                 for (LoraEntry &entry : loras) {
-                    if (entry.name.toLower() == norm) {
+                    const QString entryNorm = entry.name.toLower();
+                    if (entryNorm == norm || entryNorm.endsWith("/" + norm) || entryNorm.endsWith("\\" + norm) ||
+                        norm.endsWith("/" + entryNorm) || norm.endsWith("\\" + entryNorm)) {
                         if (entry.hash.isEmpty()) entry.hash = hash;
                         found = true;
                         break;
@@ -7358,6 +7362,7 @@ QListWidgetItem *MainWindow::findModelItemByNameOrHash(const QString &name, cons
 
     auto normalizeName = [](QString s) -> QString {
         s = s.trimmed();
+        s.replace('\\', '/');
         if (s.endsWith(".safetensors", Qt::CaseInsensitive) ||
             s.endsWith(".ckpt", Qt::CaseInsensitive) ||
             s.endsWith(".pt", Qt::CaseInsensitive)) {
@@ -7367,6 +7372,7 @@ QListWidgetItem *MainWindow::findModelItemByNameOrHash(const QString &name, cons
     };
 
     const QString searchNorm = normalizeName(name);
+    const QString searchBase = searchNorm.contains('/') ? QFileInfo(searchNorm).fileName() : searchNorm;
 
     // (a) 精确 baseName / modelName 匹配
     for (int i = 0; i < ui->modelList->count(); ++i) {
@@ -7374,8 +7380,8 @@ QListWidgetItem *MainWindow::findModelItemByNameOrHash(const QString &name, cons
         if (!isModelListItem(item)) continue;
         const QString itemName = normalizeName(item->data(ROLE_MODEL_NAME).toString());
         const QString itemFile = normalizeName(QFileInfo(item->data(ROLE_FILE_PATH).toString()).completeBaseName());
-        if ((!itemName.isEmpty() && itemName == searchNorm) ||
-            (!itemFile.isEmpty() && itemFile == searchNorm)) {
+        if ((!itemName.isEmpty() && (itemName == searchNorm || itemName == searchBase)) ||
+            (!itemFile.isEmpty() && (itemFile == searchNorm || itemFile == searchBase))) {
             return item;
         }
     }
@@ -7385,22 +7391,28 @@ QListWidgetItem *MainWindow::findModelItemByNameOrHash(const QString &name, cons
         QListWidgetItem *item = ui->modelList->item(i);
         if (!isModelListItem(item)) continue;
         const QString civModel = normalizeName(item->data(ROLE_CIVITAI_NAME).toString());
-        if (!civModel.isEmpty() && civModel == searchNorm) {
+        if (!civModel.isEmpty() && (civModel == searchNorm || civModel == searchBase)) {
             return item;
         }
     }
 
-    // (c) 模糊包含匹配
-    for (int i = 0; i < ui->modelList->count(); ++i) {
-        QListWidgetItem *item = ui->modelList->item(i);
-        if (!isModelListItem(item)) continue;
-        const QString itemName = normalizeName(item->data(ROLE_MODEL_NAME).toString());
-        const QString itemFile = normalizeName(QFileInfo(item->data(ROLE_FILE_PATH).toString()).completeBaseName());
-        const QString civModel = normalizeName(item->data(ROLE_CIVITAI_NAME).toString());
-        if ((!itemName.isEmpty() && (itemName.contains(searchNorm) || searchNorm.contains(itemName))) ||
-            (!itemFile.isEmpty() && (itemFile.contains(searchNorm) || searchNorm.contains(itemFile))) ||
-            (!civModel.isEmpty() && (civModel.contains(searchNorm) || searchNorm.contains(civModel)))) {
-            return item;
+    // (c) 模糊包含匹配（限制最短长度，防止误匹配）
+    if (searchBase.length() >= 3) {
+        auto fuzzyMatches = [&searchBase](const QString &target) -> bool {
+            if (target.length() < 3) return false;
+            if (target.contains(searchBase)) return true;
+            if (target.length() >= 4 && searchBase.contains(target)) return true;
+            return false;
+        };
+        for (int i = 0; i < ui->modelList->count(); ++i) {
+            QListWidgetItem *item = ui->modelList->item(i);
+            if (!isModelListItem(item)) continue;
+            const QString itemName = normalizeName(item->data(ROLE_MODEL_NAME).toString());
+            const QString itemFile = normalizeName(QFileInfo(item->data(ROLE_FILE_PATH).toString()).completeBaseName());
+            const QString civModel = normalizeName(item->data(ROLE_CIVITAI_NAME).toString());
+            if (fuzzyMatches(itemName) || fuzzyMatches(itemFile) || fuzzyMatches(civModel)) {
+                return item;
+            }
         }
     }
 
@@ -7416,10 +7428,23 @@ void MainWindow::jumpToModelOrLora(const QString &name, const QString &hash)
     }
 
     onMenuSwitchToLibrary();
+    if (ui->detailContentStack) {
+        ui->detailContentStack->setCurrentIndex(0);
+    }
     ui->modelList->setCurrentItem(item);
     item->setSelected(true);
     ui->modelList->scrollToItem(item, QAbstractItemView::PositionAtCenter);
     onModelListClicked(item);
+    if (ui->scrollArea) {
+        if (ui->scrollArea->verticalScrollBar()) ui->scrollArea->verticalScrollBar()->setValue(0);
+        if (ui->scrollArea->horizontalScrollBar()) ui->scrollArea->horizontalScrollBar()->setValue(0);
+    }
+    QTimer::singleShot(0, this, [this]() {
+        if (ui && ui->scrollArea) {
+            if (ui->scrollArea->verticalScrollBar()) ui->scrollArea->verticalScrollBar()->setValue(0);
+            if (ui->scrollArea->horizontalScrollBar()) ui->scrollArea->horizontalScrollBar()->setValue(0);
+        }
+    });
     ui->statusbar->showMessage(AppText::tr("已定位并跳转至模型: %1").arg(item->text()), 3500);
 }
 
@@ -7517,7 +7542,8 @@ void MainWindow::handleGalleryWheelScroll(QObject *watched, QWheelEvent *event)
         if (delta != 0) {
             int step = vBar->singleStep();
             if (step <= 0) step = 20;
-            int deltaValue = -(delta / 120) * step * 3;
+            const double stepsToScroll = static_cast<double>(delta) / 120.0 * 3.0;
+            int deltaValue = qRound(-stepsToScroll * step);
             if (deltaValue == 0) deltaValue = (delta > 0) ? -step : step;
             vBar->setValue(vBar->value() + deltaValue);
         }
@@ -9650,6 +9676,7 @@ void MainWindow::applyApplicationTheme(const QString &themeId, const QString &cu
     refreshLoadedToolPageThemes();
     recolorPlaceholderItems(); // 重染"加载失败X"占位（列表项 + 下载卡）
     updateBackgroundImage(); // 重新生成 Hero 模糊背景上的渐变叠加（steamBackground 已随主题变）
+    if (ui && ui->heroFrame) ui->heroFrame->update();
     if (settingsPage && updateStatus) {
         settingsPage->setThemeStatus(bundle.status);
     }
@@ -9668,6 +9695,7 @@ void MainWindow::applyActivePaletteToUi()
     refreshLoadedToolPageThemes();
     recolorPlaceholderItems(); // 编辑器预览时也重染占位X
     updateBackgroundImage();
+    if (ui && ui->heroFrame) ui->heroFrame->update();
 }
 
 void MainWindow::onEditThemeRequested(const QString &baseThemeId)

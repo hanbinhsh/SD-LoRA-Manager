@@ -872,6 +872,26 @@
                 </property>
                </widget>
               </item>
+              <item>
+               <widget class="QPushButton" name="btnAddPlaceholderPositive">
+                <property name="toolTip">
+                 <string>将当前选中的占位符（如 {name}）添加到正面模板</string>
+                </property>
+                <property name="text">
+                 <string>添加到正面模板</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnAddPlaceholderNegative">
+                <property name="toolTip">
+                 <string>将当前选中的占位符（如 {name}）添加到负面模板</string>
+                </property>
+                <property name="text">
+                 <string>添加到负面模板</string>
+                </property>
+               </widget>
+              </item>
              </layout>
             </item>
            </layout>

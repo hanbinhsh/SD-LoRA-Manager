@@ -90,8 +90,19 @@ inline QString applyTokens(QString qss)
         while (it.hasNext()) {
             const QRegularExpressionMatch m = it.next();
             out += qss.mid(last, m.capturedStart() - last);
-            const QString val = str(m.captured(1));
-            out += val.isEmpty() ? m.captured(0) : val;
+            const QString key = m.captured(1);
+            if (key == QLatin1String("arrowDownSvg")) {
+                const bool isLight = color(QStringLiteral("inputBg")).lightness() > 128;
+                out += isLight ? QStringLiteral(":/styles/arrow_down_light.svg")
+                               : QStringLiteral(":/styles/arrow_down_dark.svg");
+            } else if (key == QLatin1String("arrowUpSvg")) {
+                const bool isLight = color(QStringLiteral("inputBg")).lightness() > 128;
+                out += isLight ? QStringLiteral(":/styles/arrow_up_light.svg")
+                               : QStringLiteral(":/styles/arrow_up_dark.svg");
+            } else {
+                const QString val = str(key);
+                out += val.isEmpty() ? m.captured(0) : val;
+            }
             last = m.capturedEnd();
         }
         out += qss.mid(last);

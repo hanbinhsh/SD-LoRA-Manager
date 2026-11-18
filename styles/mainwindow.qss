@@ -35,6 +35,94 @@ QLineEdit#editUserTagSearch:focus {
     color: @whiteText;
 }
 
+QComboBox, QSpinBox, QDoubleSpinBox {
+    background-color: @inputBg;
+    color: @bodyText;
+    border: 1px solid @inputBorder;
+    border-radius: 3px;
+    padding: 4px;
+}
+QComboBox {
+    padding-right: 24px;
+}
+QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover {
+    border-color: @inputBorderBright;
+}
+QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+    border-color: @accentBlue;
+}
+QComboBox::drop-down {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 22px;
+    border: none;
+    border-left: 1px solid @inputBorder;
+    background-color: transparent;
+    border-top-right-radius: 3px;
+    border-bottom-right-radius: 3px;
+    margin: 1px 1px 1px 0px;
+}
+QComboBox::drop-down:hover {
+    background-color: @hoverBg;
+}
+QComboBox::down-arrow {
+    image: url(@arrowDownSvg);
+    width: 10px;
+    height: 10px;
+}
+QComboBox QAbstractItemView {
+    background-color: @inputBg;
+    color: @bodyText;
+    border: 1px solid @inputBorder;
+    selection-background-color: @selectionBg;
+    selection-color: @whiteText;
+    outline: none;
+}
+QSpinBox, QDoubleSpinBox {
+    padding-right: 22px;
+}
+QSpinBox::up-button, QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 20px;
+    border: none;
+    border-left: 1px solid @inputBorder;
+    border-bottom: 1px solid @inputBorder;
+    background-color: transparent;
+    border-top-right-radius: 3px;
+    margin-top: 1px;
+    margin-right: 1px;
+}
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 20px;
+    border: none;
+    border-left: 1px solid @inputBorder;
+    background-color: transparent;
+    border-bottom-right-radius: 3px;
+    margin-bottom: 1px;
+    margin-right: 1px;
+}
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {
+    background-color: @hoverBg;
+}
+QSpinBox::up-button:pressed, QDoubleSpinBox::up-button:pressed,
+QSpinBox::down-button:pressed, QDoubleSpinBox::down-button:pressed {
+    background-color: @selectionBg;
+}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+    image: url(@arrowUpSvg);
+    width: 9px;
+    height: 9px;
+}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+    image: url(@arrowDownSvg);
+    width: 9px;
+    height: 9px;
+}
+
 QFrame#filterFrame { background-color: @headerBg; border-radius: 4px; padding: 4px; }
 QFrame#filterFrame QLabel { color: @mutedText; font-size: 11px; font-weight: bold; }
 QFrame#filterFrame QComboBox {
@@ -42,11 +130,9 @@ QFrame#filterFrame QComboBox {
     color: @bodyText;
     border: 1px solid @consoleBorder;
     border-radius: 3px;
-    padding: 4px;
+    padding: 4px 24px 4px 4px;
     min-height: 20px;
 }
-QFrame#filterFrame QComboBox::drop-down { border: none; }
-QFrame#filterFrame QComboBox::down-arrow { image: none; border-left: 2px solid @consoleBorder; }
 
 QPushButton[class="copyBtn"] { background-color: @copyBtnBg; color: white; border: none; border-radius: 6px; font-weight: bold; }
 QPushButton[class="copyBtn"]:hover { background-color: @copyBtnHover; }
@@ -86,7 +172,7 @@ QPushButton[class="copyBtn"]:pressed { background-color: @copyBtnPressed; }
 }
 
 /* Hero */
-#heroFrame { background-color: @black; }
+#heroFrame { background-color: @headerBg; }
 #lblModelName { color: #fff; background-color: @rgba(black, 120); padding: 15px; border-left: 5px solid @accentBlue; font-size: 24px; font-weight: bold; }
 #actionFrame { background-color: @rgba(panelBg, 160); }
 
@@ -755,7 +841,7 @@ QTabWidget#tabMetadataScanStatus::pane {
     border-top-left-radius: 0;
 }
 
-QWidget#DownloadsPage QComboBox { background-color: @inputBg; border: 1px solid @inputBorder; color: @bodyText; border-radius: 3px; padding: 5px; }
+QWidget#DownloadsPage QComboBox { background-color: @inputBg; border: 1px solid @inputBorder; color: @bodyText; border-radius: 3px; padding: 5px 24px 5px 5px; }
 #lblDownloadsSelected,
 #lblDownloadsStatus { color: @mutedText; }
 

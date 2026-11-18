@@ -268,6 +268,7 @@ private:
     void addGenerateImageTagsToPrompt(bool positiveTarget);
     void parseTemplateImageTags();
     void addTemplateImageTagsToTemplate(bool positiveTarget);
+    void addSelectedPlaceholdersToTemplate(bool positiveTarget);
     QMap<QString, int> tagCountsFromPrompt(const QString &prompt) const;
     QStringList selectedGenerateImageTags(bool positiveTarget) const;
     QStringList selectedTemplateImageTags(bool positiveTarget) const;

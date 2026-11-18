@@ -374,7 +374,7 @@ protected:
         QFontMetrics fmEn(fontEn);
         QFontMetrics fmCn(fontCn);
 
-        const int maxLineWidth = qMax(40, widgetWidth - marginX * 2);
+        const int maxLineWidth = qMax(40, widgetWidth);
         const int defaultItemH = m_showTranslation ? 42 : 26;
         int currentLineH = defaultItemH;
 
@@ -521,7 +521,8 @@ protected:
 
                         p.setFont(fontCn);
                         p.setPen(tag.selected ? AppStyle::color("thumbBorder") : AppStyle::color("mutedText"));
-                        QRect r2(innerRect.x(), r1.bottom() + 4, innerRect.width(), qMax(14, innerRect.bottom() - r1.bottom()));
+                        const int r2Y = r1.bottom() + 4;
+                        QRect r2(innerRect.x(), r2Y, innerRect.width(), qMax(14, innerRect.bottom() - r2Y + 1));
                         p.drawText(r2, Qt::AlignCenter | Qt::TextWordWrap | Qt::TextWrapAnywhere, line2);
                     }
                 }

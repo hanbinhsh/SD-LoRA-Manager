@@ -103,8 +103,106 @@ QInputDialog QLineEdit:focus {
     border-color: @accentBlue;
 }
 
-/* 不自定义 drop-down/down-arrow：与工具页 combo（base.qss，无覆盖）一致，
-   交给 Qt 样式表默认箭头渲染——自定义 ::drop-down 会在 Win 上触发白色方块。 */
+QDialog QComboBox {
+    padding-right: 24px;
+}
+
+QDialog QComboBox:hover,
+QDialog QSpinBox:hover,
+QDialog QDoubleSpinBox:hover {
+    border-color: @inputBorderBright;
+}
+
+QDialog QComboBox::drop-down {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 22px;
+    border: none;
+    border-left: 1px solid @inputBorder;
+    background-color: transparent;
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+    margin: 1px 1px 1px 0px;
+}
+
+QDialog QComboBox::drop-down:hover {
+    background-color: @hoverBg;
+}
+
+QDialog QComboBox::down-arrow {
+    image: url(@arrowDownSvg);
+    width: 10px;
+    height: 10px;
+}
+
+QDialog QComboBox QAbstractItemView {
+    background-color: @inputBg;
+    color: @bodyText;
+    border: 1px solid @inputBorder;
+    selection-background-color: @selectionBg;
+    selection-color: @whiteText;
+    outline: none;
+}
+
+QDialog QSpinBox,
+QDialog QDoubleSpinBox {
+    padding-right: 22px;
+}
+
+QDialog QSpinBox::up-button,
+QDialog QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 20px;
+    border: none;
+    border-left: 1px solid @inputBorder;
+    border-bottom: 1px solid @inputBorder;
+    background-color: transparent;
+    border-top-right-radius: 4px;
+    margin-top: 1px;
+    margin-right: 1px;
+}
+
+QDialog QSpinBox::down-button,
+QDialog QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 20px;
+    border: none;
+    border-left: 1px solid @inputBorder;
+    background-color: transparent;
+    border-bottom-right-radius: 4px;
+    margin-bottom: 1px;
+    margin-right: 1px;
+}
+
+QDialog QSpinBox::up-button:hover,
+QDialog QDoubleSpinBox::up-button:hover,
+QDialog QSpinBox::down-button:hover,
+QDialog QDoubleSpinBox::down-button:hover {
+    background-color: @hoverBg;
+}
+
+QDialog QSpinBox::up-button:pressed,
+QDialog QDoubleSpinBox::up-button:pressed,
+QDialog QSpinBox::down-button:pressed,
+QDialog QDoubleSpinBox::down-button:pressed {
+    background-color: @selectionBg;
+}
+
+QDialog QSpinBox::up-arrow,
+QDialog QDoubleSpinBox::up-arrow {
+    image: url(@arrowUpSvg);
+    width: 9px;
+    height: 9px;
+}
+
+QDialog QSpinBox::down-arrow,
+QDialog QDoubleSpinBox::down-arrow {
+    image: url(@arrowDownSvg);
+    width: 9px;
+    height: 9px;
+}
 
 QDialog QTableWidget,
 QDialog QTableView,

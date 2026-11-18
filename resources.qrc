@@ -4,6 +4,10 @@
         <file>scripts/wd14_tagger.py</file>
         <file>styles/base.qss</file>
         <file>styles/check.svg</file>
+        <file>styles/arrow_down_dark.svg</file>
+        <file>styles/arrow_up_dark.svg</file>
+        <file>styles/arrow_down_light.svg</file>
+        <file>styles/arrow_up_light.svg</file>
         <file>styles/mainwindow.qss</file>
         <file>styles/toolpage.qss</file>
         <file>styles/dialog.qss</file>

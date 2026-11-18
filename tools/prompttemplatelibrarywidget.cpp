@@ -760,6 +760,8 @@ PromptTemplateLibraryWidget::PromptTemplateLibraryWidget(QWidget *parent)
     connect(ui->btnSavePlaceholder, &QPushButton::clicked, this, &PromptTemplateLibraryWidget::onSavePlaceholderClicked);
     connect(ui->btnNewPlaceholder, &QPushButton::clicked, this, &PromptTemplateLibraryWidget::onNewPlaceholderClicked);
     connect(ui->btnDeletePlaceholder, &QPushButton::clicked, this, &PromptTemplateLibraryWidget::onDeletePlaceholderClicked);
+    connect(ui->btnAddPlaceholderPositive, &QPushButton::clicked, this, [this]() { addSelectedPlaceholdersToTemplate(true); });
+    connect(ui->btnAddPlaceholderNegative, &QPushButton::clicked, this, [this]() { addSelectedPlaceholdersToTemplate(false); });
 
     connect(ui->tabTemplateManageSide, &QTabWidget::currentChanged, this, [this](int index) {
         if (ui->tabTemplateManageSide->widget(index) == m_templateTagPicker.page) loadTagPickerRows(m_templateTagPicker, false);
@@ -2843,6 +2845,129 @@ void PromptTemplateLibraryWidget::addTemplateImageTagsToTemplate(bool positiveTa
     }
     ui->lblTemplateImageStatus->setText(AppText::tr("已添加 %1 个新 Tag 到%2模板。")
         .arg(added)
+        .arg(positiveTarget ? "正面" : "负面"));
+}
+
+void PromptTemplateLibraryWidget::addSelectedPlaceholdersToTemplate(bool positiveTarget)
+{
+    QStringList names;
+    QSet<QString> seenNames;
+    if (ui->tablePlaceholders) {
+        const auto ranges = ui->tablePlaceholders->selectedRanges();
+        QVector<int> rows;
+        QSet<int> seenRows;
+        for (const QTableWidgetSelectionRange &range : ranges) {
+            for (int r = range.topRow(); r <= range.bottomRow(); ++r) {
+                if (!seenRows.contains(r)) {
+                    seenRows.insert(r);
+                    rows.append(r);
+                }
+            }
+        }
+        std::sort(rows.begin(), rows.end());
+        if (rows.isEmpty() && ui->tablePlaceholders->currentRow() >= 0) {
+            rows.append(ui->tablePlaceholders->currentRow());
+        }
+        for (int row : rows) {
+            QString name;
+            if (auto *item = ui->tablePlaceholders->item(row, 0)) {
+                name = item->text().trimmed();
+            } else if (row >= 0 && row < m_placeholders.size()) {
+                name = m_placeholders.at(row).name.trimmed();
+            }
+            if (!name.isEmpty() && !seenNames.contains(name)) {
+                seenNames.insert(name);
+                names.append(name);
+            }
+        }
+    }
+    if (names.isEmpty() && ui->editPlaceholderName) {
+        const QString name = ui->editPlaceholderName->text().trimmed();
+        if (!name.isEmpty()) names.append(name);
+    }
+
+    if (names.isEmpty()) {
+        setStatus(AppText::tr("请先选择要添加到模板的占位符。"));
+        return;
+    }
+
+    QPlainTextEdit *target = positiveTarget ? ui->textTemplatePositive : ui->textTemplateNegative;
+    if (!target) return;
+
+    const QString currentText = target->toPlainText();
+    const QStringList existingList = placeholderNamesInTemplateText(currentText, QString());
+    QSet<QString> existingSet;
+    for (const QString &n : existingList) existingSet.insert(n);
+
+    QStringList newTokens;
+    for (const QString &name : names) {
+        if (existingSet.contains(name)) continue;
+        existingSet.insert(name);
+        newTokens.append(QString("{%1}").arg(name));
+    }
+
+    if (newTokens.isEmpty()) {
+        setStatus(positiveTarget
+            ? AppText::tr("选中的占位符已存在于正面模板中。")
+            : AppText::tr("选中的占位符已存在于负面模板中。"));
+        return;
+    }
+
+    QString nextText = currentText;
+    if (!nextText.trimmed().isEmpty()) {
+        if (nextText.endsWith('\n') || nextText.endsWith('\r')) {
+            // 保留模板末尾已有换行/空行，直接在后面追加
+        } else if (!nextText.trimmed().endsWith(',')) {
+            nextText += ", ";
+        } else if (!nextText.endsWith(' ')) {
+            nextText += " ";
+        }
+    }
+    nextText += newTokens.join(", ");
+    target->setPlainText(nextText);
+
+    // 同步刷新当前模板的占位符默认值表（保留表格里已编辑的值）
+    if (ui->tableTemplateDefaults) {
+        QHash<QString, QString> editedDefaults;
+        for (int row = 0; row < ui->tableTemplateDefaults->rowCount(); ++row) {
+            const QString pName = ui->tableTemplateDefaults->item(row, 0)
+                                      ? ui->tableTemplateDefaults->item(row, 0)->text()
+                                      : QString();
+            const QString pVal = ui->tableTemplateDefaults->item(row, 1)
+                                     ? ui->tableTemplateDefaults->item(row, 1)->text()
+                                     : QString();
+            if (!pName.isEmpty()) editedDefaults.insert(pName, pVal);
+        }
+        const int tplIdx = templateIndexById(
+            ui->listTemplates && ui->listTemplates->currentItem()
+                ? ui->listTemplates->currentItem()->data(Qt::UserRole).toString()
+                : QString());
+        const QHash<QString, QString> savedDefaults =
+            (tplIdx >= 0) ? m_templates.at(tplIdx).placeholderDefaults : QHash<QString, QString>();
+
+        const QStringList usedNames = placeholderNamesInTemplateText(
+            ui->textTemplatePositive ? ui->textTemplatePositive->toPlainText() : QString(),
+            ui->textTemplateNegative ? ui->textTemplateNegative->toPlainText() : QString());
+        QSet<QString> usedNameSet;
+        for (const QString &n : usedNames) usedNameSet.insert(n);
+
+        QSignalBlocker blocker(ui->tableTemplateDefaults);
+        ui->tableTemplateDefaults->setRowCount(0);
+        for (const PromptPlaceholder &ph : std::as_const(m_placeholders)) {
+            if (!usedNameSet.contains(ph.name)) continue;
+            const int row = ui->tableTemplateDefaults->rowCount();
+            ui->tableTemplateDefaults->insertRow(row);
+            auto *nameItem = new QTableWidgetItem(ph.name);
+            nameItem->setFlags(nameItem->flags() & ~Qt::ItemIsEditable);
+            const QString defVal = editedDefaults.value(
+                ph.name, savedDefaults.value(ph.name, ph.defaultValue));
+            ui->tableTemplateDefaults->setItem(row, 0, nameItem);
+            ui->tableTemplateDefaults->setItem(row, 1, new QTableWidgetItem(defVal));
+        }
+    }
+
+    setStatus(AppText::tr("已添加 %1 个占位符到%2模板。")
+        .arg(newTokens.size())
         .arg(positiveTarget ? "正面" : "负面"));
 }
 

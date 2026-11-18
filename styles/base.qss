@@ -49,6 +49,100 @@ QScrollArea, QTreeWidget {
     padding: 4px;
 }
 
+QComboBox {
+    padding-right: 24px;
+}
+
+QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover {
+    border-color: @inputBorderBright;
+}
+
+QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+    border-color: @accentBlue;
+}
+
+QComboBox::drop-down {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 22px;
+    border: none;
+    border-left: 1px solid @inputBorder;
+    background-color: transparent;
+    border-top-right-radius: 3px;
+    border-bottom-right-radius: 3px;
+    margin: 1px 1px 1px 0px;
+}
+
+QComboBox::drop-down:hover {
+    background-color: @hoverBg;
+}
+
+QComboBox::down-arrow {
+    image: url(@arrowDownSvg);
+    width: 10px;
+    height: 10px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: @inputBg;
+    color: @bodyText;
+    border: 1px solid @inputBorder;
+    selection-background-color: @selectionBg;
+    selection-color: @whiteText;
+    outline: none;
+}
+
+QSpinBox, QDoubleSpinBox {
+    padding-right: 22px;
+}
+
+QSpinBox::up-button, QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 20px;
+    border: none;
+    border-left: 1px solid @inputBorder;
+    border-bottom: 1px solid @inputBorder;
+    background-color: transparent;
+    border-top-right-radius: 3px;
+    margin-top: 1px;
+    margin-right: 1px;
+}
+
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 20px;
+    border: none;
+    border-left: 1px solid @inputBorder;
+    background-color: transparent;
+    border-bottom-right-radius: 3px;
+    margin-bottom: 1px;
+    margin-right: 1px;
+}
+
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {
+    background-color: @hoverBg;
+}
+
+QSpinBox::up-button:pressed, QDoubleSpinBox::up-button:pressed,
+QSpinBox::down-button:pressed, QDoubleSpinBox::down-button:pressed {
+    background-color: @selectionBg;
+}
+
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+    image: url(@arrowUpSvg);
+    width: 9px;
+    height: 9px;
+}
+
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+    image: url(@arrowDownSvg);
+    width: 9px;
+    height: 9px;
+}
+
 QPushButton {
     background-color: @buttonBg;
     border-radius: 2px;
