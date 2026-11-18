@@ -135,6 +135,18 @@
     "zh_CN": "</>",
     "en_US": "</>"
   },
+  "<b>Negative / 负面提示词:</b>": {
+    "zh_CN": "<b>负面提示词:</b>",
+    "en_US": "<b>Negative:</b>"
+  },
+  "<b>Parameters / 生图参数:</b>": {
+    "zh_CN": "<b>生图参数:</b>",
+    "en_US": "<b>Parameters:</b>"
+  },
+  "<b>Positive / 正面提示词:</b>": {
+    "zh_CN": "<b>正面提示词:</b>",
+    "en_US": "<b>Positive:</b>"
+  },
   "<h3>🚀 发现新版本: %1</h3><p>当前版本: %2</p><hr><p><b>更新日志:</b></p><pre style='font-size:11px'>%3</pre>": {
     "zh_CN": "<h3>🚀 发现新版本: %1</h3><p>当前版本: %2</p><hr><p><b>更新日志:</b></p><pre style='font-size:11px'>%3</pre>",
     "en_US": "<h3>🚀 New version: %1</h3><p>Current version: %2</p><hr><p><b>Release notes:</b></p><pre style='font-size:11px'>%3</pre>"
@@ -767,6 +779,10 @@
     "zh_CN": "Tag 不能为空，也不能包含逗号或换行。",
     "en_US": "A tag cannot be empty or contain commas or line breaks."
   },
+  "Tag 与模型图谱": {
+    "zh_CN": "Tag 与模型图谱",
+    "en_US": "Tag & Model Graph"
+  },
   "Tag 差异": {
     "zh_CN": "Tag 差异",
     "en_US": "Tag differences"
@@ -983,6 +999,10 @@
     "zh_CN": "⬇",
     "en_US": "⬇"
   },
+  "⬇ 展开更多 Tag (剩余 %1 个)": {
+    "zh_CN": "⬇ 展开更多 Tag (剩余 %1 个)",
+    "en_US": "⬇ Show more tags (%1 remaining)"
+  },
   "⬇️ 下载 / Downloads": {
     "zh_CN": "⬇️ 下载",
     "en_US": "⬇️ Downloads"
@@ -1171,6 +1191,10 @@
     "zh_CN": "人物替换",
     "en_US": "Character replacement"
   },
+  "仅 Tag": {
+    "zh_CN": "仅 Tag",
+    "en_US": "Tags Only"
+  },
   "仅元数据": {
     "zh_CN": "仅元数据",
     "en_US": "Metadata only"
@@ -1198,6 +1222,14 @@
   "仅显示 LoRA Tag": {
     "zh_CN": "仅显示 LoRA Tag",
     "en_US": "Show LoRA tags only"
+  },
+  "仅显示共同出现次数达到此阈值的连线": {
+    "zh_CN": "仅显示共同出现次数达到此阈值的连线",
+    "en_US": "Only show edges with co-occurrence count at or above this threshold"
+  },
+  "仅模型 (LoRA + 底模)": {
+    "zh_CN": "仅模型 (LoRA + 底模)",
+    "en_US": "Models Only (LoRA + Checkpoint)"
   },
   "仅模型文件": {
     "zh_CN": "仅模型文件",
@@ -1258,6 +1290,10 @@
   "以当前主题为起点，打开调色板编辑器新建/修改主题。": {
     "zh_CN": "以当前主题为起点，打开调色板编辑器新建/修改主题。",
     "en_US": "Open the palette editor using the current theme as a starting point."
+  },
+  "以当前选中节点为中心展开关联子图": {
+    "zh_CN": "以当前选中节点为中心展开关联子图",
+    "en_US": "Expand subgraph centered on the currently selected node"
   },
   "任务列表已清空。": {
     "zh_CN": "任务列表已清空。",
@@ -1495,6 +1531,10 @@
     "zh_CN": "全局占位符定义，例如名称、显示名、文本/单选/多选类型。",
     "en_US": "Define global placeholders: name, label, text/single-choice/multiple-choice type."
   },
+  "全局视图": {
+    "zh_CN": "全局视图",
+    "en_US": "Global View"
+  },
   "全选": {
     "zh_CN": "全选",
     "en_US": "Select all"
@@ -1515,13 +1555,25 @@
     "zh_CN": "全选当前分类",
     "en_US": "Select all in category"
   },
+  "全选当前提示词 Tag": {
+    "zh_CN": "全选当前提示词 Tag",
+    "en_US": "Select all prompt tags"
+  },
   "全部": {
     "zh_CN": "全部",
     "en_US": "All"
   },
+  "全部 (Tag + LoRA + 底模)": {
+    "zh_CN": "全部 (Tag + LoRA + 底模)",
+    "en_US": "All (Tag + LoRA + Checkpoint)"
+  },
   "全部任务": {
     "zh_CN": "全部任务",
     "en_US": "All tasks"
+  },
+  "全部图库缓存": {
+    "zh_CN": "全部图库缓存",
+    "en_US": "All Gallery Cache"
   },
   "共 %1 条收藏。": {
     "zh_CN": "共 %1 条收藏。",
@@ -1534,6 +1586,14 @@
   "共同 Tag": {
     "zh_CN": "共同 Tag",
     "en_US": "Shared tags"
+  },
+  "共现次数": {
+    "zh_CN": "共现次数",
+    "en_US": "Co-occurrences"
+  },
+  "关联节点": {
+    "zh_CN": "关联节点",
+    "en_US": "Related Node"
   },
   "关键参数差异": {
     "zh_CN": "关键参数差异",
@@ -1691,6 +1751,10 @@
     "zh_CN": "勾选后，如果本地存在 JSON 元数据，将显示模型的真实名称（如 'ChilloutMix [Pruned]'）而非文件名。",
     "en_US": "Display the model's Civitai name from local JSON metadata instead of its filename."
   },
+  "勾选后，退出软件前会自动保存当前的排序方式、底模/类型筛选、主页作者/Tag筛选及搜索条件，下次打开时自动恢复。": {
+    "zh_CN": "勾选后，退出软件前会自动保存当前的排序方式、底模/类型筛选、主页作者/Tag筛选及搜索条件，下次打开时自动恢复。",
+    "en_US": "When enabled, the current sort mode, base model/type filters, home author/tag filters, and search query are saved on exit and restored at startup."
+  },
   "包含匹配": {
     "zh_CN": "包含匹配",
     "en_US": "Contains"
@@ -1698,6 +1762,10 @@
   "匹配 %1 条": {
     "zh_CN": "匹配 %1 条",
     "en_US": "%1 matches"
+  },
+  "单击查看关联，Ctrl+单击多选组合筛选，双击以此节点为中心聚焦": {
+    "zh_CN": "单击查看关联，Ctrl+单击多选组合筛选，双击以此节点为中心聚焦",
+    "en_US": "Click to inspect; Ctrl+Click to multi-select for combined filtering; double-click to focus"
   },
   "单图或批量 WD14 正在运行，请等待或先停止。": {
     "zh_CN": "单图或批量 WD14 正在运行，请等待或先停止。",
@@ -1983,6 +2051,10 @@
     "zh_CN": "启动器运行时关闭软件需确认",
     "en_US": "Confirm on close while launcher is running"
   },
+  "启动时恢复排序与筛选条件 / Restore Sort & Filter on Startup": {
+    "zh_CN": "启动时恢复排序与筛选条件",
+    "en_US": "Restore Sort & Filter on Startup"
+  },
   "启动时恢复菜单 / Restore Menu on Startup": {
     "zh_CN": "启动时恢复菜单",
     "en_US": "Restore Menu on Startup"
@@ -2135,9 +2207,25 @@
     "zh_CN": "图片：未选择",
     "en_US": "Images: none selected"
   },
+  "图谱": {
+    "zh_CN": "图谱",
+    "en_US": "Graph"
+  },
+  "图谱最多展示的高频/关联节点数量": {
+    "zh_CN": "图谱最多展示的高频/关联节点数量",
+    "en_US": "Maximum number of frequent or connected nodes displayed in the graph"
+  },
+  "在 Tag 与模型图谱中查看此模型的共现关联": {
+    "zh_CN": "在 Tag 与模型图谱中查看此模型的共现关联",
+    "en_US": "View co-occurrence relationships of this model in Tag & Model Graph"
+  },
   "在“提示词生成”和“模板与占位管理”中编辑提示词时，输入会自动弹出候选词（含翻译）。候选来源于已加载的翻译词表，兼容 a1111 与 ComfyUI 词表格式。": {
     "zh_CN": "在“提示词生成”和“模板与占位管理”中编辑提示词时，输入会自动弹出候选词（含翻译）。候选来源于已加载的翻译词表，兼容 a1111 与 ComfyUI 词表格式。",
     "en_US": "Autocomplete suggestions, including translations, appear when editing prompts in Generate or Template Management. Suggestions use the loaded A1111 or ComfyUI dictionaries."
+  },
+  "在图库中筛选": {
+    "zh_CN": "在图库中筛选",
+    "en_US": "Filter in Gallery"
   },
   "在弹窗中查看完整简介并复制文本": {
     "zh_CN": "在弹窗中查看完整简介并复制文本",
@@ -2150,6 +2238,18 @@
   "在文本编辑与标签视图之间切换（文本视图可编辑/复制/粘贴）": {
     "zh_CN": "在文本编辑与标签视图之间切换（文本视图可编辑/复制/粘贴）",
     "en_US": "Switch between text editing and tag view (edit, copy and paste in text view)"
+  },
+  "在文本视图与标签视图之间切换": {
+    "zh_CN": "在文本视图与标签视图之间切换",
+    "en_US": "Switch between plain text view and tag view"
+  },
+  "在本地返图界面中按此节点筛选图片": {
+    "zh_CN": "在本地返图界面中按此节点筛选图片",
+    "en_US": "Filter local gallery images by this node"
+  },
+  "在模型库中定位并查看该模型详情": {
+    "zh_CN": "在模型库中定位并查看该模型详情",
+    "en_US": "Locate and view this model's details in the Library"
   },
   "在结果中包含标签的匹配置信度": {
     "zh_CN": "在结果中包含标签的匹配置信度",
@@ -2303,6 +2403,10 @@
     "zh_CN": "大图浏览器",
     "en_US": "Image viewer"
   },
+  "大小": {
+    "zh_CN": "大小",
+    "en_US": "Size"
+  },
   "大小: ": {
     "zh_CN": "大小: ",
     "en_US": "Size: "
@@ -2390,6 +2494,18 @@
   "封面或目标预览图文件不存在，未修改图片顺序。": {
     "zh_CN": "封面或目标预览图文件不存在，未修改图片顺序。",
     "en_US": "The cover or target preview file is missing. Image order was preserved."
+  },
+  "将下方表格中已勾选的孤立附属文件移至回收站（不会删除任何模型本体）": {
+    "zh_CN": "将下方表格中已勾选的孤立附属文件移至回收站（不会删除任何模型本体）",
+    "en_US": "Move checked orphaned sidecar files in the table below to Trash (never deletes any model files)"
+  },
+  "将当前选中的占位符（如 {name}）添加到正面模板": {
+    "zh_CN": "将当前选中的占位符（如 {name}）添加到正面模板",
+    "en_US": "Insert the selected placeholder (e.g. {name}) into the positive template"
+  },
+  "将当前选中的占位符（如 {name}）添加到负面模板": {
+    "zh_CN": "将当前选中的占位符（如 {name}）添加到负面模板",
+    "en_US": "Insert the selected placeholder (e.g. {name}) into the negative template"
   },
   "将文件夹作为收藏夹二级分类 / Folder as Second Collection Level": {
     "zh_CN": "将文件夹作为收藏夹二级分类",
@@ -2531,6 +2647,10 @@
     "zh_CN": "已复制选中的简介文本。",
     "en_US": "Selected description text copied."
   },
+  "已多选 %1 个节点: %2": {
+    "zh_CN": "已多选 %1 个节点: %2",
+    "en_US": "Selected %1 nodes: %2"
+  },
   "已存在同名用户主题“%1”，是否覆盖？": {
     "zh_CN": "已存在同名用户主题“%1”，是否覆盖？",
     "en_US": "A custom theme named \"%1\" already exists. Overwrite it?"
@@ -2634,6 +2754,10 @@
   "已添加用户 Tag 筛选: ": {
     "zh_CN": "已添加用户 Tag 筛选: ",
     "en_US": "Added user tag filter: "
+  },
+  "已清理 %1 个孤立附属文件。": {
+    "zh_CN": "已清理 %1 个孤立附属文件。",
+    "en_US": "Cleaned %1 orphaned sidecar file(s)."
   },
   "已清除 %1 个模型的高亮颜色": {
     "zh_CN": "已清除 %1 个模型的高亮颜色",
@@ -2791,6 +2915,10 @@
     "zh_CN": "当前图",
     "en_US": "Current image"
   },
+  "当前图库列表": {
+    "zh_CN": "当前图库列表",
+    "en_US": "Current Gallery List"
+  },
   "当前已是最新版本 (%1)": {
     "zh_CN": "当前已是最新版本 (%1)",
     "en_US": "Already up to date (%1)"
@@ -2943,6 +3071,10 @@
     "zh_CN": "打开 TXT 位置",
     "en_US": "Show TXT in folder"
   },
+  "打开 Tag 与模型关系图谱（查看当前图库中的 Tag 与模型共现关系）": {
+    "zh_CN": "打开 Tag 与模型关系图谱（查看当前图库中的 Tag 与模型共现关系）",
+    "en_US": "Open Tag & Model Relationship Graph (inspect co-occurrence across the gallery)"
+  },
   "打开位置": {
     "zh_CN": "打开位置",
     "en_US": "Show in folder"
@@ -2995,6 +3127,10 @@
     "zh_CN": "扫描完成，共找到 %1 张图片。",
     "en_US": "Scan complete: found %1 images."
   },
+  "扫描完成：发现 %1 项孤立附属文件（可释放 %2）、%3 项重复 SHA256 模型（冗余约 %4）。双击行可定位。": {
+    "zh_CN": "扫描完成：发现 %1 项孤立附属文件（可释放 %2）、%3 项重复 SHA256 模型（冗余约 %4）。双击行可定位。",
+    "en_US": "Scan complete: %1 orphaned sidecars (%2 reclaimable), %3 duplicate SHA256 models (~%4 redundant). Double-click a row to locate."
+  },
   "扫描本地文件夹": {
     "zh_CN": "扫描本地文件夹",
     "en_US": "Scan local folder"
@@ -3003,9 +3139,17 @@
     "zh_CN": "扫描模型元信息",
     "en_US": "Scan model metadata"
   },
+  "扫描相同 SHA256 的重复模型文件，以及模型本体已删除但残留的 .json / .preview.png 孤立文件": {
+    "zh_CN": "扫描相同 SHA256 的重复模型文件，以及模型本体已删除但残留的 .json / .preview.png 孤立文件",
+    "en_US": "Scan for duplicate model files with matching SHA256 and orphaned .json / .preview.png files whose model file is missing"
+  },
   "扫描选项 / Scanning Options": {
     "zh_CN": "扫描选项",
     "en_US": "Scanning Options"
+  },
+  "扫描重复模型与孤立文件": {
+    "zh_CN": "扫描重复模型与孤立文件",
+    "en_US": "Scan Duplicates & Orphans"
   },
   "批量 WD14 打标": {
     "zh_CN": "批量 WD14 打标",
@@ -3163,6 +3307,10 @@
     "zh_CN": "搜索对话",
     "en_US": "Search conversations"
   },
+  "搜索并定位 Tag / LoRA / 底模（回车聚焦）...": {
+    "zh_CN": "搜索并定位 Tag / LoRA / 底模（回车聚焦）...",
+    "en_US": "Search & locate Tag / LoRA / Checkpoint (Enter to focus)..."
+  },
   "搜索库 (Search)...": {
     "zh_CN": "搜索库 (Search)...",
     "en_US": "Search library..."
@@ -3190,6 +3338,10 @@
   "搜索节点类型、标题或内容": {
     "zh_CN": "搜索节点类型、标题或内容",
     "en_US": "Search node type, title or content"
+  },
+  "搭配率": {
+    "zh_CN": "搭配率",
+    "en_US": "Affinity"
   },
   "摘要/名称匹配": {
     "zh_CN": "摘要/名称匹配",
@@ -3234,6 +3386,10 @@
   "文": {
     "zh_CN": "文",
     "en_US": "Translate"
+  },
+  "文件 / 模型": {
+    "zh_CN": "文件 / 模型",
+    "en_US": "File / Model"
   },
   "文件: ": {
     "zh_CN": "文件: ",
@@ -3522,6 +3678,10 @@
   "替换预览图片": {
     "zh_CN": "替换预览图片",
     "en_US": "Replace preview image"
+  },
+  "最小共现": {
+    "zh_CN": "最小共现",
+    "en_US": "Min Co-occur"
   },
   "最近使用": {
     "zh_CN": "最近使用",
@@ -3991,6 +4151,10 @@
     "zh_CN": "正在后台扫描模型元信息...",
     "en_US": "Scanning model metadata in the background..."
   },
+  "正在后台扫描重复 SHA256 模型与孤立附属文件...": {
+    "zh_CN": "正在后台扫描重复 SHA256 模型与孤立附属文件...",
+    "en_US": "Scanning duplicate SHA256 models and orphaned sidecars in background..."
+  },
   "正在后台检查元数据...": {
     "zh_CN": "正在后台检查元数据...",
     "en_US": "Checking metadata in the background..."
@@ -4199,6 +4363,10 @@
     "zh_CN": "添加到负面",
     "en_US": "Add to negative"
   },
+  "添加到负面模板": {
+    "zh_CN": "添加到负面模板",
+    "en_US": "Add to Negative"
+  },
   "添加图片": {
     "zh_CN": "添加图片",
     "en_US": "Add images"
@@ -4238,6 +4406,14 @@
   "添加负面到模板": {
     "zh_CN": "添加负面到模板",
     "en_US": "Add negative to template"
+  },
+  "清理勾选的孤立文件": {
+    "zh_CN": "清理勾选的孤立文件",
+    "en_US": "Clean Checked Orphans"
+  },
+  "清理勾选的孤立文件 (%1)": {
+    "zh_CN": "清理勾选的孤立文件 (%1)",
+    "en_US": "Clean Checked Orphans (%1)"
   },
   "清空 / Clear": {
     "zh_CN": "清空",
@@ -4286,6 +4462,10 @@
   "清除高亮颜色 / Clear Highlight Color": {
     "zh_CN": "清除高亮颜色",
     "en_US": "Clear Highlight Color"
+  },
+  "点击「扫描重复模型与孤立文件」检测可释放的磁盘空间（双击行可定位模型或文件）。": {
+    "zh_CN": "点击「扫描重复模型与孤立文件」检测可释放的磁盘空间（双击行可定位模型或文件）。",
+    "en_US": "Click \"Scan Duplicates & Orphans\" to detect reclaimable disk space (double-click a row to locate it)."
   },
   "点击上方图片查看提示词...": {
     "zh_CN": "点击上方图片查看提示词...",
@@ -4342,6 +4522,14 @@
   "点击扫描后，将在后台读取本地模型元信息状态。": {
     "zh_CN": "点击扫描后，将在后台读取本地模型元信息状态。",
     "en_US": "Scan to check local model metadata in the background."
+  },
+  "点击画布中的节点查看其共现 Tag 与模型。": {
+    "zh_CN": "点击画布中的节点查看其共现 Tag 与模型。",
+    "en_US": "Click a node in the canvas to inspect its co-occurring tags and models."
+  },
+  "点击画布中的节点查看其共现 Tag 与模型（Ctrl+点击可多选组合筛选）。": {
+    "zh_CN": "点击画布中的节点查看其共现 Tag 与模型（Ctrl+点击可多选组合筛选）。",
+    "en_US": "Click a node in the canvas to inspect its co-occurring tags and models (Ctrl+Click to multi-select)."
   },
   "版本 / Version": {
     "zh_CN": "版本",
@@ -4531,6 +4719,10 @@
     "zh_CN": "确定要删除预设 \"%1\" 吗？",
     "en_US": "Delete preset \"%1\"?"
   },
+  "确定要将已勾选的 %1 个孤立附属文件（共 %2）移至系统回收站吗？\n（仅清理已删除模型遗留的 .json 与 .preview.png 文件）": {
+    "zh_CN": "确定要将已勾选的 %1 个孤立附属文件（共 %2）移至系统回收站吗？\n（仅清理已删除模型遗留的 .json 与 .preview.png 文件）",
+    "en_US": "Move %1 checked orphaned sidecar file(s) (%2 total) to Trash?\n(Only removes leftover .json and .preview.png files whose models are missing.)"
+  },
   "确定要将过滤提示词重置为默认值吗？\n此操作将覆盖当前的自定义设置。\n\nAre you sure you want to reset filter tags to default?": {
     "zh_CN": "确定要将过滤提示词重置为默认值吗？\n此操作将覆盖当前的自定义设置。",
     "en_US": "Reset filter tags to their defaults?\nThis will replace your current custom settings."
@@ -4538,6 +4730,10 @@
   "确认删除": {
     "zh_CN": "确认删除",
     "en_US": "Confirm deletion"
+  },
+  "确认清理孤立附属文件": {
+    "zh_CN": "确认清理孤立附属文件",
+    "en_US": "Confirm Orphan Sidecar Cleanup"
   },
   "确认退出 / Confirm Exit": {
     "zh_CN": "确认退出",
@@ -4579,6 +4775,10 @@
     "zh_CN": "端口被占用或启动失败",
     "en_US": "Port is in use or the service failed to start"
   },
+  "等待加载图库数据...": {
+    "zh_CN": "等待加载图库数据...",
+    "en_US": "Waiting to load gallery data..."
+  },
   "等待检查更新。": {
     "zh_CN": "等待检查更新。",
     "en_US": "Waiting to check for updates."
@@ -4590,6 +4790,10 @@
   "筛选: %1 张图片符合条件": {
     "zh_CN": "筛选: %1 张图片符合条件",
     "en_US": "Filter: %1 matching images"
+  },
+  "筛选图谱中显示的节点类型": {
+    "zh_CN": "筛选图谱中显示的节点类型",
+    "en_US": "Filter node types shown in the graph"
   },
   "简介 / Description": {
     "zh_CN": "简介",
@@ -4626,6 +4830,14 @@
   "级别": {
     "zh_CN": "级别",
     "en_US": "Severity"
+  },
+  "组合筛选 (%1)": {
+    "zh_CN": "组合筛选 (%1)",
+    "en_US": "Combined Filter (%1)"
+  },
+  "组合筛选 (含 LoRA %1): %2 张图片符合条件": {
+    "zh_CN": "组合筛选 (含 LoRA %1): %2 张图片符合条件",
+    "en_US": "Combined filter (with LoRA %1): %2 images matched"
   },
   "结果已复制到剪贴板": {
     "zh_CN": "结果已复制到剪贴板",
@@ -4707,6 +4919,10 @@
     "zh_CN": "缺失元信息",
     "en_US": "Missing metadata"
   },
+  "缺失模型本体 [%1.*] · %2": {
+    "zh_CN": "缺失模型本体 [%1.*] · %2",
+    "en_US": "Missing model file [%1.*] · %2"
+  },
   "缺少 Civitai 识别字段": {
     "zh_CN": "缺少 Civitai 识别字段",
     "en_US": "Missing Civitai identifiers"
@@ -4750,6 +4966,10 @@
   "翻译词表已加载。": {
     "zh_CN": "翻译词表已加载。",
     "en_US": "Translation dictionary loaded."
+  },
+  "聚焦此节点": {
+    "zh_CN": "聚焦此节点",
+    "en_US": "Focus Node"
   },
   "背景模糊半径 / Blur Radius:": {
     "zh_CN": "背景模糊半径",
@@ -4798,6 +5018,14 @@
   "自定义触发词": {
     "zh_CN": "自定义触发词",
     "en_US": "Custom trigger words"
+  },
+  "节点关联详情": {
+    "zh_CN": "节点关联详情",
+    "en_US": "Node Relationships"
+  },
+  "节点数": {
+    "zh_CN": "节点数",
+    "en_US": "Nodes"
   },
   "获取手机版 App": {
     "zh_CN": "获取手机版 App",
@@ -5099,6 +5327,10 @@
     "zh_CN": "路径",
     "en_US": "Paths"
   },
+  "路径 / 说明": {
+    "zh_CN": "路径 / 说明",
+    "en_US": "Path / Details"
+  },
   "路径: %1\nModel ID: %2\nVersion ID: %3\nSHA256: %4": {
     "zh_CN": "路径: %1\nModel ID: %2\nVersion ID: %3\nSHA256: %4",
     "en_US": "Path: %1\nModel ID: %2\nVersion ID: %3\nSHA256: %4"
@@ -5118,6 +5350,10 @@
   "跳转模型": {
     "zh_CN": "跳转模型",
     "en_US": "Open model"
+  },
+  "跳转模型详情": {
+    "zh_CN": "跳转模型详情",
+    "en_US": "Open Model Details"
   },
   "跳过": {
     "zh_CN": "跳过",
@@ -5194,6 +5430,10 @@
   "追加并去重": {
     "zh_CN": "追加并去重",
     "en_US": "Append and deduplicate"
+  },
+  "退出单节点聚焦，返回全局共现图谱": {
+    "zh_CN": "退出单节点聚焦，返回全局共现图谱",
+    "en_US": "Exit single-node focus and return to the global co-occurrence graph"
   },
   "适应窗口": {
     "zh_CN": "适应窗口",
@@ -5323,6 +5563,10 @@
     "zh_CN": "选择图片查看参数...",
     "en_US": "Select an image to view parameters..."
   },
+  "选择图谱统计的数据源范围": {
+    "zh_CN": "选择图谱统计的数据源范围",
+    "en_US": "Select dataset scope for graph statistics"
+  },
   "选择工作目录": {
     "zh_CN": "选择工作目录",
     "en_US": "Select working directory"
@@ -5419,6 +5663,10 @@
     "zh_CN": "重复模型",
     "en_US": "Duplicate models"
   },
+  "重复模型与孤立附属文件清理": {
+    "zh_CN": "重复模型与孤立附属文件清理",
+    "en_US": "Duplicate Models & Orphan Sidecar Cleanup"
+  },
   "重新下载 / Re-download": {
     "zh_CN": "重新下载",
     "en_US": "Re-download"
@@ -5427,9 +5675,17 @@
     "zh_CN": "重新加载",
     "en_US": "Reload"
   },
+  "重新排布": {
+    "zh_CN": "重新排布",
+    "en_US": "Relayout"
+  },
   "重新生成回答": {
     "zh_CN": "重新生成回答",
     "en_US": "Regenerate answer"
+  },
+  "重新运行力导向布局算法": {
+    "zh_CN": "重新运行力导向布局算法",
+    "en_US": "Re-run the force-directed layout algorithm"
   },
   "重置 / Reset": {
     "zh_CN": "重置",
@@ -5443,9 +5699,17 @@
     "zh_CN": "重置模板",
     "en_US": "Reset template"
   },
+  "重置画布缩放与平移位置": {
+    "zh_CN": "重置画布缩放与平移位置",
+    "en_US": "Reset canvas zoom and pan"
+  },
   "重置缩放": {
     "zh_CN": "重置缩放",
     "en_US": "Reset zoom"
+  },
+  "重置视角": {
+    "zh_CN": "重置视角",
+    "en_US": "Reset View"
   },
   "重试失败任务": {
     "zh_CN": "重试失败任务",
@@ -5595,6 +5859,10 @@
     "zh_CN": "🎨 外观",
     "en_US": "🎨 Appearance"
   },
+  "🎯 聚焦: %1 (点击空白还原)": {
+    "zh_CN": "🎯 聚焦: %1 (点击空白还原)",
+    "en_US": "🎯 Focus: %1 (click empty space to reset)"
+  },
   "🏷️ Tag 浏览 / Tag": {
     "zh_CN": "🏷️ Tag 浏览",
     "en_US": "🏷️ Tag"
@@ -5627,9 +5895,17 @@
     "zh_CN": "📦\n未分类",
     "en_US": "📦\nUncategorized"
   },
+  "🔁 重复模型 (%1)": {
+    "zh_CN": "🔁 重复模型 (%1)",
+    "en_US": "🔁 Duplicate Model (%1)"
+  },
   "🔄 图片同步 / Sync": {
     "zh_CN": "🔄 图片同步",
     "en_US": "🔄 Sync"
+  },
+  "🔄 批量同步元数据与预览图 / Sync Metadata...": {
+    "zh_CN": "🔄 批量同步元数据与预览图...",
+    "en_US": "🔄 Batch Sync Metadata & Previews..."
   },
   "🔍 扫描与解析 / Scan & Parsing": {
     "zh_CN": "🔍 扫描与解析",
@@ -5658,6 +5934,10 @@
   "🧩 提示词模板 / Templates": {
     "zh_CN": "🧩 提示词模板",
     "en_US": "🧩 Templates"
+  },
+  "🧹 孤立附属文件": {
+    "zh_CN": "🧹 孤立附属文件",
+    "en_US": "🧹 Orphan Sidecar"
   },
   "🩺 元数据健康检查 / Metadata Health Check": {
     "zh_CN": "🩺 元数据健康检查",

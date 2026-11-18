@@ -1,4 +1,6 @@
 #include "utils/applanguage.h"
+#include "utils/fileutils.h"
+#include "utils/gallerymetadata.h"
 #include "usageanalysiswidget.h"
 #include "chartwidgets.h"
 #include "styleconstants.h"
@@ -9,6 +11,8 @@
 #include <QCheckBox>
 #include <QClipboard>
 #include <QComboBox>
+#include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -19,6 +23,7 @@
 #include <QJsonObject>
 #include <QLineEdit>
 #include <QMap>
+#include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -183,11 +188,34 @@ public:
         m_physicsTimer = new QTimer(this);
         m_physicsTimer->setInterval(16);
         connect(m_physicsTimer, &QTimer::timeout, this, [this]() {
-            stepPhysics(0.85);
+            const double stepDamp = (m_draggingIndex >= 0) ? 0.70 : 0.84;
+            stepPhysics(stepDamp);
             update();
             if (++m_animSteps >= m_maxAnimSteps) {
                 m_physicsTimer->stop();
             }
+        });
+
+        m_hoverTipTimer = new QTimer(this);
+        m_hoverTipTimer->setSingleShot(true);
+        m_hoverTipTimer->setInterval(650);
+        connect(m_hoverTipTimer, &QTimer::timeout, this, [this]() {
+            if (m_loading || m_draggingIndex >= 0 || m_panning || !underMouse()) return;
+            if (m_hoveredIndex < 0 || m_hoveredIndex >= m_nodes.size()) return;
+            const QPoint localCursor = mapFromGlobal(QCursor::pos());
+            if (hitTestNode(localCursor) != m_hoveredIndex) return;
+
+            const GraphNode &n = m_nodes[m_hoveredIndex];
+            QString tip = QString("%1: %2\n%3: %4")
+                              .arg(nodeTypeDisplayName(n.type),
+                                   n.label,
+                                   AppText::tr("出现图片数"),
+                                   QString::number(n.count));
+            if (!n.translation.isEmpty()) {
+                tip += QString("\n%1: %2").arg(AppText::tr("翻译"), n.translation);
+            }
+            tip += QString("\n%1").arg(AppText::tr("单击查看关联，Ctrl+单击多选组合筛选，双击以此节点为中心聚焦"));
+            QToolTip::showText(QCursor::pos(), tip, this);
         });
 
         m_loadingTimer = new QTimer(this);
@@ -198,8 +226,9 @@ public:
         });
     }
 
-    std::function<void(const QString &nodeId)> onNodeSelected;
+    std::function<void(const QString &nodeId, const QSet<QString> &selectedIds)> onNodeSelected;
     std::function<void(const QString &nodeId)> onNodeDoubleClicked;
+    std::function<void()> onEmptyClicked;
     std::function<void()> onEmptyDoubleClicked;
 
     void setLoading(bool loading, const QString &message = QString())
@@ -239,10 +268,21 @@ public:
     void setSelectedNodeId(const QString &nodeId)
     {
         m_selectedNodeId = nodeId;
+        m_selectedNodeIds.clear();
+        if (!nodeId.isEmpty()) m_selectedNodeIds.insert(nodeId);
+        update();
+    }
+
+    void setSelectedNodeIds(const QString &primaryId, const QSet<QString> &ids)
+    {
+        m_selectedNodeId = primaryId;
+        m_selectedNodeIds = ids;
+        if (!primaryId.isEmpty()) m_selectedNodeIds.insert(primaryId);
         update();
     }
 
     QString selectedNodeId() const { return m_selectedNodeId; }
+    const QSet<QString> &selectedNodeIds() const { return m_selectedNodeIds; }
 
     void setGraph(QVector<GraphNode> nodes,
                   QVector<GraphEdge> edges,
@@ -255,6 +295,8 @@ public:
         m_focusedNodeId = focusedNodeId;
         m_hoveredIndex = -1;
         m_draggingIndex = -1;
+        if (m_hoverTipTimer) m_hoverTipTimer->stop();
+        QToolTip::hideText();
 
         m_idToIndex.clear();
         m_neighborsOf.clear();
@@ -274,12 +316,13 @@ public:
         if (runLayout) {
             if (!precomputedPositions) {
                 initializePositions();
-                for (int i = 0; i < 65; ++i) {
-                    stepPhysics(1.0);
+                for (int i = 0; i < 90; ++i) {
+                    const double cool = 1.0 - 0.5 * (static_cast<double>(i) / 90.0);
+                    stepPhysics(cool);
                 }
             }
             m_animSteps = 0;
-            m_maxAnimSteps = 45;
+            m_maxAnimSteps = 28;
             m_physicsTimer->start();
         }
         update();
@@ -301,18 +344,19 @@ public:
             n.pinned = (!m_focusedNodeId.isEmpty() && n.id == m_focusedNodeId);
         }
         initializePositions();
-        for (int i = 0; i < 65; ++i) {
-            stepPhysics(1.0);
+        for (int i = 0; i < 90; ++i) {
+            const double cool = 1.0 - 0.5 * (static_cast<double>(i) / 90.0);
+            stepPhysics(cool);
         }
         m_animSteps = 0;
-        m_maxAnimSteps = 55;
+        m_maxAnimSteps = 32;
         m_physicsTimer->start();
         update();
     }
 
     void resetView()
     {
-        m_zoom = 1.0;
+        m_zoom = 0.78;
         m_panOffset = QPointF(0.0, 0.0);
         update();
     }
@@ -368,7 +412,7 @@ public:
                 if (i == focusIdx) continue;
                 const double ratio = static_cast<double>(ringIdx) / totalOther;
                 const int ring = (ringIdx < 12) ? 0 : (ringIdx < 32 ? 1 : 2);
-                const double baseR = (ring == 0) ? 155.0 : (ring == 1 ? 265.0 : 365.0);
+                const double baseR = (ring == 0) ? 245.0 : (ring == 1 ? 405.0 : 565.0);
                 const double angle = ratio * 2.0 * M_PI + (ring * 0.45);
                 nodes[i].pos = QPointF(std::cos(angle) * baseR, std::sin(angle) * baseR);
                 nodes[i].vel = QPointF(0.0, 0.0);
@@ -378,10 +422,10 @@ public:
             return;
         }
 
-        // 全局模式：使用黄金角螺旋初始分布，模型靠内圈，Tag 均匀散布
+        // 全局模式：使用黄金角螺旋初始分布，模型靠内圈，Tag 均匀散布并保持足够间距
         const double goldenAngle = M_PI * (3.0 - std::sqrt(5.0));
         for (int i = 0; i < n; ++i) {
-            const double radiusScale = (nodes[i].type != GraphNodeType::Tag) ? 34.0 : 44.0;
+            const double radiusScale = (nodes[i].type != GraphNodeType::Tag) ? 58.0 : 76.0;
             const double r = radiusScale * std::sqrt(i + 1);
             const double theta = i * goldenAngle;
             nodes[i].pos = QPointF(std::cos(theta) * r, std::sin(theta) * r);
@@ -400,30 +444,26 @@ public:
         if (n <= 1) return;
 
         QVector<QPointF> forces(n, QPointF(0.0, 0.0));
-        const double repulsionK = 24000.0;
+        const double repulsionK = 95000.0;
 
-        // 1. 节点间斥力
+        // 1. 节点间斥力（平滑上限，避免近距突变引起震荡）
         for (int i = 0; i < n; ++i) {
             for (int j = i + 1; j < n; ++j) {
                 QPointF delta = nodes[i].pos - nodes[j].pos;
                 double distSq = delta.x() * delta.x() + delta.y() * delta.y();
-                const double minDist = nodes[i].radius + nodes[j].radius + 42.0;
                 if (distSq < 1.0) {
                     delta = QPointF((i % 2 == 0) ? 1.0 : -1.0, (j % 2 == 0) ? 1.0 : -1.0);
                     distSq = 2.0;
                 }
                 const double dist = std::sqrt(distSq);
-                double f = repulsionK / qMax(120.0, distSq);
-                if (dist < minDist) {
-                    f += (minDist - dist) * 2.2;
-                }
+                const double f = qMin(18.0, repulsionK / qMax(900.0, distSq));
                 const QPointF forceVec = (delta / dist) * f;
                 forces[i] += forceVec;
                 forces[j] -= forceVec;
             }
         }
 
-        // 2. 连线弹簧引力
+        // 2. 连线弹簧引力（增大理想间距并降低刚度，防止连接节点挤成一团）
         for (const GraphEdge &e : edges) {
             if (e.source < 0 || e.source >= n || e.target < 0 || e.target >= n) continue;
             const QPointF delta = nodes[e.target].pos - nodes[e.source].pos;
@@ -431,32 +471,74 @@ public:
             if (dist < 1.0) continue;
 
             const double weightRatio = static_cast<double>(e.weight) / qMax(1, maxEdgeWeight);
-            const double idealLen = 195.0 - weightRatio * 65.0;
-            const double kSpring = 0.045 * (0.6 + 0.8 * weightRatio);
-            const double f = (dist - idealLen) * kSpring;
+            const double idealLen = 300.0 - weightRatio * 80.0;
+            const double kSpring = 0.018 * (0.55 + 0.65 * weightRatio);
+            const double f = qBound(-12.0, (dist - idealLen) * kSpring, 12.0);
             const QPointF forceVec = (delta / dist) * f;
             forces[e.source] += forceVec;
             forces[e.target] -= forceVec;
         }
 
-        // 3. 中心引力
+        // 3. 柔和中心引力
         for (int i = 0; i < n; ++i) {
-            forces[i] -= nodes[i].pos * 0.012;
+            forces[i] -= nodes[i].pos * 0.0045;
         }
 
-        // 4. 更新位置
+        // 4. 阻尼积分更新位置（拖动时提高阻尼，避免拖曳震荡）
+        const double velDecay = (draggingIndex >= 0) ? 0.42 : 0.56;
+        const double maxSpeed = (draggingIndex >= 0) ? 10.0 : 20.0;
         for (int i = 0; i < n; ++i) {
             if (nodes[i].pinned || i == draggingIndex) {
                 nodes[i].vel = QPointF(0.0, 0.0);
                 continue;
             }
-            nodes[i].vel = (nodes[i].vel + forces[i]) * 0.65 * dampingFactor;
+            nodes[i].vel = (nodes[i].vel + forces[i] * 0.45) * velDecay * dampingFactor;
             const double speed = std::sqrt(nodes[i].vel.x() * nodes[i].vel.x() +
                                            nodes[i].vel.y() * nodes[i].vel.y());
-            if (speed > 28.0) {
-                nodes[i].vel = (nodes[i].vel / speed) * 28.0;
+            if (speed < 0.08) {
+                nodes[i].vel = QPointF(0.0, 0.0);
+                continue;
+            }
+            if (speed > maxSpeed) {
+                nodes[i].vel = (nodes[i].vel / speed) * maxSpeed;
             }
             nodes[i].pos += nodes[i].vel;
+        }
+
+        // 5. 无弹性 PBD 最小间距松弛 pass：单调平滑推开重叠节点，不向速度注入反弹能量（消除挤压抽动）
+        for (int pass = 0; pass < 2; ++pass) {
+            for (int i = 0; i < n; ++i) {
+                const bool fixedI = nodes[i].pinned || i == draggingIndex;
+                for (int j = i + 1; j < n; ++j) {
+                    const bool fixedJ = nodes[j].pinned || j == draggingIndex;
+                    if (fixedI && fixedJ) continue;
+
+                    QPointF delta = nodes[i].pos - nodes[j].pos;
+                    double distSq = delta.x() * delta.x() + delta.y() * delta.y();
+                    if (distSq < 1.0) {
+                        delta = QPointF((i % 2 == 0) ? 1.0 : -1.0, (j % 2 == 0) ? 1.0 : -1.0);
+                        distSq = 2.0;
+                    }
+                    const double dist = std::sqrt(distSq);
+                    const double minDist = nodes[i].radius + nodes[j].radius + 88.0;
+                    if (dist < minDist) {
+                        const double overlap = minDist - dist;
+                        const QPointF push = (delta / dist) * (overlap * 0.28);
+                        if (fixedI) {
+                            nodes[j].pos -= push * 1.4;
+                            nodes[j].vel *= 0.65;
+                        } else if (fixedJ) {
+                            nodes[i].pos += push * 1.4;
+                            nodes[i].vel *= 0.65;
+                        } else {
+                            nodes[i].pos += push;
+                            nodes[j].pos -= push;
+                            nodes[i].vel *= 0.65;
+                            nodes[j].vel *= 0.65;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -519,6 +601,11 @@ protected:
         const int selectedIdx = m_idToIndex.value(m_selectedNodeId, -1);
         const int activeIdx = (m_hoveredIndex >= 0) ? m_hoveredIndex : selectedIdx;
         const int focusedIdx = m_idToIndex.value(m_focusedNodeId, -1);
+        QSet<int> multiSelectedIndices;
+        for (const QString &sid : m_selectedNodeIds) {
+            const int idx = m_idToIndex.value(sid, -1);
+            if (idx >= 0) multiSelectedIndices.insert(idx);
+        }
 
         p.save();
         p.setClipRect(rect().adjusted(2, 2, -2, -2));
@@ -536,7 +623,9 @@ protected:
             const QPointF p1 = worldToScreen(m_nodes[e.source].pos);
             const QPointF p2 = worldToScreen(m_nodes[e.target].pos);
 
-            const bool connectedToActive = (activeIdx >= 0) && (e.source == activeIdx || e.target == activeIdx);
+            const bool connectedToActive = (activeIdx >= 0 && (e.source == activeIdx || e.target == activeIdx)) ||
+                                           (m_hoveredIndex < 0 && multiSelectedIndices.size() > 1 &&
+                                            (multiSelectedIndices.contains(e.source) && multiSelectedIndices.contains(e.target)));
             const double weightRatio = static_cast<double>(e.weight) / qMax(1, m_maxEdgeWeight);
 
             QColor edgeColor = isLight ? QColor("#64748b") : QColor("#94a3b8");
@@ -598,10 +687,11 @@ protected:
                 continue;
             }
 
-            const bool isSelected = (i == selectedIdx);
+            const bool isSelected = (i == selectedIdx) || multiSelectedIndices.contains(i);
             const bool isHovered = (i == m_hoveredIndex);
             const bool isFocused = (i == focusedIdx);
-            const bool isNeighbor = (activeIdx >= 0) && (i == activeIdx || m_neighborsOf[activeIdx].contains(i));
+            const bool isNeighbor = isSelected ||
+                                    ((activeIdx >= 0) && (i == activeIdx || m_neighborsOf[activeIdx].contains(i)));
             const bool isSearchHit = !m_searchNeedle.isEmpty() &&
                                      (node.label.toLower().contains(m_searchNeedle) ||
                                       node.translation.toLower().contains(m_searchNeedle));
@@ -773,12 +863,14 @@ protected:
             p.setPen(AppStyle::color("accentBlue"));
             p.drawText(QRectF(legendBox.left() + 12, legendBox.top() + 31, legendBox.width() - 20, 20),
                        Qt::AlignVCenter | Qt::AlignLeft,
-                       AppText::tr("🎯 聚焦: %1 (双击空白还原)").arg(focusName));
+                       AppText::tr("🎯 聚焦: %1 (点击空白还原)").arg(focusName));
         }
     }
 
     void wheelEvent(QWheelEvent *event) override
     {
+        if (m_hoverTipTimer) m_hoverTipTimer->stop();
+        QToolTip::hideText();
         const int delta = event->angleDelta().y();
         if (delta == 0) return;
 
@@ -796,18 +888,38 @@ protected:
 
     void mousePressEvent(QMouseEvent *event) override
     {
+        if (m_hoverTipTimer) m_hoverTipTimer->stop();
+        QToolTip::hideText();
         if (event->button() == Qt::LeftButton) {
             const int hit = hitTestNode(event->position());
             if (hit >= 0) {
                 m_draggingIndex = hit;
                 m_nodes[hit].pinned = true;
-                m_selectedNodeId = m_nodes[hit].id;
+                const QString hitId = m_nodes[hit].id;
+                const bool ctrlPressed = event->modifiers().testFlag(Qt::ControlModifier);
+                if (ctrlPressed) {
+                    if (m_selectedNodeIds.contains(hitId) && m_selectedNodeIds.size() > 1) {
+                        m_selectedNodeIds.remove(hitId);
+                        if (m_selectedNodeId == hitId) {
+                            m_selectedNodeId = *m_selectedNodeIds.cbegin();
+                        }
+                    } else {
+                        m_selectedNodeIds.insert(hitId);
+                        m_selectedNodeId = hitId;
+                    }
+                } else {
+                    m_selectedNodeId = hitId;
+                    m_selectedNodeIds.clear();
+                    m_selectedNodeIds.insert(hitId);
+                }
                 setCursor(Qt::ClosedHandCursor);
-                if (onNodeSelected) onNodeSelected(m_selectedNodeId);
+                if (onNodeSelected) onNodeSelected(m_selectedNodeId, m_selectedNodeIds);
                 update();
             } else {
                 m_panning = true;
+                m_panStartPos = event->position();
                 m_lastMousePos = event->position();
+                m_panMoved = false;
                 setCursor(Qt::ClosedHandCursor);
             }
         }
@@ -816,14 +928,21 @@ protected:
     void mouseMoveEvent(QMouseEvent *event) override
     {
         if (m_draggingIndex >= 0 && m_draggingIndex < m_nodes.size()) {
+            if (m_hoverTipTimer) m_hoverTipTimer->stop();
+            QToolTip::hideText();
             m_nodes[m_draggingIndex].pos = screenToWorld(event->position());
             m_animSteps = 0;
-            m_maxAnimSteps = 20;
+            m_maxAnimSteps = 15;
             if (!m_physicsTimer->isActive()) m_physicsTimer->start();
             update();
             return;
         }
         if (m_panning) {
+            if (m_hoverTipTimer) m_hoverTipTimer->stop();
+            QToolTip::hideText();
+            if (!m_panMoved && (event->position() - m_panStartPos).manhattanLength() > 4.0) {
+                m_panMoved = true;
+            }
             const QPointF delta = event->position() - m_lastMousePos;
             m_lastMousePos = event->position();
             m_panOffset += delta;
@@ -832,31 +951,43 @@ protected:
         }
 
         const int hit = hitTestNode(event->position());
+        const QPoint globalPos = event->globalPosition().toPoint();
         if (hit != m_hoveredIndex) {
             m_hoveredIndex = hit;
             setCursor(hit >= 0 ? Qt::PointingHandCursor : Qt::ArrowCursor);
+            QToolTip::hideText();
             if (hit >= 0 && hit < m_nodes.size()) {
-                const GraphNode &n = m_nodes[hit];
-                QString tip = QString("%1: %2\n%3: %4")
-                                  .arg(nodeTypeDisplayName(n.type),
-                                       n.label,
-                                       AppText::tr("出现图片数"),
-                                       QString::number(n.count));
-                if (!n.translation.isEmpty()) {
-                    tip += QString("\n%1: %2").arg(AppText::tr("翻译"), n.translation);
-                }
-                tip += QString("\n%1").arg(AppText::tr("单击查看关联详情，双击以此节点为中心聚焦"));
-                QToolTip::showText(event->globalPosition().toPoint(), tip, this);
+                m_hoverTipAnchorGlobal = globalPos;
+                if (m_hoverTipTimer) m_hoverTipTimer->start();
             } else {
-                QToolTip::hideText();
+                if (m_hoverTipTimer) m_hoverTipTimer->stop();
             }
             update();
+        } else if (hit >= 0) {
+            if ((globalPos - m_hoverTipAnchorGlobal).manhattanLength() > 6) {
+                m_hoverTipAnchorGlobal = globalPos;
+                QToolTip::hideText();
+                if (m_hoverTipTimer) m_hoverTipTimer->start();
+            }
         }
+    }
+
+    void leaveEvent(QEvent *event) override
+    {
+        if (m_hoverTipTimer) m_hoverTipTimer->stop();
+        QToolTip::hideText();
+        if (m_hoveredIndex != -1) {
+            m_hoveredIndex = -1;
+            setCursor(Qt::ArrowCursor);
+            update();
+        }
+        QWidget::leaveEvent(event);
     }
 
     void mouseReleaseEvent(QMouseEvent *event) override
     {
         if (event->button() == Qt::LeftButton) {
+            const bool wasEmptyClick = m_panning && !m_panMoved;
             if (m_draggingIndex >= 0 && m_draggingIndex < m_nodes.size()) {
                 if (m_nodes[m_draggingIndex].id != m_focusedNodeId) {
                     m_nodes[m_draggingIndex].pinned = false;
@@ -864,7 +995,18 @@ protected:
                 m_draggingIndex = -1;
             }
             m_panning = false;
+            m_panMoved = false;
             setCursor(m_hoveredIndex >= 0 ? Qt::PointingHandCursor : Qt::ArrowCursor);
+            if (wasEmptyClick) {
+                if (onEmptyClicked) {
+                    onEmptyClicked();
+                } else if (!m_selectedNodeId.isEmpty() || !m_selectedNodeIds.isEmpty()) {
+                    m_selectedNodeId.clear();
+                    m_selectedNodeIds.clear();
+                    if (onNodeSelected) onNodeSelected(m_selectedNodeId, m_selectedNodeIds);
+                    update();
+                }
+            }
         }
     }
 
@@ -904,23 +1046,28 @@ private:
     QHash<QString, int> m_idToIndex;
     QVector<QSet<int>> m_neighborsOf;
     QString m_selectedNodeId;
+    QSet<QString> m_selectedNodeIds;
     QString m_focusedNodeId;
     QString m_searchNeedle;
     int m_hoveredIndex = -1;
     int m_draggingIndex = -1;
     int m_maxEdgeWeight = 1;
-    double m_zoom = 1.0;
+    double m_zoom = 0.78;
     QPointF m_panOffset{0.0, 0.0};
+    QPointF m_panStartPos;
     QPointF m_lastMousePos;
+    QPoint m_hoverTipAnchorGlobal;
     bool m_panning = false;
+    bool m_panMoved = false;
     bool m_showTranslation = true;
     bool m_loading = false;
     QString m_loadingText;
     int m_loadingAngle = 0;
     QTimer *m_physicsTimer = nullptr;
+    QTimer *m_hoverTipTimer = nullptr;
     QTimer *m_loadingTimer = nullptr;
     int m_animSteps = 0;
-    int m_maxAnimSteps = 45;
+    int m_maxAnimSteps = 28;
 };
 
 UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
@@ -984,6 +1131,52 @@ UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
     largestHeader->setSectionResizeMode(3, QHeaderView::Fixed);
     largestHeader->resizeSection(3, 110);
 
+    if (ui->tableSpaceCleanup) {
+        setupTable(ui->tableSpaceCleanup, true);
+        ui->tableSpaceCleanup->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        QHeaderView *cleanupHeader = ui->tableSpaceCleanup->horizontalHeader();
+        cleanupHeader->setStretchLastSection(true);
+        cleanupHeader->setSectionResizeMode(0, QHeaderView::Fixed);
+        cleanupHeader->setSectionResizeMode(1, QHeaderView::Interactive);
+        cleanupHeader->setSectionResizeMode(2, QHeaderView::Fixed);
+        cleanupHeader->setSectionResizeMode(3, QHeaderView::Stretch);
+        cleanupHeader->resizeSection(0, 145);
+        cleanupHeader->resizeSection(1, 240);
+        cleanupHeader->resizeSection(2, 105);
+        connect(ui->tableSpaceCleanup, &QTableWidget::cellDoubleClicked, this, [this](int row, int) {
+            QTableWidgetItem *typeItem = ui->tableSpaceCleanup->item(row, 0);
+            if (!typeItem) return;
+            const QString filePath = typeItem->data(Qt::UserRole).toString();
+            const bool isDuplicateModel = typeItem->data(Qt::UserRole + 1).toBool();
+            if (filePath.isEmpty()) return;
+            if (isDuplicateModel) {
+                emit requestOpenModel(filePath);
+            } else {
+                FileUtils::showFileInFolder(filePath, this);
+            }
+        });
+        connect(ui->tableSpaceCleanup, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *) {
+            if (!ui->btnDeleteOrphanFiles) return;
+            int checkedOrphans = 0;
+            for (int r = 0; r < ui->tableSpaceCleanup->rowCount(); ++r) {
+                QTableWidgetItem *it = ui->tableSpaceCleanup->item(r, 0);
+                if (it && !it->data(Qt::UserRole + 1).toBool() && it->checkState() == Qt::Checked) {
+                    ++checkedOrphans;
+                }
+            }
+            ui->btnDeleteOrphanFiles->setEnabled(checkedOrphans > 0);
+            ui->btnDeleteOrphanFiles->setText(checkedOrphans > 0
+                ? AppText::tr("清理勾选的孤立文件 (%1)").arg(checkedOrphans)
+                : AppText::tr("清理勾选的孤立文件"));
+        });
+    }
+    if (ui->btnScanCleanup) {
+        connect(ui->btnScanCleanup, &QPushButton::clicked, this, &UsageAnalysisWidget::onScanCleanupClicked);
+    }
+    if (ui->btnDeleteOrphanFiles) {
+        connect(ui->btnDeleteOrphanFiles, &QPushButton::clicked, this, &UsageAnalysisWidget::onDeleteOrphanFilesClicked);
+    }
+
     // Tag 与模型关系图谱 Tab
     m_graphCanvas = new TagModelGraphCanvas(ui->graphCanvasContainer);
     ui->layoutGraphCanvas->addWidget(m_graphCanvas);
@@ -1011,6 +1204,7 @@ UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
     });
 
     setupTable(ui->tableGraphNeighbors, true);
+    ui->tableGraphNeighbors->verticalHeader()->setVisible(false);
     ui->tableGraphNeighbors->setEditTriggers(QAbstractItemView::NoEditTriggers);
     QHeaderView *neighborHeader = ui->tableGraphNeighbors->horizontalHeader();
     neighborHeader->setStretchLastSection(false);
@@ -1022,18 +1216,32 @@ UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
     neighborHeader->resizeSection(2, 74);
     neighborHeader->resizeSection(3, 68);
 
-    m_graphCanvas->onNodeSelected = [this](const QString &nodeId) {
+    m_graphCanvas->onNodeSelected = [this](const QString &nodeId, const QSet<QString> &selectedIds) {
         m_selectedGraphNodeId = nodeId;
+        m_selectedGraphNodeIds = selectedIds;
         updateGraphDetailPanel();
     };
     m_graphCanvas->onNodeDoubleClicked = [this](const QString &nodeId) {
         m_selectedGraphNodeId = nodeId;
+        m_selectedGraphNodeIds = {nodeId};
         if (m_focusedGraphNodeId == nodeId) {
             m_focusedGraphNodeId.clear();
         } else {
             m_focusedGraphNodeId = nodeId;
         }
         scheduleGraphRebuild(true);
+    };
+    m_graphCanvas->onEmptyClicked = [this]() {
+        const bool hadSelection = !m_selectedGraphNodeId.isEmpty() || !m_selectedGraphNodeIds.isEmpty();
+        m_selectedGraphNodeId.clear();
+        m_selectedGraphNodeIds.clear();
+        if (!m_focusedGraphNodeId.isEmpty()) {
+            m_focusedGraphNodeId.clear();
+            scheduleGraphRebuild(true);
+        } else if (hadSelection) {
+            m_graphCanvas->setSelectedNodeId(QString());
+            updateGraphDetailPanel();
+        }
     };
     m_graphCanvas->onEmptyDoubleClicked = [this]() {
         if (!m_focusedGraphNodeId.isEmpty()) {
@@ -1096,6 +1304,24 @@ UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
             });
     connect(ui->btnGraphFilterInGallery, &QPushButton::clicked,
             this, [this]() {
+                if (m_selectedGraphNodeIds.size() > 1 && m_graphCanvas) {
+                    const auto &allNodes = m_graphCanvas->allNodes();
+                    QStringList tags;
+                    QStringList loras;
+                    for (const QString &id : std::as_const(m_selectedGraphNodeIds)) {
+                        const auto it = allNodes.constFind(id);
+                        if (it == allNodes.constEnd()) continue;
+                        if (it->type == GraphNodeType::Tag && !it->rawName.isEmpty()) {
+                            tags.append(it->rawName);
+                        } else if (it->type == GraphNodeType::Lora && !it->rawName.isEmpty()) {
+                            loras.append(it->rawName);
+                        }
+                    }
+                    if (!tags.isEmpty() || !loras.isEmpty()) {
+                        emit requestFilterMultiInGallery(tags, loras);
+                        return;
+                    }
+                }
                 if (m_selectedGraphNodeId.isEmpty()) return;
                 const bool isLora = m_selectedGraphNodeId.startsWith("lora:");
                 const QString raw = ui->btnGraphFilterInGallery->property("rawNodeName").toString();
@@ -1110,6 +1336,7 @@ UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
                 const QString targetId = it->data(Qt::UserRole).toString();
                 if (targetId.isEmpty()) return;
                 m_selectedGraphNodeId = targetId;
+                m_selectedGraphNodeIds = {targetId};
                 if (m_graphCanvas) {
                     m_graphCanvas->setSelectedNodeId(targetId);
                     m_graphCanvas->centerOnNode(targetId);
@@ -1123,6 +1350,7 @@ UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
                 const QString targetId = it->data(Qt::UserRole).toString();
                 if (targetId.isEmpty()) return;
                 m_selectedGraphNodeId = targetId;
+                m_selectedGraphNodeIds = {targetId};
                 m_focusedGraphNodeId = targetId;
                 scheduleGraphRebuild(true);
             });
@@ -1136,6 +1364,7 @@ UsageAnalysisWidget::UsageAnalysisWidget(QWidget *parent)
 UsageAnalysisWidget::~UsageAnalysisWidget()
 {
     ++m_graphBuildToken;
+    ++m_cleanupScanToken;
     delete ui;
 }
 
@@ -1564,8 +1793,19 @@ void UsageAnalysisWidget::rebuildGraphIndexAndView(bool relayout)
 
         if (self->m_selectedGraphNodeId.isEmpty() && !self->m_focusedGraphNodeId.isEmpty()) {
             self->m_selectedGraphNodeId = self->m_focusedGraphNodeId;
+            self->m_selectedGraphNodeIds = {self->m_focusedGraphNodeId};
         } else if (!self->m_selectedGraphNodeId.isEmpty() && !out.allNodes.contains(self->m_selectedGraphNodeId)) {
             self->m_selectedGraphNodeId.clear();
+            self->m_selectedGraphNodeIds.clear();
+        } else {
+            QSet<QString> validIds;
+            for (const QString &id : std::as_const(self->m_selectedGraphNodeIds)) {
+                if (out.allNodes.contains(id)) validIds.insert(id);
+            }
+            if (validIds.isEmpty() && !self->m_selectedGraphNodeId.isEmpty()) {
+                validIds.insert(self->m_selectedGraphNodeId);
+            }
+            self->m_selectedGraphNodeIds = std::move(validIds);
         }
 
         const int visNodeCount = out.visibleNodes.size();
@@ -1576,7 +1816,7 @@ void UsageAnalysisWidget::rebuildGraphIndexAndView(bool relayout)
         self->m_graphCanvas->setLoading(false);
         self->m_graphCanvas->setShowTranslation(self->ui->chkGraphTranslation && self->ui->chkGraphTranslation->isChecked());
         self->m_graphCanvas->setSearchHighlight(curSearch);
-        self->m_graphCanvas->setSelectedNodeId(self->m_selectedGraphNodeId);
+        self->m_graphCanvas->setSelectedNodeIds(self->m_selectedGraphNodeId, self->m_selectedGraphNodeIds);
         self->m_graphCanvas->setFullAdjacency(std::move(out.allNodes), std::move(out.allNeighbors));
         self->m_graphCanvas->setGraph(std::move(out.visibleNodes),
                                       std::move(out.visibleEdges),
@@ -1604,84 +1844,36 @@ void UsageAnalysisWidget::rebuildGraphIndexAndView(bool relayout)
             out.relayout = relayout;
             out.resolvedFocusedNodeId = initialFocusedNodeId;
 
-            // 0. 若尚未解析原始图片缓存，则在后台线程中执行正则提取
+            // 0. 若尚未解析原始图片缓存，则在后台线程中直接复用 GalleryMetadata 预解析字段
             if (needParseRaw && cachedParsedImages.isEmpty() && !rawCache.isEmpty()) {
                 out.parsedFromRaw = true;
                 out.parsedImages.reserve(rawCache.size());
 
-                static const QRegularExpression graphModelRegex(
-                    "(?:^|[,\\n\\r])\\s*(?:Model|Checkpoint)\\s*:\\s*([^,\\n\\r]+)",
-                    QRegularExpression::CaseInsensitiveOption);
-                static const QRegularExpression graphPromptLoraRegex(
-                    "<\\s*(?:lora|lyco)\\s*:\\s*([^:>]+)(?::[^:>]*)?>?",
-                    QRegularExpression::CaseInsensitiveOption);
-                static const QRegularExpression graphComfyLoraRegex(
-                    "(?:^|[,\\n\\r])\\s*ComfyUI\\s+LoRAs\\s*:\\s*([^\\n\\r]*)",
-                    QRegularExpression::CaseInsensitiveOption);
-                static const QRegularExpression graphLoraHashesRegex(
-                    "(?:^|[,\\n\\r])\\s*(?:ComfyUI\\s+)?Lora\\s+hashes\\s*:\\s*(\"[^\"]*\"|[^\\n\\r]*)",
-                    QRegularExpression::CaseInsensitiveOption);
-                static const QRegularExpression graphPairRegex("([^:,]+?)\\s*:\\s*[A-Fa-f0-9]+");
-
-                auto cleanModelBaseName = [](QString s) -> QString {
-                    s = s.trimmed();
-                    s.replace('\\', '/');
-                    if (s.contains('/')) s = s.section('/', -1);
-                    if (s.endsWith(".safetensors", Qt::CaseInsensitive) ||
-                        s.endsWith(".ckpt", Qt::CaseInsensitive) ||
-                        s.endsWith(".pt", Qt::CaseInsensitive)) {
-                        s = QFileInfo(s).completeBaseName();
-                    }
-                    return s.trimmed();
-                };
-
                 for (auto it = rawCache.cbegin(); it != rawCache.cend(); ++it) {
-                    const UserImageInfo &info = it.value();
+                    UserImageInfo info = it.value();
+                    if (!info.parsedModelsReady) {
+                        GalleryMetadata::populateParsedModelFields(info);
+                    }
                     UsageGraphImageRecord rec;
                     rec.inCurrentGallery = currentPaths.contains(it.key());
 
-                    const QRegularExpressionMatch mm = graphModelRegex.match(info.parameters);
-                    if (mm.hasMatch()) {
-                        rec.checkpoint = cleanModelBaseName(mm.captured(1));
+                    if (!info.checkpointName.isEmpty()) {
+                        rec.checkpoint = GalleryMetadata::cleanModelOrLoraBaseName(info.checkpointName);
                     }
 
                     QSet<QString> seenLoraLower;
-                    auto addLora = [&](const QString &raw) {
-                        const QString clean = cleanModelBaseName(raw);
-                        if (clean.isEmpty()) return;
+                    for (const ParsedLoraEntry &loraEntry : std::as_const(info.parsedLoras)) {
+                        const QString clean = GalleryMetadata::cleanModelOrLoraBaseName(loraEntry.name);
+                        if (clean.isEmpty()) continue;
                         const QString low = clean.toLower();
                         if (!seenLoraLower.contains(low)) {
                             seenLoraLower.insert(low);
                             rec.loras.append(clean);
                         }
-                    };
-
-                    auto pit = graphPromptLoraRegex.globalMatch(info.prompt);
-                    while (pit.hasNext()) {
-                        addLora(pit.next().captured(1));
-                    }
-                    const QRegularExpressionMatch cm = graphComfyLoraRegex.match(info.parameters);
-                    if (cm.hasMatch()) {
-                        for (QString entry : cm.captured(1).split(',', Qt::SkipEmptyParts)) {
-                            const int colon = entry.indexOf(':');
-                            if (colon > 0) entry = entry.left(colon);
-                            addLora(entry);
-                        }
-                    }
-                    const QRegularExpressionMatch hm = graphLoraHashesRegex.match(info.parameters);
-                    if (hm.hasMatch()) {
-                        QString block = hm.captured(1).trimmed();
-                        if (block.startsWith('"') && block.endsWith('"') && block.size() >= 2) {
-                            block = block.mid(1, block.size() - 2);
-                        }
-                        auto pairIt = graphPairRegex.globalMatch(block);
-                        while (pairIt.hasNext()) {
-                            addLora(pairIt.next().captured(1));
-                        }
                     }
 
                     QSet<QString> seenTagLower;
-                    for (const QString &t : info.cleanTags) {
+                    for (const QString &t : std::as_const(info.cleanTags)) {
                         const QString trimmed = t.trimmed();
                         if (trimmed.isEmpty()) continue;
                         if (trimmed.startsWith("<lora:", Qt::CaseInsensitive) ||
@@ -1946,8 +2138,9 @@ void UsageAnalysisWidget::rebuildGraphIndexAndView(bool relayout)
                     maxEdgeWeight = qMax(maxEdgeWeight, e.weight);
                 }
                 TagModelGraphCanvas::initializeNodePositions(out.visibleNodes, focusVisIdx);
-                for (int step = 0; step < 65; ++step) {
-                    TagModelGraphCanvas::stepNodePhysics(out.visibleNodes, out.visibleEdges, maxEdgeWeight, -1, 1.0);
+                for (int step = 0; step < 90; ++step) {
+                    const double cool = 1.0 - 0.5 * (static_cast<double>(step) / 90.0);
+                    TagModelGraphCanvas::stepNodePhysics(out.visibleNodes, out.visibleEdges, maxEdgeWeight, -1, cool);
                 }
             }
 
@@ -1963,10 +2156,11 @@ void UsageAnalysisWidget::updateGraphDetailPanel()
     const auto &allNeighbors = m_graphCanvas->allNeighbors();
 
     if (m_selectedGraphNodeId.isEmpty() || !allNodes.contains(m_selectedGraphNodeId)) {
-        ui->lblGraphSelectedTitle->setText(AppText::tr("点击画布中的节点查看其共现 Tag 与模型。"));
+        ui->lblGraphSelectedTitle->setText(AppText::tr("点击画布中的节点查看其共现 Tag 与模型（Ctrl+点击可多选组合筛选）。"));
         ui->btnGraphFocusSelected->setEnabled(false);
         ui->btnGraphJumpToModel->setEnabled(false);
         ui->btnGraphFilterInGallery->setEnabled(false);
+        ui->btnGraphFilterInGallery->setText(AppText::tr("在图库中筛选"));
         ui->tableGraphNeighbors->setRowCount(0);
         return;
     }
@@ -1982,6 +2176,25 @@ void UsageAnalysisWidget::updateGraphDetailPanel()
         titleHtml += QString(" &nbsp;·&nbsp; %1: <b>%2</b>")
                          .arg(AppText::tr("翻译"), sel.translation.toHtmlEscaped());
     }
+
+    int multiFilterableCount = 0;
+    if (m_selectedGraphNodeIds.size() > 1) {
+        QStringList selectedNames;
+        for (const QString &id : std::as_const(m_selectedGraphNodeIds)) {
+            const auto it = allNodes.constFind(id);
+            if (it != allNodes.constEnd()) {
+                selectedNames.append(it->label.toHtmlEscaped());
+                if (it->type == GraphNodeType::Tag || it->type == GraphNodeType::Lora) {
+                    ++multiFilterableCount;
+                }
+            }
+        }
+        titleHtml += QString("<br><span style='color:%1;'>%2</span>")
+                         .arg(AppStyle::color("accentBlue").name(),
+                              AppText::tr("已多选 %1 个节点: %2")
+                                  .arg(selectedNames.size())
+                                  .arg(selectedNames.join(", ")));
+    }
     ui->lblGraphSelectedTitle->setText(titleHtml);
 
     ui->btnGraphFocusSelected->setEnabled(true);
@@ -1989,9 +2202,13 @@ void UsageAnalysisWidget::updateGraphDetailPanel()
     ui->btnGraphJumpToModel->setEnabled(isModelOrLora);
     ui->btnGraphJumpToModel->setProperty("rawModelName", sel.rawName);
 
-    const bool canFilterGallery = (sel.type == GraphNodeType::Tag || sel.type == GraphNodeType::Lora);
+    const bool canFilterGallery = (multiFilterableCount > 1) ||
+                                  (sel.type == GraphNodeType::Tag || sel.type == GraphNodeType::Lora);
     ui->btnGraphFilterInGallery->setEnabled(canFilterGallery);
     ui->btnGraphFilterInGallery->setProperty("rawNodeName", sel.rawName);
+    ui->btnGraphFilterInGallery->setText(multiFilterableCount > 1
+        ? AppText::tr("组合筛选 (%1)").arg(multiFilterableCount)
+        : AppText::tr("在图库中筛选"));
 
     const auto neighbors = allNeighbors.value(m_selectedGraphNodeId);
     const bool showTrans = ui->chkGraphTranslation && ui->chkGraphTranslation->isChecked();
@@ -2030,4 +2247,232 @@ void UsageAnalysisWidget::updateGraphDetailPanel()
     }
     ui->tableGraphNeighbors->setSortingEnabled(true);
     ui->tableGraphNeighbors->sortItems(2, Qt::DescendingOrder);
+}
+
+void UsageAnalysisWidget::onScanCleanupClicked()
+{
+    if (!ui->tableSpaceCleanup || !ui->lblCleanupStatus || !ui->btnScanCleanup) return;
+
+    const int token = ++m_cleanupScanToken;
+    ui->btnScanCleanup->setEnabled(false);
+    if (ui->btnDeleteOrphanFiles) ui->btnDeleteOrphanFiles->setEnabled(false);
+    ui->lblCleanupStatus->setText(AppText::tr("正在后台扫描重复 SHA256 模型与孤立附属文件..."));
+
+    const QVector<UsageAnalysisModel> modelsCopy = analysisData.models;
+    const QStringList rootsCopy = analysisData.loraRootPaths;
+    const bool recursive = analysisData.loraRecursive;
+
+    struct CleanupEntry {
+        bool isDuplicateModel = false;
+        QString typeLabel;
+        QString displayName;
+        qint64 bytes = 0;
+        QString filePath;
+        QString detailText;
+    };
+    struct CleanupScanOutput {
+        int token = 0;
+        QVector<CleanupEntry> entries;
+        int duplicateCount = 0;
+        int orphanCount = 0;
+        qint64 orphanBytes = 0;
+        qint64 duplicateRedundantBytes = 0;
+    };
+
+    auto *watcher = new QFutureWatcher<CleanupScanOutput>(this);
+    QPointer<UsageAnalysisWidget> self(this);
+    connect(watcher, &QFutureWatcher<CleanupScanOutput>::finished, this, [self, watcher]() {
+        const CleanupScanOutput out = watcher->result();
+        watcher->deleteLater();
+        if (!self || out.token != self->m_cleanupScanToken) return;
+
+        self->ui->btnScanCleanup->setEnabled(true);
+        QSignalBlocker blocker(self->ui->tableSpaceCleanup);
+        self->ui->tableSpaceCleanup->setSortingEnabled(false);
+        self->ui->tableSpaceCleanup->setRowCount(out.entries.size());
+
+        for (int r = 0; r < out.entries.size(); ++r) {
+            const CleanupEntry &e = out.entries[r];
+            auto *typeItem = new QTableWidgetItem(e.typeLabel);
+            typeItem->setData(Qt::UserRole, e.filePath);
+            typeItem->setData(Qt::UserRole + 1, e.isDuplicateModel);
+            if (!e.isDuplicateModel) {
+                typeItem->setFlags(typeItem->flags() | Qt::ItemIsUserCheckable);
+                typeItem->setCheckState(Qt::Checked);
+                typeItem->setForeground(AppStyle::color("warningYellow"));
+            } else {
+                typeItem->setForeground(AppStyle::color("accentBlue"));
+            }
+
+            auto *nameItem = new QTableWidgetItem(e.displayName);
+            nameItem->setToolTip(e.filePath);
+            auto *sizeItem = new SizeTableItem(e.bytes);
+            auto *detailItem = new QTableWidgetItem(e.detailText);
+            detailItem->setToolTip(e.detailText);
+
+            self->ui->tableSpaceCleanup->setItem(r, 0, typeItem);
+            self->ui->tableSpaceCleanup->setItem(r, 1, nameItem);
+            self->ui->tableSpaceCleanup->setItem(r, 2, sizeItem);
+            self->ui->tableSpaceCleanup->setItem(r, 3, detailItem);
+        }
+        self->ui->tableSpaceCleanup->setSortingEnabled(true);
+
+        if (self->ui->btnDeleteOrphanFiles) {
+            self->ui->btnDeleteOrphanFiles->setEnabled(out.orphanCount > 0);
+            self->ui->btnDeleteOrphanFiles->setText(out.orphanCount > 0
+                ? AppText::tr("清理勾选的孤立文件 (%1)").arg(out.orphanCount)
+                : AppText::tr("清理勾选的孤立文件"));
+        }
+
+        self->ui->lblCleanupStatus->setText(
+            AppText::tr("扫描完成：发现 %1 项孤立附属文件（可释放 %2）、%3 项重复 SHA256 模型（冗余约 %4）。双击行可定位。")
+                .arg(out.orphanCount)
+                .arg(humanSize(out.orphanBytes))
+                .arg(out.duplicateCount)
+                .arg(humanSize(out.duplicateRedundantBytes)));
+    });
+
+    watcher->setFuture(QtConcurrent::run([token, modelsCopy, rootsCopy, recursive]() -> CleanupScanOutput {
+        CleanupScanOutput out;
+        out.token = token;
+
+        // 1. 检测同 SHA256 的重复模型
+        QHash<QString, QVector<const UsageAnalysisModel *>> bySha;
+        for (const UsageAnalysisModel &m : modelsCopy) {
+            const QString sha = m.sha256.trimmed().toLower();
+            if (sha.length() >= 16) {
+                bySha[sha].append(&m);
+            }
+        }
+        for (auto it = bySha.cbegin(); it != bySha.cend(); ++it) {
+            const auto &group = it.value();
+            if (group.size() < 2) continue;
+            for (int i = 0; i < group.size(); ++i) {
+                const UsageAnalysisModel *m = group[i];
+                CleanupEntry e;
+                e.isDuplicateModel = true;
+                e.typeLabel = AppText::tr("🔁 重复模型 (%1)").arg(group.size());
+                e.displayName = m->displayName;
+                e.bytes = m->modelFileBytes;
+                e.filePath = m->filePath;
+                e.detailText = QString("SHA256: %1... · %2").arg(it.key().left(12), m->filePath);
+                out.entries.append(e);
+                ++out.duplicateCount;
+                if (i > 0) out.duplicateRedundantBytes += m->modelFileBytes;
+            }
+        }
+
+        // 2. 扫描 LoRA 根目录下的孤立附属文件（无对应 .safetensors / .ckpt / .pt / .bin 的 .json 或 .preview*.png）
+        const QDirIterator::IteratorFlag iterFlag = recursive
+            ? QDirIterator::Subdirectories
+            : QDirIterator::NoIteratorFlags;
+        QSet<QString> visitedFiles;
+        static const QRegularExpression previewRegex("^(.+)\\.preview(?:\\.\\d+)?\\.png$",
+                                                     QRegularExpression::CaseInsensitiveOption);
+
+        auto hasMatchingModelFile = [](const QDir &dir, const QString &baseName) -> bool {
+            static const QStringList exts = {".safetensors", ".ckpt", ".pt", ".bin"};
+            for (const QString &ext : exts) {
+                if (QFileInfo::exists(dir.filePath(baseName + ext))) return true;
+            }
+            return false;
+        };
+
+        for (const QString &root : rootsCopy) {
+            if (root.trimmed().isEmpty() || !QDir(root).exists()) continue;
+            QDirIterator dirIt(root, QStringList() << "*.json" << "*.preview.png" << "*.preview.*.png",
+                               QDir::Files, iterFlag);
+            while (dirIt.hasNext()) {
+                const QString path = QFileInfo(dirIt.next()).absoluteFilePath();
+                if (visitedFiles.contains(path)) continue;
+                visitedFiles.insert(path);
+
+                const QFileInfo fi(path);
+                const QString fileName = fi.fileName();
+                const QDir parentDir = fi.absoluteDir();
+                QString baseName;
+
+                if (fileName.endsWith(".json", Qt::CaseInsensitive)) {
+                    if (fileName.compare("model_list_cache.json", Qt::CaseInsensitive) == 0 ||
+                        fileName.compare("collections.json", Qt::CaseInsensitive) == 0 ||
+                        fileName.compare("settings.json", Qt::CaseInsensitive) == 0) {
+                        continue;
+                    }
+                    if (fileName.endsWith(".metadata.json", Qt::CaseInsensitive)) {
+                        baseName = fileName.left(fileName.size() - 14);
+                        if (baseName.endsWith(".safetensors", Qt::CaseInsensitive) ||
+                            baseName.endsWith(".ckpt", Qt::CaseInsensitive) ||
+                            baseName.endsWith(".pt", Qt::CaseInsensitive)) {
+                            baseName = QFileInfo(baseName).completeBaseName();
+                        }
+                    } else {
+                        baseName = fi.completeBaseName();
+                    }
+                } else {
+                    const QRegularExpressionMatch pm = previewRegex.match(fileName);
+                    if (!pm.hasMatch()) continue;
+                    baseName = pm.captured(1);
+                }
+
+                if (baseName.isEmpty()) continue;
+                if (!hasMatchingModelFile(parentDir, baseName)) {
+                    CleanupEntry e;
+                    e.isDuplicateModel = false;
+                    e.typeLabel = AppText::tr("🧹 孤立附属文件");
+                    e.displayName = fileName;
+                    e.bytes = fi.size();
+                    e.filePath = path;
+                    e.detailText = AppText::tr("缺失模型本体 [%1.*] · %2").arg(baseName, path);
+                    out.entries.append(e);
+                    ++out.orphanCount;
+                    out.orphanBytes += e.bytes;
+                }
+            }
+        }
+
+        return out;
+    }));
+}
+
+void UsageAnalysisWidget::onDeleteOrphanFilesClicked()
+{
+    if (!ui->tableSpaceCleanup) return;
+
+    QStringList targetPaths;
+    qint64 totalBytes = 0;
+    for (int r = 0; r < ui->tableSpaceCleanup->rowCount(); ++r) {
+        QTableWidgetItem *typeItem = ui->tableSpaceCleanup->item(r, 0);
+        if (!typeItem || typeItem->data(Qt::UserRole + 1).toBool()) continue;
+        if (typeItem->checkState() == Qt::Checked) {
+            const QString path = typeItem->data(Qt::UserRole).toString();
+            if (!path.isEmpty() && QFileInfo::exists(path)) {
+                targetPaths.append(path);
+                totalBytes += QFileInfo(path).size();
+            }
+        }
+    }
+    if (targetPaths.isEmpty()) return;
+
+    const auto reply = QMessageBox::question(
+        this,
+        AppText::tr("确认清理孤立附属文件"),
+        AppText::tr("确定要将已勾选的 %1 个孤立附属文件（共 %2）移至系统回收站吗？\n（仅清理已删除模型遗留的 .json 与 .preview.png 文件）")
+            .arg(targetPaths.size())
+            .arg(humanSize(totalBytes)),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No);
+    if (reply != QMessageBox::Yes) return;
+
+    int removedCount = 0;
+    for (const QString &path : targetPaths) {
+        if (QFile::moveToTrash(path) || QFile::remove(path)) {
+            ++removedCount;
+        }
+    }
+
+    onScanCleanupClicked();
+    emit requestRefresh();
+    if (ui->lblCleanupStatus) {
+        ui->lblCleanupStatus->setText(AppText::tr("已清理 %1 个孤立附属文件。").arg(removedCount));
+    }
 }

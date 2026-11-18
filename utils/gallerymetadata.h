@@ -7,5 +7,7 @@ namespace GalleryMetadata {
 inline constexpr int ParserVersion = 10;
 void parseImage(const QString &path, UserImageInfo &info,
                 bool splitOnNewline, const QStringList &filterTags);
+void populateParsedModelFields(UserImageInfo &info);
+QString cleanModelOrLoraBaseName(QString raw);
 
 }

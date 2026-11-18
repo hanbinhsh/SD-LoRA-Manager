@@ -390,6 +390,95 @@
              </layout>
             </widget>
            </item>
+           <item>
+            <widget class="QGroupBox" name="groupSpaceCleanup">
+             <property name="title">
+              <string>重复模型与孤立附属文件清理</string>
+             </property>
+             <layout class="QVBoxLayout" name="layoutSpaceCleanup">
+              <item>
+               <layout class="QHBoxLayout" name="layoutSpaceCleanupActions">
+                <item>
+                 <widget class="QPushButton" name="btnScanCleanup">
+                  <property name="toolTip">
+                   <string>扫描相同 SHA256 的重复模型文件，以及模型本体已删除但残留的 .json / .preview.png 孤立文件</string>
+                  </property>
+                  <property name="text">
+                   <string>扫描重复模型与孤立文件</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnDeleteOrphanFiles">
+                  <property name="enabled">
+                   <bool>false</bool>
+                  </property>
+                  <property name="toolTip">
+                   <string>将下方表格中已勾选的孤立附属文件移至回收站（不会删除任何模型本体）</string>
+                  </property>
+                  <property name="text">
+                   <string>清理勾选的孤立文件</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLabel" name="lblCleanupStatus">
+                  <property name="text">
+                   <string>点击「扫描重复模型与孤立文件」检测可释放的磁盘空间（双击行可定位模型或文件）。</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <spacer name="spacerCleanupActions">
+                  <property name="orientation">
+                   <enum>Qt::Orientation::Horizontal</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>40</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <widget class="QTableWidget" name="tableSpaceCleanup">
+                <property name="minimumSize">
+                 <size>
+                  <width>0</width>
+                  <height>220</height>
+                 </size>
+                </property>
+                <property name="selectionBehavior">
+                 <enum>QAbstractItemView::SelectionBehavior::SelectRows</enum>
+                </property>
+                <column>
+                 <property name="text">
+                  <string>类型</string>
+                 </property>
+                </column>
+                <column>
+                 <property name="text">
+                  <string>文件 / 模型</string>
+                 </property>
+                </column>
+                <column>
+                 <property name="text">
+                  <string>大小</string>
+                 </property>
+                </column>
+                <column>
+                 <property name="text">
+                  <string>路径 / 说明</string>
+                 </property>
+                </column>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
           </layout>
          </widget>
         </widget>

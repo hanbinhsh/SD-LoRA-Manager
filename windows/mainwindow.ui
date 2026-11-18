@@ -1065,6 +1065,22 @@ New</string>
                       </property>
                      </widget>
                     </item>
+                    <item>
+                     <widget class="QPushButton" name="btnOpenModelGraph">
+                      <property name="minimumSize">
+                       <size>
+                        <width>40</width>
+                        <height>40</height>
+                       </size>
+                      </property>
+                      <property name="toolTip">
+                       <string>在 Tag 与模型图谱中查看此模型的共现关联</string>
+                      </property>
+                      <property name="text">
+                       <string>🕸️</string>
+                      </property>
+                     </widget>
+                    </item>
                    </layout>
                   </widget>
                  </item>

@@ -179,6 +179,7 @@ private slots:
     void onUserImageClicked(QListWidgetItem *item);
     void onTagFilterChanged(const QSet<QString> &selectedTags);
     void onToggleDetailTab(); // 切换 Tab 的槽函数
+    void onOpenModelGraphClicked(); // 跳转到 Tag 与模型图谱并聚焦当前模型
     void onRescanUserClicked();
     void onGalleryButtonClicked();
     // === 菜单槽函数 ===
@@ -576,7 +577,26 @@ private:
     bool          optDownscaleBlur                            = true;             // 模糊前缩放
     int           optBlurProcessWidth                         = 500;              // 默认缩小到 500px
     int           optRenderThreadCount                        = 4;                // 图片处理线程数
+    QHash<QString, QIcon> sidebarIconCache;
+    QHash<QString, QIcon> homeIconCache;
+    QSet<QString> queuedHomeThumbPaths;
+    QSet<QString> loadedHomeThumbPaths;
+    QHash<QString, QListWidgetItem*> modelItemByPath;
+    QHash<QString, QListWidgetItem*> homeItemByPath;
+    QMultiHash<QString, QTreeWidgetItem*> collectionTreeItemsByPath;
+    QTimer *searchDebounceTimer = nullptr;
+    QTimer *homeAuthorFilterDebounceTimer = nullptr;
+    QTimer *userTagSearchDebounceTimer = nullptr;
+    QTimer *homeGalleryThumbLoadTimer = nullptr;
+    QStringList m_galleryExtraLoraFilters;
+    int usageAnalysisRefreshToken = 0;
+
+    void scheduleVisibleHomeGalleryThumbLoad();
+    void dispatchVisibleHomeGalleryThumbLoad();
+    void invalidateIconCacheForPath(const QString &previewPath);
+
     bool          optRestoreTreeState                         = true;             // 保存菜单状态
+    bool          optRestoreFilterSortState                   = true;             // 启动时恢复排序与筛选条件
     bool          optSplitOnNewline                           = true;             // 换行符分割
     bool          optFilterNSFW                               = false;            // NSFW过滤
     int           optNSFWMode                                 = 1;                // 0: 完全隐藏, 1: 高斯模糊
@@ -608,6 +628,22 @@ private:
     QSet<QString> startupExpandedCollections; // 启动时从文件读出的展开项
     int startupTreeScrollPos;                 // 启动时从文件读出的滚动位置
     bool isFirstTreeRefresh;                  // 标记是否是第一次刷新树（用于判断是否使用缓存）
+    bool isFirstFilterSortRestore = true;     // 标记是否是第一次模型扫描后恢复排序与筛选
+    int startupSortIndex = 0;
+    QString startupFilterBaseModel = QStringLiteral("All");
+    QString startupFilterModelType = QStringLiteral("All");
+    QString startupSearchText;
+    int startupSidebarTab = 1;
+    int startupUserTagSortMode = 0;
+    bool startupUserTagLoraOnly = false;
+    bool startupUserTagIncludeNegative = false;
+    int startupGalleryPromptSortMode = 0;
+    bool startupGalleryTagViewActive = false;
+    bool startupHomeFilterExpanded = false;
+    bool startupHomeFilterTagsSortByCount = true;
+    QString startupCollectionFilter;
+    QString startupHomeAuthorFilter;
+    QSet<QString> startupHomeTagFilters;
     QSet<QString> collapsedModelFolders;      // Models 列表折叠的文件夹
     // 设置辅助函数
     QString getRandomUserAgent();             // 获取随机 UA

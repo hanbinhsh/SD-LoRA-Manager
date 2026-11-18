@@ -147,6 +147,18 @@ New</translation>
       <translation>&lt;/&gt;</translation>
     </message>
     <message>
+      <source>&lt;b&gt;Negative / 负面提示词:&lt;/b&gt;</source>
+      <translation>&lt;b&gt;负面提示词:&lt;/b&gt;</translation>
+    </message>
+    <message>
+      <source>&lt;b&gt;Parameters / 生图参数:&lt;/b&gt;</source>
+      <translation>&lt;b&gt;生图参数:&lt;/b&gt;</translation>
+    </message>
+    <message>
+      <source>&lt;b&gt;Positive / 正面提示词:&lt;/b&gt;</source>
+      <translation>&lt;b&gt;正面提示词:&lt;/b&gt;</translation>
+    </message>
+    <message>
       <source>&lt;h3&gt;🚀 发现新版本: %1&lt;/h3&gt;&lt;p&gt;当前版本: %2&lt;/p&gt;&lt;hr&gt;&lt;p&gt;&lt;b&gt;更新日志:&lt;/b&gt;&lt;/p&gt;&lt;pre style='font-size:11px'&gt;%3&lt;/pre&gt;</source>
       <translation>&lt;h3&gt;🚀 发现新版本: %1&lt;/h3&gt;&lt;p&gt;当前版本: %2&lt;/p&gt;&lt;hr&gt;&lt;p&gt;&lt;b&gt;更新日志:&lt;/b&gt;&lt;/p&gt;&lt;pre style='font-size:11px'&gt;%3&lt;/pre&gt;</translation>
     </message>
@@ -800,6 +812,10 @@ Hash: ...</source>
       <translation>Tag 不能为空，也不能包含逗号或换行。</translation>
     </message>
     <message>
+      <source>Tag 与模型图谱</source>
+      <translation>Tag 与模型图谱</translation>
+    </message>
+    <message>
       <source>Tag 差异</source>
       <translation>Tag 差异</translation>
     </message>
@@ -1016,6 +1032,10 @@ Hash: ...</source>
       <translation>⬇</translation>
     </message>
     <message>
+      <source>⬇ 展开更多 Tag (剩余 %1 个)</source>
+      <translation>⬇ 展开更多 Tag (剩余 %1 个)</translation>
+    </message>
+    <message>
       <source>⬇️ 下载 / Downloads</source>
       <translation>⬇️ 下载</translation>
     </message>
@@ -1206,6 +1226,10 @@ Hash: ...</source>
       <translation>人物替换</translation>
     </message>
     <message>
+      <source>仅 Tag</source>
+      <translation>仅 Tag</translation>
+    </message>
+    <message>
       <source>仅元数据</source>
       <translation>仅元数据</translation>
     </message>
@@ -1232,6 +1256,14 @@ Hash: ...</source>
     <message>
       <source>仅显示 LoRA Tag</source>
       <translation>仅显示 LoRA Tag</translation>
+    </message>
+    <message>
+      <source>仅显示共同出现次数达到此阈值的连线</source>
+      <translation>仅显示共同出现次数达到此阈值的连线</translation>
+    </message>
+    <message>
+      <source>仅模型 (LoRA + 底模)</source>
+      <translation>仅模型 (LoRA + 底模)</translation>
     </message>
     <message>
       <source>仅模型文件</source>
@@ -1296,6 +1328,10 @@ Hash: ...</source>
     <message>
       <source>以当前主题为起点，打开调色板编辑器新建/修改主题。</source>
       <translation>以当前主题为起点，打开调色板编辑器新建/修改主题。</translation>
+    </message>
+    <message>
+      <source>以当前选中节点为中心展开关联子图</source>
+      <translation>以当前选中节点为中心展开关联子图</translation>
     </message>
     <message>
       <source>任务列表已清空。</source>
@@ -1534,6 +1570,10 @@ Hash: ...</source>
       <translation>全局占位符定义，例如名称、显示名、文本/单选/多选类型。</translation>
     </message>
     <message>
+      <source>全局视图</source>
+      <translation>全局视图</translation>
+    </message>
+    <message>
       <source>全选</source>
       <translation>全选</translation>
     </message>
@@ -1554,12 +1594,24 @@ Hash: ...</source>
       <translation>全选当前分类</translation>
     </message>
     <message>
+      <source>全选当前提示词 Tag</source>
+      <translation>全选当前提示词 Tag</translation>
+    </message>
+    <message>
       <source>全部</source>
       <translation>全部</translation>
     </message>
     <message>
+      <source>全部 (Tag + LoRA + 底模)</source>
+      <translation>全部 (Tag + LoRA + 底模)</translation>
+    </message>
+    <message>
       <source>全部任务</source>
       <translation>全部任务</translation>
+    </message>
+    <message>
+      <source>全部图库缓存</source>
+      <translation>全部图库缓存</translation>
     </message>
     <message>
       <source>共 %1 条收藏。</source>
@@ -1572,6 +1624,14 @@ Hash: ...</source>
     <message>
       <source>共同 Tag</source>
       <translation>共同 Tag</translation>
+    </message>
+    <message>
+      <source>共现次数</source>
+      <translation>共现次数</translation>
+    </message>
+    <message>
+      <source>关联节点</source>
+      <translation>关联节点</translation>
     </message>
     <message>
       <source>关键参数差异</source>
@@ -1730,12 +1790,20 @@ Hash: ...</source>
       <translation>勾选后，如果本地存在 JSON 元数据，将显示模型的真实名称（如 'ChilloutMix [Pruned]'）而非文件名。</translation>
     </message>
     <message>
+      <source>勾选后，退出软件前会自动保存当前的排序方式、底模/类型筛选、主页作者/Tag筛选及搜索条件，下次打开时自动恢复。</source>
+      <translation>勾选后，退出软件前会自动保存当前的排序方式、底模/类型筛选、主页作者/Tag筛选及搜索条件，下次打开时自动恢复。</translation>
+    </message>
+    <message>
       <source>包含匹配</source>
       <translation>包含匹配</translation>
     </message>
     <message>
       <source>匹配 %1 条</source>
       <translation>匹配 %1 条</translation>
+    </message>
+    <message>
+      <source>单击查看关联，Ctrl+单击多选组合筛选，双击以此节点为中心聚焦</source>
+      <translation>单击查看关联，Ctrl+单击多选组合筛选，双击以此节点为中心聚焦</translation>
     </message>
     <message>
       <source>单图或批量 WD14 正在运行，请等待或先停止。</source>
@@ -2026,6 +2094,10 @@ Hash: ...</source>
       <translation>启动器运行时关闭软件需确认</translation>
     </message>
     <message>
+      <source>启动时恢复排序与筛选条件 / Restore Sort &amp; Filter on Startup</source>
+      <translation>启动时恢复排序与筛选条件</translation>
+    </message>
+    <message>
       <source>启动时恢复菜单 / Restore Menu on Startup</source>
       <translation>启动时恢复菜单</translation>
     </message>
@@ -2186,8 +2258,24 @@ Hash: ...</source>
       <translation>图片：未选择</translation>
     </message>
     <message>
+      <source>图谱</source>
+      <translation>图谱</translation>
+    </message>
+    <message>
+      <source>图谱最多展示的高频/关联节点数量</source>
+      <translation>图谱最多展示的高频/关联节点数量</translation>
+    </message>
+    <message>
+      <source>在 Tag 与模型图谱中查看此模型的共现关联</source>
+      <translation>在 Tag 与模型图谱中查看此模型的共现关联</translation>
+    </message>
+    <message>
       <source>在“提示词生成”和“模板与占位管理”中编辑提示词时，输入会自动弹出候选词（含翻译）。候选来源于已加载的翻译词表，兼容 a1111 与 ComfyUI 词表格式。</source>
       <translation>在“提示词生成”和“模板与占位管理”中编辑提示词时，输入会自动弹出候选词（含翻译）。候选来源于已加载的翻译词表，兼容 a1111 与 ComfyUI 词表格式。</translation>
+    </message>
+    <message>
+      <source>在图库中筛选</source>
+      <translation>在图库中筛选</translation>
     </message>
     <message>
       <source>在弹窗中查看完整简介并复制文本</source>
@@ -2200,6 +2288,18 @@ Hash: ...</source>
     <message>
       <source>在文本编辑与标签视图之间切换（文本视图可编辑/复制/粘贴）</source>
       <translation>在文本编辑与标签视图之间切换（文本视图可编辑/复制/粘贴）</translation>
+    </message>
+    <message>
+      <source>在文本视图与标签视图之间切换</source>
+      <translation>在文本视图与标签视图之间切换</translation>
+    </message>
+    <message>
+      <source>在本地返图界面中按此节点筛选图片</source>
+      <translation>在本地返图界面中按此节点筛选图片</translation>
+    </message>
+    <message>
+      <source>在模型库中定位并查看该模型详情</source>
+      <translation>在模型库中定位并查看该模型详情</translation>
     </message>
     <message>
       <source>在结果中包含标签的匹配置信度</source>
@@ -2356,6 +2456,10 @@ Hash: ...</source>
       <translation>大图浏览器</translation>
     </message>
     <message>
+      <source>大小</source>
+      <translation>大小</translation>
+    </message>
+    <message>
       <source>大小: </source>
       <translation>大小: </translation>
     </message>
@@ -2442,6 +2546,18 @@ Hash: ...</source>
     <message>
       <source>封面或目标预览图文件不存在，未修改图片顺序。</source>
       <translation>封面或目标预览图文件不存在，未修改图片顺序。</translation>
+    </message>
+    <message>
+      <source>将下方表格中已勾选的孤立附属文件移至回收站（不会删除任何模型本体）</source>
+      <translation>将下方表格中已勾选的孤立附属文件移至回收站（不会删除任何模型本体）</translation>
+    </message>
+    <message>
+      <source>将当前选中的占位符（如 {name}）添加到正面模板</source>
+      <translation>将当前选中的占位符（如 {name}）添加到正面模板</translation>
+    </message>
+    <message>
+      <source>将当前选中的占位符（如 {name}）添加到负面模板</source>
+      <translation>将当前选中的占位符（如 {name}）添加到负面模板</translation>
     </message>
     <message>
       <source>将文件夹作为收藏夹二级分类 / Folder as Second Collection Level</source>
@@ -2590,6 +2706,10 @@ Hash: ...</source>
       <translation>已复制选中的简介文本。</translation>
     </message>
     <message>
+      <source>已多选 %1 个节点: %2</source>
+      <translation>已多选 %1 个节点: %2</translation>
+    </message>
+    <message>
       <source>已存在同名用户主题“%1”，是否覆盖？</source>
       <translation>已存在同名用户主题“%1”，是否覆盖？</translation>
     </message>
@@ -2692,6 +2812,10 @@ Hash: ...</source>
     <message>
       <source>已添加用户 Tag 筛选: </source>
       <translation>已添加用户 Tag 筛选: </translation>
+    </message>
+    <message>
+      <source>已清理 %1 个孤立附属文件。</source>
+      <translation>已清理 %1 个孤立附属文件。</translation>
     </message>
     <message>
       <source>已清除 %1 个模型的高亮颜色</source>
@@ -2852,6 +2976,10 @@ Hash: ...</source>
       <translation>当前图</translation>
     </message>
     <message>
+      <source>当前图库列表</source>
+      <translation>当前图库列表</translation>
+    </message>
+    <message>
       <source>当前已是最新版本 (%1)</source>
       <translation>当前已是最新版本 (%1)</translation>
     </message>
@@ -3006,6 +3134,10 @@ Hash: ...</source>
       <translation>打开 TXT 位置</translation>
     </message>
     <message>
+      <source>打开 Tag 与模型关系图谱（查看当前图库中的 Tag 与模型共现关系）</source>
+      <translation>打开 Tag 与模型关系图谱（查看当前图库中的 Tag 与模型共现关系）</translation>
+    </message>
+    <message>
       <source>打开位置</source>
       <translation>打开位置</translation>
     </message>
@@ -3058,6 +3190,10 @@ Hash: ...</source>
       <translation>扫描完成，共找到 %1 张图片。</translation>
     </message>
     <message>
+      <source>扫描完成：发现 %1 项孤立附属文件（可释放 %2）、%3 项重复 SHA256 模型（冗余约 %4）。双击行可定位。</source>
+      <translation>扫描完成：发现 %1 项孤立附属文件（可释放 %2）、%3 项重复 SHA256 模型（冗余约 %4）。双击行可定位。</translation>
+    </message>
+    <message>
       <source>扫描本地文件夹</source>
       <translation>扫描本地文件夹</translation>
     </message>
@@ -3066,8 +3202,16 @@ Hash: ...</source>
       <translation>扫描模型元信息</translation>
     </message>
     <message>
+      <source>扫描相同 SHA256 的重复模型文件，以及模型本体已删除但残留的 .json / .preview.png 孤立文件</source>
+      <translation>扫描相同 SHA256 的重复模型文件，以及模型本体已删除但残留的 .json / .preview.png 孤立文件</translation>
+    </message>
+    <message>
       <source>扫描选项 / Scanning Options</source>
       <translation>扫描选项</translation>
+    </message>
+    <message>
+      <source>扫描重复模型与孤立文件</source>
+      <translation>扫描重复模型与孤立文件</translation>
     </message>
     <message>
       <source>批量 WD14 打标</source>
@@ -3226,6 +3370,10 @@ Hash: ...</source>
       <translation>搜索对话</translation>
     </message>
     <message>
+      <source>搜索并定位 Tag / LoRA / 底模（回车聚焦）...</source>
+      <translation>搜索并定位 Tag / LoRA / 底模（回车聚焦）...</translation>
+    </message>
+    <message>
       <source>搜索库 (Search)...</source>
       <translation>搜索库 (Search)...</translation>
     </message>
@@ -3252,6 +3400,10 @@ Hash: ...</source>
     <message>
       <source>搜索节点类型、标题或内容</source>
       <translation>搜索节点类型、标题或内容</translation>
+    </message>
+    <message>
+      <source>搭配率</source>
+      <translation>搭配率</translation>
     </message>
     <message>
       <source>摘要/名称匹配</source>
@@ -3296,6 +3448,10 @@ Hash: ...</source>
     <message>
       <source>文</source>
       <translation>文</translation>
+    </message>
+    <message>
+      <source>文件 / 模型</source>
+      <translation>文件 / 模型</translation>
     </message>
     <message>
       <source>文件: </source>
@@ -3594,6 +3750,10 @@ Hash: ...</source>
     <message>
       <source>替换预览图片</source>
       <translation>替换预览图片</translation>
+    </message>
+    <message>
+      <source>最小共现</source>
+      <translation>最小共现</translation>
     </message>
     <message>
       <source>最近使用</source>
@@ -4088,6 +4248,10 @@ SHA256: %4</translation>
       <translation>正在后台扫描模型元信息...</translation>
     </message>
     <message>
+      <source>正在后台扫描重复 SHA256 模型与孤立附属文件...</source>
+      <translation>正在后台扫描重复 SHA256 模型与孤立附属文件...</translation>
+    </message>
+    <message>
       <source>正在后台检查元数据...</source>
       <translation>正在后台检查元数据...</translation>
     </message>
@@ -4302,6 +4466,10 @@ PATH=D:\novel-ai\novelai-webui-aki-v3\git\bin;%PATH%</translation>
       <translation>添加到负面</translation>
     </message>
     <message>
+      <source>添加到负面模板</source>
+      <translation>添加到负面模板</translation>
+    </message>
+    <message>
       <source>添加图片</source>
       <translation>添加图片</translation>
     </message>
@@ -4340,6 +4508,14 @@ PATH=D:\novel-ai\novelai-webui-aki-v3\git\bin;%PATH%</translation>
     <message>
       <source>添加负面到模板</source>
       <translation>添加负面到模板</translation>
+    </message>
+    <message>
+      <source>清理勾选的孤立文件</source>
+      <translation>清理勾选的孤立文件</translation>
+    </message>
+    <message>
+      <source>清理勾选的孤立文件 (%1)</source>
+      <translation>清理勾选的孤立文件 (%1)</translation>
     </message>
     <message>
       <source>清空 / Clear</source>
@@ -4388,6 +4564,10 @@ PATH=D:\novel-ai\novelai-webui-aki-v3\git\bin;%PATH%</translation>
     <message>
       <source>清除高亮颜色 / Clear Highlight Color</source>
       <translation>清除高亮颜色</translation>
+    </message>
+    <message>
+      <source>点击「扫描重复模型与孤立文件」检测可释放的磁盘空间（双击行可定位模型或文件）。</source>
+      <translation>点击「扫描重复模型与孤立文件」检测可释放的磁盘空间（双击行可定位模型或文件）。</translation>
     </message>
     <message>
       <source>点击上方图片查看提示词...</source>
@@ -4445,6 +4625,14 @@ Click or Drag Image Here</source>
     <message>
       <source>点击扫描后，将在后台读取本地模型元信息状态。</source>
       <translation>点击扫描后，将在后台读取本地模型元信息状态。</translation>
+    </message>
+    <message>
+      <source>点击画布中的节点查看其共现 Tag 与模型。</source>
+      <translation>点击画布中的节点查看其共现 Tag 与模型。</translation>
+    </message>
+    <message>
+      <source>点击画布中的节点查看其共现 Tag 与模型（Ctrl+点击可多选组合筛选）。</source>
+      <translation>点击画布中的节点查看其共现 Tag 与模型（Ctrl+点击可多选组合筛选）。</translation>
     </message>
     <message>
       <source>版本 / Version</source>
@@ -4637,6 +4825,12 @@ Click or Drag Image Here</source>
       <translation>确定要删除预设 "%1" 吗？</translation>
     </message>
     <message>
+      <source>确定要将已勾选的 %1 个孤立附属文件（共 %2）移至系统回收站吗？
+（仅清理已删除模型遗留的 .json 与 .preview.png 文件）</source>
+      <translation>确定要将已勾选的 %1 个孤立附属文件（共 %2）移至系统回收站吗？
+（仅清理已删除模型遗留的 .json 与 .preview.png 文件）</translation>
+    </message>
+    <message>
       <source>确定要将过滤提示词重置为默认值吗？
 此操作将覆盖当前的自定义设置。
 
@@ -4647,6 +4841,10 @@ Are you sure you want to reset filter tags to default?</source>
     <message>
       <source>确认删除</source>
       <translation>确认删除</translation>
+    </message>
+    <message>
+      <source>确认清理孤立附属文件</source>
+      <translation>确认清理孤立附属文件</translation>
     </message>
     <message>
       <source>确认退出 / Confirm Exit</source>
@@ -4689,6 +4887,10 @@ Are you sure you want to reset filter tags to default?</source>
       <translation>端口被占用或启动失败</translation>
     </message>
     <message>
+      <source>等待加载图库数据...</source>
+      <translation>等待加载图库数据...</translation>
+    </message>
+    <message>
       <source>等待检查更新。</source>
       <translation>等待检查更新。</translation>
     </message>
@@ -4699,6 +4901,10 @@ Are you sure you want to reset filter tags to default?</source>
     <message>
       <source>筛选: %1 张图片符合条件</source>
       <translation>筛选: %1 张图片符合条件</translation>
+    </message>
+    <message>
+      <source>筛选图谱中显示的节点类型</source>
+      <translation>筛选图谱中显示的节点类型</translation>
     </message>
     <message>
       <source>简介 / Description</source>
@@ -4735,6 +4941,14 @@ Are you sure you want to reset filter tags to default?</source>
     <message>
       <source>级别</source>
       <translation>级别</translation>
+    </message>
+    <message>
+      <source>组合筛选 (%1)</source>
+      <translation>组合筛选 (%1)</translation>
+    </message>
+    <message>
+      <source>组合筛选 (含 LoRA %1): %2 张图片符合条件</source>
+      <translation>组合筛选 (含 LoRA %1): %2 张图片符合条件</translation>
     </message>
     <message>
       <source>结果已复制到剪贴板</source>
@@ -4817,6 +5031,10 @@ Are you sure you want to reset filter tags to default?</source>
       <translation>缺失元信息</translation>
     </message>
     <message>
+      <source>缺失模型本体 [%1.*] · %2</source>
+      <translation>缺失模型本体 [%1.*] · %2</translation>
+    </message>
+    <message>
       <source>缺少 Civitai 识别字段</source>
       <translation>缺少 Civitai 识别字段</translation>
     </message>
@@ -4859,6 +5077,10 @@ Are you sure you want to reset filter tags to default?</source>
     <message>
       <source>翻译词表已加载。</source>
       <translation>翻译词表已加载。</translation>
+    </message>
+    <message>
+      <source>聚焦此节点</source>
+      <translation>聚焦此节点</translation>
     </message>
     <message>
       <source>背景模糊半径 / Blur Radius:</source>
@@ -4907,6 +5129,14 @@ Are you sure you want to reset filter tags to default?</source>
     <message>
       <source>自定义触发词</source>
       <translation>自定义触发词</translation>
+    </message>
+    <message>
+      <source>节点关联详情</source>
+      <translation>节点关联详情</translation>
+    </message>
+    <message>
+      <source>节点数</source>
+      <translation>节点数</translation>
     </message>
     <message>
       <source>获取手机版 App</source>
@@ -5209,6 +5439,10 @@ Are you sure you want to reset filter tags to default?</source>
       <translation>路径</translation>
     </message>
     <message>
+      <source>路径 / 说明</source>
+      <translation>路径 / 说明</translation>
+    </message>
+    <message>
       <source>路径: %1
 Model ID: %2
 Version ID: %3
@@ -5233,6 +5467,10 @@ SHA256: %4</translation>
     <message>
       <source>跳转模型</source>
       <translation>跳转模型</translation>
+    </message>
+    <message>
+      <source>跳转模型详情</source>
+      <translation>跳转模型详情</translation>
     </message>
     <message>
       <source>跳过</source>
@@ -5311,6 +5549,10 @@ SHA256: %4</translation>
     <message>
       <source>追加并去重</source>
       <translation>追加并去重</translation>
+    </message>
+    <message>
+      <source>退出单节点聚焦，返回全局共现图谱</source>
+      <translation>退出单节点聚焦，返回全局共现图谱</translation>
     </message>
     <message>
       <source>适应窗口</source>
@@ -5445,6 +5687,10 @@ SHA256: %4</translation>
       <translation>选择图片查看参数...</translation>
     </message>
     <message>
+      <source>选择图谱统计的数据源范围</source>
+      <translation>选择图谱统计的数据源范围</translation>
+    </message>
+    <message>
       <source>选择工作目录</source>
       <translation>选择工作目录</translation>
     </message>
@@ -5541,6 +5787,10 @@ SHA256: %4</translation>
       <translation>重复模型</translation>
     </message>
     <message>
+      <source>重复模型与孤立附属文件清理</source>
+      <translation>重复模型与孤立附属文件清理</translation>
+    </message>
+    <message>
       <source>重新下载 / Re-download</source>
       <translation>重新下载</translation>
     </message>
@@ -5549,8 +5799,16 @@ SHA256: %4</translation>
       <translation>重新加载</translation>
     </message>
     <message>
+      <source>重新排布</source>
+      <translation>重新排布</translation>
+    </message>
+    <message>
       <source>重新生成回答</source>
       <translation>重新生成回答</translation>
+    </message>
+    <message>
+      <source>重新运行力导向布局算法</source>
+      <translation>重新运行力导向布局算法</translation>
     </message>
     <message>
       <source>重置 / Reset</source>
@@ -5565,8 +5823,16 @@ SHA256: %4</translation>
       <translation>重置模板</translation>
     </message>
     <message>
+      <source>重置画布缩放与平移位置</source>
+      <translation>重置画布缩放与平移位置</translation>
+    </message>
+    <message>
       <source>重置缩放</source>
       <translation>重置缩放</translation>
+    </message>
+    <message>
+      <source>重置视角</source>
+      <translation>重置视角</translation>
     </message>
     <message>
       <source>重试失败任务</source>
@@ -5717,6 +5983,10 @@ SHA256: %4</translation>
       <translation>🎨 外观</translation>
     </message>
     <message>
+      <source>🎯 聚焦: %1 (点击空白还原)</source>
+      <translation>🎯 聚焦: %1 (点击空白还原)</translation>
+    </message>
+    <message>
       <source>🏷️ Tag 浏览 / Tag</source>
       <translation>🏷️ Tag 浏览</translation>
     </message>
@@ -5751,8 +6021,16 @@ SHA256: %4</translation>
 未分类</translation>
     </message>
     <message>
+      <source>🔁 重复模型 (%1)</source>
+      <translation>🔁 重复模型 (%1)</translation>
+    </message>
+    <message>
       <source>🔄 图片同步 / Sync</source>
       <translation>🔄 图片同步</translation>
+    </message>
+    <message>
+      <source>🔄 批量同步元数据与预览图 / Sync Metadata...</source>
+      <translation>🔄 批量同步元数据与预览图...</translation>
     </message>
     <message>
       <source>🔍 扫描与解析 / Scan &amp; Parsing</source>
@@ -5781,6 +6059,10 @@ SHA256: %4</translation>
     <message>
       <source>🧩 提示词模板 / Templates</source>
       <translation>🧩 提示词模板</translation>
+    </message>
+    <message>
+      <source>🧹 孤立附属文件</source>
+      <translation>🧹 孤立附属文件</translation>
     </message>
     <message>
       <source>🩺 元数据健康检查 / Metadata Health Check</source>

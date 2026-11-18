@@ -44,6 +44,7 @@ SettingsState SettingsState::fromJson(const QJsonObject &root, const QString &de
     state.blurProcessWidth = root["blur_process_width"].toInt(500);
     state.renderThreadCount = root["render_thread_count"].toInt(4);
     state.restoreTreeState = root["restore_tree_state"].toBool(true);
+    state.restoreFilterSortState = root["restore_filter_sort_state"].toBool(true);
     state.splitOnNewline = root["split_on_newline"].toBool(true);
     state.filterTagsText = root["filter_tags_string"].toString(defaultFilterTags);
     state.showEmptyCollections = root["show_empty_collections"].toBool(false);
@@ -87,6 +88,7 @@ void SettingsState::writeToJson(QJsonObject &root) const
     root["nsfw_level_threshold"] = normalized.nsfwLevel;
     root["render_thread_count"] = normalized.renderThreadCount;
     root["restore_tree_state"] = normalized.restoreTreeState;
+    root["restore_filter_sort_state"] = normalized.restoreFilterSortState;
     root["split_on_newline"] = normalized.splitOnNewline;
     root["filter_tags_string"] = normalized.filterTagsText;
     root["show_empty_collections"] = normalized.showEmptyCollections;
@@ -201,6 +203,7 @@ SettingsPage::SettingsPage(QWidget *parent)
     if (ui->spinNSFWLevel) connect(ui->spinNSFWLevel, QOverload<int>::of(&QSpinBox::valueChanged), this, &SettingsPage::emitStateChanged);
     if (ui->spinRenderThreads) connect(ui->spinRenderThreads, QOverload<int>::of(&QSpinBox::valueChanged), this, &SettingsPage::emitStateChanged);
     if (ui->chkRestoreTreeState) connect(ui->chkRestoreTreeState, &QCheckBox::toggled, this, &SettingsPage::emitStateChanged);
+    if (ui->chkRestoreFilterSortState) connect(ui->chkRestoreFilterSortState, &QCheckBox::toggled, this, &SettingsPage::emitStateChanged);
     if (ui->chkSplitOnNewline) connect(ui->chkSplitOnNewline, &QCheckBox::toggled, this, &SettingsPage::emitStateChanged);
     if (ui->editFilterTags) connect(ui->editFilterTags, &QLineEdit::editingFinished, this, &SettingsPage::emitStateChanged);
     if (ui->btnResetFilterTags) connect(ui->btnResetFilterTags, &QPushButton::clicked, this, &SettingsPage::resetFilterTagsRequested);
@@ -302,6 +305,7 @@ SettingsState SettingsPage::state() const
     s.nsfwLevel = ui->spinNSFWLevel ? ui->spinNSFWLevel->value() : 1;
     s.renderThreadCount = ui->spinRenderThreads ? ui->spinRenderThreads->value() : 4;
     s.restoreTreeState = !ui->chkRestoreTreeState || ui->chkRestoreTreeState->isChecked();
+    s.restoreFilterSortState = !ui->chkRestoreFilterSortState || ui->chkRestoreFilterSortState->isChecked();
     s.splitOnNewline = !ui->chkSplitOnNewline || ui->chkSplitOnNewline->isChecked();
     s.filterTagsText = ui->editFilterTags ? ui->editFilterTags->text() : QString();
     s.showEmptyCollections = ui->chkShowEmptyCollections && ui->chkShowEmptyCollections->isChecked();
@@ -352,6 +356,7 @@ void SettingsPage::setState(const SettingsState &state)
     if (ui->spinNSFWLevel) ui->spinNSFWLevel->setValue(state.nsfwLevel);
     if (ui->spinRenderThreads) ui->spinRenderThreads->setValue(state.renderThreadCount);
     if (ui->chkRestoreTreeState) ui->chkRestoreTreeState->setChecked(state.restoreTreeState);
+    if (ui->chkRestoreFilterSortState) ui->chkRestoreFilterSortState->setChecked(state.restoreFilterSortState);
     if (ui->chkSplitOnNewline) ui->chkSplitOnNewline->setChecked(state.splitOnNewline);
     if (ui->editFilterTags) ui->editFilterTags->setText(state.filterTagsText);
     if (ui->chkShowEmptyCollections) ui->chkShowEmptyCollections->setChecked(state.showEmptyCollections);

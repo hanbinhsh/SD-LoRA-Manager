@@ -17,6 +17,7 @@
   "disabledBg": "#1a1a1a",
   "templateHoverBg": "#1a1a00",
   "buttonBg": "#000000",
+  "negativeTagBg": "#400000",
   "previewBorder": "#ffff66",
   "inputBorder": "#ffff66",
   "sidebarTabBg": "#1a1a1a",

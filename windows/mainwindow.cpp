@@ -565,8 +565,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     ui->btnFavorite->setContextMenuPolicy(Qt::CustomContextMenu);
 
-    // 1. 开启像素滚动
+    // 1. 开启像素滚动与多选
     ui->homeGalleryList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    ui->homeGalleryList->setSelectionMode(QAbstractItemView::ExtendedSelection);
     ui->listUserImages->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     // The gallery viewport must erase old icon pixels after rows are hidden.
     // Let the style sheet paint the opaque viewport: palette auto-fill paints a
@@ -576,6 +577,14 @@ MainWindow::MainWindow(QWidget *parent)
     ui->listUserImages->viewport()->setAttribute(Qt::WA_StyledBackground, true);
     // 2. 设置滚轮滚一下移动的像素距离
     ui->homeGalleryList->verticalScrollBar()->setSingleStep(40);
+    homeGalleryThumbLoadTimer = new QTimer(this);
+    homeGalleryThumbLoadTimer->setSingleShot(true);
+    connect(homeGalleryThumbLoadTimer, &QTimer::timeout, this, &MainWindow::dispatchVisibleHomeGalleryThumbLoad);
+    connect(ui->homeGalleryList->verticalScrollBar(), &QScrollBar::valueChanged, this, [this]() {
+        scheduleVisibleHomeGalleryThumbLoad();
+    });
+    ui->homeGalleryList->viewport()->installEventFilter(this);
+
     ui->listUserImages->verticalScrollBar()->setSingleStep(40);
     userImageThumbLoadTimer = new QTimer(this);
     userImageThumbLoadTimer->setSingleShot(true);
@@ -645,16 +654,31 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->btnEditRemoveImage, &QPushButton::clicked, this, &MainWindow::onEditRemoveImageClicked);
     connect(ui->btnEditSetCover, &QPushButton::clicked, this, &MainWindow::onEditSetCoverClicked);
     initDownloadsPage();
-    connect(ui->searchEdit, &QLineEdit::textChanged, this, &MainWindow::onSearchTextChanged);
+    searchDebounceTimer = new QTimer(this);
+    searchDebounceTimer->setSingleShot(true);
+    searchDebounceTimer->setInterval(120);
+    connect(searchDebounceTimer, &QTimer::timeout, this, [this]() {
+        if (ui && ui->searchEdit) onSearchTextChanged(ui->searchEdit->text());
+    });
+    connect(ui->searchEdit, &QLineEdit::textChanged, this, [this](const QString &) {
+        if (searchDebounceTimer) searchDebounceTimer->start();
+    });
     // 主页与画廊按钮
     connect(ui->btnHome, &QPushButton::clicked, this, &MainWindow::onHomeButtonClicked);
     connect(ui->homeGalleryList, &QListWidget::itemClicked, this, &MainWindow::onHomeGalleryClicked);
     connect(ui->btnAddCollection, &QPushButton::clicked, this, &MainWindow::onCreateCollection);
     connect(ui->btnGallery, &QPushButton::clicked, this, &MainWindow::onGalleryButtonClicked);
-    connect(ui->editHomeAuthorFilter, &QLineEdit::textChanged, this, [this](const QString &text) {
-        currentHomeAuthorFilter = text.trimmed();
+    homeAuthorFilterDebounceTimer = new QTimer(this);
+    homeAuthorFilterDebounceTimer->setSingleShot(true);
+    homeAuthorFilterDebounceTimer->setInterval(120);
+    connect(homeAuthorFilterDebounceTimer, &QTimer::timeout, this, [this]() {
+        if (!ui || !ui->editHomeAuthorFilter) return;
+        currentHomeAuthorFilter = ui->editHomeAuthorFilter->text().trimmed();
         refreshHomeFilterChips();
         refreshHomeGallery();
+    });
+    connect(ui->editHomeAuthorFilter, &QLineEdit::textChanged, this, [this](const QString &) {
+        if (homeAuthorFilterDebounceTimer) homeAuthorFilterDebounceTimer->start();
     });
     connect(ui->editHomeTagFilter, &QLineEdit::returnPressed, this, [this]() {
         addHomeTagFilter(ui->editHomeTagFilter->text());
@@ -707,6 +731,9 @@ MainWindow::MainWindow(QWidget *parent)
     // 3. 信号连接
     // 切换 Tab 按钮
     connect(ui->btnShowUserGallery, &QPushButton::clicked, this, &MainWindow::onToggleDetailTab);
+    if (ui->btnOpenModelGraph) {
+        connect(ui->btnOpenModelGraph, &QPushButton::clicked, this, &MainWindow::onOpenModelGraphClicked);
+    }
     // SD 目录与扫描
     connect(ui->btnSetSdFolder, &QPushButton::clicked, this, &MainWindow::onSetSdFolderClicked);
     connect(ui->btnRescanUser, &QPushButton::clicked, this, &MainWindow::onRescanUserClicked);
@@ -736,6 +763,7 @@ MainWindow::MainWindow(QWidget *parent)
         tagFlowWidget->setShowTranslation(checked);
     });
     connect(ui->btnClearUserTagSelection, &QPushButton::clicked, this, [this]() {
+        m_galleryExtraLoraFilters.clear();
         tagFlowWidget->clearSelectedTags();
     });
     if (ui->btnOpenGalleryGraph) {
@@ -775,8 +803,16 @@ MainWindow::MainWindow(QWidget *parent)
         // “提示词顺序”依赖当前图的提示词顺序，刷新一次以重建顺序数据。
         if (index == 2) refreshUserTagFlowStats(false);
     });
-    connect(ui->editUserTagSearch, &QLineEdit::textChanged, this, [this](const QString &text){
-        tagFlowWidget->setSearchText(text);
+    userTagSearchDebounceTimer = new QTimer(this);
+    userTagSearchDebounceTimer->setSingleShot(true);
+    userTagSearchDebounceTimer->setInterval(120);
+    connect(userTagSearchDebounceTimer, &QTimer::timeout, this, [this]() {
+        if (tagFlowWidget && ui && ui->editUserTagSearch) {
+            tagFlowWidget->setSearchText(ui->editUserTagSearch->text());
+        }
+    });
+    connect(ui->editUserTagSearch, &QLineEdit::textChanged, this, [this](const QString &){
+        if (userTagSearchDebounceTimer) userTagSearchDebounceTimer->start();
     });
     connect(ui->chkUserTagLoraOnly, &QCheckBox::toggled, this, [this](bool checked){
         tagFlowWidget->setLoraOnly(checked);
@@ -852,9 +888,74 @@ MainWindow::MainWindow(QWidget *parent)
         loadCollections();
         loadModelHighlightColors();
         loadModelUserNotes();
-        {
+
+        if (optRestoreFilterSortState) {
+            if (startupSidebarTab == 0) {
+                onModelsTabButtonClicked();
+            } else {
+                onCollectionsTabButtonClicked();
+            }
+            {
+                const QSignalBlocker blocker(ui->comboSort);
+                const int maxIdx = qMax(0, ui->comboSort->count() - 1);
+                ui->comboSort->setCurrentIndex(qBound(0, startupSortIndex, maxIdx));
+            }
+            if (ui->searchEdit) {
+                const QSignalBlocker blocker(ui->searchEdit);
+                ui->searchEdit->setText(startupSearchText);
+            }
+            currentCollectionFilter = startupCollectionFilter;
+            currentHomeAuthorFilter = startupHomeAuthorFilter;
+            currentHomeTagFilters = startupHomeTagFilters;
+            homeFilterExpanded = startupHomeFilterExpanded;
+            homeFilterTagsSortByCount = startupHomeFilterTagsSortByCount;
+            if (ui->editHomeAuthorFilter) {
+                const QSignalBlocker blocker(ui->editHomeAuthorFilter);
+                ui->editHomeAuthorFilter->setText(currentHomeAuthorFilter);
+            }
+            if (ui->btnHomeFilterToggle) {
+                const QSignalBlocker blocker(ui->btnHomeFilterToggle);
+                ui->btnHomeFilterToggle->setChecked(homeFilterExpanded);
+            }
+            if (ui->comboUserTagSortMode) {
+                const QSignalBlocker blocker(ui->comboUserTagSortMode);
+                const int maxIdx = qMax(0, ui->comboUserTagSortMode->count() - 1);
+                const int idx = qBound(0, startupUserTagSortMode, maxIdx);
+                ui->comboUserTagSortMode->setCurrentIndex(idx);
+                if (tagFlowWidget) {
+                    TagFlowWidget::SortMode mode = TagFlowWidget::SortByCount;
+                    if (idx == 1) mode = TagFlowWidget::SortAlphabetically;
+                    else if (idx == 2) mode = TagFlowWidget::SortByGivenOrder;
+                    else if (idx == 3) mode = TagFlowWidget::SortByCategory;
+                    tagFlowWidget->setSortMode(mode);
+                }
+            }
+            if (ui->chkUserTagLoraOnly) {
+                const QSignalBlocker blocker(ui->chkUserTagLoraOnly);
+                ui->chkUserTagLoraOnly->setChecked(startupUserTagLoraOnly);
+                if (tagFlowWidget) tagFlowWidget->setLoraOnly(startupUserTagLoraOnly);
+            }
+            if (ui->chkUserTagIncludeNegative) {
+                const QSignalBlocker blocker(ui->chkUserTagIncludeNegative);
+                ui->chkUserTagIncludeNegative->setChecked(startupUserTagIncludeNegative);
+            }
+            if (ui->comboGalleryPromptSortMode) {
+                const QSignalBlocker blocker(ui->comboGalleryPromptSortMode);
+                const int maxIdx = qMax(0, ui->comboGalleryPromptSortMode->count() - 1);
+                ui->comboGalleryPromptSortMode->setCurrentIndex(qBound(0, startupGalleryPromptSortMode, maxIdx));
+            }
+            if (ui->btnGalleryPromptToggle) {
+                const QSignalBlocker blocker(ui->btnGalleryPromptToggle);
+                ui->btnGalleryPromptToggle->setChecked(startupGalleryTagViewActive);
+                setGalleryTagViewActive(startupGalleryTagViewActive);
+            }
+            refreshHomeCollectionsUI();
+            refreshHomeFilterChips();
+            updateSortFilterButtonText();
+        } else {
             const QSignalBlocker blocker(ui->comboSort);
             ui->comboSort->setCurrentIndex(0);
+            refreshHomeCollectionsUI();
         }
 
         // 扫描完成后（异步）刷新状态栏计数，并按需检查软件更新。
@@ -875,6 +976,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (!activeLoraPaths.isEmpty()) {
             scanModels(activeLoraPaths, afterScan);
         } else {
+            isFirstFilterSortRestore = false;
             executeSort();
             afterScan();
         }
@@ -942,6 +1044,10 @@ void MainWindow::closeEvent(QCloseEvent *event)
 MainWindow::~MainWindow()
 {
     isShuttingDown = true;
+    if (searchDebounceTimer) searchDebounceTimer->stop();
+    if (homeAuthorFilterDebounceTimer) homeAuthorFilterDebounceTimer->stop();
+    if (userTagSearchDebounceTimer) userTagSearchDebounceTimer->stop();
+    if (homeGalleryThumbLoadTimer) homeGalleryThumbLoadTimer->stop();
     if (userImageThumbLoadTimer) userImageThumbLoadTimer->stop();
     if (bgResizeTimer) bgResizeTimer->stop();
     if (detailGalleryBuildTimer) detailGalleryBuildTimer->stop();
@@ -1213,6 +1319,11 @@ void MainWindow::refreshHomeGallery()
     placeholderIcon = generatePlaceholderIcon(); // 用当前主题色重建，保证本次填充的占位X颜色正确
     noPreviewIcon = generateNoPreviewIcon(false);
     cancelPendingTasks();
+    if (homeGalleryThumbLoadTimer) homeGalleryThumbLoadTimer->stop();
+    queuedHomeThumbPaths.clear();
+    loadedHomeThumbPaths.clear();
+    homeItemByPath.clear();
+    ui->homeGalleryList->setUpdatesEnabled(false);
     ui->homeGalleryList->clear();
 
     // 1. 设置图标大小 (正方形)
@@ -1322,18 +1433,105 @@ void MainWindow::refreshHomeGallery()
 
         const ModelPreviewState previewState = static_cast<ModelPreviewState>(
             sideItem->data(ROLE_MODEL_PREVIEW_STATE).toInt());
-        item->setIcon(previewState == ModelPreviewState::KnownNoPreview ? noPreviewIcon : placeholderIcon);
-        item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
-        ui->homeGalleryList->addItem(item);
-
-        if (!filePath.isEmpty() && !previewPath.isEmpty()) {
-            QString taskId = "HOME:" + filePath;
-
-            // 依然使用主 threadPool (因为主页大图需要点击即停，响应优先)
-            IconLoaderTask *task = new IconLoaderTask(previewPath, iconSize, 12, this, taskId);
-            task->setAutoDelete(true);
-            threadPool->start(task);
+        const bool blurItem = (optFilterNSFW && isNSFW && optNSFWMode == 1);
+        const QString homeCacheKey = (blurItem ? QStringLiteral("blur|") : QStringLiteral("norm|")) + previewPath;
+        if (!previewPath.isEmpty() && homeIconCache.contains(homeCacheKey)) {
+            item->setIcon(homeIconCache.value(homeCacheKey));
+            item->setData(ROLE_PREVIEW_PLACEHOLDER, false);
+            if (!filePath.isEmpty()) loadedHomeThumbPaths.insert(filePath);
+        } else {
+            item->setIcon(previewState == ModelPreviewState::KnownNoPreview ? noPreviewIcon : placeholderIcon);
+            item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
         }
+        ui->homeGalleryList->addItem(item);
+        if (!filePath.isEmpty()) homeItemByPath.insert(filePath, item);
+    }
+
+    ui->homeGalleryList->setUpdatesEnabled(true);
+    ui->homeGalleryList->doItemsLayout();
+    scheduleVisibleHomeGalleryThumbLoad();
+}
+
+void MainWindow::scheduleVisibleHomeGalleryThumbLoad()
+{
+    if (!homeGalleryThumbLoadTimer) return;
+    homeGalleryThumbLoadTimer->start(20);
+}
+
+void MainWindow::dispatchVisibleHomeGalleryThumbLoad()
+{
+    if (isShuttingDown || !ui || !ui->homeGalleryList || ui->homeGalleryList->count() == 0) return;
+
+    const QRect visibleRect = ui->homeGalleryList->viewport()->rect();
+    if (visibleRect.isEmpty()) return;
+
+    const QRect prefetchRect = visibleRect.adjusted(-visibleRect.width(),
+                                                    -visibleRect.height(),
+                                                    visibleRect.width(),
+                                                    visibleRect.height());
+    const QPoint centerPoint = visibleRect.center();
+
+    struct ThumbCandidate {
+        int priority = 2;
+        int distance = 0;
+        QString filePath;
+        QString previewPath;
+    };
+
+    QList<ThumbCandidate> candidates;
+    for (int i = 0; i < ui->homeGalleryList->count(); ++i) {
+        QListWidgetItem *item = ui->homeGalleryList->item(i);
+        if (!item || item->isHidden()) continue;
+
+        const QString filePath = item->data(ROLE_FILE_PATH).toString();
+        const QString previewPath = item->data(ROLE_PREVIEW_PATH).toString();
+        if (filePath.isEmpty() || previewPath.isEmpty()) continue;
+        if (loadedHomeThumbPaths.contains(filePath) || queuedHomeThumbPaths.contains(filePath)) continue;
+
+        const QRect itemRect = ui->homeGalleryList->visualItemRect(item);
+        if (!itemRect.isValid() || itemRect.isEmpty()) continue;
+        if (!itemRect.intersects(prefetchRect)) continue;
+
+        ThumbCandidate candidate;
+        candidate.filePath = filePath;
+        candidate.previewPath = previewPath;
+        candidate.distance = qAbs(itemRect.center().y() - centerPoint.y()) + qAbs(itemRect.center().x() - centerPoint.x());
+        candidate.priority = itemRect.intersects(visibleRect) ? 0 : 1;
+        candidates.append(candidate);
+    }
+
+    if (candidates.isEmpty()) return;
+
+    std::sort(candidates.begin(), candidates.end(), [](const ThumbCandidate &a, const ThumbCandidate &b) {
+        if (a.priority != b.priority) return a.priority < b.priority;
+        return a.distance < b.distance;
+    });
+
+    const int threadCount = qMax(1, threadPool ? threadPool->maxThreadCount() : 4);
+    const int maxLaunchPerPass = qMax(12, threadCount * 3);
+    int launched = 0;
+    for (const ThumbCandidate &candidate : candidates) {
+        if (launched >= maxLaunchPerPass) break;
+        IconLoaderTask *task = new IconLoaderTask(candidate.previewPath, 180, 12, this, QStringLiteral("HOME:") + candidate.filePath);
+        task->setAutoDelete(true);
+        threadPool->start(task);
+        queuedHomeThumbPaths.insert(candidate.filePath);
+        ++launched;
+    }
+}
+
+void MainWindow::invalidateIconCacheForPath(const QString &previewPath)
+{
+    if (previewPath.isEmpty()) return;
+    const QString cleaned = QDir::cleanPath(previewPath);
+    const QString abs = QFileInfo(previewPath).absoluteFilePath();
+    const QStringList paths = {previewPath, cleaned, abs};
+    for (const QString &p : paths) {
+        if (p.isEmpty()) continue;
+        sidebarIconCache.remove(QStringLiteral("norm|") + p);
+        sidebarIconCache.remove(QStringLiteral("blur|") + p);
+        homeIconCache.remove(QStringLiteral("norm|") + p);
+        homeIconCache.remove(QStringLiteral("blur|") + p);
     }
 }
 
@@ -1759,6 +1957,9 @@ void MainWindow::clearHomeFilters()
 void MainWindow::onHomeGalleryClicked(QListWidgetItem *item)
 {
     if (!item) return;
+    if (QApplication::keyboardModifiers() & (Qt::ControlModifier | Qt::ShiftModifier)) {
+        return;
+    }
 
     // 1. 获取点击项的文件路径 (这是最可靠的唯一标识)
     QString targetPath = item->data(ROLE_FILE_PATH).toString();
@@ -1766,13 +1967,15 @@ void MainWindow::onHomeGalleryClicked(QListWidgetItem *item)
 
     cancelPendingTasks();
 
-    // 2. 在侧边栏 (modelList) 中寻找匹配该路径的项
-    QListWidgetItem* matchItem = nullptr;
-    for(int i = 0; i < ui->modelList->count(); ++i) {
-        QListWidgetItem* sideItem = ui->modelList->item(i);
-        if (sideItem->data(ROLE_FILE_PATH).toString() == targetPath) {
-            matchItem = sideItem;
-            break;
+    // 2. 在侧边栏 (modelList) 中寻找匹配该路径的项 (O(1) 查找)
+    QListWidgetItem* matchItem = modelItemByPath.value(targetPath, nullptr);
+    if (!matchItem) {
+        for(int i = 0; i < ui->modelList->count(); ++i) {
+            QListWidgetItem* sideItem = ui->modelList->item(i);
+            if (sideItem->data(ROLE_FILE_PATH).toString() == targetPath) {
+                matchItem = sideItem;
+                break;
+            }
         }
     }
 
@@ -1818,12 +2021,13 @@ void MainWindow::onHomeGalleryContextMenu(const QPoint &pos)
     QListWidgetItem *item = ui->homeGalleryList->itemAt(pos);
     if (!item) return; // 点击了空白处
 
-    // 构造一个包含当前单项的列表
-    QList<QListWidgetItem*> items;
-    items.append(item);
+    QList<QListWidgetItem*> selectedItems = ui->homeGalleryList->selectedItems();
+    if (!selectedItems.contains(item)) {
+        selectedItems = {item};
+    }
 
-    // 复用通用的菜单逻辑
-    showCollectionMenu(items, ui->homeGalleryList->mapToGlobal(pos));
+    // 复用通用的菜单逻辑（支持多选）
+    showCollectionMenu(selectedItems, ui->homeGalleryList->mapToGlobal(pos));
 }
 
 // ---------------------------------------------------------
@@ -1910,6 +2114,11 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         scheduleVisibleUserImageThumbLoad();
     }
 
+    if (ui->homeGalleryList && watched == ui->homeGalleryList->viewport() &&
+        (event->type() == QEvent::Resize || event->type() == QEvent::Show)) {
+        scheduleVisibleHomeGalleryThumbLoad();
+    }
+
     if (event->type() == QEvent::Wheel) {
         if (isGalleryScrollWidget(watched)) {
             handleGalleryWheelScroll(watched, static_cast<QWheelEvent*>(event));
@@ -1986,6 +2195,8 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
     modelScanRunning = true;
     ++modelUsageStatsToken;
     // 同步清空列表，随后把繁重的目录遍历 + JSON 解析放到后台线程，避免大模型库卡 UI。
+    modelItemByPath.clear();
+    homeItemByPath.clear();
     ui->modelList->clear();
     ui->comboBaseModel->blockSignals(true);
     ui->comboBaseModel->clear();
@@ -2016,6 +2227,7 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
 
         smallPlaceholderIcon = generateSmallPlaceholderIcon(); // 侧边栏用带内边距的小占位X（当前主题色）
         smallNoPreviewIcon = generateNoPreviewIcon(true);
+        modelItemByPath.clear();
         ui->modelList->setUpdatesEnabled(false);
         ui->comboBaseModel->blockSignals(true);
 
@@ -2041,10 +2253,18 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
 
             const ModelPreviewState previewState = static_cast<ModelPreviewState>(
                 item->data(ROLE_MODEL_PREVIEW_STATE).toInt());
-            item->setIcon(previewState == ModelPreviewState::KnownNoPreview
-                              ? smallNoPreviewIcon
-                              : smallPlaceholderIcon);
-            item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
+            const bool blurItem = (optFilterNSFW && isNSFW && optNSFWMode == 1);
+            const QString sideCacheKey = (blurItem ? QStringLiteral("blur|") : QStringLiteral("norm|")) + e.previewPath;
+            if (!e.previewPath.isEmpty() && sidebarIconCache.contains(sideCacheKey)) {
+                item->setIcon(sidebarIconCache.value(sideCacheKey));
+                item->setData(ROLE_PREVIEW_PLACEHOLDER, false);
+                item->setData(ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
+            } else {
+                item->setIcon(previewState == ModelPreviewState::KnownNoPreview
+                                  ? smallNoPreviewIcon
+                                  : smallPlaceholderIcon);
+                item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
+            }
             applyModelHighlightColor(item);
             applyModelUserNoteData(item);
 
@@ -2058,8 +2278,9 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
             if (!modelType.isEmpty()) foundModelTypes.insert(modelType);
 
             ui->modelList->addItem(item);
+            modelItemByPath.insert(e.fullPath, item);
             addedCount++;
-            if (!e.previewPath.isEmpty()) {
+            if (!e.previewPath.isEmpty() && !sidebarIconCache.contains(sideCacheKey)) {
                 const QString taskId = "SIDEBAR:" + e.fullPath;
                 IconLoaderTask *task = new IconLoaderTask(e.previewPath, 64, 8, this, taskId);
                 task->setAutoDelete(true);
@@ -2068,13 +2289,22 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
         }
 
         ui->statusbar->showMessage(AppText::tr("扫描完成，共 %1 个模型").arg(addedCount));
+        if (isFirstFilterSortRestore && optRestoreFilterSortState && !startupFilterBaseModel.isEmpty()) {
+            const int idx = ui->comboBaseModel->findText(startupFilterBaseModel, Qt::MatchFixedString);
+            if (idx >= 0) ui->comboBaseModel->setCurrentIndex(idx);
+        }
         ui->comboBaseModel->blockSignals(false);
 
         ui->comboModelType->blockSignals(true);
         QStringList typeList = foundModelTypes.values();
         std::sort(typeList.begin(), typeList.end());
         ui->comboModelType->addItems(typeList);
+        if (isFirstFilterSortRestore && optRestoreFilterSortState && !startupFilterModelType.isEmpty()) {
+            const int idx = ui->comboModelType->findText(startupFilterModelType, Qt::MatchFixedString);
+            if (idx >= 0) ui->comboModelType->setCurrentIndex(idx);
+        }
         ui->comboModelType->blockSignals(false);
+        isFirstFilterSortRestore = false;
 
         updateSortFilterButtonText(); // 下拉框在静默状态下重建了，手动刷新按钮文案
 
@@ -2568,6 +2798,7 @@ void MainWindow::clearDetailView()
 
     ui->btnOpenUrl->setVisible(false);
     ui->btnCopyLoraTag->setVisible(false);
+    if (ui->btnOpenModelGraph) ui->btnOpenModelGraph->setVisible(false);
 
     clearLayout(ui->badgesFrame->layout());
 
@@ -2765,52 +2996,40 @@ void MainWindow::refreshUsageAnalysisWidget()
 {
     if (!usageAnalysisWidget || !ui || !ui->modelList) return;
 
-    UsageAnalysisData data;
-    data.galleryImageCount = imageCache.size();
-    data.generatedAt = QDateTime::currentDateTime();
+    const int token = ++usageAnalysisRefreshToken;
 
+    QVector<UsageAnalysisModel> modelSnapshots;
+    modelSnapshots.reserve(ui->modelList->count());
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *item = ui->modelList->item(i);
         if (!isModelListItem(item)) continue;
 
         UsageAnalysisModel model;
-        model.filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
+        const QString rawPath = item->data(ROLE_FILE_PATH).toString();
+        model.filePath = rawPath.isEmpty() ? QString() : QFileInfo(rawPath).absoluteFilePath();
         model.displayName = item->text();
         model.baseName = item->data(ROLE_MODEL_NAME).toString();
-        if (model.baseName.isEmpty()) model.baseName = QFileInfo(model.filePath).completeBaseName();
+        if (model.baseName.isEmpty() && !model.filePath.isEmpty()) {
+            model.baseName = QFileInfo(model.filePath).completeBaseName();
+        }
         model.rootName = item->data(ROLE_MODEL_ROOT_NAME).toString();
         model.baseModel = item->data(ROLE_FILTER_BASE).toString();
         model.modelType = item->data(ROLE_MODEL_TYPE).toString();
         model.previewPath = item->data(ROLE_PREVIEW_PATH).toString();
         model.modelId = item->data(ROLE_CIVITAI_MODEL_ID).toInt();
         model.versionId = item->data(ROLE_CIVITAI_VERSION_ID).toInt();
-        model.hasSha256 = !item->data(ROLE_CIVITAI_SHA256).toString().trimmed().isEmpty();
+        model.sha256 = item->data(ROLE_CIVITAI_SHA256).toString().trimmed();
+        model.hasSha256 = !model.sha256.isEmpty();
         model.localEdited = item->data(ROLE_LOCAL_EDITED).toBool();
         model.usageCount = item->data(ROLE_SORT_USAGE_COUNT).toInt();
         model.lastUsed = item->data(ROLE_SORT_LAST_USED).toLongLong();
         if (!model.filePath.isEmpty()) {
-            QFileInfo fi(model.filePath);
-            model.jsonPath = fi.absoluteDir().filePath(fi.completeBaseName() + ".json");
             const QJsonObject failure = modelSyncFailures.value(model.filePath);
             model.syncFailure = failure["error"].toString();
-
-            // 磁盘占用：模型本体 + 附属文件（预览图 + json）。
-            if (fi.exists()) model.modelFileBytes = fi.size();
-            const QFileInfo jsonFi(model.jsonPath);
-            if (jsonFi.exists()) model.sidecarBytes += jsonFi.size();
-            const QFileInfo previewFi(model.previewPath);
-            if (!model.previewPath.isEmpty() && previewFi.exists()) model.sidecarBytes += previewFi.size();
         }
-        data.models.append(model);
+        modelSnapshots.append(model);
     }
 
-    TagUsage::Counts tagCounts;
-    for (auto it = imageCache.cbegin(); it != imageCache.cend(); ++it)
-        tagCounts.addImage(it.value().cleanTags);
-    for (auto it = tagCounts.values.cbegin(); it != tagCounts.values.cend(); ++it)
-        data.positiveTagCounts.insert(tagCounts.displayTags.value(it.key()), it.value());
-
-    // 仅传递轻量隐式共享缓存快照，待用户切入「Tag 与模型图谱」标签页时再由后台线程异步解析与构建
     QSet<QString> currentGalleryPaths;
     if (ui->listUserImages) {
         for (int i = 0; i < ui->listUserImages->count(); ++i) {
@@ -2820,12 +3039,63 @@ void MainWindow::refreshUsageAnalysisWidget()
             }
         }
     }
-    data.rawImageCache = imageCache;
-    data.currentGalleryImageCount = currentGalleryPaths.size();
-    data.currentGalleryPaths = std::move(currentGalleryPaths);
 
-    usageAnalysisWidget->setTranslationMap(&translationMap);
-    usageAnalysisWidget->setAnalysisData(data);
+    const QMap<QString, UserImageInfo> cacheSnapshot = imageCache;
+    const QStringList rootPaths = PathUtils::collectEnabledPaths(loraPaths, disabledLoraPaths);
+    const bool recursive = optLoraRecursive;
+    const QDateTime generatedAt = QDateTime::currentDateTime();
+
+    auto *watcher = new QFutureWatcher<UsageAnalysisData>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, token]() {
+        const UsageAnalysisData data = watcher->result();
+        watcher->deleteLater();
+        if (isShuttingDown || token != usageAnalysisRefreshToken || !usageAnalysisWidget) return;
+
+        usageAnalysisWidget->setTranslationMap(&translationMap);
+        usageAnalysisWidget->setAnalysisData(data);
+    });
+
+    watcher->setFuture(QtConcurrent::run(
+        backgroundThreadPool,
+        [models = std::move(modelSnapshots),
+         cacheSnapshot,
+         currentGalleryPaths = std::move(currentGalleryPaths),
+         rootPaths,
+         recursive,
+         generatedAt]() mutable {
+            for (UsageAnalysisModel &model : models) {
+                if (!model.filePath.isEmpty()) {
+                    const QFileInfo fi(model.filePath);
+                    model.jsonPath = fi.absoluteDir().filePath(fi.completeBaseName() + QStringLiteral(".json"));
+                    if (fi.exists()) model.modelFileBytes = fi.size();
+                    const QFileInfo jsonFi(model.jsonPath);
+                    if (jsonFi.exists()) model.sidecarBytes += jsonFi.size();
+                    if (!model.previewPath.isEmpty()) {
+                        const QFileInfo previewFi(model.previewPath);
+                        if (previewFi.exists()) model.sidecarBytes += previewFi.size();
+                    }
+                }
+            }
+
+            TagUsage::Counts tagCounts;
+            for (auto it = cacheSnapshot.cbegin(); it != cacheSnapshot.cend(); ++it) {
+                tagCounts.addImage(it.value().cleanTags);
+            }
+
+            UsageAnalysisData data;
+            data.models = std::move(models);
+            data.galleryImageCount = cacheSnapshot.size();
+            data.generatedAt = generatedAt;
+            for (auto it = tagCounts.values.cbegin(); it != tagCounts.values.cend(); ++it) {
+                data.positiveTagCounts.insert(tagCounts.displayTags.value(it.key()), it.value());
+            }
+            data.rawImageCache = std::move(cacheSnapshot);
+            data.currentGalleryImageCount = currentGalleryPaths.size();
+            data.currentGalleryPaths = std::move(currentGalleryPaths);
+            data.loraRootPaths = rootPaths;
+            data.loraRecursive = recursive;
+            return data;
+        }));
 }
 
 void MainWindow::refreshPromptTemplateModelTriggerRows()
@@ -3611,6 +3881,7 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
     ui->btnFavorite->setVisible(true);
     ui->btnShowUserGallery->setVisible(true);
     ui->btnShowUserGallery->setEnabled(true);
+    if (ui->btnOpenModelGraph) ui->btnOpenModelGraph->setVisible(true);
     ui->btnEditMeta->setVisible(true);
     ui->btnCopyLoraTag->setVisible(true);
 
@@ -4138,6 +4409,7 @@ void MainWindow::onEditReplaceImageClicked()
         QMessageBox::warning(this, AppText::tr("错误"), AppText::tr("图片保存失败，请检查文件格式。"));
         return;
     }
+    invalidateIconCacheForPath(destPath);
 
     currentMeta.images[row].width = w;
     currentMeta.images[row].height = h;
@@ -4215,6 +4487,7 @@ void MainWindow::onEditRemoveImageClicked()
         qWarning() << "Unable to remove staged preview image:" << stagedFiles.value(row).second;
     }
 
+    invalidateIconCacheForPath(editPreviewPathForIndex(0));
     currentMeta.images.removeAt(row);
     if (!currentMeta.images.isEmpty()) {
         currentMeta.previewPath = editPreviewPathForIndex(0);
@@ -4263,6 +4536,7 @@ void MainWindow::onEditSetCoverClicked()
     qSwap(currentMeta.images[0], currentMeta.images[row]);
 
     currentMeta.previewPath = editPreviewPathForIndex(0);
+    invalidateIconCacheForPath(currentMeta.previewPath);
     refreshEditImages(currentMeta);
     ui->listEditImages->setCurrentRow(0);
 }
@@ -4544,6 +4818,7 @@ void MainWindow::onApiMetadataReceived(QNetworkReply *reply)
 void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const QString &savePath)
 {
     if (localBaseName.isEmpty() || savePath.isEmpty()) return;
+    invalidateIconCacheForPath(savePath);
 
     const QFileInfo downloadedInfo(savePath);
     const QString downloadedFileName = downloadedInfo.fileName();
@@ -4965,7 +5240,12 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
 
     // 空图 = 预览缺失/加载失败：保留各项已设置的主题化占位X（含 ROLE_PREVIEW_PLACEHOLDER 标记），
     // 不覆盖、不清标记，交给 recolorPlaceholderItems 在切主题时重染。
-    if (image.isNull()) return;
+    if (image.isNull()) {
+        if (id.startsWith(QStringLiteral("HOME:"))) {
+            queuedHomeThumbPaths.remove(id.mid(5));
+        }
+        return;
+    }
     if (id.startsWith("EDITIMG|")) {
         const QStringList parts = id.split('|');
         if (parts.size() >= 4) {
@@ -5029,72 +5309,96 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
     };
 
     // =========================================================
-    // 3. 更新主页列表 (Home Gallery) - 仅限 HOME 或 通用任务
+    // 3. 更新主页列表 (Home Gallery) - 仅限 HOME 或 通用任务 (O(1) 查找 + 内存缓存)
     // =========================================================
     if (isHomeTask) {
-        for(int i = 0; i < ui->homeGalleryList->count(); ++i) {
-            QListWidgetItem *item = ui->homeGalleryList->item(i);
-            // 匹配路径
-            if (item->data(ROLE_FILE_PATH).toString() == filePath) {
-                // 处理 NSFW
-                bool isNSFW = item->data(ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
-                if (optFilterNSFW && isNSFW && optNSFWMode == 1) {
+        auto applyHomeItemIcon = [&](QListWidgetItem *item) {
+            if (!item) return;
+            const bool isNSFW = item->data(ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
+            const bool blurItem = (optFilterNSFW && isNSFW && optNSFWMode == 1);
+            const QString previewPath = item->data(ROLE_PREVIEW_PATH).toString();
+            const QString cacheKey = (blurItem ? QStringLiteral("blur|") : QStringLiteral("norm|")) + previewPath;
+            QIcon finalIcon = homeIconCache.value(cacheKey);
+            if (finalIcon.isNull()) {
+                if (blurItem) {
                     if (blurredPix.isNull()) blurredPix = ImagePresentation::applyNSFWBlur(originalPix);
-                    // 主页使用圆角遮罩
-                    QPixmap roundedBlur = ImagePresentation::applyRoundedMask(blurredPix, 12);
-                    item->setIcon(QIcon(roundedBlur));
+                    finalIcon = QIcon(ImagePresentation::applyRoundedMask(blurredPix, 12));
                 } else {
-                    item->setIcon(QIcon(originalPix));
+                    finalIcon = originalIcon;
                 }
-                item->setData(ROLE_PREVIEW_PLACEHOLDER, false); // 真实预览已就绪
-                item->setData(ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
+                if (!previewPath.isEmpty()) homeIconCache.insert(cacheKey, finalIcon);
             }
+            item->setIcon(finalIcon);
+            item->setData(ROLE_PREVIEW_PLACEHOLDER, false);
+            item->setData(ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
+        };
+
+        if (QListWidgetItem *item = homeItemByPath.value(filePath, nullptr)) {
+            applyHomeItemIcon(item);
+        } else {
+            for (int i = 0; i < ui->homeGalleryList->count(); ++i) {
+                QListWidgetItem *item = ui->homeGalleryList->item(i);
+                if (item && item->data(ROLE_FILE_PATH).toString() == filePath) {
+                    applyHomeItemIcon(item);
+                }
+            }
+        }
+        if (id.startsWith(QStringLiteral("HOME:"))) {
+            queuedHomeThumbPaths.remove(filePath);
+            loadedHomeThumbPaths.insert(filePath);
+            scheduleVisibleHomeGalleryThumbLoad();
         }
     }
 
     // =========================================================
-    // 4. 更新侧边栏 (Sidebar List & Tree) - 仅限 SIDEBAR 或 通用任务
+    // 4. 更新侧边栏 (Sidebar List & Tree) - 仅限 SIDEBAR 或 通用任务 (O(1) 查找 + 内存缓存)
     // =========================================================
     if (isSidebarTask) {
+        auto getSidebarIcon = [&](bool isNSFW, const QString &previewPath) -> QIcon {
+            const bool blurItem = (optFilterNSFW && isNSFW && optNSFWMode == 1);
+            const QString cacheKey = (blurItem ? QStringLiteral("blur|") : QStringLiteral("norm|")) + previewPath;
+            QIcon cached = sidebarIconCache.value(cacheKey);
+            if (!cached.isNull()) return cached;
+            QIcon built;
+            if (blurItem) {
+                if (blurredPix.isNull()) blurredPix = ImagePresentation::applyNSFWBlur(originalPix);
+                built = ImagePresentation::getSquareIcon(ImagePresentation::applyRoundedMask(blurredPix, 12));
+            } else {
+                built = ImagePresentation::getSquareIcon(originalPix);
+            }
+            if (!previewPath.isEmpty()) sidebarIconCache.insert(cacheKey, built);
+            return built;
+        };
+
         // --- A. 更新侧边栏列表 ---
-        for(int i = 0; i < ui->modelList->count(); ++i) {
-            QListWidgetItem *item = ui->modelList->item(i);
-            if (item->data(ROLE_FILE_PATH).toString() == filePath) {
-                bool isNSFW = item->data(ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
-                if (optFilterNSFW && isNSFW && optNSFWMode == 1) {
-                    if (blurredPix.isNull()) blurredPix = ImagePresentation::applyNSFWBlur(originalPix);
-                    // 侧边栏使用 ImagePresentation::getSquareIcon 处理样式 (方形+内边距)
-                    QPixmap roundedBlur = ImagePresentation::applyRoundedMask(blurredPix, 12);
-                    item->setIcon(ImagePresentation::getSquareIcon(roundedBlur));
-                } else {
-                    item->setIcon(ImagePresentation::getSquareIcon(originalPix));
+        if (QListWidgetItem *item = modelItemByPath.value(filePath, nullptr)) {
+            const bool isNSFW = item->data(ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
+            item->setIcon(getSidebarIcon(isNSFW, item->data(ROLE_PREVIEW_PATH).toString()));
+            item->setData(ROLE_PREVIEW_PLACEHOLDER, false);
+            item->setData(ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
+            applyModelHighlightColor(item);
+        } else {
+            for (int i = 0; i < ui->modelList->count(); ++i) {
+                QListWidgetItem *item = ui->modelList->item(i);
+                if (item && item->data(ROLE_FILE_PATH).toString() == filePath) {
+                    const bool isNSFW = item->data(ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
+                    item->setIcon(getSidebarIcon(isNSFW, item->data(ROLE_PREVIEW_PATH).toString()));
+                    item->setData(ROLE_PREVIEW_PLACEHOLDER, false);
+                    item->setData(ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
+                    applyModelHighlightColor(item);
                 }
-                item->setData(ROLE_PREVIEW_PLACEHOLDER, false); // 真实预览已就绪
-                item->setData(ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
-                applyModelHighlightColor(item);
             }
         }
 
         // --- B. 更新收藏夹树状图 ---
-        std::function<void(QTreeWidgetItem*)> updateTreeIcon = [&](QTreeWidgetItem *node) {
-            if (!node) return;
-            if (node->data(0, ROLE_FILE_PATH).toString() == filePath) {
-                bool isNSFW = node->data(0, ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
-                if (optFilterNSFW && isNSFW && optNSFWMode == 1) {
-                    if (blurredPix.isNull()) blurredPix = ImagePresentation::applyNSFWBlur(originalPix);
-                    QPixmap roundedBlur = ImagePresentation::applyRoundedMask(blurredPix, 12);
-                    node->setIcon(0, ImagePresentation::getSquareIcon(roundedBlur));
-                } else {
-                    node->setIcon(0, ImagePresentation::getSquareIcon(originalPix));
-                }
-                node->setData(0, ROLE_PREVIEW_PLACEHOLDER, false); // 真实预览已就绪
-                node->setData(0, ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
-                applyModelHighlightColor(node);
-            }
-            for (int j = 0; j < node->childCount(); ++j) updateTreeIcon(node->child(j));
-        };
-        for(int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
-            updateTreeIcon(ui->collectionTree->topLevelItem(i));
+        const QList<QTreeWidgetItem*> treeNodes = collectionTreeItemsByPath.values(filePath);
+        for (QTreeWidgetItem *node : treeNodes) {
+            if (!node) continue;
+            const bool isNSFW = node->data(0, ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
+            node->setIcon(0, getSidebarIcon(isNSFW, node->data(0, ROLE_PREVIEW_PATH).toString()));
+            node->setData(0, ROLE_PREVIEW_PLACEHOLDER, false);
+            node->setData(0, ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
+            applyModelHighlightColor(node);
         }
     }
 
@@ -5427,6 +5731,14 @@ void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const 
         if (targetFilePaths.size() > 1) {
             ui->statusbar->showMessage(AppText::tr("已打开首个模型位置（共选中 %1 个）").arg(targetFilePaths.size()), 2500);
         }
+    });
+
+    QAction *actSyncMetadata = menu.addAction(AppText::tr("🔄 批量同步元数据与预览图 / Sync Metadata..."));
+    actSyncMetadata->setEnabled(!targetFilePaths.isEmpty());
+    connect(actSyncMetadata, &QAction::triggered, this, [this, targetFilePaths]() {
+        if (targetFilePaths.isEmpty()) return;
+        onMenuSwitchToDownloads();
+        startMetadataSyncForPaths(targetFilePaths, true);
     });
 
     menu.addSeparator();
@@ -6397,6 +6709,29 @@ void MainWindow::onToggleDetailTab() {
     }
 }
 
+void MainWindow::onOpenModelGraphClicked()
+{
+    QString focusQuery;
+    if (!currentMeta.filePath.isEmpty()) {
+        focusQuery = QFileInfo(currentMeta.filePath).completeBaseName();
+    } else if (!currentMeta.name.isEmpty()) {
+        focusQuery = currentMeta.name;
+    }
+    if (!toolsTabWidget) return;
+
+    const bool wasLoaded = (usageAnalysisWidget != nullptr);
+    ui->rootStack->setCurrentWidget(toolsTabWidget);
+    toolsTabWidget->setCurrentIndex(4);
+    ensureToolTabLoaded(4);
+    QTimer::singleShot(0, this, [this, focusQuery, wasLoaded]() {
+        if (!usageAnalysisWidget) return;
+        if (wasLoaded) {
+            refreshUsageAnalysisWidget();
+        }
+        usageAnalysisWidget->openTagModelGraph(0, focusQuery);
+    });
+}
+
 void MainWindow::onRescanUserClicked() {
     if (userGalleryGlobalMode) {
         scanForUserImages("");
@@ -6536,6 +6871,7 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
         ui->statusbar->showMessage(AppText::tr("正在后台加载图库缓存，完成后开始扫描..."));
         return;
     }
+    m_galleryExtraLoraFilters.clear();
     const quint64 scanGeneration = ++userGalleryGeneration;
     ++userGalleryLayoutGeneration;
     userGalleryGlobalMode = loraBaseName.isEmpty();
@@ -7114,129 +7450,21 @@ void MainWindow::updateGalleryPromptTagView()
         }
     }
 
-    // 4. 解析参数中的模型/LoRA
-    QString modelName;
-    QString modelHash;
-
-    static const QRegularExpression modelRegex("(?:^|[,\\n\\r])\\s*Model\\s*:\\s*([^,\\n\\r]+)",
-                                               QRegularExpression::CaseInsensitiveOption);
-    QRegularExpressionMatch modelMatch = modelRegex.match(m_galleryCurrentParams);
-    if (modelMatch.hasMatch()) {
-        modelName = modelMatch.captured(1).trimmed();
+    // 4. 解析参数中的模型/LoRA (复用统一解析器)
+    UserImageInfo parsedInfo;
+    if (!m_galleryCurrentImagePath.isEmpty() && imageCache.contains(m_galleryCurrentImagePath)) {
+        parsedInfo = imageCache.value(m_galleryCurrentImagePath);
     }
-
-    static const QRegularExpression checkpointRegex("(?:^|[,\\n\\r])\\s*Checkpoint\\s*:\\s*([^,\\n\\r]+)",
-                                                    QRegularExpression::CaseInsensitiveOption);
-    QRegularExpressionMatch ckptMatch = checkpointRegex.match(m_galleryCurrentParams);
-    if (ckptMatch.hasMatch() && modelName.isEmpty()) {
-        modelName = ckptMatch.captured(1).trimmed();
+    if (!parsedInfo.parsedModelsReady ||
+        parsedInfo.prompt != m_galleryCurrentPrompt ||
+        parsedInfo.parameters != m_galleryCurrentParams) {
+        parsedInfo.prompt = m_galleryCurrentPrompt;
+        parsedInfo.parameters = m_galleryCurrentParams;
+        GalleryMetadata::populateParsedModelFields(parsedInfo);
     }
-
-    static const QRegularExpression modelHashRegex("(?:^|[,\\n\\r])\\s*Model\\s+hash\\s*:\\s*([A-Fa-f0-9]+)",
-                                                   QRegularExpression::CaseInsensitiveOption);
-    QRegularExpressionMatch hashMatch = modelHashRegex.match(m_galleryCurrentParams);
-    if (hashMatch.hasMatch()) {
-        modelHash = hashMatch.captured(1).trimmed();
-    }
-
-    struct LoraEntry {
-        QString name;
-        QString hash;
-        QString weight;
-    };
-    QList<LoraEntry> loras;
-    QSet<QString> seenLoraNames;
-
-    // (a) 从正面提示词中提取 <lora:name:weight>
-    static const QRegularExpression promptLoraRegex("<\\s*(?:lora|lyco)\\s*:\\s*([^:>]+)(?::([^:>]+))?",
-                                                    QRegularExpression::CaseInsensitiveOption);
-    QRegularExpressionMatchIterator promptIt = promptLoraRegex.globalMatch(m_galleryCurrentPrompt);
-    while (promptIt.hasNext()) {
-        QRegularExpressionMatch m = promptIt.next();
-        QString name = m.captured(1).trimmed();
-        QString weight = m.captured(2).trimmed();
-        if (!name.isEmpty()) {
-            const QString norm = name.toLower();
-            if (!seenLoraNames.contains(norm)) {
-                seenLoraNames.insert(norm);
-                loras.append({name, QString(), weight});
-            }
-        }
-    }
-
-    // (b) 从参数中的 Lora hashes 提取（兼容 A1111 和 ComfyUI）
-    static const QRegularExpression loraHashesBlockRegex("(?:^|[,\\n\\r])\\s*(?:ComfyUI\\s+)?Lora\\s+hashes\\s*:\\s*(\"[^\"]*\"|[^\\n\\r]*)",
-                                                         QRegularExpression::CaseInsensitiveOption);
-    QRegularExpressionMatch blockMatch = loraHashesBlockRegex.match(m_galleryCurrentParams);
-    if (blockMatch.hasMatch()) {
-        QString block = blockMatch.captured(1).trimmed();
-        if (block.startsWith('"') && block.endsWith('"') && block.size() >= 2) {
-            block = block.mid(1, block.size() - 2);
-        }
-        static const QRegularExpression pairRegex("([^:,]+?)\\s*:\\s*([A-Fa-f0-9]+)");
-        QRegularExpressionMatchIterator pairIt = pairRegex.globalMatch(block);
-        while (pairIt.hasNext()) {
-            QRegularExpressionMatch m = pairIt.next();
-            QString name = m.captured(1).trimmed();
-            QString hash = m.captured(2).trimmed();
-            if (!name.isEmpty()) {
-                const QString norm = name.toLower();
-                bool found = false;
-                for (LoraEntry &entry : loras) {
-                    const QString entryNorm = entry.name.toLower();
-                    if (entryNorm == norm || entryNorm.endsWith("/" + norm) || entryNorm.endsWith("\\" + norm) ||
-                        norm.endsWith("/" + entryNorm) || norm.endsWith("\\" + entryNorm)) {
-                        if (entry.hash.isEmpty()) entry.hash = hash;
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found && !seenLoraNames.contains(norm)) {
-                    seenLoraNames.insert(norm);
-                    loras.append({name, hash, QString()});
-                }
-            }
-        }
-    }
-
-    // (c) 从 ComfyUI LoRAs 提取
-    static const QRegularExpression comfyLoraRegex("(?:^|[,\\n\\r])\\s*ComfyUI\\s+LoRAs\\s*:\\s*([^\\n\\r]*)",
-                                                   QRegularExpression::CaseInsensitiveOption);
-    QRegularExpressionMatch comfyMatch = comfyLoraRegex.match(m_galleryCurrentParams);
-    if (comfyMatch.hasMatch()) {
-        const QStringList entries = comfyMatch.captured(1).split(',', Qt::SkipEmptyParts);
-        for (QString entry : entries) {
-            entry = entry.trimmed();
-            QString weight;
-            const int colon = entry.indexOf(':');
-            if (colon > 0) {
-                weight = entry.mid(colon + 1).trimmed();
-                entry = entry.left(colon).trimmed();
-            }
-            if (!entry.isEmpty()) {
-                const QString norm = entry.toLower();
-                if (!seenLoraNames.contains(norm)) {
-                    seenLoraNames.insert(norm);
-                    loras.append({entry, QString(), weight});
-                }
-            }
-        }
-    }
-
-    // (d) 从 AddNet 提取
-    static const QRegularExpression addNetRegex("(?:^|[,\\n\\r])\\s*AddNet\\s+Model\\s+\\d+\\s*:\\s*([^,\\n\\r]+)",
-                                                QRegularExpression::CaseInsensitiveOption);
-    QRegularExpressionMatchIterator addNetIt = addNetRegex.globalMatch(m_galleryCurrentParams);
-    while (addNetIt.hasNext()) {
-        QString name = addNetIt.next().captured(1).trimmed();
-        if (!name.isEmpty()) {
-            const QString norm = name.toLower();
-            if (!seenLoraNames.contains(norm)) {
-                seenLoraNames.insert(norm);
-                loras.append({name, QString(), QString()});
-            }
-        }
-    }
+    const QString modelName = parsedInfo.checkpointName;
+    const QString modelHash = parsedInfo.checkpointHash;
+    const QList<ParsedLoraEntry> &loras = parsedInfo.parsedLoras;
 
     // 5. 创建模型/Checkpoint Chip 按钮
     if (m_galleryParamsChipLayout && ui->galleryParamsChipContainer) {
@@ -7258,7 +7486,7 @@ void MainWindow::updateGalleryPromptTagView()
         }
 
         // 6. 创建 LoRA Chip 按钮
-        for (const LoraEntry &lora : loras) {
+        for (const ParsedLoraEntry &lora : loras) {
             QString labelText = QString("🏷️ %1").arg(lora.name);
             if (!lora.weight.isEmpty()) {
                 labelText += QString(" [%1]").arg(lora.weight);
@@ -7596,6 +7824,9 @@ void MainWindow::handleGalleryWheelScroll(QObject *watched, QWheelEvent *event)
 }
 
 void MainWindow::onTagFilterChanged(const QSet<QString> &selectedTags) {
+    if (selectedTags.isEmpty()) {
+        m_galleryExtraLoraFilters.clear();
+    }
     applyUserGalleryTagFilter(selectedTags, true);
 }
 
@@ -7617,6 +7848,13 @@ void MainWindow::applyUserGalleryTagFilter(const QSet<QString> &selectedTags,
     for (const QString &tag : selectedTags) {
         const QString key = TagUtils::normalizedGalleryTagKey(tag);
         if (!key.isEmpty()) selectedTagKeys.insert(key);
+    }
+    QStringList normalizedLoraFilters;
+    for (const QString &l : m_galleryExtraLoraFilters) {
+        const QString clean = GalleryMetadata::cleanModelOrLoraBaseName(l).toLower();
+        if (!clean.isEmpty() && !normalizedLoraFilters.contains(clean)) {
+            normalizedLoraFilters.append(clean);
+        }
     }
 
     struct FilteredGalleryItem {
@@ -7663,6 +7901,27 @@ void MainWindow::applyUserGalleryTagFilter(const QSet<QString> &selectedTags,
             if (!tagFound) {
                 match = false;
                 break;
+            }
+        }
+
+        if (match && !normalizedLoraFilters.isEmpty()) {
+            const QString imgPath = item->data(ROLE_USER_IMAGE_PATH).toString();
+            UserImageInfo info = imageCache.value(imgPath);
+            if (!info.parsedModelsReady) {
+                info.prompt = item->data(ROLE_USER_IMAGE_PROMPT).toString();
+                info.parameters = item->data(ROLE_USER_IMAGE_PARAMS).toString();
+                GalleryMetadata::populateParsedModelFields(info);
+            }
+            QSet<QString> imageLoras;
+            for (const ParsedLoraEntry &entry : info.parsedLoras) {
+                const QString clean = GalleryMetadata::cleanModelOrLoraBaseName(entry.name).toLower();
+                if (!clean.isEmpty()) imageLoras.insert(clean);
+            }
+            for (const QString &reqLora : normalizedLoraFilters) {
+                if (!imageLoras.contains(reqLora)) {
+                    match = false;
+                    break;
+                }
             }
         }
 
@@ -7746,7 +8005,13 @@ void MainWindow::applyUserGalleryTagFilter(const QSet<QString> &selectedTags,
     // QListView::Adjust may schedule another geometry pass after the first event.
     QTimer::singleShot(50, this, resetFilteredGalleryViewport);
 
-    ui->statusbar->showMessage(AppText::tr("筛选: %1 张图片符合条件").arg(visibleCount));
+    if (m_galleryExtraLoraFilters.isEmpty()) {
+        ui->statusbar->showMessage(AppText::tr("筛选: %1 张图片符合条件").arg(visibleCount));
+    } else {
+        ui->statusbar->showMessage(AppText::tr("组合筛选 (含 LoRA %1): %2 张图片符合条件")
+                                       .arg(m_galleryExtraLoraFilters.join(QStringLiteral(", ")))
+                                       .arg(visibleCount));
+    }
 }
 
 void MainWindow::onGalleryButtonClicked()
@@ -7777,6 +8042,7 @@ void MainWindow::onGalleryButtonClicked()
     ui->btnEditMeta->setVisible(false);
     ui->btnFavorite->setVisible(false);
     ui->btnShowUserGallery->setVisible(false);
+    if (ui->btnOpenModelGraph) ui->btnOpenModelGraph->setVisible(false);
     ui->btnEditMeta->setVisible(false);
     ui->btnCopyLoraTag->setVisible(false);
 
@@ -7952,18 +8218,56 @@ void MainWindow::ensureToolTabLoaded(int index)
                             }
                         }
                         if (tagFlowWidget) {
-                            QString targetTag = tagOrLora;
                             if (isLora) {
-                                // 在当前 TagFlow 中匹配包含该 LoRA 名的标签
-                                const QString needle = QString("<lora:%1:").arg(tagOrLora).toLower();
+                                m_galleryExtraLoraFilters = {tagOrLora};
                                 if (ui->editUserTagSearch) {
+                                    QSignalBlocker blocker(ui->editUserTagSearch);
                                     ui->editUserTagSearch->setText(tagOrLora);
                                 }
+                                if (userTagSearchDebounceTimer) userTagSearchDebounceTimer->stop();
+                                tagFlowWidget->setSearchText(tagOrLora);
+                                tagFlowWidget->clearSelectedTags();
+                                applyUserGalleryTagFilter({}, true);
                             } else {
-                                if (ui->editUserTagSearch) ui->editUserTagSearch->clear();
-                                tagFlowWidget->setSelectedTags({targetTag});
+                                m_galleryExtraLoraFilters.clear();
+                                if (ui->editUserTagSearch) {
+                                    QSignalBlocker blocker(ui->editUserTagSearch);
+                                    ui->editUserTagSearch->clear();
+                                }
+                                if (userTagSearchDebounceTimer) userTagSearchDebounceTimer->stop();
+                                tagFlowWidget->setSearchText(QString());
+                                tagFlowWidget->setSelectedTags({tagOrLora});
                                 applyUserGalleryTagFilter(tagFlowWidget->getSelectedTags(), true);
                             }
+                        }
+                    });
+            connect(usageAnalysisWidget, &UsageAnalysisWidget::requestFilterMultiInGallery,
+                    this, [this](const QStringList &tags, const QStringList &loras) {
+                        onMenuSwitchToLibrary();
+                        if (!ui->pageLocalGallery || !ui->pageLocalGallery->isVisible()) {
+                            if (ui->listUserImages && ui->listUserImages->count() > 0) {
+                                ui->mainStack->setCurrentIndex(1);
+                                ui->detailContentStack->setCurrentIndex(1);
+                                fitDetailContentToCurrentPage();
+                            } else {
+                                onGalleryButtonClicked();
+                            }
+                        }
+                        if (tagFlowWidget) {
+                            m_galleryExtraLoraFilters = loras;
+                            if (ui->editUserTagSearch) {
+                                QSignalBlocker blocker(ui->editUserTagSearch);
+                                ui->editUserTagSearch->clear();
+                            }
+                            if (userTagSearchDebounceTimer) userTagSearchDebounceTimer->stop();
+                            tagFlowWidget->setSearchText(QString());
+                            QStringList selTags;
+                            for (const QString &t : tags) {
+                                const QString clean = t.trimmed();
+                                if (!clean.isEmpty() && !selTags.contains(clean)) selTags.append(clean);
+                            }
+                            tagFlowWidget->setSelectedTags(selTags);
+                            applyUserGalleryTagFilter(tagFlowWidget->getSelectedTags(), true);
                         }
                     });
             refreshUsageAnalysisWidget();
@@ -8559,7 +8863,13 @@ void MainWindow::addOrUpdateDownloadCard(const ModelUpdateInfo &info, const QStr
 
 QListWidgetItem *MainWindow::findModelItemByFilePath(const QString &filePath) const
 {
+    if (QListWidgetItem *direct = modelItemByPath.value(filePath, nullptr)) {
+        return direct;
+    }
     const QString normalized = QFileInfo(filePath).absoluteFilePath();
+    if (QListWidgetItem *directNorm = modelItemByPath.value(normalized, nullptr)) {
+        return directNorm;
+    }
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *item = ui->modelList->item(i);
         if (!isModelListItem(item)) continue;
@@ -9385,6 +9695,7 @@ void MainWindow::loadGlobalConfig() {
         optBlurProcessWidth = settings.blurProcessWidth;
         optRenderThreadCount = settings.renderThreadCount;
         optRestoreTreeState = settings.restoreTreeState;
+        optRestoreFilterSortState = settings.restoreFilterSortState;
         optSplitOnNewline = settings.splitOnNewline;
         optFilterTags = settings.filterTags();
         optShowEmptyCollections = settings.showEmptyCollections;
@@ -9487,6 +9798,31 @@ void MainWindow::loadGlobalConfig() {
             for (const auto &val : arr) {
                 startupExpandedCollections.insert(val.toString());
             }
+        }
+
+        // 读取上次退出时的排序与筛选状态
+        if (optRestoreFilterSortState && root.contains("filter_sort_state")) {
+            const QJsonObject fs = root["filter_sort_state"].toObject();
+            startupSortIndex = fs.value("sort_index").toInt(0);
+            startupFilterBaseModel = fs.value("base_model").toString(QStringLiteral("All"));
+            startupFilterModelType = fs.value("model_type").toString(QStringLiteral("All"));
+            startupSearchText = fs.value("search_text").toString();
+            startupSidebarTab = fs.value("sidebar_tab").toInt(1);
+            startupCollectionFilter = fs.value("collection_filter").toString();
+            startupHomeAuthorFilter = fs.value("home_author_filter").toString();
+            startupHomeFilterExpanded = fs.value("home_filter_expanded").toBool(false);
+            startupHomeFilterTagsSortByCount = fs.value("home_tag_sort_by_count").toBool(true);
+            startupHomeTagFilters.clear();
+            const QJsonArray tagArr = fs.value("home_tag_filters").toArray();
+            for (const QJsonValue &v : tagArr) {
+                const QString clean = v.toString().trimmed();
+                if (!clean.isEmpty()) startupHomeTagFilters.insert(clean);
+            }
+            startupUserTagSortMode = fs.value("user_tag_sort_mode").toInt(0);
+            startupUserTagLoraOnly = fs.value("user_tag_lora_only").toBool(false);
+            startupUserTagIncludeNegative = fs.value("user_tag_include_negative").toBool(false);
+            startupGalleryPromptSortMode = fs.value("gallery_prompt_sort_mode").toInt(0);
+            startupGalleryTagViewActive = fs.value("gallery_tag_view_active").toBool(false);
         }
 
         // 设置UA
@@ -9634,6 +9970,12 @@ void MainWindow::applySettingsState(SettingsState state)
     const bool civitaiNameChanged = optUseCivitaiName != state.useCivitaiName;
     const bool galleryMatchChanged = optUserGalleryMatchMode != state.userGalleryMatchMode
         || optComfyModelNameFallback != state.comfyModelNameFallback;
+    const bool iconVisualChanged = optFilterNSFW != state.filterNSFW
+        || optNSFWMode != state.nsfwMode
+        || optNSFWLevel != state.nsfwLevel
+        || optBlurRadius != state.blurRadius
+        || optDownscaleBlur != state.downscaleBlur
+        || optBlurProcessWidth != state.blurProcessWidth;
     const bool uiScaleChanged = !qFuzzyCompare(optUiScale, state.uiScale);
     const bool customUaModeChanged = optUseArrangedUA != state.useCustomUserAgent;
     const bool themeChanged = optThemeId != state.themeId || optCustomThemePath != state.customThemePath;
@@ -9648,6 +9990,7 @@ void MainWindow::applySettingsState(SettingsState state)
     optNSFWLevel = state.nsfwLevel;
     optRenderThreadCount = qMax(1, state.renderThreadCount);
     optRestoreTreeState = state.restoreTreeState;
+    optRestoreFilterSortState = state.restoreFilterSortState;
     optSplitOnNewline = state.splitOnNewline;
     optFilterTags = state.filterTags();
     optShowEmptyCollections = state.showEmptyCollections;
@@ -9702,6 +10045,10 @@ void MainWindow::applySettingsState(SettingsState state)
     }
     if (themeChanged) {
         applyApplicationTheme(optThemeId, optCustomThemePath, true);
+    }
+    if (iconVisualChanged) {
+        sidebarIconCache.clear();
+        homeIconCache.clear();
     }
 }
 
@@ -9885,6 +10232,7 @@ void MainWindow::saveGlobalConfig() {
         settings.nsfwLevel = optNSFWLevel;
         settings.renderThreadCount = optRenderThreadCount;
         settings.restoreTreeState = optRestoreTreeState;
+        settings.restoreFilterSortState = optRestoreFilterSortState;
         settings.splitOnNewline = optSplitOnNewline;
         settings.filterTagsText = optFilterTags.join(", ");
         settings.showEmptyCollections = optShowEmptyCollections;
@@ -9974,6 +10322,38 @@ void MainWindow::saveGlobalConfig() {
         }
 
         root["tree_state"] = treeState;
+    }
+
+    if (optRestoreFilterSortState && ui) {
+        QJsonObject fs;
+        if (ui->comboSort) fs["sort_index"] = ui->comboSort->currentIndex();
+        if (ui->comboBaseModel) {
+            fs["base_model"] = ui->comboBaseModel->currentIndex() <= 0
+                ? QStringLiteral("All") : ui->comboBaseModel->currentText();
+        }
+        if (ui->comboModelType) {
+            fs["model_type"] = ui->comboModelType->currentIndex() <= 0
+                ? QStringLiteral("All") : ui->comboModelType->currentText();
+        }
+        if (ui->searchEdit) fs["search_text"] = ui->searchEdit->text();
+        if (ui->sidebarStack) fs["sidebar_tab"] = ui->sidebarStack->currentIndex();
+        fs["collection_filter"] = currentCollectionFilter;
+        fs["home_author_filter"] = currentHomeAuthorFilter;
+        fs["home_filter_expanded"] = homeFilterExpanded;
+        fs["home_tag_sort_by_count"] = homeFilterTagsSortByCount;
+        QJsonArray homeTagsArr;
+        for (const QString &t : std::as_const(currentHomeTagFilters)) {
+            if (!t.trimmed().isEmpty()) homeTagsArr.append(t.trimmed());
+        }
+        fs["home_tag_filters"] = homeTagsArr;
+        if (ui->comboUserTagSortMode) fs["user_tag_sort_mode"] = ui->comboUserTagSortMode->currentIndex();
+        if (ui->chkUserTagLoraOnly) fs["user_tag_lora_only"] = ui->chkUserTagLoraOnly->isChecked();
+        if (ui->chkUserTagIncludeNegative) fs["user_tag_include_negative"] = ui->chkUserTagIncludeNegative->isChecked();
+        if (ui->comboGalleryPromptSortMode) fs["gallery_prompt_sort_mode"] = ui->comboGalleryPromptSortMode->currentIndex();
+        fs["gallery_tag_view_active"] = m_galleryTagViewActive;
+        root["filter_sort_state"] = fs;
+    } else if (!optRestoreFilterSortState) {
+        root.remove("filter_sort_state");
     }
 
     QSaveFile file(configPath);
@@ -10671,6 +11051,7 @@ void MainWindow::refreshCollectionTreeView()
     }
 
     // 清理和生成
+    collectionTreeItemsByPath.clear();
     ui->collectionTree->clear();
     ui->collectionTree->setAnimated(true);
     ui->collectionTree->setIconSize(QSize(32, 32));
@@ -10742,6 +11123,8 @@ void MainWindow::refreshCollectionTreeView()
                 child->setIcon(0, sourceItem->icon());
                 applyModelHighlightColor(child);
                 applyModelUserNoteData(child);
+                const QString fp = sourceItem->data(ROLE_FILE_PATH).toString();
+                if (!fp.isEmpty()) collectionTreeItemsByPath.insert(fp, child);
             }
         }
     };
@@ -11176,6 +11559,34 @@ void MainWindow::loadUserGalleryCache() {
             info.parserVersion = obj.value("pv").toInt(0);
             info.cleanTags = TagUtils::parsePromptTags(info.prompt, splitOnNewline, filterTags);
             info.negativeCleanTags = TagUtils::parsePromptTags(info.negativePrompt, splitOnNewline, filterTags);
+            info.checkpointName = obj.value("ckpt").toString();
+            info.checkpointHash = obj.value("ckpt_h").toString();
+            info.isComfy = obj.value("comfy").toBool(false);
+            if (obj.contains("loras") && obj["loras"].isArray()) {
+                const QJsonArray lorasArr = obj["loras"].toArray();
+                info.parsedLoras.reserve(lorasArr.size());
+                for (const QJsonValue &v : lorasArr) {
+                    const QJsonObject lo = v.toObject();
+                    ParsedLoraEntry entry;
+                    entry.name = lo.value("n").toString();
+                    entry.hash = lo.value("h").toString();
+                    entry.weight = lo.value("w").toString();
+                    if (!entry.name.isEmpty()) info.parsedLoras.append(entry);
+                }
+            }
+            if (obj.contains("extra_lh") && obj["extra_lh"].isArray()) {
+                const QJsonArray extraArr = obj["extra_lh"].toArray();
+                info.extraLoraHashes.reserve(extraArr.size());
+                for (const QJsonValue &v : extraArr) {
+                    const QString h = v.toString().trimmed();
+                    if (!h.isEmpty()) info.extraLoraHashes.append(h);
+                }
+            }
+            if (obj.value("pm").toBool(false)) {
+                info.parsedModelsReady = true;
+            } else {
+                GalleryMetadata::populateParsedModelFields(info);
+            }
             result.insert(info.path, info);
         }
         return result;
@@ -11190,13 +11601,36 @@ void MainWindow::saveUserGalleryCache() {
     QJsonObject root;
     // 遍历当前的 imageCache
     for (auto it = imageCache.begin(); it != imageCache.end(); ++it) {
-        const UserImageInfo &info = it.value();
+        UserImageInfo info = it.value();
+        if (!info.parsedModelsReady) {
+            GalleryMetadata::populateParsedModelFields(info);
+        }
         QJsonObject obj;
         obj["p"] = info.prompt;
         obj["np"] = info.negativePrompt;
         obj["param"] = info.parameters;
         obj["t"] = QString::number(info.lastModified); // 存为字符串避免精度问题
         obj["pv"] = info.parserVersion;
+        if (!info.checkpointName.isEmpty()) obj["ckpt"] = info.checkpointName;
+        if (!info.checkpointHash.isEmpty()) obj["ckpt_h"] = info.checkpointHash;
+        if (info.isComfy) obj["comfy"] = true;
+        if (!info.parsedLoras.isEmpty()) {
+            QJsonArray lorasArr;
+            for (const ParsedLoraEntry &entry : info.parsedLoras) {
+                QJsonObject lo;
+                lo["n"] = entry.name;
+                if (!entry.hash.isEmpty()) lo["h"] = entry.hash;
+                if (!entry.weight.isEmpty()) lo["w"] = entry.weight;
+                lorasArr.append(lo);
+            }
+            obj["loras"] = lorasArr;
+        }
+        if (!info.extraLoraHashes.isEmpty()) {
+            QJsonArray extraArr;
+            for (const QString &h : info.extraLoraHashes) extraArr.append(h);
+            obj["extra_lh"] = extraArr;
+        }
+        if (info.parsedModelsReady) obj["pm"] = true;
 
         root.insert(info.path, obj);
     }

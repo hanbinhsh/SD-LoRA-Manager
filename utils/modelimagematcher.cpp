@@ -1,4 +1,5 @@
 #include "modelimagematcher.h"
+#include "gallerymetadata.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -433,6 +434,40 @@ ModelUsageCandidate buildCandidate(const ModelUsageInput &model)
 CachedImageUsageInfo imageUsage(const UserImageInfo &info)
 {
     CachedImageUsageInfo cached;
+    cached.lastModified = info.lastModified;
+
+    if (info.parsedModelsReady) {
+        for (const ParsedLoraEntry &lora : info.parsedLoras) {
+            if (!lora.name.isEmpty()) {
+                QSet<QString> usedVariants;
+                addLoraNameVariantsWorker(lora.name, usedVariants);
+                if (usedVariants.isEmpty()) {
+                    const QString normalized = normalizeLoraNameForMatch(lora.name);
+                    if (!normalized.isEmpty()) usedVariants.insert(normalized);
+                }
+                for (const QString &variant : usedVariants) cached.usedLoraNames.insert(variant);
+            }
+            if (!lora.hash.isEmpty()) {
+                const QString normalized = normalizeSummaryHashForMatch(lora.hash);
+                if (!normalized.isEmpty()) cached.loraHashes.insert(normalized);
+            }
+        }
+        for (const QString &extraHash : info.extraLoraHashes) {
+            const QString normalized = normalizeSummaryHashForMatch(extraHash);
+            if (!normalized.isEmpty()) cached.loraHashes.insert(normalized);
+        }
+        cached.isComfy = info.isComfy;
+        if (!info.checkpointName.isEmpty()) {
+            const QString normalized = normalizeLoraNameForMatch(info.checkpointName);
+            if (!normalized.isEmpty()) cached.usedCheckpointNames.insert(normalized);
+        }
+        if (!info.checkpointHash.isEmpty()) {
+            const QString normalized = normalizeSummaryHashForMatch(info.checkpointHash);
+            if (!normalized.isEmpty()) cached.checkpointHashes.insert(normalized);
+        }
+        return cached;
+    }
+
     QStringList usedNames = extractLoraNamesFromPromptWorker(info.prompt);
     usedNames.append(extractLoraNamesFromMetadataWorker(info.parameters));
     for (const QString &usedName : usedNames) {
@@ -452,7 +487,6 @@ CachedImageUsageInfo imageUsage(const UserImageInfo &info)
         if (!normalized.isEmpty()) cached.usedCheckpointNames.insert(normalized);
     }
     cached.checkpointHashes = extractCheckpointHashValuesFromParametersWorker(info.parameters);
-    cached.lastModified = info.lastModified;
 
     return cached;
 }

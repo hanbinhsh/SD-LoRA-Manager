@@ -732,6 +732,19 @@
              </widget>
             </item>
             <item row="5" column="0" colspan="2">
+             <widget class="QCheckBox" name="chkRestoreFilterSortState">
+              <property name="toolTip">
+               <string>勾选后，退出软件前会自动保存当前的排序方式、底模/类型筛选、主页作者/Tag筛选及搜索条件，下次打开时自动恢复。</string>
+              </property>
+              <property name="text">
+               <string>启动时恢复排序与筛选条件 / Restore Sort &amp; Filter on Startup</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item row="6" column="0" colspan="2">
              <widget class="QCheckBox" name="chkConfirmCloseLauncherRunning">
               <property name="toolTip">
                <string>默认开启。当启动器中有 A1111/ComfyUI 进程正在运行时，关闭软件会弹窗确认（关闭软件会一并结束这些进程）。</string>
@@ -744,7 +757,7 @@
               </property>
              </widget>
             </item>
-            <item row="6" column="0" colspan="2">
+            <item row="7" column="0" colspan="2">
              <widget class="QCheckBox" name="chkSuppressLocalWarnings">
               <property name="toolTip">
                <string>勾选后，不再弹出“检测到 X 个本地/已编辑模型”的总量提醒；单个模型的覆盖确认仍会保留。</string>

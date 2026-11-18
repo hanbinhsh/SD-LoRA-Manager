@@ -22,6 +22,7 @@ struct SettingsState {
     int nsfwLevel = 1;
     int renderThreadCount = 4;
     bool restoreTreeState = true;
+    bool restoreFilterSortState = true;
     bool splitOnNewline = true;
     QString filterTagsText;
     bool showEmptyCollections = false;

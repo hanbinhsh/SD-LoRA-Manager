@@ -74,6 +74,7 @@ public:
         const QSet<QString> selected = getSelectedTags();
         m_allTags.clear();
         m_lastClickedIndex = -1;
+        m_displayLimit = kDefaultDisplayLimit;
         for(auto it = data.begin(); it != data.end(); ++it) {
             m_allTags.append({it.key(), it.value(), selected.contains(it.key()), QRect()});
         }
@@ -251,6 +252,10 @@ protected:
     bool m_layoutDirty = true;
     bool m_cacheDirty = true;
     int m_layoutWidth = -1;
+    static constexpr int kDefaultDisplayLimit = 300;
+    int m_displayLimit = kDefaultDisplayLimit;
+    int m_renderedTagCount = 0;
+    QRect m_loadMoreRect;
     QPixmap m_cachedPixmap;
     static constexpr qsizetype kMaxCachedPixels = 8 * 1024 * 1024;
 
@@ -378,8 +383,17 @@ protected:
         const int defaultItemH = m_showTranslation ? 42 : 26;
         int currentLineH = defaultItemH;
 
+        m_loadMoreRect = QRect();
+        const bool applyCap = m_searchText.isEmpty() && (m_tags.size() > m_displayLimit + 30);
+        m_renderedTagCount = applyCap ? m_displayLimit : m_tags.size();
+
         for (int i = 0; i < m_tags.size(); ++i) {
             TagState &tag = m_tags[i];
+            if (i >= m_renderedTagCount && !tag.selected) {
+                tag.rect = QRect();
+                tag.isFullLine = false;
+                continue;
+            }
             const QString line1 = m_showCount ? QString("%1  %2").arg(tag.text).arg(tag.count) : tag.text;
             QString line2;
             if (m_showTranslation) {
@@ -440,6 +454,21 @@ protected:
             currentLineH = qMax(currentLineH, itemH);
         }
 
+        if (applyCap) {
+            const int hiddenCount = qMax(1, int(m_tags.size()) - m_renderedTagCount);
+            const QString moreText = AppText::tr("⬇ 展开更多 Tag (剩余 %1 个)").arg(hiddenCount);
+            const int moreW = qMin(maxLineWidth, fmEn.horizontalAdvance(moreText) + paddingX * 2 + 12);
+            const int moreH = defaultItemH;
+            if (x + moreW > widgetWidth && x > 0) {
+                x = 0;
+                y += currentLineH + marginY;
+                currentLineH = defaultItemH;
+            }
+            m_loadMoreRect = QRect(x, y, moreW, moreH);
+            x += moreW + marginX;
+            currentLineH = qMax(currentLineH, moreH);
+        }
+
         const int newHeight = y + (x > 0 ? currentLineH : 0) + marginY;
         if (m_calculatedHeight != newHeight) {
             m_calculatedHeight = newHeight;
@@ -472,6 +501,9 @@ protected:
         const int paddingX = 10;
 
         for (const TagState &tag : m_tags) {
+            if (tag.rect.isNull() || tag.rect.isEmpty()) {
+                continue;
+            }
             if (!clipRect.isNull() && !tag.rect.intersects(clipRect.adjusted(-4, -4, 4, 4))) {
                 continue;
             }
@@ -537,6 +569,18 @@ protected:
                     p.drawText(innerRect, Qt::AlignCenter | Qt::TextSingleLine, line1);
                 }
             }
+        }
+
+        if (!m_loadMoreRect.isNull() &&
+            (clipRect.isNull() || m_loadMoreRect.intersects(clipRect.adjusted(-4, -4, 4, 4)))) {
+            const int hiddenCount = qMax(1, int(m_tags.size()) - m_renderedTagCount);
+            const QString moreText = AppText::tr("⬇ 展开更多 Tag (剩余 %1 个)").arg(hiddenCount);
+            p.setBrush(AppStyle::color("hoverBg"));
+            p.setPen(QPen(AppStyle::color("accentBlue"), 1.0));
+            p.drawRoundedRect(m_loadMoreRect, 4, 4);
+            p.setFont(fontEn);
+            p.setPen(AppStyle::color("accentBlue"));
+            p.drawText(m_loadMoreRect, Qt::AlignCenter | Qt::TextSingleLine, moreText);
         }
     }
 
@@ -675,10 +719,21 @@ protected:
     void mousePressEvent(QMouseEvent *event) override {
         ensureLayout();
         if (event->button() == Qt::LeftButton) {
+            if (!m_loadMoreRect.isNull() && m_loadMoreRect.contains(event->pos())) {
+                const int remaining = int(m_tags.size()) - m_displayLimit;
+                if (remaining <= 600) {
+                    m_displayLimit = m_tags.size();
+                } else {
+                    m_displayLimit += 500;
+                }
+                invalidateLayoutAndCache();
+                event->accept();
+                return;
+            }
             bool changed = false;
             int clickedIndex = -1;
             for (int i = 0; i < m_tags.size(); ++i) {
-                if (m_tags[i].rect.contains(event->pos())) {
+                if (!m_tags[i].rect.isNull() && m_tags[i].rect.contains(event->pos())) {
                     clickedIndex = i;
                     break;
                 }

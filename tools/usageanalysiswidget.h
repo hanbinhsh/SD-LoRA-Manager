@@ -33,6 +33,7 @@ struct UsageAnalysisModel
     QString baseModel;
     QString modelType;        // Civitai 类型：LoRA / Checkpoint / VAE / TextualInversion ...
     QString syncFailure;
+    QString sha256;
     int modelId = 0;
     int versionId = 0;
     int usageCount = 0;
@@ -58,6 +59,8 @@ struct UsageAnalysisData
     QMap<QString, UserImageInfo> rawImageCache;
     QSet<QString> currentGalleryPaths;
     QVector<UsageGraphImageRecord> graphImages;
+    QStringList loraRootPaths;
+    bool loraRecursive = true;
     int galleryImageCount = 0;
     int currentGalleryImageCount = 0;
     QDateTime generatedAt;
@@ -80,10 +83,13 @@ signals:
     void requestOpenModel(const QString &filePath);
     void requestJumpToModel(const QString &modelOrLoraName);
     void requestFilterInGallery(const QString &tagOrLora, bool isLora);
+    void requestFilterMultiInGallery(const QStringList &tags, const QStringList &loras);
 
 private slots:
     void onSearchTextChanged(const QString &text);
     void onExportAnalysisCsvClicked();
+    void onScanCleanupClicked();
+    void onDeleteOrphanFilesClicked();
 
 private:
     Ui::UsageAnalysisWidget *ui;
@@ -96,7 +102,9 @@ private:
     bool m_graphIndexDirty = true;
     bool m_pendingGraphRelayout = true;
     int m_graphBuildToken = 0;
+    int m_cleanupScanToken = 0;
     QString m_selectedGraphNodeId;
+    QSet<QString> m_selectedGraphNodeIds;
     QString m_focusedGraphNodeId;
 
     void refreshSummary();

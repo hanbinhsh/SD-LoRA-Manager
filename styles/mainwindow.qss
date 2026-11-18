@@ -4,7 +4,7 @@ QLineEdit { background-color: @consoleBg; border: 1px solid @consoleBorder; colo
 QLineEdit#editUserTagSearch {
     background-color: transparent;
     border: 1px solid @htmlSubtle;
-    color: @whiteText;
+    color: @primaryText;
     padding: 4px 8px;
     border-radius: 5px;
     font-weight: bold;
@@ -24,13 +24,13 @@ QLineEdit#editUserTagSearch:focus {
 #btnHome, #btnGallery { background-color: transparent; text-align: left; padding-left: 10px; font-size: 14px; font-weight: bold; color: @primaryText; }
 #btnHome:hover, #btnGallery:hover { background-color: @hoverBg; }
 
-#btnScanLocal, #btnForceUpdate, #btnCheckModelUpdate, #btnOpenUrl, #btnFavorite, #btnShowUserGallery, #btnEditMeta, #btnCopyLoraTag {
+#btnScanLocal, #btnForceUpdate, #btnCheckModelUpdate, #btnOpenUrl, #btnFavorite, #btnShowUserGallery, #btnOpenModelGraph, #btnEditMeta, #btnCopyLoraTag {
     background-color: @buttonBg;
     border-radius: 2px;
     color: @accentBlue;
     border: 1px solid @buttonBorder;
 }
-#btnScanLocal:hover, #btnForceUpdate:hover, #btnCheckModelUpdate:hover, #btnOpenUrl:hover, #btnFavorite:hover, #btnShowUserGallery:hover, #btnEditMeta:hover, #btnCopyLoraTag:hover {
+#btnScanLocal:hover, #btnForceUpdate:hover, #btnCheckModelUpdate:hover, #btnOpenUrl:hover, #btnFavorite:hover, #btnShowUserGallery:hover, #btnOpenModelGraph:hover, #btnEditMeta:hover, #btnCopyLoraTag:hover {
     background-color: @selectionBg;
     color: @whiteText;
 }
@@ -171,6 +171,35 @@ QPushButton[class="copyBtn"]:pressed { background-color: @copyBtnPressed; }
 #btnGalleryPromptToggle:checked {
     background-color: @rgba(overlayFg, 64);
     color: @primaryText;
+}
+#comboUserTagSortMode,
+#comboGalleryPromptSortMode {
+    background-color: @rgba(overlayFg, 16);
+    color: @primaryText;
+    border: 1px solid @rgba(overlayFg, 16);
+    border-radius: 4px;
+    font-weight: bold;
+    margin: 1px;
+    padding: 0px 24px 0px 8px;
+}
+#comboUserTagSortMode:hover,
+#comboGalleryPromptSortMode:hover {
+    background-color: @rgba(overlayFg, 42);
+}
+#comboUserTagSortMode:on,
+#comboGalleryPromptSortMode:on {
+    background-color: @rgba(overlayFg, 64);
+    color: @primaryText;
+}
+#comboUserTagSortMode::drop-down,
+#comboGalleryPromptSortMode::drop-down {
+    border: none;
+    border-left: 1px solid @rgba(overlayFg, 16);
+    background-color: transparent;
+}
+#comboUserTagSortMode::drop-down:hover,
+#comboGalleryPromptSortMode::drop-down:hover {
+    background-color: @rgba(overlayFg, 42);
 }
 
 /* Hero */

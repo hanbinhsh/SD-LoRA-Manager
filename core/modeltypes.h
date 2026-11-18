@@ -65,6 +65,12 @@ struct ImageInfo {
     bool nsfw = false;
 };
 
+struct ParsedLoraEntry {
+    QString name;
+    QString hash;
+    QString weight;
+};
+
 struct UserImageInfo {
     QString path;
     QString prompt;
@@ -72,6 +78,12 @@ struct UserImageInfo {
     QStringList negativeCleanTags;
     QString negativePrompt;
     QString parameters;
+    QString checkpointName;
+    QString checkpointHash;
+    QList<ParsedLoraEntry> parsedLoras;
+    QStringList extraLoraHashes;
+    bool isComfy = false;
+    bool parsedModelsReady = false;
     qint64 lastModified = 0;
     int parserVersion = 0;
 };
