@@ -86,6 +86,7 @@ const int ROLE_EDIT_IMAGE_PATH        = Qt::UserRole + 46;
 const int ROLE_IS_FOLDER_HEADER       = Qt::UserRole + 47;
 const int ROLE_USER_IMAGE_TAG_KEYS    = Qt::UserRole + 48;
 const int ROLE_USER_IMAGE_NEG_KEYS    = Qt::UserRole + 49;
+const int ROLE_USER_IMAGE_NSFW        = Qt::UserRole + 56;
 // 树状图占位符标记
 const int ROLE_IS_PLACEHOLDER         = Qt::UserRole + 50;
 const int ROLE_CIVITAI_MODEL_ID       = Qt::UserRole + 51;
@@ -105,6 +106,7 @@ const QString CURRENT_VERSION = "1.6.2";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
+const QString DEFAULT_GALLERY_NSFW_RULES = "nsfw, explicit, nude, naked, nipples, pussy, penis, sex";
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -402,6 +404,7 @@ private:
     QString resolveDownloadPreviewPath(const ModelUpdateInfo &info) const;
     void applySettingsState(SettingsState state);
     void resetFilterTagsToDefault();
+    void resetGalleryNsfwRulesToDefault();
     void applyRandomUserAgent();
     void downloadAiTagTranslateDictionary();
     void applyApplicationTheme(const QString &themeId, const QString &customPath, bool updateStatus);
@@ -508,6 +511,10 @@ private:
     bool isGalleryScrollWidget(QObject *watched) const;
     void handleGalleryWheelScroll(QObject *watched, QWheelEvent *event);
 
+    bool isGalleryImageNsfw(const QString &prompt, const QStringList &cleanTags) const;
+    bool isGalleryImageNsfwByPath(const QString &imagePath) const;
+    void refreshGalleryNsfwDisplay();
+
     void scanForUserImages(const QString &loraBaseName);
     void parsePngInfo(const QString &path, UserImageInfo &info);
     void refreshUserTagFlowStats(bool applyGalleryFilter = true,
@@ -601,6 +608,9 @@ private:
     bool          optFilterNSFW                               = false;            // NSFW过滤
     int           optNSFWMode                                 = 1;                // 0: 完全隐藏, 1: 高斯模糊
     int           optNSFWLevel                                = 1;                // NSFW筛选等级
+    bool          optFilterGalleryNSFW                        = false;            // 返图 NSFW 过滤
+    int           optGalleryNSFWMode                          = 1;                // 0: 完全隐藏, 1: 高斯模糊
+    QStringList   optGalleryNSFWRules                         = DEFAULT_GALLERY_NSFW_RULES.split(',', Qt::SkipEmptyParts);
     bool          optShowEmptyCollections                     = false;            // 显示空收藏夹
     bool          optCollectionFolderTopLevel                 = false;            // 收藏夹树按 LoRA 根目录作为顶层分类
     bool          optCollectionFolderSecondLevel              = false;            // 收藏夹树按 收藏夹/LoRA 根目录/模型 分组

@@ -214,4 +214,169 @@ void parseImage(const QString &path, UserImageInfo &info, bool splitOnNewline, c
     populateParsedModelFields(info);
 }
 
+namespace {
+QString normalizeRuleText(QString s)
+{
+    s = s.trimmed();
+    s.replace(QLatin1Char('_'), QLatin1Char(' '));
+    return s.simplified().toCaseFolded();
+}
+} // namespace
+
+QStringList parseNsfwRules(const QString &rawRules)
+{
+    QStringList rules;
+    QString current;
+    int braceDepth = 0;
+    int parenDepth = 0;
+    bool escaped = false;
+
+    auto flushCurrent = [&]() {
+        const QString clean = current.trimmed();
+        current.clear();
+        if (clean.isEmpty()) return;
+        for (const QString &existing : std::as_const(rules)) {
+            if (existing.compare(clean, Qt::CaseInsensitive) == 0) return;
+        }
+        rules.append(clean);
+    };
+
+    for (const QChar ch : rawRules) {
+        if (escaped) {
+            current.append(ch);
+            escaped = false;
+            continue;
+        }
+        if (ch == QLatin1Char('\\')) {
+            current.append(ch);
+            escaped = true;
+            continue;
+        }
+        if (ch == QLatin1Char('{')) ++braceDepth;
+        else if (ch == QLatin1Char('}') && braceDepth > 0) --braceDepth;
+        else if (ch == QLatin1Char('(')) ++parenDepth;
+        else if (ch == QLatin1Char(')') && parenDepth > 0) --parenDepth;
+
+        const bool isLineBreak = (ch == QLatin1Char('\n') || ch == QLatin1Char('\r'));
+        const bool isSeparator = isLineBreak ||
+            (braceDepth == 0 && parenDepth == 0 &&
+             (ch == QLatin1Char(',') || ch == QChar(0xFF0C) || ch == QLatin1Char(';') || ch == QChar(0xFF1B)));
+        if (isSeparator) {
+            if (isLineBreak) {
+                braceDepth = 0;
+                parenDepth = 0;
+            }
+            flushCurrent();
+        } else {
+            current.append(ch);
+        }
+    }
+    flushCurrent();
+    return rules;
+}
+
+bool matchesPositivePromptNsfwRules(const QString &rawPrompt,
+                                    const QStringList &cleanTags,
+                                    const QStringList &rules)
+{
+    if (rules.isEmpty()) return false;
+    if (rawPrompt.trimmed().isEmpty() && cleanTags.isEmpty()) return false;
+
+    static const QRegularExpression loraStripRegex(
+        "<\\s*(?:lora|lyco)\\s*:[^>]*>",
+        QRegularExpression::CaseInsensitiveOption);
+
+    QString promptWithoutLoras = rawPrompt;
+    promptWithoutLoras.remove(loraStripRegex);
+    QString promptSpaced = promptWithoutLoras;
+    promptSpaced.replace(QLatin1Char('_'), QLatin1Char(' '));
+
+    QString rawPromptSpaced = rawPrompt;
+    rawPromptSpaced.replace(QLatin1Char('_'), QLatin1Char(' '));
+
+    QStringList allNormalizedTags;
+    QStringList nonLoraNormalizedTags;
+    const QStringList &sourceTags = cleanTags.isEmpty()
+        ? TagUtils::parsePromptTags(rawPrompt, true, QStringList())
+        : cleanTags;
+    allNormalizedTags.reserve(sourceTags.size());
+    nonLoraNormalizedTags.reserve(sourceTags.size());
+    for (const QString &t : sourceTags) {
+        const QString norm = normalizeRuleText(t);
+        if (norm.isEmpty()) continue;
+        allNormalizedTags.append(norm);
+        const QString trimmed = t.trimmed();
+        if (!trimmed.startsWith(QLatin1String("<lora:"), Qt::CaseInsensitive) &&
+            !trimmed.startsWith(QLatin1String("<lyco:"), Qt::CaseInsensitive)) {
+            nonLoraNormalizedTags.append(norm);
+        }
+    }
+
+    for (const QString &rule : rules) {
+        const QString cleanRule = rule.trimmed();
+        if (cleanRule.isEmpty()) continue;
+
+        const bool targetLoras = cleanRule.startsWith(QLatin1Char('<'))
+                              || cleanRule.contains(QLatin1String("lora:"), Qt::CaseInsensitive)
+                              || cleanRule.contains(QLatin1String("lyco:"), Qt::CaseInsensitive);
+        const QStringList &tagsToCheck = targetLoras ? allNormalizedTags : nonLoraNormalizedTags;
+        const QString &promptToCheck = targetLoras ? rawPrompt : promptWithoutLoras;
+        const QString &promptSpacedToCheck = targetLoras ? rawPromptSpaced : promptSpaced;
+
+        // 1. regex:<pattern>
+        if (cleanRule.startsWith(QLatin1String("regex:"), Qt::CaseInsensitive)) {
+            const QString pattern = cleanRule.mid(6).trimmed();
+            if (!pattern.isEmpty()) {
+                const QRegularExpression re(pattern, QRegularExpression::CaseInsensitiveOption);
+                if (re.isValid() && re.match(promptToCheck).hasMatch()) {
+                    return true;
+                }
+            }
+            continue;
+        }
+
+        // 2. Wildcard rule (* / ?)
+        if (cleanRule.contains(QLatin1Char('*')) || cleanRule.contains(QLatin1Char('?'))) {
+            const QString normWildcard = normalizeRuleText(cleanRule);
+            const QRegularExpression tagRe = QRegularExpression::fromWildcard(
+                normWildcard, Qt::CaseInsensitive);
+            for (const QString &tag : tagsToCheck) {
+                if (tagRe.match(tag).hasMatch()) return true;
+            }
+            if (!promptToCheck.isEmpty()) {
+                const QRegularExpression promptRe(
+                    QRegularExpression::wildcardToRegularExpression(
+                        cleanRule, QRegularExpression::UnanchoredWildcardConversion),
+                    QRegularExpression::CaseInsensitiveOption);
+                if (promptRe.match(promptToCheck).hasMatch()) return true;
+            }
+            continue;
+        }
+
+        // 3. Plain keyword / tag match
+        const QString ruleNorm = normalizeRuleText(cleanRule);
+        for (const QString &tag : tagsToCheck) {
+            if (tag == ruleNorm) return true;
+        }
+
+        if (!promptToCheck.isEmpty()) {
+            const QString escapedRaw = QRegularExpression::escape(cleanRule);
+            const QString escapedNorm = QRegularExpression::escape(ruleNorm);
+            const QRegularExpression boundaryRaw(
+                QStringLiteral("(?<![A-Za-z0-9_])%1(?![A-Za-z0-9_])").arg(escapedRaw),
+                QRegularExpression::CaseInsensitiveOption);
+            if (boundaryRaw.match(promptToCheck).hasMatch()) return true;
+
+            if (escapedNorm != escapedRaw) {
+                const QRegularExpression boundaryNorm(
+                    QStringLiteral("(?<![A-Za-z0-9_])%1(?![A-Za-z0-9_])").arg(escapedNorm),
+                    QRegularExpression::CaseInsensitiveOption);
+                if (boundaryNorm.match(promptSpacedToCheck).hasMatch()) return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 }

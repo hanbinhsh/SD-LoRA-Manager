@@ -487,6 +487,13 @@ MainWindow::MainWindow(QWidget *parent)
                     }
                 }
             }
+            if (!shouldBlur && optFilterGalleryNSFW && optGalleryNSFWMode == 1 &&
+                ((ui && ui->detailContentStack && ui->detailContentStack->currentIndex() == 1) ||
+                 userGalleryGlobalMode || result.path == m_galleryCurrentImagePath)) {
+                if (isGalleryImageNsfwByPath(result.path)) {
+                    shouldBlur = true;
+                }
+            }
             if (shouldBlur) {
                 nextHeroPixmap = ImagePresentation::applyNSFWBlur(rawPix);
             } else {
@@ -5227,7 +5234,15 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
         for (int i = 0; i < ui->listUserImages->count(); ++i) {
             QListWidgetItem *item = ui->listUserImages->item(i);
             if (item && item->data(ROLE_USER_IMAGE_PATH).toString() == filePath) {
-                item->setIcon(QIcon(QPixmap::fromImage(image)));
+                const bool blurNsfw = optFilterGalleryNSFW && optGalleryNSFWMode == 1
+                                   && item->data(ROLE_USER_IMAGE_NSFW).toBool();
+                if (blurNsfw) {
+                    QPixmap pix = QPixmap::fromImage(image);
+                    QPixmap blurred = ImagePresentation::applyNSFWBlur(pix);
+                    item->setIcon(QIcon(ImagePresentation::applyRoundedMask(blurred, 4)));
+                } else {
+                    item->setIcon(QIcon(QPixmap::fromImage(image)));
+                }
                 item->setData(ROLE_PREVIEW_PLACEHOLDER, false);
                 break;
             }
@@ -5438,7 +5453,15 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
             for (int i = 0; i < ui->listUserImages->count(); ++i) {
                 QListWidgetItem *item = ui->listUserImages->item(i);
                 if (item->data(ROLE_USER_IMAGE_PATH).toString() == filePath) {
-                    item->setIcon(originalIcon);
+                    const bool blurNsfw = optFilterGalleryNSFW && optGalleryNSFWMode == 1
+                                       && item->data(ROLE_USER_IMAGE_NSFW).toBool();
+                    if (blurNsfw) {
+                        if (blurredPix.isNull()) blurredPix = ImagePresentation::applyNSFWBlur(originalPix);
+                        item->setIcon(QIcon(ImagePresentation::applyRoundedMask(blurredPix, 4)));
+                    } else {
+                        item->setIcon(originalIcon);
+                    }
+                    item->setData(ROLE_PREVIEW_PLACEHOLDER, false);
                     userImageUpdated = true;
                 }
             }
@@ -7099,6 +7122,11 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
                               makeNormalizedTagKeys(info.cleanTags));
                 item->setData(ROLE_USER_IMAGE_NEG_KEYS,
                               makeNormalizedTagKeys(info.negativeCleanTags));
+                const bool isNsfw = isGalleryImageNsfw(info.prompt, info.cleanTags);
+                item->setData(ROLE_USER_IMAGE_NSFW, isNsfw);
+                if (optFilterGalleryNSFW && optGalleryNSFWMode == 0 && isNsfw) {
+                    item->setHidden(true);
+                }
                 item->setIcon(placeholderIcon);
                 item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
                 ui->listUserImages->addItem(item);
@@ -7131,6 +7159,73 @@ void MainWindow::parsePngInfo(const QString &path, UserImageInfo &info) {
     GalleryMetadata::parseImage(path, info, optSplitOnNewline, optFilterTags);
 }
 
+bool MainWindow::isGalleryImageNsfw(const QString &prompt, const QStringList &cleanTags) const
+{
+    return GalleryMetadata::matchesPositivePromptNsfwRules(prompt, cleanTags, optGalleryNSFWRules);
+}
+
+bool MainWindow::isGalleryImageNsfwByPath(const QString &imagePath) const
+{
+    if (imagePath.isEmpty() || optGalleryNSFWRules.isEmpty()) return false;
+
+    auto it = imageCache.constFind(imagePath);
+    if (it == imageCache.constEnd()) {
+        const QString cleanTarget = QDir::cleanPath(QFileInfo(imagePath).absoluteFilePath());
+        for (auto cacheIt = imageCache.cbegin(); cacheIt != imageCache.cend(); ++cacheIt) {
+            if (QDir::cleanPath(QFileInfo(cacheIt.key()).absoluteFilePath()).compare(cleanTarget, Qt::CaseInsensitive) == 0) {
+                it = cacheIt;
+                break;
+            }
+        }
+    }
+    if (it != imageCache.constEnd()) {
+        return isGalleryImageNsfw(it.value().prompt, it.value().cleanTags);
+    }
+
+    if (ui && ui->listUserImages) {
+        const QString cleanTarget = QDir::cleanPath(QFileInfo(imagePath).absoluteFilePath());
+        for (int i = 0; i < ui->listUserImages->count(); ++i) {
+            QListWidgetItem *item = ui->listUserImages->item(i);
+            if (!item) continue;
+            const QString itemPath = item->data(ROLE_USER_IMAGE_PATH).toString();
+            if (itemPath == imagePath ||
+                QDir::cleanPath(QFileInfo(itemPath).absoluteFilePath()).compare(cleanTarget, Qt::CaseInsensitive) == 0) {
+                return isGalleryImageNsfw(item->data(ROLE_USER_IMAGE_PROMPT).toString(),
+                                          item->data(ROLE_USER_IMAGE_TAGS).toStringList());
+            }
+        }
+    }
+    return false;
+}
+
+void MainWindow::refreshGalleryNsfwDisplay()
+{
+    if (ui && ui->listUserImages && ui->listUserImages->count() > 0) {
+        placeholderIcon = generatePlaceholderIcon();
+        resetUserImageThumbLoading();
+        ui->listUserImages->setUpdatesEnabled(false);
+        for (int i = 0; i < ui->listUserImages->count(); ++i) {
+            QListWidgetItem *item = ui->listUserImages->item(i);
+            if (!item) continue;
+            const bool isNsfw = isGalleryImageNsfw(item->data(ROLE_USER_IMAGE_PROMPT).toString(),
+                                                   item->data(ROLE_USER_IMAGE_TAGS).toStringList());
+            item->setData(ROLE_USER_IMAGE_NSFW, isNsfw);
+            item->setIcon(placeholderIcon);
+            item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
+        }
+        ui->listUserImages->setUpdatesEnabled(true);
+        refreshUserTagFlowStats(true, false);
+        scheduleVisibleUserImageThumbLoad();
+    }
+
+    if (!m_galleryCurrentImagePath.isEmpty() &&
+        ((ui && ui->detailContentStack && ui->detailContentStack->currentIndex() == 1) || userGalleryGlobalMode)) {
+        const QString pathToReload = m_galleryCurrentImagePath;
+        currentHeroPath.clear();
+        transitionToImage(pathToReload);
+    }
+}
+
 void MainWindow::refreshUserTagFlowStats(bool applyGalleryFilter,
                                          bool resetGalleryScrollToTop)
 {
@@ -7140,9 +7235,11 @@ void MainWindow::refreshUserTagFlowStats(bool applyGalleryFilter,
     QSet<QString> negativeTagKeys;
     const bool currentOnly = ui->chkUserTagCurrentImageOnly && ui->chkUserTagCurrentImageOnly->isChecked();
     const bool includeNegative = ui->chkUserTagIncludeNegative && ui->chkUserTagIncludeNegative->isChecked();
+    const bool hideNsfwItems = optFilterGalleryNSFW && optGalleryNSFWMode == 0;
 
     auto addTagsFromItem = [&](QListWidgetItem *item) {
         if (!item) return;
+        if (hideNsfwItems && item->data(ROLE_USER_IMAGE_NSFW).toBool()) return;
         QSet<QString> perImageTagKeys;
         const QStringList positiveTags = item->data(ROLE_USER_IMAGE_TAGS).toStringList();
         for (const QString &tag : positiveTags) {
@@ -7891,8 +7988,12 @@ void MainWindow::applyUserGalleryTagFilter(const QSet<QString> &selectedTags,
                                                 : QStringList();
 
         bool match = true;
+        if (optFilterGalleryNSFW && optGalleryNSFWMode == 0 && item->data(ROLE_USER_IMAGE_NSFW).toBool()) {
+            match = false;
+        }
         // AND 逻辑：必须包含所有选中的 Tag
         for (const QString &selTag : selectedTagKeys) {
+            if (!match) break;
             const bool tagFound = std::binary_search(positiveTagKeys.cbegin(),
                                                      positiveTagKeys.cend(), selTag)
                                   || (includeNegative
@@ -9673,6 +9774,7 @@ void MainWindow::loadGlobalConfig() {
     QFile file(configPath);
     SettingsState settings;
     settings.filterTagsText = DEFAULT_FILTER_TAGS;
+    settings.galleryNsfwRulesText = DEFAULT_GALLERY_NSFW_RULES;
     if (file.open(QIODevice::ReadOnly)) {
         QJsonParseError parseError;
         QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
@@ -9683,11 +9785,14 @@ void MainWindow::loadGlobalConfig() {
             qWarning() << "Invalid global settings JSON:" << configPath << parseError.errorString();
         }
 
-        settings = SettingsState::fromJson(root, DEFAULT_FILTER_TAGS);
+        settings = SettingsState::fromJson(root, DEFAULT_FILTER_TAGS, DEFAULT_GALLERY_NSFW_RULES);
         optUiScale = settings.uiScale;
         optFilterNSFW = settings.filterNSFW;
         optNSFWMode = settings.nsfwMode;
         optNSFWLevel = settings.nsfwLevel;
+        optFilterGalleryNSFW = settings.filterGalleryNSFW;
+        optGalleryNSFWMode = settings.galleryNsfwMode;
+        optGalleryNSFWRules = settings.galleryNsfwRules();
         optLoraRecursive = settings.loraRecursive;
         optGalleryRecursive = settings.galleryRecursive;
         optBlurRadius = settings.blurRadius;
@@ -9860,6 +9965,7 @@ void MainWindow::initSettingsPage()
         if (finalSave) saveGlobalConfig();
     });
     connect(settingsPage, &SettingsPage::resetFilterTagsRequested, this, &MainWindow::resetFilterTagsToDefault);
+    connect(settingsPage, &SettingsPage::resetGalleryNsfwRulesRequested, this, &MainWindow::resetGalleryNsfwRulesToDefault);
     connect(settingsPage, &SettingsPage::randomUserAgentRequested, this, &MainWindow::applyRandomUserAgent);
     connect(settingsPage, &SettingsPage::stateChanged, this, &MainWindow::applySettingsState);
     connect(settingsPage, &SettingsPage::editThemeRequested, this, &MainWindow::onEditThemeRequested);
@@ -9970,6 +10076,12 @@ void MainWindow::applySettingsState(SettingsState state)
     const bool civitaiNameChanged = optUseCivitaiName != state.useCivitaiName;
     const bool galleryMatchChanged = optUserGalleryMatchMode != state.userGalleryMatchMode
         || optComfyModelNameFallback != state.comfyModelNameFallback;
+    const QStringList newGalleryNsfwRules = state.galleryNsfwRules();
+    const bool galleryNsfwChanged = optFilterGalleryNSFW != state.filterGalleryNSFW
+        || optGalleryNSFWMode != state.galleryNsfwMode
+        || optGalleryNSFWRules != newGalleryNsfwRules
+        || (state.filterGalleryNSFW && state.galleryNsfwMode == 1 &&
+            (optBlurRadius != state.blurRadius || optDownscaleBlur != state.downscaleBlur || optBlurProcessWidth != state.blurProcessWidth));
     const bool iconVisualChanged = optFilterNSFW != state.filterNSFW
         || optNSFWMode != state.nsfwMode
         || optNSFWLevel != state.nsfwLevel
@@ -9988,6 +10100,9 @@ void MainWindow::applySettingsState(SettingsState state)
     optFilterNSFW = state.filterNSFW;
     optNSFWMode = state.nsfwMode;
     optNSFWLevel = state.nsfwLevel;
+    optFilterGalleryNSFW = state.filterGalleryNSFW;
+    optGalleryNSFWMode = state.galleryNsfwMode;
+    optGalleryNSFWRules = newGalleryNsfwRules;
     optRenderThreadCount = qMax(1, state.renderThreadCount);
     optRestoreTreeState = state.restoreTreeState;
     optRestoreFilterSortState = state.restoreFilterSortState;
@@ -10050,6 +10165,9 @@ void MainWindow::applySettingsState(SettingsState state)
         sidebarIconCache.clear();
         homeIconCache.clear();
     }
+    if (galleryNsfwChanged) {
+        refreshGalleryNsfwDisplay();
+    }
 }
 
 void MainWindow::resetFilterTagsToDefault()
@@ -10067,6 +10185,23 @@ void MainWindow::resetFilterTagsToDefault()
     for (QString &s : optFilterTags) s = s.trimmed();
     saveGlobalConfig();
     ui->statusbar->showMessage(AppText::tr("过滤词已重置"), 2000);
+}
+
+void MainWindow::resetGalleryNsfwRulesToDefault()
+{
+    const QMessageBox::StandardButton reply = QMessageBox::question(
+        this,
+        AppText::tr("确认重置 / Confirm Reset"),
+        AppText::tr("确定要将返图 NSFW 匹配规则重置为默认值吗？\n此操作将覆盖当前的自定义设置。\n\n"
+        "Are you sure you want to reset gallery NSFW rules to default?"),
+        QMessageBox::Yes | QMessageBox::No);
+    if (reply != QMessageBox::Yes) return;
+
+    settingsPage->setGalleryNsfwRulesText(DEFAULT_GALLERY_NSFW_RULES);
+    optGalleryNSFWRules = GalleryMetadata::parseNsfwRules(DEFAULT_GALLERY_NSFW_RULES);
+    saveGlobalConfig();
+    if (optFilterGalleryNSFW) refreshGalleryNsfwDisplay();
+    ui->statusbar->showMessage(AppText::tr("返图 NSFW 规则已重置"), 2000);
 }
 
 void MainWindow::applyRandomUserAgent()
@@ -10230,6 +10365,9 @@ void MainWindow::saveGlobalConfig() {
         settings.filterNSFW = optFilterNSFW;
         settings.nsfwMode = optNSFWMode;
         settings.nsfwLevel = optNSFWLevel;
+        settings.filterGalleryNSFW = optFilterGalleryNSFW;
+        settings.galleryNsfwMode = optGalleryNSFWMode;
+        settings.galleryNsfwRulesText = optGalleryNSFWRules.join(", ");
         settings.renderThreadCount = optRenderThreadCount;
         settings.restoreTreeState = optRestoreTreeState;
         settings.restoreFilterSortState = optRestoreFilterSortState;

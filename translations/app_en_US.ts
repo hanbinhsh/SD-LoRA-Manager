@@ -1410,6 +1410,10 @@ Hash: ...</translation>
       <translation>e.g. BREAK, ADDCOMM, ADDBASE...</translation>
     </message>
     <message>
+      <source>例如: nsfw, explicit, nude, naked, nipples...</source>
+      <translation>e.g. nsfw, explicit, nude, naked, nipples...</translation>
+    </message>
+    <message>
       <source>例如：, best quality</source>
       <translation>e.g. , best quality</translation>
     </message>
@@ -1800,6 +1804,14 @@ Hash: ...</translation>
     <message>
       <source>匹配 %1 条</source>
       <translation>%1 matches</translation>
+    </message>
+    <message>
+      <source>匹配正面提示词（支持英文逗号、分号或换行分隔，不区分大小写；支持 * 通配符及 regex:正则表达式）。</source>
+      <translation>Matches positive prompts (comma, semicolon, or newline separated; case-insensitive; supports * wildcards and regex:patterns).</translation>
+    </message>
+    <message>
+      <source>匹配词规则 / Match Rules:</source>
+      <translation>Match Rules:</translation>
     </message>
     <message>
       <source>单击查看关联，Ctrl+单击多选组合筛选，双击以此节点为中心聚焦</source>
@@ -2922,8 +2934,16 @@ Open Settings to configure one?
       <translation>Downscale images before blurring to generate backgrounds faster.</translation>
     </message>
     <message>
+      <source>开启后，将根据下方设定的正面提示词匹配规则对本地返图进行隐藏或模糊处理。</source>
+      <translation>When enabled, local gallery images matching the positive prompt rules below will be hidden or blurred.</translation>
+    </message>
+    <message>
       <source>开启思考</source>
       <translation>Enable thinking</translation>
+    </message>
+    <message>
+      <source>开启返图 NSFW 内容过滤 / Enable Gallery Image NSFW Filter</source>
+      <translation>Enable Gallery Image NSFW Filter</translation>
     </message>
     <message>
       <source>开始打标</source>
@@ -4839,6 +4859,14 @@ Are you sure you want to reset filter tags to default?</source>
 This will replace your current custom settings.</translation>
     </message>
     <message>
+      <source>确定要将返图 NSFW 匹配规则重置为默认值吗？
+此操作将覆盖当前的自定义设置。
+
+Are you sure you want to reset gallery NSFW rules to default?</source>
+      <translation>Are you sure you want to reset gallery NSFW rules to default?
+This will overwrite your current custom rules.</translation>
+    </message>
+    <message>
       <source>确认删除</source>
       <translation>Confirm deletion</translation>
     </message>
@@ -5527,6 +5555,14 @@ SHA256: %4</translation>
     <message>
       <source>过滤词已重置</source>
       <translation>Filter tags reset</translation>
+    </message>
+    <message>
+      <source>返图 NSFW 内容过滤 / Gallery Image NSFW Filter</source>
+      <translation>Gallery Image NSFW Filter</translation>
+    </message>
+    <message>
+      <source>返图 NSFW 规则已重置</source>
+      <translation>Gallery NSFW rules reset</translation>
     </message>
     <message>
       <source>这会删除本地图库提示词缓存文件，下次扫描图库时会重新解析所有图片。

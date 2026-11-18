@@ -959,6 +959,84 @@
              </layout>
             </widget>
            </item>
+           <item>
+            <widget class="QGroupBox" name="groupGalleryNSFW">
+             <property name="title">
+              <string>返图 NSFW 内容过滤 / Gallery Image NSFW Filter</string>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayout_GalleryNSFW">
+              <item>
+               <widget class="QCheckBox" name="chkFilterGalleryNSFW">
+                <property name="toolTip">
+                 <string>开启后，将根据下方设定的正面提示词匹配规则对本地返图进行隐藏或模糊处理。</string>
+                </property>
+                <property name="text">
+                 <string>开启返图 NSFW 内容过滤 / Enable Gallery Image NSFW Filter</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_GalleryNSFWMode">
+                <item>
+                 <widget class="QLabel" name="lblGalleryNSFWMode">
+                  <property name="text">
+                   <string>过滤模式 / Filter Mode:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QRadioButton" name="radioGalleryNSFW_Hide">
+                  <property name="text">
+                   <string>隐藏 / Hide</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QRadioButton" name="radioGalleryNSFW_Blur">
+                  <property name="text">
+                   <string>模糊 / Blur</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_GalleryNSFWRules">
+                <item>
+                 <widget class="QLabel" name="lblGalleryNSFWRules">
+                  <property name="text">
+                   <string>匹配词规则 / Match Rules:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLineEdit" name="editGalleryNSFWRules">
+                  <property name="toolTip">
+                   <string>匹配正面提示词（支持英文逗号、分号或换行分隔，不区分大小写；支持 * 通配符及 regex:正则表达式）。</string>
+                  </property>
+                  <property name="placeholderText">
+                   <string>例如: nsfw, explicit, nude, naked, nipples...</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnResetGalleryNSFWRules">
+                  <property name="cursor">
+                   <cursorShape>PointingHandCursor</cursorShape>
+                  </property>
+                  <property name="toolTip">
+                   <string>重置为默认值</string>
+                  </property>
+                  <property name="text">
+                   <string>↺</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+             </layout>
+            </widget>
+           </item>
           </layout>
          </item>
          <item>

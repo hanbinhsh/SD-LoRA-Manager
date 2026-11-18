@@ -20,6 +20,9 @@ struct SettingsState {
     bool filterNSFW = false;
     int nsfwMode = 1;
     int nsfwLevel = 1;
+    bool filterGalleryNSFW = false;
+    int galleryNsfwMode = 1;
+    QString galleryNsfwRulesText;
     int renderThreadCount = 4;
     bool restoreTreeState = true;
     bool restoreFilterSortState = true;
@@ -48,10 +51,13 @@ struct SettingsState {
     QString themeId = "steam_dark";
     QString customThemePath;
 
-    static SettingsState fromJson(const QJsonObject &root, const QString &defaultFilterTags);
+    static SettingsState fromJson(const QJsonObject &root,
+                                  const QString &defaultFilterTags,
+                                  const QString &defaultGalleryNsfwRules = QStringLiteral("nsfw, explicit, nude, naked, nipples, pussy, penis, sex"));
     void writeToJson(QJsonObject &root) const;
     void normalize();
     QStringList filterTags() const;
+    QStringList galleryNsfwRules() const;
 };
 
 class SettingsPage : public QWidget
@@ -72,6 +78,7 @@ public:
     void setAiTagTranslateDownloadState(bool downloading, const QString &status);
     void setBlurValue(int value);
     void setFilterTagsText(const QString &text);
+    void setGalleryNsfwRulesText(const QString &text);
     void setUserAgentText(const QString &text);
     void setThemeStatus(const QString &text);
     void focusTranslationPath();
@@ -89,6 +96,7 @@ signals:
     void stateChanged(const SettingsState &state);
     void blurChanged(int value, bool finalSave);
     void resetFilterTagsRequested();
+    void resetGalleryNsfwRulesRequested();
     void randomUserAgentRequested();
     void editThemeRequested(const QString &baseThemeId); // 打开主题编辑器（以当前主题为起点）
     void deleteThemeRequested(const QString &themeId);    // 删除当前选中的用户主题

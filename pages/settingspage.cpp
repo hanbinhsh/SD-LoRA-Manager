@@ -28,7 +28,9 @@ namespace {
 constexpr bool kThemeSettingsEnabled = true;
 }
 
-SettingsState SettingsState::fromJson(const QJsonObject &root, const QString &defaultFilterTags)
+SettingsState SettingsState::fromJson(const QJsonObject &root,
+                                        const QString &defaultFilterTags,
+                                        const QString &defaultGalleryNsfwRules)
 {
     SettingsState state;
     state.uiLanguage = AppLanguage::normalized(root["ui_language"].toString());
@@ -37,6 +39,11 @@ SettingsState SettingsState::fromJson(const QJsonObject &root, const QString &de
     state.filterNSFW = root["nsfw_filter"].toBool(false);
     state.nsfwMode = root["nsfw_mode"].toInt(1);
     state.nsfwLevel = root["nsfw_level_threshold"].toInt(1);
+    state.filterGalleryNSFW = root["gallery_nsfw_filter"].toBool(false);
+    state.galleryNsfwMode = root["gallery_nsfw_mode"].toInt(1);
+    state.galleryNsfwRulesText = root.contains("gallery_nsfw_rules")
+        ? root["gallery_nsfw_rules"].toString()
+        : defaultGalleryNsfwRules;
     state.loraRecursive = root["lora_recursive"].toBool(false);
     state.galleryRecursive = root["gallery_recursive"].toBool(false);
     state.blurRadius = root["blur_radius"].toInt(30);
@@ -86,6 +93,9 @@ void SettingsState::writeToJson(QJsonObject &root) const
     root["nsfw_filter"] = normalized.filterNSFW;
     root["nsfw_mode"] = normalized.nsfwMode;
     root["nsfw_level_threshold"] = normalized.nsfwLevel;
+    root["gallery_nsfw_filter"] = normalized.filterGalleryNSFW;
+    root["gallery_nsfw_mode"] = normalized.galleryNsfwMode;
+    root["gallery_nsfw_rules"] = normalized.galleryNsfwRulesText;
     root["render_thread_count"] = normalized.renderThreadCount;
     root["restore_tree_state"] = normalized.restoreTreeState;
     root["restore_filter_sort_state"] = normalized.restoreFilterSortState;
@@ -140,6 +150,55 @@ QStringList SettingsState::filterTags() const
     QStringList tags = filterTagsText.split(',', Qt::SkipEmptyParts);
     for (QString &tag : tags) tag = tag.trimmed();
     return tags;
+}
+
+QStringList SettingsState::galleryNsfwRules() const
+{
+    QStringList rules;
+    QString current;
+    int braceDepth = 0;
+    int parenDepth = 0;
+    bool escaped = false;
+    auto flushCurrent = [&]() {
+        const QString clean = current.trimmed();
+        current.clear();
+        if (clean.isEmpty()) return;
+        for (const QString &existing : std::as_const(rules)) {
+            if (existing.compare(clean, Qt::CaseInsensitive) == 0) return;
+        }
+        rules.append(clean);
+    };
+    for (const QChar ch : galleryNsfwRulesText) {
+        if (escaped) {
+            current.append(ch);
+            escaped = false;
+            continue;
+        }
+        if (ch == QLatin1Char('\\')) {
+            current.append(ch);
+            escaped = true;
+            continue;
+        }
+        if (ch == QLatin1Char('{')) ++braceDepth;
+        else if (ch == QLatin1Char('}') && braceDepth > 0) --braceDepth;
+        else if (ch == QLatin1Char('(')) ++parenDepth;
+        else if (ch == QLatin1Char(')') && parenDepth > 0) --parenDepth;
+        const bool isLineBreak = (ch == QLatin1Char('\n') || ch == QLatin1Char('\r'));
+        const bool isSeparator = isLineBreak ||
+            (braceDepth == 0 && parenDepth == 0 &&
+             (ch == QLatin1Char(',') || ch == QChar(0xFF0C) || ch == QLatin1Char(';') || ch == QChar(0xFF1B)));
+        if (isSeparator) {
+            if (isLineBreak) {
+                braceDepth = 0;
+                parenDepth = 0;
+            }
+            flushCurrent();
+        } else {
+            current.append(ch);
+        }
+    }
+    flushCurrent();
+    return rules;
 }
 
 SettingsPage::SettingsPage(QWidget *parent)
@@ -201,6 +260,18 @@ SettingsPage::SettingsPage(QWidget *parent)
         if (checked) emitStateChanged();
     });
     if (ui->spinNSFWLevel) connect(ui->spinNSFWLevel, QOverload<int>::of(&QSpinBox::valueChanged), this, &SettingsPage::emitStateChanged);
+    if (ui->chkFilterGalleryNSFW) connect(ui->chkFilterGalleryNSFW, &QCheckBox::toggled, this, [this]() {
+        updateDependentControls();
+        emitStateChanged();
+    });
+    if (ui->radioGalleryNSFW_Hide) connect(ui->radioGalleryNSFW_Hide, &QRadioButton::toggled, this, [this](bool checked) {
+        if (checked) emitStateChanged();
+    });
+    if (ui->radioGalleryNSFW_Blur) connect(ui->radioGalleryNSFW_Blur, &QRadioButton::toggled, this, [this](bool checked) {
+        if (checked) emitStateChanged();
+    });
+    if (ui->editGalleryNSFWRules) connect(ui->editGalleryNSFWRules, &QLineEdit::editingFinished, this, &SettingsPage::emitStateChanged);
+    if (ui->btnResetGalleryNSFWRules) connect(ui->btnResetGalleryNSFWRules, &QPushButton::clicked, this, &SettingsPage::resetGalleryNsfwRulesRequested);
     if (ui->spinRenderThreads) connect(ui->spinRenderThreads, QOverload<int>::of(&QSpinBox::valueChanged), this, &SettingsPage::emitStateChanged);
     if (ui->chkRestoreTreeState) connect(ui->chkRestoreTreeState, &QCheckBox::toggled, this, &SettingsPage::emitStateChanged);
     if (ui->chkRestoreFilterSortState) connect(ui->chkRestoreFilterSortState, &QCheckBox::toggled, this, &SettingsPage::emitStateChanged);
@@ -303,6 +374,9 @@ SettingsState SettingsPage::state() const
     s.filterNSFW = ui->chkFilterNSFW && ui->chkFilterNSFW->isChecked();
     s.nsfwMode = (ui->radioNSFW_Hide && ui->radioNSFW_Hide->isChecked()) ? 0 : 1;
     s.nsfwLevel = ui->spinNSFWLevel ? ui->spinNSFWLevel->value() : 1;
+    s.filterGalleryNSFW = ui->chkFilterGalleryNSFW && ui->chkFilterGalleryNSFW->isChecked();
+    s.galleryNsfwMode = (ui->radioGalleryNSFW_Hide && ui->radioGalleryNSFW_Hide->isChecked()) ? 0 : 1;
+    s.galleryNsfwRulesText = ui->editGalleryNSFWRules ? ui->editGalleryNSFWRules->text() : QString();
     s.renderThreadCount = ui->spinRenderThreads ? ui->spinRenderThreads->value() : 4;
     s.restoreTreeState = !ui->chkRestoreTreeState || ui->chkRestoreTreeState->isChecked();
     s.restoreFilterSortState = !ui->chkRestoreFilterSortState || ui->chkRestoreFilterSortState->isChecked();
@@ -354,6 +428,10 @@ void SettingsPage::setState(const SettingsState &state)
     if (ui->radioNSFW_Hide) ui->radioNSFW_Hide->setChecked(state.nsfwMode == 0);
     if (ui->radioNSFW_Blur) ui->radioNSFW_Blur->setChecked(state.nsfwMode != 0);
     if (ui->spinNSFWLevel) ui->spinNSFWLevel->setValue(state.nsfwLevel);
+    if (ui->chkFilterGalleryNSFW) ui->chkFilterGalleryNSFW->setChecked(state.filterGalleryNSFW);
+    if (ui->radioGalleryNSFW_Hide) ui->radioGalleryNSFW_Hide->setChecked(state.galleryNsfwMode == 0);
+    if (ui->radioGalleryNSFW_Blur) ui->radioGalleryNSFW_Blur->setChecked(state.galleryNsfwMode != 0);
+    if (ui->editGalleryNSFWRules) ui->editGalleryNSFWRules->setText(state.galleryNsfwRulesText);
     if (ui->spinRenderThreads) ui->spinRenderThreads->setValue(state.renderThreadCount);
     if (ui->chkRestoreTreeState) ui->chkRestoreTreeState->setChecked(state.restoreTreeState);
     if (ui->chkRestoreFilterSortState) ui->chkRestoreFilterSortState->setChecked(state.restoreFilterSortState);
@@ -418,6 +496,13 @@ void SettingsPage::setFilterTagsText(const QString &text)
     ui->editFilterTags->setText(text);
 }
 
+void SettingsPage::setGalleryNsfwRulesText(const QString &text)
+{
+    if (!ui->editGalleryNSFWRules) return;
+    QSignalBlocker blocker(ui->editGalleryNSFWRules);
+    ui->editGalleryNSFWRules->setText(text);
+}
+
 void SettingsPage::setUserAgentText(const QString &text)
 {
     if (!ui->editUserAgent) return;
@@ -458,6 +543,12 @@ void SettingsPage::updateDependentControls()
     if (ui->radioNSFW_Hide) ui->radioNSFW_Hide->setEnabled(nsfwEnabled);
     if (ui->radioNSFW_Blur) ui->radioNSFW_Blur->setEnabled(nsfwEnabled);
     if (ui->spinNSFWLevel) ui->spinNSFWLevel->setEnabled(nsfwEnabled);
+
+    const bool galleryNsfwEnabled = ui->chkFilterGalleryNSFW && ui->chkFilterGalleryNSFW->isChecked();
+    if (ui->radioGalleryNSFW_Hide) ui->radioGalleryNSFW_Hide->setEnabled(galleryNsfwEnabled);
+    if (ui->radioGalleryNSFW_Blur) ui->radioGalleryNSFW_Blur->setEnabled(galleryNsfwEnabled);
+    if (ui->editGalleryNSFWRules) ui->editGalleryNSFWRules->setEnabled(galleryNsfwEnabled);
+    if (ui->btnResetGalleryNSFWRules) ui->btnResetGalleryNSFWRules->setEnabled(galleryNsfwEnabled);
 
     const bool customUa = ui->chkUseCustomUserAgent && ui->chkUseCustomUserAgent->isChecked();
     if (ui->editUserAgent) ui->editUserAgent->setEnabled(customUa);

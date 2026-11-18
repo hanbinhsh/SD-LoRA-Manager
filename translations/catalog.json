@@ -1371,6 +1371,10 @@
     "zh_CN": "例如: BREAK, ADDCOMM, ADDBASE...",
     "en_US": "e.g. BREAK, ADDCOMM, ADDBASE..."
   },
+  "例如: nsfw, explicit, nude, naked, nipples...": {
+    "zh_CN": "例如: nsfw, explicit, nude, naked, nipples...",
+    "en_US": "e.g. nsfw, explicit, nude, naked, nipples..."
+  },
   "例如：, best quality": {
     "zh_CN": "例如：, best quality",
     "en_US": "e.g. , best quality"
@@ -1762,6 +1766,14 @@
   "匹配 %1 条": {
     "zh_CN": "匹配 %1 条",
     "en_US": "%1 matches"
+  },
+  "匹配正面提示词（支持英文逗号、分号或换行分隔，不区分大小写；支持 * 通配符及 regex:正则表达式）。": {
+    "zh_CN": "匹配正面提示词（支持英文逗号、分号或换行分隔，不区分大小写；支持 * 通配符及 regex:正则表达式）。",
+    "en_US": "Matches positive prompts (comma, semicolon, or newline separated; case-insensitive; supports * wildcards and regex:patterns)."
+  },
+  "匹配词规则 / Match Rules:": {
+    "zh_CN": "匹配词规则:",
+    "en_US": "Match Rules:"
   },
   "单击查看关联，Ctrl+单击多选组合筛选，双击以此节点为中心聚焦": {
     "zh_CN": "单击查看关联，Ctrl+单击多选组合筛选，双击以此节点为中心聚焦",
@@ -2863,9 +2875,17 @@
     "zh_CN": "开启后会先将原图缩小再模糊，能极大提高大图背景的生成速度。",
     "en_US": "Downscale images before blurring to generate backgrounds faster."
   },
+  "开启后，将根据下方设定的正面提示词匹配规则对本地返图进行隐藏或模糊处理。": {
+    "zh_CN": "开启后，将根据下方设定的正面提示词匹配规则对本地返图进行隐藏或模糊处理。",
+    "en_US": "When enabled, local gallery images matching the positive prompt rules below will be hidden or blurred."
+  },
   "开启思考": {
     "zh_CN": "开启思考",
     "en_US": "Enable thinking"
+  },
+  "开启返图 NSFW 内容过滤 / Enable Gallery Image NSFW Filter": {
+    "zh_CN": "开启返图 NSFW 内容过滤",
+    "en_US": "Enable Gallery Image NSFW Filter"
   },
   "开始打标": {
     "zh_CN": "开始打标",
@@ -4727,6 +4747,10 @@
     "zh_CN": "确定要将过滤提示词重置为默认值吗？\n此操作将覆盖当前的自定义设置。",
     "en_US": "Reset filter tags to their defaults?\nThis will replace your current custom settings."
   },
+  "确定要将返图 NSFW 匹配规则重置为默认值吗？\n此操作将覆盖当前的自定义设置。\n\nAre you sure you want to reset gallery NSFW rules to default?": {
+    "zh_CN": "确定要将返图 NSFW 匹配规则重置为默认值吗？\n此操作将覆盖当前的自定义设置。",
+    "en_US": "Are you sure you want to reset gallery NSFW rules to default?\nThis will overwrite your current custom rules."
+  },
   "确认删除": {
     "zh_CN": "确认删除",
     "en_US": "Confirm deletion"
@@ -5410,6 +5434,14 @@
   "过滤词已重置": {
     "zh_CN": "过滤词已重置",
     "en_US": "Filter tags reset"
+  },
+  "返图 NSFW 内容过滤 / Gallery Image NSFW Filter": {
+    "zh_CN": "返图 NSFW 内容过滤",
+    "en_US": "Gallery Image NSFW Filter"
+  },
+  "返图 NSFW 规则已重置": {
+    "zh_CN": "返图 NSFW 规则已重置",
+    "en_US": "Gallery NSFW rules reset"
   },
   "这会删除本地图库提示词缓存文件，下次扫描图库时会重新解析所有图片。\n是否继续？": {
     "zh_CN": "这会删除本地图库提示词缓存文件，下次扫描图库时会重新解析所有图片。\n是否继续？",

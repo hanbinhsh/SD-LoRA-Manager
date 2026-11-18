@@ -114,6 +114,30 @@ void testMetadata(const QTemporaryDir &dir)
           && fromDisk.name == beforeFailure.name, "invalid read leaves output unchanged");
     const ModelMeta empty = ModelMetadata::parseVersion({}, "", "local");
     check(empty.fileSizeMB == 0 && empty.downloadCount == 0 && !empty.nsfw, "empty metadata fields initialized");
+
+    // Gallery NSFW positive prompt rule parsing & matching
+    const QStringList nsfwRules = GalleryMetadata::parseNsfwRules(
+        QStringLiteral("nsfw, explicit, *nude*, regex:foo{1,2}, large_breasts"));
+    check(nsfwRules.size() == 5, "parseNsfwRules keeps braces inside regex without splitting comma");
+    check(GalleryMetadata::matchesPositivePromptNsfwRules(
+              QStringLiteral("1girl, (nsfw:1.2), smile"), {}, nsfwRules),
+          "matches weighted tag inside positive prompt");
+    check(GalleryMetadata::matchesPositivePromptNsfwRules(
+              QStringLiteral("1girl, large breasts, dress"), {QStringLiteral("1girl"), QStringLiteral("large breasts")}, nsfwRules),
+          "matches space vs underscore normalized tag");
+    check(GalleryMetadata::matchesPositivePromptNsfwRules(
+              QStringLiteral("1girl, partially_nude_pose"), {}, nsfwRules),
+          "matches wildcard rule");
+    check(GalleryMetadata::matchesPositivePromptNsfwRules(
+              QStringLiteral("1girl, fooo, smile"), {}, nsfwRules),
+          "matches regex rule with quantifier");
+    check(!GalleryMetadata::matchesPositivePromptNsfwRules(
+              QStringLiteral("<lora:nsfw_helper:0.8>, 1girl, dress"), {QStringLiteral("1girl"), QStringLiteral("dress")}, nsfwRules),
+          "ignores <lora:...> filenames for plain tag rules");
+    check(!GalleryMetadata::matchesPositivePromptNsfwRules(
+              QStringLiteral("1girl, sexy dress"), {QStringLiteral("1girl"), QStringLiteral("sexy dress")},
+              QStringList{QStringLiteral("sex")}),
+          "plain word rule respects word boundary");
 }
 
 void testMatcher(const QTemporaryDir &dir)
