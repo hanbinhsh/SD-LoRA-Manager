@@ -2,14 +2,21 @@
 #define USAGEANALYSISWIDGET_H
 
 #include <QDateTime>
+#include <QHash>
 #include <QMap>
+#include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 #include <QWidget>
 
+#include "core/modeltypes.h"
+
 class QTableWidget;
+class QTimer;
 class PieChartWidget;
 class BarChartWidget;
+class TagModelGraphCanvas;
 
 namespace Ui {
 class UsageAnalysisWidget;
@@ -36,11 +43,23 @@ struct UsageAnalysisModel
     bool hasSha256 = false;
 };
 
+struct UsageGraphImageRecord
+{
+    QStringList tags;              // 正面普通 Tag 列表（不含 <lora:...>）
+    QStringList loras;             // 使用的 LoRA 名称列表
+    QString checkpoint;            // 使用的底模 (Model / Checkpoint) 名称
+    bool inCurrentGallery = false; // 是否在当前本地返图列表中
+};
+
 struct UsageAnalysisData
 {
     QVector<UsageAnalysisModel> models;
     QMap<QString, int> positiveTagCounts;
+    QMap<QString, UserImageInfo> rawImageCache;
+    QSet<QString> currentGalleryPaths;
+    QVector<UsageGraphImageRecord> graphImages;
     int galleryImageCount = 0;
+    int currentGalleryImageCount = 0;
     QDateTime generatedAt;
 };
 
@@ -53,10 +72,14 @@ public:
     ~UsageAnalysisWidget() override;
 
     void setAnalysisData(const UsageAnalysisData &data);
+    void setTranslationMap(const QHash<QString, QString> *map);
+    void openTagModelGraph(int scope, const QString &focusQuery = QString());
 
 signals:
     void requestRefresh();
     void requestOpenModel(const QString &filePath);
+    void requestJumpToModel(const QString &modelOrLoraName);
+    void requestFilterInGallery(const QString &tagOrLora, bool isLora);
 
 private slots:
     void onSearchTextChanged(const QString &text);
@@ -65,11 +88,26 @@ private slots:
 private:
     Ui::UsageAnalysisWidget *ui;
     UsageAnalysisData analysisData;
+    const QHash<QString, QString> *m_translationMap = nullptr;
+    TagModelGraphCanvas *m_graphCanvas = nullptr;
+    QTimer *m_graphRebuildTimer = nullptr;
+    QVector<UsageGraphImageRecord> m_parsedGraphImages;
+    bool m_parsedGraphImagesReady = false;
+    bool m_graphIndexDirty = true;
+    bool m_pendingGraphRelayout = true;
+    int m_graphBuildToken = 0;
+    QString m_selectedGraphNodeId;
+    QString m_focusedGraphNodeId;
 
     void refreshSummary();
     void refreshModelTable();
     void refreshCharts();
     void refreshDiskSpace();
+    void scheduleGraphRebuild(bool relayout = true);
+    void rebuildGraphIndexAndView(bool relayout = true);
+    void updateGraphDetailPanel();
+    QString translateTag(const QString &tag) const;
+    static QString translateTagWithMap(const QHash<QString, QString> &map, const QString &tag);
     void setStatus(const QString &text);
 
     PieChartWidget *folderPie = nullptr;

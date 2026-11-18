@@ -396,6 +396,304 @@
        </item>
       </layout>
      </widget>
+     <widget class="QWidget" name="tabTagModelGraph">
+      <attribute name="title">
+       <string>Tag 与模型图谱</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayoutGraph" stretch="0,1,0">
+       <item>
+        <layout class="QHBoxLayout" name="layoutGraphToolbar">
+         <item>
+          <widget class="QComboBox" name="comboGraphScope">
+           <property name="toolTip">
+            <string>选择图谱统计的数据源范围</string>
+           </property>
+           <item>
+            <property name="text">
+             <string>全部图库缓存</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>当前图库列表</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="comboGraphNodeFilter">
+           <property name="toolTip">
+            <string>筛选图谱中显示的节点类型</string>
+           </property>
+           <item>
+            <property name="text">
+             <string>全部 (Tag + LoRA + 底模)</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Tag + LoRA</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>仅模型 (LoRA + 底模)</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>仅 Tag</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="editGraphSearch">
+           <property name="placeholderText">
+            <string>搜索并定位 Tag / LoRA / 底模（回车聚焦）...</string>
+           </property>
+           <property name="clearButtonEnabled">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="lblGraphMaxNodes">
+           <property name="text">
+            <string>节点数</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="spinGraphMaxNodes">
+           <property name="toolTip">
+            <string>图谱最多展示的高频/关联节点数量</string>
+           </property>
+           <property name="minimum">
+            <number>10</number>
+           </property>
+           <property name="maximum">
+            <number>200</number>
+           </property>
+           <property name="singleStep">
+            <number>5</number>
+           </property>
+           <property name="value">
+            <number>60</number>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="lblGraphMinWeight">
+           <property name="text">
+            <string>最小共现</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="spinGraphMinWeight">
+           <property name="toolTip">
+            <string>仅显示共同出现次数达到此阈值的连线</string>
+           </property>
+           <property name="minimum">
+            <number>1</number>
+           </property>
+           <property name="maximum">
+            <number>500</number>
+           </property>
+           <property name="value">
+            <number>2</number>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QCheckBox" name="chkGraphTranslation">
+           <property name="text">
+            <string>显示翻译</string>
+           </property>
+           <property name="checked">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnGraphClearFocus">
+           <property name="toolTip">
+            <string>退出单节点聚焦，返回全局共现图谱</string>
+           </property>
+           <property name="text">
+            <string>全局视图</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnGraphRelayout">
+           <property name="toolTip">
+            <string>重新运行力导向布局算法</string>
+           </property>
+           <property name="text">
+            <string>重新排布</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnGraphResetView">
+           <property name="toolTip">
+            <string>重置画布缩放与平移位置</string>
+           </property>
+           <property name="text">
+            <string>重置视角</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QSplitter" name="splitterGraph">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+           <horstretch>0</horstretch>
+           <verstretch>1</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+         <widget class="QWidget" name="graphCanvasContainer" native="true">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>3</horstretch>
+            <verstretch>1</verstretch>
+           </sizepolicy>
+          </property>
+          <layout class="QVBoxLayout" name="layoutGraphCanvas">
+           <property name="spacing">
+            <number>0</number>
+           </property>
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+          </layout>
+         </widget>
+         <widget class="QGroupBox" name="groupGraphDetail">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+            <horstretch>1</horstretch>
+            <verstretch>1</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>280</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="title">
+           <string>节点关联详情</string>
+          </property>
+          <layout class="QVBoxLayout" name="layoutGraphDetail">
+           <item>
+            <widget class="QLabel" name="lblGraphSelectedTitle">
+             <property name="text">
+              <string>点击画布中的节点查看其共现 Tag 与模型。</string>
+             </property>
+             <property name="wordWrap">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="layoutGraphDetailButtons">
+             <item>
+              <widget class="QPushButton" name="btnGraphFocusSelected">
+               <property name="toolTip">
+                <string>以当前选中节点为中心展开关联子图</string>
+               </property>
+               <property name="text">
+                <string>聚焦此节点</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="btnGraphJumpToModel">
+               <property name="toolTip">
+                <string>在模型库中定位并查看该模型详情</string>
+               </property>
+               <property name="text">
+                <string>跳转模型详情</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="btnGraphFilterInGallery">
+               <property name="toolTip">
+                <string>在本地返图界面中按此节点筛选图片</string>
+               </property>
+               <property name="text">
+                <string>在图库中筛选</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QTableWidget" name="tableGraphNeighbors">
+             <property name="selectionMode">
+              <enum>QAbstractItemView::SelectionMode::SingleSelection</enum>
+             </property>
+             <property name="selectionBehavior">
+              <enum>QAbstractItemView::SelectionBehavior::SelectRows</enum>
+             </property>
+             <column>
+              <property name="text">
+               <string>关联节点</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>类型</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>共现次数</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>搭配率</string>
+              </property>
+             </column>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="lblGraphStatus">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="text">
+          <string>等待加载图库数据...</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
     </widget>
    </item>
   </layout>

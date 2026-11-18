@@ -738,6 +738,34 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->btnClearUserTagSelection, &QPushButton::clicked, this, [this]() {
         tagFlowWidget->clearSelectedTags();
     });
+    if (ui->btnOpenGalleryGraph) {
+        connect(ui->btnOpenGalleryGraph, &QPushButton::clicked, this, [this]() {
+            QString focusQuery;
+            if (tagFlowWidget && !tagFlowWidget->getSelectedTags().isEmpty()) {
+                focusQuery = *tagFlowWidget->getSelectedTags().cbegin();
+                static const QRegularExpression loraCleanup("^<\\s*(?:lora|lyco)\\s*:\\s*([^:>]+).*>$",
+                                                            QRegularExpression::CaseInsensitiveOption);
+                const QRegularExpressionMatch m = loraCleanup.match(focusQuery.trimmed());
+                if (m.hasMatch()) focusQuery = m.captured(1).trimmed();
+            } else if (!userGalleryGlobalMode && !currentMeta.filePath.isEmpty()) {
+                focusQuery = QFileInfo(currentMeta.filePath).completeBaseName();
+            }
+            const int scope = (ui->listUserImages && ui->listUserImages->count() > 0) ? 1 : 0;
+            if (toolsTabWidget) {
+                const bool wasLoaded = (usageAnalysisWidget != nullptr);
+                ui->rootStack->setCurrentWidget(toolsTabWidget);
+                toolsTabWidget->setCurrentIndex(4);
+                ensureToolTabLoaded(4);
+                QTimer::singleShot(0, this, [this, scope, focusQuery, wasLoaded]() {
+                    if (!usageAnalysisWidget) return;
+                    if (wasLoaded) {
+                        refreshUsageAnalysisWidget();
+                    }
+                    usageAnalysisWidget->openTagModelGraph(scope, focusQuery);
+                });
+            }
+        });
+    }
     connect(ui->comboUserTagSortMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index){
         TagFlowWidget::SortMode mode = TagFlowWidget::SortByCount;
         if (index == 1) mode = TagFlowWidget::SortAlphabetically;
@@ -2782,6 +2810,21 @@ void MainWindow::refreshUsageAnalysisWidget()
     for (auto it = tagCounts.values.cbegin(); it != tagCounts.values.cend(); ++it)
         data.positiveTagCounts.insert(tagCounts.displayTags.value(it.key()), it.value());
 
+    // 仅传递轻量隐式共享缓存快照，待用户切入「Tag 与模型图谱」标签页时再由后台线程异步解析与构建
+    QSet<QString> currentGalleryPaths;
+    if (ui->listUserImages) {
+        for (int i = 0; i < ui->listUserImages->count(); ++i) {
+            if (QListWidgetItem *it = ui->listUserImages->item(i)) {
+                const QString p = it->data(ROLE_USER_IMAGE_PATH).toString();
+                if (!p.isEmpty()) currentGalleryPaths.insert(p);
+            }
+        }
+    }
+    data.rawImageCache = imageCache;
+    data.currentGalleryImageCount = currentGalleryPaths.size();
+    data.currentGalleryPaths = std::move(currentGalleryPaths);
+
+    usageAnalysisWidget->setTranslationMap(&translationMap);
     usageAnalysisWidget->setAnalysisData(data);
 }
 
@@ -7887,10 +7930,42 @@ void MainWindow::ensureToolTabLoaded(int index)
             break;
         case 4:
             usageAnalysisWidget = new UsageAnalysisWidget(toolsTabWidget);
+            usageAnalysisWidget->setTranslationMap(&translationMap);
             connect(usageAnalysisWidget, &UsageAnalysisWidget::requestRefresh,
                     this, &MainWindow::refreshUsageAnalysisWidget);
             connect(usageAnalysisWidget, &UsageAnalysisWidget::requestOpenModel,
                     this, &MainWindow::jumpToDownloadSource);
+            connect(usageAnalysisWidget, &UsageAnalysisWidget::requestJumpToModel,
+                    this, [this](const QString &name) {
+                        jumpToModelOrLora(name);
+                    });
+            connect(usageAnalysisWidget, &UsageAnalysisWidget::requestFilterInGallery,
+                    this, [this](const QString &tagOrLora, bool isLora) {
+                        onMenuSwitchToLibrary();
+                        if (!ui->pageLocalGallery || !ui->pageLocalGallery->isVisible()) {
+                            if (ui->listUserImages && ui->listUserImages->count() > 0) {
+                                ui->mainStack->setCurrentIndex(1);
+                                ui->detailContentStack->setCurrentIndex(1);
+                                fitDetailContentToCurrentPage();
+                            } else {
+                                onGalleryButtonClicked();
+                            }
+                        }
+                        if (tagFlowWidget) {
+                            QString targetTag = tagOrLora;
+                            if (isLora) {
+                                // 在当前 TagFlow 中匹配包含该 LoRA 名的标签
+                                const QString needle = QString("<lora:%1:").arg(tagOrLora).toLower();
+                                if (ui->editUserTagSearch) {
+                                    ui->editUserTagSearch->setText(tagOrLora);
+                                }
+                            } else {
+                                if (ui->editUserTagSearch) ui->editUserTagSearch->clear();
+                                tagFlowWidget->setSelectedTags({targetTag});
+                                applyUserGalleryTagFilter(tagFlowWidget->getSelectedTags(), true);
+                            }
+                        }
+                    });
             refreshUsageAnalysisWidget();
             newPage = usageAnalysisWidget;
             break;
@@ -10141,6 +10216,7 @@ void MainWindow::reloadTranslationMaps(bool notifyWidgets, bool asynchronous)
             if (promptTemplateLibraryWidget) promptTemplateLibraryWidget->setTranslationMap(&translationMap);
             if (tagBrowserWidget) tagBrowserWidget->setMergedTranslationMap(&translationMap);
             if (tagFlowWidget) tagFlowWidget->setTranslationMap(&translationMap);
+            if (usageAnalysisWidget) usageAnalysisWidget->setTranslationMap(&translationMap);
             if (m_galleryPosTagWidget) m_galleryPosTagWidget->setTranslationMap(&translationMap);
             if (m_galleryNegTagWidget) m_galleryNegTagWidget->setTranslationMap(&translationMap);
         }

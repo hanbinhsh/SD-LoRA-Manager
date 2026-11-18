@@ -1938,6 +1938,34 @@ Hash: ...</string>
                            </widget>
                           </item>
                           <item>
+                           <widget class="QPushButton" name="btnOpenGalleryGraph">
+                            <property name="minimumSize">
+                             <size>
+                              <width>46</width>
+                              <height>28</height>
+                             </size>
+                            </property>
+                            <property name="maximumSize">
+                             <size>
+                              <width>56</width>
+                              <height>28</height>
+                             </size>
+                            </property>
+                            <property name="cursor">
+                             <cursorShape>PointingHandCursor</cursorShape>
+                            </property>
+                            <property name="toolTip">
+                             <string>打开 Tag 与模型关系图谱（查看当前图库中的 Tag 与模型共现关系）</string>
+                            </property>
+                            <property name="text">
+                             <string>图谱</string>
+                            </property>
+                            <property name="class" stdset="0">
+                             <string>copyBtn</string>
+                            </property>
+                           </widget>
+                          </item>
+                          <item>
                            <widget class="QComboBox" name="comboUserTagSortMode">
                             <property name="minimumSize">
                              <size>
