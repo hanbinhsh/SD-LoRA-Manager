@@ -111,6 +111,9 @@ qt_add_executable(SD_LoRA_Manager
     pages/localmetaeditorpage.h
     pages/localmetaeditorpage.cpp
     pages/localmetaeditorpage.ui
+    pages/usergallerypage.h
+    pages/usergallerypage.cpp
+    pages/usergallerypage.ui
     utils/imagemetadataparser.h
     utils/imagemetadataparser.cpp
     tools/comfyworkflowviewer.h
@@ -228,7 +231,7 @@ if(BUILD_GALLERY_INTERACTION_TESTS)
     enable_testing()
     add_executable(gallery_interaction_test
         tests/gallery_interaction_test.cpp
-        windows/mainwindow.ui
+        pages/usergallerypage.ui
         widgets/gallerylistwidget.h
         widgets/gallerylistwidget.cpp
         utils/styleconstants.cpp
@@ -236,7 +239,7 @@ if(BUILD_GALLERY_INTERACTION_TESTS)
     target_include_directories(gallery_interaction_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(gallery_interaction_test PRIVATE Qt6::Widgets)
     set_target_properties(gallery_interaction_test PROPERTIES
-        AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/windows"
+        AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/pages"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
     add_test(NAME gallery_interaction_test COMMAND gallery_interaction_test)
     set_tests_properties(gallery_interaction_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
@@ -335,7 +338,7 @@ if(BUILD_CORE_UTIL_TESTS)
         windows/mainwindow.ui tools/promptparserwidget.ui
         tools/prompttemplatelibrarywidget.ui tools/llmpromptwidget.ui
         tools/tagbrowserwidget.ui tools/syncwidget.ui tools/usageanalysiswidget.ui
-        pages/launcherwidget.ui pages/aboutpage.ui pages/localmetaeditorpage.ui
+        pages/launcherwidget.ui pages/aboutpage.ui pages/localmetaeditorpage.ui pages/usergallerypage.ui
         dialogs/modelnotedialog.ui dialogs/pathlistdialog.ui
         dialogs/imageviewerdialog.ui dialogs/launcherimportdialog.ui
         widgets/gallerylistwidget.cpp widgets/gallerylistwidget.h

@@ -45,7 +45,6 @@
 #include "core/modeltypes.h"
 #include "pages/settingspage.h"
 #include "pages/aboutpage.h"
-#include "widgets/tagflowwidget.h"
 
 const QString CURRENT_VERSION = "1.6.2";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
@@ -67,6 +66,7 @@ class ImageViewerDialog;
 class DownloadsPage;
 class DownloadManager;
 class LocalMetaEditorPage;
+class UserGalleryPage;
 class AppUpdateChecker;
 struct LocalMetaEditorContext;
 class PreviewDownloadQueue;
@@ -117,8 +117,6 @@ private slots:
     void onFilterBaseModelChanged(const QString &text);
     void rebuildSortFilterMenu();        // 重建侧栏“排序/筛选”多级菜单（底模/类型项会随扫描变化）
     void updateSortFilterButtonText();   // 刷新侧栏“排序/筛选”按钮文案以反映当前排序与筛选
-    void onUserImageClicked(QListWidgetItem *item);
-    void onTagFilterChanged(const QSet<QString> &selectedTags);
     void onToggleDetailTab(); // 切换 Tab 的槽函数
     void onOpenModelGraphClicked(); // 跳转到 Tag 与模型图谱并聚焦当前模型
     void onRescanUserClicked();
@@ -133,7 +131,6 @@ private slots:
     void onClearUserGalleryCacheClicked();
 
     void onBrowseTranslationPath();
-    void onUserGalleryContextMenu(const QPoint &pos);
     void showRawImageMetadataDialog(const QString &filePath);
     void showComfyWorkflowViewer(const QString &filePath);
 
@@ -156,6 +153,7 @@ private:
     SettingsPage *settingsPage = nullptr;
     QPointer<ImageViewerDialog> imageViewer;
     AboutPage *aboutPage = nullptr;
+    UserGalleryPage *userGalleryPage = nullptr;
     LocalMetaEditorPage *localMetaEditorPage = nullptr;
     QSet<int> pendingToolTabLoads;
     QNetworkAccessManager *netManager = nullptr;
@@ -385,51 +383,17 @@ private:
     bool isShuttingDown = false;
     bool settingsPageConnectionsInitialized = false;
 
-    TagFlowWidget *tagFlowWidget = nullptr;
-
-    // === 图库提示词标签视图 ===
-    TagFlowWidget *m_galleryPosTagWidget = nullptr;   // 正面提示词 TagFlow
-    TagFlowWidget *m_galleryNegTagWidget = nullptr;   // 负面提示词 TagFlow
-    QLayout *m_galleryParamsChipLayout = nullptr;     // 生图参数模型/LoRA Chip 流式布局
-    bool m_galleryTagViewActive = false;               // 当前是否为标签视图
-    QString m_galleryCurrentPrompt;                    // 当前图正面提示词原文
-    QString m_galleryCurrentNegative;                  // 当前图负面提示词原文
-    QString m_galleryCurrentParams;                    // 当前图参数原文
-    QString m_galleryCurrentImagePath;                 // 当前选中图片路径
-    QStringList m_galleryPosTagOrder;                  // 当前图正面提示词的原始顺序
-    QStringList m_galleryNegTagOrder;                  // 当前图负面提示词的原始顺序
-
-    void setupGalleryPromptToolbar();                  // 初始化图库提示词工具栏及信号连接
-    void setGalleryTagViewActive(bool tagView);        // 切换文本/标签视图
-    void updateGalleryPromptTagView();                 // 更新标签视图内容
-    void applyGalleryPromptSortMode();                 // 应用提示词排序
     void jumpToModelOrLora(const QString &name, const QString &hash = QString()); // 点击模型/LoRA chip 跳转
-    void clearGalleryPromptView();                     // 清空提示词及参数展示
     QListWidgetItem *findModelItemByNameOrHash(const QString &name, const QString &hash = QString()) const;
-
-    // 滚动防穿透
-    bool isCursorInsideGalleryScrollAreas() const;
-    bool isGalleryScrollWidget(QObject *watched) const;
-    void handleGalleryWheelScroll(QObject *watched, QWheelEvent *event);
 
     bool isGalleryImageNsfw(const QString &prompt, const QStringList &cleanTags) const;
     bool isGalleryImageNsfwByPath(const QString &imagePath) const;
+    void syncUserGalleryOptions();
     void refreshGalleryNsfwDisplay();
 
     void scanForUserImages(const QString &loraBaseName);
-    void parsePngInfo(const QString &path, UserImageInfo &info);
-    void refreshUserTagFlowStats(bool applyGalleryFilter = true,
-                                 bool resetGalleryScrollToTop = true);
-    void applyUserGalleryTagFilter(const QSet<QString> &selectedTags,
-                                   bool resetScrollToTop);
-    void resetUserImageThumbLoading();
-    void clearUserGalleryView();
-    void scheduleVisibleUserImageThumbLoad();
-    void dispatchVisibleUserImageThumbLoad();
 
     QString currentModelLoraTagName() const;
-
-    QStringList parsePromptsToTags(const QString &rawPrompt);
 
     QIcon generatePlaceholderIcon();
     QIcon generateSmallPlaceholderIcon(); // 侧边栏/收藏树用：64px + 8px 内边距，匹配 getSquareIcon
@@ -458,12 +422,6 @@ private:
     bool pendingUserGalleryScan = false;
     QString pendingUserGalleryModel;
     QString pendingUserGalleryModelPath;
-    QSet<QString> queuedUserImageThumbPaths;
-    QSet<QString> loadedUserImageThumbPaths;
-    QHash<QString, int> failedUserImageThumbLoads;
-    QTimer *userImageThumbLoadTimer = nullptr;
-    quint64 userGalleryGeneration = 0;
-    quint64 userGalleryLayoutGeneration = 0;
     bool userGalleryGlobalMode = false;
     void loadUserGalleryCache();
     void resumePendingUserGalleryScan();
@@ -493,13 +451,10 @@ private:
     QSet<QString> loadedHomeThumbPaths;
     QHash<QString, QListWidgetItem*> modelItemByPath;
     QHash<QString, QListWidgetItem*> homeItemByPath;
-    QHash<QString, QListWidgetItem*> userImageItemByPath;
     QMultiHash<QString, QTreeWidgetItem*> collectionTreeItemsByPath;
     QTimer *searchDebounceTimer = nullptr;
     QTimer *homeAuthorFilterDebounceTimer = nullptr;
-    QTimer *userTagSearchDebounceTimer = nullptr;
     QTimer *homeGalleryThumbLoadTimer = nullptr;
-    QStringList m_galleryExtraLoraFilters;
     int usageAnalysisRefreshToken = 0;
 
     void scheduleVisibleHomeGalleryThumbLoad();

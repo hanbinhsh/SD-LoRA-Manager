@@ -1,4 +1,4 @@
-#include "ui_mainwindow.h"
+#include "ui_usergallerypage.h"
 #include "utils/styleconstants.h"
 
 #include <QApplication>
@@ -86,9 +86,9 @@ void verifyFirstVisible(QListWidget &view)
 
 void testGallery()
 {
-    // Use the real Designer properties without constructing/starting MainWindow.
-    QMainWindow host;
-    Ui::MainWindow ui;
+    // Use the real Designer properties without constructing/starting UserGalleryPage.
+    QWidget host;
+    Ui::UserGalleryPage ui;
     ui.setupUi(&host);
     auto &view = *ui.listUserImages;
     view.setParent(nullptr);

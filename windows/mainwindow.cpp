@@ -77,6 +77,7 @@
 #include "pages/settingspage.h"
 #include "pages/aboutpage.h"
 #include "pages/localmetaeditorpage.h"
+#include "pages/usergallerypage.h"
 #include "dialogs/modelnotedialog.h"
 #include "dialogs/imageviewerdialog.h"
 #include "dialogs/textviewerdialog.h"
@@ -194,6 +195,44 @@ MainWindow::MainWindow(QWidget *parent)
     ui->rootStack->addWidget(aboutPage);
     aboutPage->setVersionText(CURRENT_VERSION);
     connect(aboutPage, &AboutPage::checkUpdateRequested, this, &MainWindow::onCheckUpdateClicked);
+    userGalleryPage = new UserGalleryPage(this);
+    ui->detailContentStack->addWidget(userGalleryPage);
+    userGalleryPage->setTranslationMap(&translationMap);
+    userGalleryPage->setImageCache(&imageCache);
+    connect(userGalleryPage, &UserGalleryPage::setSdFolderRequested, this, &MainWindow::onSetSdFolderClicked);
+    connect(userGalleryPage, &UserGalleryPage::rescanRequested, this, &MainWindow::onRescanUserClicked);
+    connect(userGalleryPage, &UserGalleryPage::openSettingsForTranslationRequested, this, [this]() {
+        ui->rootStack->setCurrentWidget(settingsPage);
+        if (settingsPage) settingsPage->focusTranslationPath();
+    });
+    connect(userGalleryPage, &UserGalleryPage::openGraphRequested,
+            this, [this](int scope, const QString &selectedTagFocus) {
+                QString focusQuery = selectedTagFocus;
+                if (focusQuery.isEmpty() && !userGalleryGlobalMode && !currentMeta.filePath.isEmpty()) {
+                    focusQuery = QFileInfo(currentMeta.filePath).completeBaseName();
+                }
+                openTagModelGraph(scope, focusQuery);
+            });
+    connect(userGalleryPage, &UserGalleryPage::imageSelected, this, [this](const QString &path) {
+        ui->heroFrame->setProperty("fullImagePath", path);
+        transitionToImage(path);
+    });
+    connect(userGalleryPage, &UserGalleryPage::openImageViewerRequested, this, &MainWindow::openImageViewer);
+    connect(userGalleryPage, &UserGalleryPage::showInFolderRequested, this, &MainWindow::showFileInFolder);
+    connect(userGalleryPage, &UserGalleryPage::showComfyWorkflowRequested, this, &MainWindow::showComfyWorkflowViewer);
+    connect(userGalleryPage, &UserGalleryPage::showRawMetadataRequested, this, &MainWindow::showRawImageMetadataDialog);
+    connect(userGalleryPage, &UserGalleryPage::jumpToModelRequested, this, &MainWindow::jumpToModelOrLora);
+    connect(userGalleryPage, &UserGalleryPage::statusMessage, this, [this](const QString &text, int timeoutMs) {
+        ui->statusbar->showMessage(text, timeoutMs);
+    });
+    connect(userGalleryPage, &UserGalleryPage::cacheEntriesParsed,
+            this, [this](const QMap<QString, UserImageInfo> &newUpdates) {
+                for (auto it = newUpdates.cbegin(); it != newUpdates.cend(); ++it) {
+                    imageCache.insert(it.key(), it.value());
+                }
+                saveUserGalleryCache();
+                refreshModelUsageStatsAsync();
+            });
     localMetaEditorPage = new LocalMetaEditorPage(this);
     ui->detailContentStack->addWidget(localMetaEditorPage);
     connect(localMetaEditorPage, &LocalMetaEditorPage::metadataSaved, this, &MainWindow::onLocalMetaSaved);
@@ -249,7 +288,8 @@ MainWindow::MainWindow(QWidget *parent)
             }
             if (!shouldBlur && optFilterGalleryNSFW && optGalleryNSFWMode == 1 &&
                 ((ui && ui->detailContentStack && ui->detailContentStack->currentIndex() == 1) ||
-                 userGalleryGlobalMode || result.path == m_galleryCurrentImagePath)) {
+                 userGalleryGlobalMode ||
+                 (userGalleryPage && result.path == userGalleryPage->currentImagePath()))) {
                 if (isGalleryImageNsfwByPath(result.path)) {
                     shouldBlur = true;
                 }
@@ -313,6 +353,10 @@ MainWindow::MainWindow(QWidget *parent)
         localMetaEditorPage->setThreadPool(threadPool);
         localMetaEditorPage->setPlaceholderIcon(placeholderIcon);
     }
+    if (userGalleryPage) {
+        userGalleryPage->setThreadPools(threadPool, backgroundThreadPool);
+        userGalleryPage->setPlaceholderIcon(placeholderIcon);
+    }
 
     netManager = new QNetworkAccessManager(this);
     initServices();
@@ -321,6 +365,7 @@ MainWindow::MainWindow(QWidget *parent)
     initMenuBar();
     // === 2. 加载配置 ===
     loadGlobalConfig();   // 从 JSON 读选项
+    syncUserGalleryOptions();
     loadModelSyncFailures();
     // === 应用线程数 ===
     threadPool->setMaxThreadCount(optRenderThreadCount);
@@ -340,13 +385,6 @@ MainWindow::MainWindow(QWidget *parent)
     // 1. 开启像素滚动与多选
     ui->homeGalleryList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     ui->homeGalleryList->setSelectionMode(QAbstractItemView::ExtendedSelection);
-    ui->listUserImages->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-    // The gallery viewport must erase old icon pixels after rows are hidden.
-    // Let the style sheet paint the opaque viewport: palette auto-fill paints a
-    // rectangular layer first and destroys the rounded corners.
-    ui->listUserImages->viewport()->setObjectName(QStringLiteral("userGalleryViewport"));
-    ui->listUserImages->viewport()->setAutoFillBackground(false);
-    ui->listUserImages->viewport()->setAttribute(Qt::WA_StyledBackground, true);
     // 2. 设置滚轮滚一下移动的像素距离
     ui->homeGalleryList->verticalScrollBar()->setSingleStep(40);
     homeGalleryThumbLoadTimer = new QTimer(this);
@@ -356,15 +394,10 @@ MainWindow::MainWindow(QWidget *parent)
         scheduleVisibleHomeGalleryThumbLoad();
     });
     ui->homeGalleryList->viewport()->installEventFilter(this);
-
-    ui->listUserImages->verticalScrollBar()->setSingleStep(40);
-    userImageThumbLoadTimer = new QTimer(this);
-    userImageThumbLoadTimer->setSingleShot(true);
-    connect(userImageThumbLoadTimer, &QTimer::timeout, this, &MainWindow::dispatchVisibleUserImageThumbLoad);
-    connect(ui->listUserImages->verticalScrollBar(), &QScrollBar::valueChanged, this, [this]() {
-        scheduleVisibleUserImageThumbLoad();
-    });
-    ui->listUserImages->viewport()->installEventFilter(this);
+    if (ui->scrollArea) {
+        ui->scrollArea->installEventFilter(this);
+        if (ui->scrollArea->viewport()) ui->scrollArea->viewport()->installEventFilter(this);
+    }
 
     ui->collectionTree->setHeaderHidden(true); // 隐藏 "Collection / Model" 表头
 
@@ -461,121 +494,11 @@ MainWindow::MainWindow(QWidget *parent)
         refreshHomeFilterChips();
     });
 
-    // === 用户图库页面初始化 ===
-    // 1. 初始化 Tag 流式控件，放入 XML 定义好的 scrollAreaTags 中
-    tagFlowWidget = new TagFlowWidget();
-    tagFlowWidget->setTranslationMap(&translationMap);
-    tagFlowWidget->setObjectName("tagFlowContainer");
-    tagFlowWidget->setAttribute(Qt::WA_TranslucentBackground);
-    ui->scrollAreaTags->viewport()->setAutoFillBackground(false);
-    ui->scrollAreaTags->setWidget(tagFlowWidget);
-    ui->scrollAreaTags->viewport()->setAutoFillBackground(false);
-    connect(ui->scrollAreaTags->verticalScrollBar(), &QScrollBar::valueChanged,
-            ui->scrollAreaTags->viewport(), [this](){
-                ui->scrollAreaTags->viewport()->update();});
-
-    // 初始化图库提示词展示区的工具栏及标签视图
-    setupGalleryPromptToolbar();
-    // 设置右键菜单策略
-    ui->listUserImages->setContextMenuPolicy(Qt::CustomContextMenu);
-    // 连接右键信号
-    connect(ui->listUserImages, &QListWidget::customContextMenuRequested,
-            this, &MainWindow::onUserGalleryContextMenu);
-    // 2. 双击列表项查看大图 ===
-    connect(ui->listUserImages, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *item){
-        if (!item) return;
-        QString path = item->data(ROLE_USER_IMAGE_PATH).toString(); // 取出全路径
-        if (!path.isEmpty()) {
-            openImageViewer(visibleUserGalleryImagePaths(), path);
-        }
-    });
-    // 3. 信号连接
-    // 切换 Tab 按钮
+    // 切换 Tab 与图谱按钮
     connect(ui->btnShowUserGallery, &QPushButton::clicked, this, &MainWindow::onToggleDetailTab);
     if (ui->btnOpenModelGraph) {
         connect(ui->btnOpenModelGraph, &QPushButton::clicked, this, &MainWindow::onOpenModelGraphClicked);
     }
-    // SD 目录与扫描
-    connect(ui->btnSetSdFolder, &QPushButton::clicked, this, &MainWindow::onSetSdFolderClicked);
-    connect(ui->btnRescanUser, &QPushButton::clicked, this, &MainWindow::onRescanUserClicked);
-    connect(ui->btnTranslate, &QPushButton::toggled, this, [this](bool checked){
-        if (checked) {
-            // 用户想开启翻译，检查是否有数据
-            if (translationMap.isEmpty()) {
-                // 1. 临时阻断信号，把勾选状态取消掉（因为开启失败）
-                ui->btnTranslate->blockSignals(true);
-                ui->btnTranslate->setChecked(false);
-                ui->btnTranslate->blockSignals(false);
-
-                // 2. 弹窗提示
-                QMessageBox::StandardButton reply;
-                reply = QMessageBox::question(this, AppText::tr("未加载翻译"),
-                                              AppText::tr("尚未加载翻译词表 (CSV)。\n是否现在前往设置页面进行设置？\n\n(格式: 英文,中文)"),
-                                              QMessageBox::Yes|QMessageBox::No);
-
-                if (reply == QMessageBox::Yes) {
-                    ui->rootStack->setCurrentWidget(settingsPage); // 跳转到设置页
-                    if (settingsPage) settingsPage->focusTranslationPath();
-                }
-                return;
-            }
-        }
-        // 如果有数据（或者用户关闭翻译），通知控件切换模式
-        tagFlowWidget->setShowTranslation(checked);
-    });
-    connect(ui->btnClearUserTagSelection, &QPushButton::clicked, this, [this]() {
-        m_galleryExtraLoraFilters.clear();
-        tagFlowWidget->clearSelectedTags();
-    });
-    if (ui->btnOpenGalleryGraph) {
-        connect(ui->btnOpenGalleryGraph, &QPushButton::clicked, this, [this]() {
-            QString focusQuery;
-            if (tagFlowWidget && !tagFlowWidget->getSelectedTags().isEmpty()) {
-                focusQuery = *tagFlowWidget->getSelectedTags().cbegin();
-                static const QRegularExpression loraCleanup("^<\\s*(?:lora|lyco)\\s*:\\s*([^:>]+).*>$",
-                                                            QRegularExpression::CaseInsensitiveOption);
-                const QRegularExpressionMatch m = loraCleanup.match(focusQuery.trimmed());
-                if (m.hasMatch()) focusQuery = m.captured(1).trimmed();
-            } else if (!userGalleryGlobalMode && !currentMeta.filePath.isEmpty()) {
-                focusQuery = QFileInfo(currentMeta.filePath).completeBaseName();
-            }
-            const int scope = (ui->listUserImages && ui->listUserImages->count() > 0) ? 1 : 0;
-            openTagModelGraph(scope, focusQuery);
-        });
-    }
-    connect(ui->comboUserTagSortMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index){
-        TagFlowWidget::SortMode mode = TagFlowWidget::SortByCount;
-        if (index == 1) mode = TagFlowWidget::SortAlphabetically;
-        else if (index == 2) mode = TagFlowWidget::SortByGivenOrder;
-        else if (index == 3) mode = TagFlowWidget::SortByCategory;
-        tagFlowWidget->setSortMode(mode);
-        // “提示词顺序”依赖当前图的提示词顺序，刷新一次以重建顺序数据。
-        if (index == 2) refreshUserTagFlowStats(false);
-    });
-    userTagSearchDebounceTimer = new QTimer(this);
-    userTagSearchDebounceTimer->setSingleShot(true);
-    userTagSearchDebounceTimer->setInterval(120);
-    connect(userTagSearchDebounceTimer, &QTimer::timeout, this, [this]() {
-        if (tagFlowWidget && ui && ui->editUserTagSearch) {
-            tagFlowWidget->setSearchText(ui->editUserTagSearch->text());
-        }
-    });
-    connect(ui->editUserTagSearch, &QLineEdit::textChanged, this, [this](const QString &){
-        if (userTagSearchDebounceTimer) userTagSearchDebounceTimer->start();
-    });
-    connect(ui->chkUserTagLoraOnly, &QCheckBox::toggled, this, [this](bool checked){
-        tagFlowWidget->setLoraOnly(checked);
-    });
-    connect(ui->chkUserTagCurrentImageOnly, &QCheckBox::toggled, this, [this](bool) {
-        refreshUserTagFlowStats(false);
-    });
-    connect(ui->chkUserTagIncludeNegative, &QCheckBox::toggled, this, [this](bool) {
-        refreshUserTagFlowStats(true, false);
-    });
-    // 图片点击
-    connect(ui->listUserImages, &QListWidget::itemClicked, this, &MainWindow::onUserImageClicked);
-    // Tag 筛选
-    connect(tagFlowWidget, &TagFlowWidget::filterChanged, this, &MainWindow::onTagFilterChanged);
     // 2. 右键点击 -> 弹出菜单
     connect(ui->btnFavorite, &QPushButton::customContextMenuRequested, this, [this](const QPoint &pos){
         // 获取当前选中的所有模型
@@ -596,12 +519,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 设置 Splitter
     ui->splitter->setSizes(QList<int>() << 260 << 1000);
-    ui->splitterUser->setSizes(QList<int>() << 480 << 435);
-    if (ui->splitterParameter) {
-        ui->splitterParameter->setStretchFactor(0, 0);
-        ui->splitterParameter->setStretchFactor(1, 1);
-        ui->splitterParameter->setSizes(QList<int>() << 185 << 380);
-    }
 
     // 默认显示主页 (Page 0)
     ui->rootStack->setCurrentIndex(0);          // 库页面
@@ -666,37 +583,14 @@ MainWindow::MainWindow(QWidget *parent)
                 const QSignalBlocker blocker(ui->btnHomeFilterToggle);
                 ui->btnHomeFilterToggle->setChecked(homeFilterExpanded);
             }
-            if (ui->comboUserTagSortMode) {
-                const QSignalBlocker blocker(ui->comboUserTagSortMode);
-                const int maxIdx = qMax(0, ui->comboUserTagSortMode->count() - 1);
-                const int idx = qBound(0, startupUserTagSortMode, maxIdx);
-                ui->comboUserTagSortMode->setCurrentIndex(idx);
-                if (tagFlowWidget) {
-                    TagFlowWidget::SortMode mode = TagFlowWidget::SortByCount;
-                    if (idx == 1) mode = TagFlowWidget::SortAlphabetically;
-                    else if (idx == 2) mode = TagFlowWidget::SortByGivenOrder;
-                    else if (idx == 3) mode = TagFlowWidget::SortByCategory;
-                    tagFlowWidget->setSortMode(mode);
-                }
-            }
-            if (ui->chkUserTagLoraOnly) {
-                const QSignalBlocker blocker(ui->chkUserTagLoraOnly);
-                ui->chkUserTagLoraOnly->setChecked(startupUserTagLoraOnly);
-                if (tagFlowWidget) tagFlowWidget->setLoraOnly(startupUserTagLoraOnly);
-            }
-            if (ui->chkUserTagIncludeNegative) {
-                const QSignalBlocker blocker(ui->chkUserTagIncludeNegative);
-                ui->chkUserTagIncludeNegative->setChecked(startupUserTagIncludeNegative);
-            }
-            if (ui->comboGalleryPromptSortMode) {
-                const QSignalBlocker blocker(ui->comboGalleryPromptSortMode);
-                const int maxIdx = qMax(0, ui->comboGalleryPromptSortMode->count() - 1);
-                ui->comboGalleryPromptSortMode->setCurrentIndex(qBound(0, startupGalleryPromptSortMode, maxIdx));
-            }
-            if (ui->btnGalleryPromptToggle) {
-                const QSignalBlocker blocker(ui->btnGalleryPromptToggle);
-                ui->btnGalleryPromptToggle->setChecked(startupGalleryTagViewActive);
-                setGalleryTagViewActive(startupGalleryTagViewActive);
+            if (userGalleryPage) {
+                UserGalleryFilterState state;
+                state.userTagSortMode = startupUserTagSortMode;
+                state.userTagLoraOnly = startupUserTagLoraOnly;
+                state.userTagIncludeNegative = startupUserTagIncludeNegative;
+                state.galleryPromptSortMode = startupGalleryPromptSortMode;
+                state.galleryTagViewActive = startupGalleryTagViewActive;
+                userGalleryPage->restoreFilterState(state);
             }
             refreshHomeCollectionsUI();
             refreshHomeFilterChips();
@@ -795,9 +689,8 @@ MainWindow::~MainWindow()
     isShuttingDown = true;
     if (searchDebounceTimer) searchDebounceTimer->stop();
     if (homeAuthorFilterDebounceTimer) homeAuthorFilterDebounceTimer->stop();
-    if (userTagSearchDebounceTimer) userTagSearchDebounceTimer->stop();
     if (homeGalleryThumbLoadTimer) homeGalleryThumbLoadTimer->stop();
-    if (userImageThumbLoadTimer) userImageThumbLoadTimer->stop();
+    if (userGalleryPage) userGalleryPage->shutdown();
     if (bgResizeTimer) bgResizeTimer->stop();
     if (detailGalleryBuildTimer) detailGalleryBuildTimer->stop();
     if (transitionAnim) transitionAnim->stop();
@@ -1810,20 +1703,19 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         }
     }
 
-    if (watched == ui->listUserImages->viewport() &&
-        (event->type() == QEvent::Resize || event->type() == QEvent::Show)) {
-        scheduleVisibleUserImageThumbLoad();
-    }
-
     if (ui->homeGalleryList && watched == ui->homeGalleryList->viewport() &&
         (event->type() == QEvent::Resize || event->type() == QEvent::Show)) {
         scheduleVisibleHomeGalleryThumbLoad();
     }
 
-    if (event->type() == QEvent::Wheel) {
-        if (isGalleryScrollWidget(watched)) {
-            handleGalleryWheelScroll(watched, static_cast<QWheelEvent*>(event));
-            return true; // 拦截事件，防止穿透到外层的 scrollArea
+    if (event->type() == QEvent::Wheel && userGalleryPage && userGalleryPage->isVisible()) {
+        if (watched == ui->scrollArea ||
+            (ui->scrollArea && watched == ui->scrollArea->viewport()) ||
+            watched == ui->scrollAreaWidgetContents) {
+            if (userGalleryPage->isCursorInsideScrollAreas()) {
+                userGalleryPage->handleWheelScroll(watched, static_cast<QWheelEvent*>(event));
+                return true; // 拦截事件，防止穿透到外层的 scrollArea
+            }
         }
     }
 
@@ -2630,15 +2522,7 @@ void MainWindow::refreshUsageAnalysisWidget()
         modelSnapshots.append(model);
     }
 
-    QSet<QString> currentGalleryPaths;
-    if (ui->listUserImages) {
-        for (int i = 0; i < ui->listUserImages->count(); ++i) {
-            if (QListWidgetItem *it = ui->listUserImages->item(i)) {
-                const QString p = it->data(ROLE_USER_IMAGE_PATH).toString();
-                if (!p.isEmpty()) currentGalleryPaths.insert(p);
-            }
-        }
-    }
+    QSet<QString> currentGalleryPaths = userGalleryPage ? userGalleryPage->allImagePaths() : QSet<QString>{};
 
     const QMap<QString, UserImageInfo> cacheSnapshot = imageCache;
     const QStringList rootPaths = PathUtils::collectEnabledPaths(loraPaths, disabledLoraPaths);
@@ -3160,9 +3044,7 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
     }
 
     userGalleryGlobalMode = false;
-    ++userGalleryGeneration;
-    ++userGalleryLayoutGeneration;
-    resetUserImageThumbLoading();
+    if (userGalleryPage) userGalleryPage->invalidateAndReset();
     pendingHashSyncPath.clear();
     pendingHashSyncBaseName.clear();
     pendingHashSyncForceRefresh = false;
@@ -3218,7 +3100,7 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
             if (ui->detailContentStack->currentIndex() == 1) {
                 scanForUserImages(baseName);
             } else {
-                clearUserGalleryView();
+                if (userGalleryPage) userGalleryPage->clearGalleryView();
             }
             return;
         }
@@ -3239,7 +3121,7 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
         scanForUserImages(baseName);
     } else {
         // 如果在主详情页，先清空返图页的旧数据，防止用户等会儿切过去看到上一个模型的图
-        clearUserGalleryView();
+        if (userGalleryPage) userGalleryPage->clearGalleryView();
     }
 }
 
@@ -3911,22 +3793,7 @@ QStringList MainWindow::currentModelPreviewPaths() const
 
 QStringList MainWindow::visibleUserGalleryImagePaths() const
 {
-    QStringList result;
-    QSet<QString> seen;
-    if (!ui || !ui->listUserImages) return result;
-
-    for (int index = 0; index < ui->listUserImages->count(); ++index) {
-        QListWidgetItem *item = ui->listUserImages->item(index);
-        if (!item || item->isHidden()) continue;
-        const QFileInfo info(item->data(ROLE_USER_IMAGE_PATH).toString());
-        if (!info.exists() || !info.isFile()) continue;
-        const QString absolutePath = info.absoluteFilePath();
-        const QString key = QDir::cleanPath(absolutePath).toCaseFolded();
-        if (seen.contains(key)) continue;
-        seen.insert(key);
-        result.append(absolutePath);
-    }
-    return result;
+    return userGalleryPage ? userGalleryPage->visibleImagePaths() : QStringList{};
 }
 
 void MainWindow::openImageViewer(const QStringList &paths, const QString &currentPath)
@@ -3988,42 +3855,6 @@ void MainWindow::openImageViewerForPath(const QString &currentPath)
 void MainWindow::onIconLoaded(const QString &id, const QImage &image)
 {
     if (isShuttingDown) return;
-    const QString userGalleryPrefix = QStringLiteral("USERGALLERY|");
-    if (id.startsWith(userGalleryPrefix)) {
-        const int separator = id.indexOf('|', userGalleryPrefix.size());
-        bool tokenOk = false;
-        const quint64 token = separator > userGalleryPrefix.size()
-                                  ? id.mid(userGalleryPrefix.size(), separator - userGalleryPrefix.size()).toULongLong(&tokenOk)
-                                  : 0;
-        const QString filePath = separator >= 0 ? id.mid(separator + 1) : QString();
-        if (!tokenOk || token != userGalleryGeneration || filePath.isEmpty()) return;
-
-        queuedUserImageThumbPaths.remove(filePath);
-        if (image.isNull()) {
-            const int failureCount = failedUserImageThumbLoads.value(filePath) + 1;
-            failedUserImageThumbLoads.insert(filePath, failureCount);
-            if (failureCount < 3) scheduleVisibleUserImageThumbLoad();
-            return;
-        }
-
-        QListWidgetItem *item = userImageItemByPath.value(filePath, nullptr);
-        if (item && item->data(ROLE_USER_IMAGE_PATH).toString() == filePath) {
-            const bool blurNsfw = optFilterGalleryNSFW && optGalleryNSFWMode == 1
-                               && item->data(ROLE_USER_IMAGE_NSFW).toBool();
-            if (blurNsfw) {
-                QPixmap pix = QPixmap::fromImage(image);
-                QPixmap blurred = ImagePresentation::applyNSFWBlur(pix);
-                item->setIcon(QIcon(ImagePresentation::applyRoundedMask(blurred, 4)));
-            } else {
-                item->setIcon(QIcon(QPixmap::fromImage(image)));
-            }
-            item->setData(ROLE_PREVIEW_PLACEHOLDER, false);
-        }
-        failedUserImageThumbLoads.remove(filePath);
-        loadedUserImageThumbPaths.insert(filePath);
-        scheduleVisibleUserImageThumbLoad();
-        return;
-    }
 
     // 空图 = 预览缺失/加载失败：保留各项已设置的主题化占位X（含 ROLE_PREVIEW_PLACEHOLDER 标记），
     // 不覆盖、不清标记，交给 recolorPlaceholderItems 在切主题时重染。
@@ -4195,28 +4026,8 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
         }
 
         // --- B. 用户返图列表 (User Gallery) ---
-        bool userImageUpdated = false;
-        if (ui->listUserImages) {
-            for (int i = 0; i < ui->listUserImages->count(); ++i) {
-                QListWidgetItem *item = ui->listUserImages->item(i);
-                if (item->data(ROLE_USER_IMAGE_PATH).toString() == filePath) {
-                    const bool blurNsfw = optFilterGalleryNSFW && optGalleryNSFWMode == 1
-                                       && item->data(ROLE_USER_IMAGE_NSFW).toBool();
-                    if (blurNsfw) {
-                        if (blurredPix.isNull()) blurredPix = ImagePresentation::applyNSFWBlur(originalPix);
-                        item->setIcon(QIcon(ImagePresentation::applyRoundedMask(blurredPix, 4)));
-                    } else {
-                        item->setIcon(originalIcon);
-                    }
-                    item->setData(ROLE_PREVIEW_PLACEHOLDER, false);
-                    userImageUpdated = true;
-                }
-            }
-        }
-        if (userImageUpdated) {
-            queuedUserImageThumbPaths.remove(filePath);
-            loadedUserImageThumbPaths.insert(filePath);
-            scheduleVisibleUserImageThumbLoad();
+        if (userGalleryPage) {
+            userGalleryPage->applyExternalImageUpdate(filePath, originalPix, originalIcon);
         }
 
         // --- C. Hero 大图过渡 ---
@@ -5387,7 +5198,7 @@ void MainWindow::onToggleDetailTab() {
     });
 
     // 3. 自动扫描逻辑 (保持不变)
-    if (nextIndex == 1 && ui->listUserImages->count() == 0) {
+    if (nextIndex == 1 && (!userGalleryPage || userGalleryPage->imageCount() == 0)) {
         onRescanUserClicked();
     }
 }
@@ -5462,108 +5273,24 @@ void MainWindow::onClearUserGalleryCacheClicked()
     resumePendingUserGalleryScan();
 }
 
-void MainWindow::resetUserImageThumbLoading()
+void MainWindow::syncUserGalleryOptions()
 {
-    queuedUserImageThumbPaths.clear();
-    loadedUserImageThumbPaths.clear();
-    failedUserImageThumbLoads.clear();
-    if (userImageThumbLoadTimer) {
-        userImageThumbLoadTimer->stop();
-    }
+    if (!userGalleryPage) return;
+    UserGalleryOptions opts;
+    opts.filterNsfw = optFilterGalleryNSFW;
+    opts.nsfwMode = optGalleryNSFWMode;
+    opts.nsfwRules = optGalleryNSFWRules;
+    opts.splitOnNewline = optSplitOnNewline;
+    opts.filterTags = optFilterTags;
+    opts.recursive = optGalleryRecursive;
+    opts.matchMode = optUserGalleryMatchMode;
+    opts.comfyModelNameFallback = optComfyModelNameFallback;
+    userGalleryPage->setOptions(opts);
 }
 
-void MainWindow::clearUserGalleryView()
+void MainWindow::scanForUserImages(const QString &loraBaseName)
 {
-    userImageItemByPath.clear();
-    if (ui && ui->listUserImages) {
-        ui->listUserImages->clear();
-    }
-    clearGalleryPromptView();
-    if (tagFlowWidget) {
-        tagFlowWidget->setData({});
-    }
-    resetUserImageThumbLoading();
-}
-
-void MainWindow::scheduleVisibleUserImageThumbLoad()
-{
-    if (!userImageThumbLoadTimer) return;
-    userImageThumbLoadTimer->start(30);
-}
-
-void MainWindow::dispatchVisibleUserImageThumbLoad()
-{
-    if (!ui->listUserImages || ui->listUserImages->count() == 0) return;
-
-    const QRect visibleRect = ui->listUserImages->viewport()->rect();
-    if (visibleRect.isEmpty()) return;
-
-    const QRect prefetchRect = visibleRect.adjusted(-visibleRect.width(),
-                                                    -visibleRect.height(),
-                                                    visibleRect.width(),
-                                                    visibleRect.height());
-    const QPoint centerPoint = visibleRect.center();
-
-    struct ThumbCandidate {
-        int priority = 2;
-        int distance = 0;
-        QString path;
-    };
-
-    QList<ThumbCandidate> candidates;
-    candidates.reserve(ui->listUserImages->count());
-
-    for (int i = 0; i < ui->listUserImages->count(); ++i) {
-        QListWidgetItem *item = ui->listUserImages->item(i);
-        if (!item || item->isHidden()) continue;
-
-        const QString path = item->data(ROLE_USER_IMAGE_PATH).toString();
-        if (path.isEmpty()) continue;
-        if (loadedUserImageThumbPaths.contains(path) || queuedUserImageThumbPaths.contains(path)) continue;
-        if (failedUserImageThumbLoads.value(path) >= 3) continue;
-
-        const QRect itemRect = ui->listUserImages->visualItemRect(item);
-        if (!itemRect.isValid() || itemRect.isEmpty()) continue;
-
-        ThumbCandidate candidate;
-        candidate.path = path;
-        candidate.distance = qAbs(itemRect.center().y() - centerPoint.y()) + qAbs(itemRect.center().x() - centerPoint.x());
-        if (itemRect.intersects(visibleRect)) {
-            candidate.priority = 0;
-        } else if (itemRect.intersects(prefetchRect)) {
-            candidate.priority = 1;
-        }
-        candidates.append(candidate);
-    }
-
-    if (candidates.isEmpty()) return;
-
-    const int threadCount = qMax(1, threadPool ? threadPool->maxThreadCount() : 4);
-    const int maxLaunchPerPass = qMax(8, threadCount * 2);
-    const int topCount = qMin(candidates.size(), maxLaunchPerPass);
-    std::partial_sort(candidates.begin(), candidates.begin() + topCount, candidates.end(),
-                      [](const ThumbCandidate &a, const ThumbCandidate &b) {
-        if (a.priority != b.priority) return a.priority < b.priority;
-        return a.distance < b.distance;
-    });
-
-    int launched = 0;
-    for (int idx = 0; idx < topCount; ++idx) {
-        const ThumbCandidate &candidate = candidates.at(idx);
-        if (candidate.priority > 1 && launched >= threadCount) break;
-
-        const QString taskId = QStringLiteral("USERGALLERY|%1|%2")
-                                   .arg(userGalleryGeneration)
-                                   .arg(candidate.path);
-        IconLoaderTask *task = new IconLoaderTask(candidate.path, 140, 4, this, taskId);
-        task->setAutoDelete(true);
-        threadPool->start(task);
-        queuedUserImageThumbPaths.insert(candidate.path);
-        ++launched;
-    }
-}
-
-void MainWindow::scanForUserImages(const QString &loraBaseName) {
+    if (!userGalleryPage) return;
     if (userGalleryCacheLoading) {
         // Keep only the latest request; never scan/save against a half-loaded cache.
         pendingUserGalleryScan = true;
@@ -5574,25 +5301,22 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
         ui->statusbar->showMessage(AppText::tr("正在后台加载图库缓存，完成后开始扫描..."));
         return;
     }
-    m_galleryExtraLoraFilters.clear();
-    const quint64 scanGeneration = ++userGalleryGeneration;
-    ++userGalleryLayoutGeneration;
-    userGalleryGlobalMode = loraBaseName.isEmpty();
-    placeholderIcon = generatePlaceholderIcon(); // 用当前主题色重建，保证占位X颜色正确
-    clearUserGalleryView();
 
-    // 1. 检查目录
+    userGalleryGlobalMode = loraBaseName.isEmpty();
+    placeholderIcon = generatePlaceholderIcon();
+    userGalleryPage->setPlaceholderIcon(placeholderIcon);
+    syncUserGalleryOptions();
+
     const QStringList activeGalleryPaths = PathUtils::collectEnabledPaths(galleryPaths, disabledGalleryPaths);
-    QStringList validGalleryPaths = PathUtils::collectValidPaths(activeGalleryPaths);
+    const QStringList validGalleryPaths = PathUtils::collectValidPaths(activeGalleryPaths);
     if (validGalleryPaths.isEmpty()) {
-        ui->textUserPrompt->setText(AppText::tr("<span style='color:orange'>请先点击右上方按钮设置并启用 Stable Diffusion 图片输出目录。</span>"));
+        userGalleryPage->invalidateAndReset();
+        userGalleryPage->clearGalleryView();
+        userGalleryPage->showInvalidFolderHint();
         QMessageBox::warning(this, AppText::tr("目录无效"), AppText::tr("设置的 SD 输出目录不存在、为空，或全部被禁用。"));
         return;
     }
 
-    const bool isGlobalMode = loraBaseName.isEmpty();
-    const bool wantSummaryHashMatch = (!isGlobalMode && (optUserGalleryMatchMode == 1 || optUserGalleryMatchMode == 2));
-    const bool strictSummaryHashMatch = (!isGlobalMode && optUserGalleryMatchMode == 2);
     QListWidgetItem *currentItem = ui->modelList->currentItem();
     QString selectedFilePath;
     QString selectedBaseName;
@@ -5615,217 +5339,10 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     if (selectedCivitaiName.isEmpty()) selectedCivitaiName = currentMeta.name;
     if (selectedSha256.isEmpty()) selectedSha256 = currentMeta.sha256;
 
-    QString scanPrefix;
-    if (isGlobalMode) {
-        scanPrefix = "正在扫描所有本地图片";
-    } else if (strictSummaryHashMatch) {
-        scanPrefix = QString("正在扫描使用 '%1' 的图片 (严格摘要值匹配)").arg(loraBaseName);
-    } else if (wantSummaryHashMatch) {
-        scanPrefix = QString("正在扫描使用 '%1' 的图片 (摘要值匹配)").arg(loraBaseName);
-    } else {
-        scanPrefix = QString("正在扫描使用 '%1' 的图片").arg(loraBaseName);
-    }
-
-    ui->statusbar->showMessage(scanPrefix + "...");
-
     const ModelImageMatcher::ModelUsageInput modelInput{
         selectedFilePath, selectedBaseName, selectedModelType, selectedCivitaiName, selectedSha256};
-    const int matchMode = optUserGalleryMatchMode;
 
-    // =========================================================
-    // 3. 异步扫描
-    // =========================================================
-    QMap<QString, UserImageInfo> currentCacheCopy = this->imageCache;
-    bool recursive = optGalleryRecursive;
-    const bool splitOnNewline = optSplitOnNewline;
-    const QStringList filterTags = optFilterTags;
-    auto scannedCount = QSharedPointer<std::atomic<int>>::create(0);
-    auto matchedCount = QSharedPointer<std::atomic<int>>::create(0);
-    // 开启异步任务
-    const bool comfyModelNameFallback = optComfyModelNameFallback;
-    QFuture<QPair<QList<UserImageInfo>, QMap<QString, UserImageInfo>>> future = QtConcurrent::run(
-        backgroundThreadPool,
-        [modelInput, matchMode, isGlobalMode, recursive, splitOnNewline, filterTags, currentCacheCopy, validGalleryPaths, scannedCount, matchedCount, comfyModelNameFallback]() {
-
-            // File/header reads and matching preparation stay off the UI thread.
-            const auto candidate = isGlobalMode ? ModelImageMatcher::ModelUsageCandidate{}
-                                               : ModelImageMatcher::buildCandidate(modelInput);
-            const ModelImageMatcher::MatchOptions options{matchMode, comfyModelNameFallback};
-            QList<UserImageInfo> results;
-            QMap<QString, UserImageInfo> newCacheUpdates; // 用于收集需要更新到主缓存的数据
-
-            QDirIterator::IteratorFlag iterFlag = recursive ? QDirIterator::Subdirectories : QDirIterator::NoIteratorFlags;
-            QSet<QString> visited;
-
-            for (const QString &root : validGalleryPaths) {
-                QDirIterator it(root, QStringList() << "*.png" << "*.jpg" << "*.jpeg" << "*.webp", QDir::Files, iterFlag);
-                while (it.hasNext()) {
-                    QString path = it.next();
-                    if (visited.contains(path)) continue;
-                    visited.insert(path);
-                    scannedCount->fetch_add(1, std::memory_order_relaxed);
-
-                    QFileInfo fi = it.fileInfo();
-                    qint64 currentModified = fi.lastModified().toMSecsSinceEpoch();
-
-                    UserImageInfo info;
-                    bool needParse = true;
-
-                    // === 核心优化：检查缓存 ===
-                    if (currentCacheCopy.contains(path)) {
-                        const UserImageInfo &cachedInfo = currentCacheCopy.value(path);
-                        if (cachedInfo.lastModified == currentModified
-                            && cachedInfo.parserVersion >= GalleryMetadata::ParserVersion) {
-                            // 命中缓存！直接使用，不需要 open 文件
-                            info = cachedInfo;
-                            needParse = false;
-                        }
-                    }
-
-                    // 如果没命中缓存，或者文件被修改过，则解析
-                    if (needParse) {
-                        info.path = path;
-                        info.lastModified = currentModified;
-                        GalleryMetadata::parseImage(path, info, splitOnNewline, filterTags); // 解析 I/O 操作
-
-                        // 记录到更新列表
-                        newCacheUpdates.insert(path, info);
-                    }
-
-                    // === 筛选逻辑 ===
-                    if (info.prompt.isEmpty() && info.parameters.isEmpty()) continue;
-
-                    const bool matched = isGlobalMode || ModelImageMatcher::matches(
-                        candidate, ModelImageMatcher::imageUsage(info), options);
-
-                    if (matched) {
-                        matchedCount->fetch_add(1, std::memory_order_relaxed);
-                        results.append(info);
-                    }
-                }
-            }
-
-            // 按时间倒序
-            std::sort(results.begin(), results.end(), [](const UserImageInfo &a, const UserImageInfo &b){
-                return a.lastModified > b.lastModified; // 使用 timestamp 比较更快
-            });
-
-            // 返回结果 和 需要更新的缓存
-            return qMakePair(results, newCacheUpdates);
-        });
-
-    // 监听结果
-    QFutureWatcher<QPair<QList<UserImageInfo>, QMap<QString, UserImageInfo>>> *watcher =
-        new QFutureWatcher<QPair<QList<UserImageInfo>, QMap<QString, UserImageInfo>>>(this);
-
-    QTimer *scanProgressTimer = new QTimer(this);
-    connect(scanProgressTimer, &QTimer::timeout, this, [this, scanPrefix, scannedCount, matchedCount, scanGeneration, lastShown = 0]() mutable {
-        if (scanGeneration != userGalleryGeneration) return;
-        const int scanned = scannedCount->load(std::memory_order_relaxed);
-        if (scanned <= 0) return;
-        if (scanned < lastShown + 50) return;
-        lastShown = (scanned / 50) * 50;
-        const int matched = matchedCount->load(std::memory_order_relaxed);
-        ui->statusbar->showMessage(AppText::tr("%1... 已扫描 %2 张，匹配 %3 张")
-                                       .arg(scanPrefix)
-                                       .arg(scanned)
-                                       .arg(matched));
-    });
-    scanProgressTimer->start(200);
-
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, scanProgressTimer, scanGeneration](){
-        if (scanProgressTimer) {
-            scanProgressTimer->stop();
-            scanProgressTimer->deleteLater();
-        }
-        if (scanGeneration != userGalleryGeneration || isShuttingDown) {
-            watcher->deleteLater();
-            return;
-        }
-
-        auto resultPair = watcher->result();
-        QList<UserImageInfo> results = resultPair.first;
-        QMap<QString, UserImageInfo> newUpdates = resultPair.second;
-
-        // 1. 更新主线程缓存
-        if (!newUpdates.isEmpty()) {
-            for(auto it = newUpdates.begin(); it != newUpdates.end(); ++it) {
-                this->imageCache.insert(it.key(), it.value());
-            }
-            // 保存到磁盘，下次启动就快了
-            saveUserGalleryCache();
-            refreshModelUsageStatsAsync();
-        }
-
-        // Add results in small batches so a large gallery does not freeze the
-        // event loop immediately after the background scan completes.
-        auto pendingResults = QSharedPointer<QList<UserImageInfo>>::create(std::move(results));
-        auto nextResultIndex = QSharedPointer<int>::create(0);
-        const int resultCount = pendingResults->size();
-        QTimer *batchTimer = new QTimer(this);
-        batchTimer->setInterval(0);
-        connect(batchTimer, &QTimer::timeout, this,
-                [this, pendingResults, nextResultIndex, batchTimer, scanGeneration, resultCount]() {
-            if (scanGeneration != userGalleryGeneration || isShuttingDown) {
-                batchTimer->stop();
-                batchTimer->deleteLater();
-                return;
-            }
-
-            constexpr int batchSize = 100;
-            const int end = qMin(*nextResultIndex + batchSize, resultCount);
-            ui->listUserImages->setUpdatesEnabled(false);
-            for (; *nextResultIndex < end; ++(*nextResultIndex)) {
-                const UserImageInfo &info = pendingResults->at(*nextResultIndex);
-                QListWidgetItem *item = new QListWidgetItem();
-                item->setData(ROLE_USER_IMAGE_PATH, info.path);
-                item->setData(ROLE_USER_IMAGE_PROMPT, info.prompt);
-                item->setData(ROLE_USER_IMAGE_NEG, info.negativePrompt);
-                item->setData(ROLE_USER_IMAGE_PARAMS, info.parameters);
-                item->setData(ROLE_USER_IMAGE_TAGS, info.cleanTags);
-                item->setData(ROLE_USER_IMAGE_NEG_TAGS, info.negativeCleanTags);
-                item->setData(ROLE_USER_IMAGE_TAG_KEYS,
-                              TagUtils::normalizedGalleryTagKeys(info.cleanTags));
-                item->setData(ROLE_USER_IMAGE_NEG_KEYS,
-                              TagUtils::normalizedGalleryTagKeys(info.negativeCleanTags));
-                const bool isNsfw = isGalleryImageNsfw(info.prompt, info.cleanTags);
-                item->setData(ROLE_USER_IMAGE_NSFW, isNsfw);
-                if (optFilterGalleryNSFW && optGalleryNSFWMode == 0 && isNsfw) {
-                    item->setHidden(true);
-                }
-                item->setIcon(placeholderIcon);
-                item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
-                ui->listUserImages->addItem(item);
-                if (!info.path.isEmpty()) {
-                    userImageItemByPath.insert(info.path, item);
-                }
-            }
-            ui->listUserImages->setUpdatesEnabled(true);
-
-            if (*nextResultIndex < resultCount) {
-                ui->statusbar->showMessage(AppText::tr("正在显示扫描结果... %1/%2")
-                                               .arg(*nextResultIndex)
-                                               .arg(resultCount));
-                return;
-            }
-
-            batchTimer->stop();
-            batchTimer->deleteLater();
-            ui->listUserImages->doItemsLayout();
-            ui->listUserImages->viewport()->update();
-            scheduleVisibleUserImageThumbLoad();
-            refreshUserTagFlowStats();
-            ui->statusbar->showMessage(AppText::tr("扫描完成，共 %1 张").arg(resultCount), 3000);
-        });
-        batchTimer->start();
-        watcher->deleteLater();
-    });
-
-    watcher->setFuture(future);
-}
-
-void MainWindow::parsePngInfo(const QString &path, UserImageInfo &info) {
-    GalleryMetadata::parseImage(path, info, optSplitOnNewline, optFilterTags);
+    userGalleryPage->startScan(validGalleryPaths, loraBaseName.isEmpty(), loraBaseName, modelInput);
 }
 
 bool MainWindow::isGalleryImageNsfw(const QString &prompt, const QStringList &cleanTags) const
@@ -5851,473 +5368,23 @@ bool MainWindow::isGalleryImageNsfwByPath(const QString &imagePath) const
         return isGalleryImageNsfw(it.value().prompt, it.value().cleanTags);
     }
 
-    if (QListWidgetItem *directItem = userImageItemByPath.value(imagePath, nullptr)) {
-        return isGalleryImageNsfw(directItem->data(ROLE_USER_IMAGE_PROMPT).toString(),
-                                  directItem->data(ROLE_USER_IMAGE_TAGS).toStringList());
-    }
-
-    if (ui && ui->listUserImages) {
-        const QString cleanTarget = QDir::cleanPath(QFileInfo(imagePath).absoluteFilePath());
-        for (int i = 0; i < ui->listUserImages->count(); ++i) {
-            QListWidgetItem *item = ui->listUserImages->item(i);
-            if (!item) continue;
-            const QString itemPath = item->data(ROLE_USER_IMAGE_PATH).toString();
-            if (itemPath == imagePath ||
-                QDir::cleanPath(QFileInfo(itemPath).absoluteFilePath()).compare(cleanTarget, Qt::CaseInsensitive) == 0) {
-                return isGalleryImageNsfw(item->data(ROLE_USER_IMAGE_PROMPT).toString(),
-                                          item->data(ROLE_USER_IMAGE_TAGS).toStringList());
-            }
-        }
-    }
-    return false;
+    return userGalleryPage ? userGalleryPage->isImageNsfwByPath(imagePath) : false;
 }
 
 void MainWindow::refreshGalleryNsfwDisplay()
 {
-    if (ui && ui->listUserImages && ui->listUserImages->count() > 0) {
+    if (userGalleryPage) {
         placeholderIcon = generatePlaceholderIcon();
-        resetUserImageThumbLoading();
-        ui->listUserImages->setUpdatesEnabled(false);
-        for (int i = 0; i < ui->listUserImages->count(); ++i) {
-            QListWidgetItem *item = ui->listUserImages->item(i);
-            if (!item) continue;
-            const bool isNsfw = isGalleryImageNsfw(item->data(ROLE_USER_IMAGE_PROMPT).toString(),
-                                                   item->data(ROLE_USER_IMAGE_TAGS).toStringList());
-            item->setData(ROLE_USER_IMAGE_NSFW, isNsfw);
-            item->setIcon(placeholderIcon);
-            item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
+        userGalleryPage->setPlaceholderIcon(placeholderIcon);
+        syncUserGalleryOptions();
+        userGalleryPage->refreshNsfwDisplay();
+
+        const QString currentGalleryPath = userGalleryPage->currentImagePath();
+        if (!currentGalleryPath.isEmpty() &&
+            ((ui && ui->detailContentStack && ui->detailContentStack->currentIndex() == 1) || userGalleryGlobalMode)) {
+            currentHeroPath.clear();
+            transitionToImage(currentGalleryPath);
         }
-        ui->listUserImages->setUpdatesEnabled(true);
-        refreshUserTagFlowStats(true, false);
-        scheduleVisibleUserImageThumbLoad();
-    }
-
-    if (!m_galleryCurrentImagePath.isEmpty() &&
-        ((ui && ui->detailContentStack && ui->detailContentStack->currentIndex() == 1) || userGalleryGlobalMode)) {
-        const QString pathToReload = m_galleryCurrentImagePath;
-        currentHeroPath.clear();
-        transitionToImage(pathToReload);
-    }
-}
-
-void MainWindow::refreshUserTagFlowStats(bool applyGalleryFilter,
-                                         bool resetGalleryScrollToTop)
-{
-    QHash<QString, int> tagCountsByKey;
-    QHash<QString, QString> tagDisplayText;
-    QSet<QString> positiveTagKeys;
-    QSet<QString> negativeTagKeys;
-    QSet<QString> perImageTagKeys;
-    const bool currentOnly = ui->chkUserTagCurrentImageOnly && ui->chkUserTagCurrentImageOnly->isChecked();
-    const bool includeNegative = ui->chkUserTagIncludeNegative && ui->chkUserTagIncludeNegative->isChecked();
-    const bool hideNsfwItems = optFilterGalleryNSFW && optGalleryNSFWMode == 0;
-
-    auto addTagsFromItem = [&](QListWidgetItem *item) {
-        if (!item) return;
-        if (hideNsfwItems && item->data(ROLE_USER_IMAGE_NSFW).toBool()) return;
-        perImageTagKeys.clear();
-        const QStringList positiveTags = item->data(ROLE_USER_IMAGE_TAGS).toStringList();
-        for (const QString &tag : positiveTags) {
-            if (tag.compare("BREAK", Qt::CaseInsensitive) == 0) continue;
-            const QString key = TagUtils::normalizedGalleryTagKey(tag);
-            if (key.isEmpty()) continue;
-            perImageTagKeys.insert(key);
-            positiveTagKeys.insert(key);
-            if (!tagDisplayText.contains(key)) tagDisplayText.insert(key, tag);
-        }
-        if (includeNegative) {
-            const QStringList negativeTags = item->data(ROLE_USER_IMAGE_NEG_TAGS).toStringList();
-            for (const QString &tag : negativeTags) {
-                if (tag.compare("BREAK", Qt::CaseInsensitive) == 0) continue;
-                const QString key = TagUtils::normalizedGalleryTagKey(tag);
-                if (key.isEmpty()) continue;
-                perImageTagKeys.insert(key);
-                negativeTagKeys.insert(key);
-                if (!tagDisplayText.contains(key)) tagDisplayText.insert(key, tag);
-            }
-        }
-        for (const QString &key : std::as_const(perImageTagKeys)) {
-            tagCountsByKey[key]++;
-        }
-    };
-
-    if (currentOnly) {
-        addTagsFromItem(ui->listUserImages->currentItem());
-    } else {
-        const int count = ui->listUserImages->count();
-        tagCountsByKey.reserve(qMin(count * 4, 16384));
-        tagDisplayText.reserve(qMin(count * 4, 16384));
-        for (int i = 0; i < count; ++i) {
-            addTagsFromItem(ui->listUserImages->item(i));
-        }
-    }
-
-    QMap<QString, int> tagCounts;
-    for (auto it = tagCountsByKey.cbegin(); it != tagCountsByKey.cend(); ++it) {
-        tagCounts.insert(tagDisplayText.value(it.key(), it.key()), it.value());
-    }
-    tagFlowWidget->setData(tagCounts);
-    QHash<QString, TagFlowWidget::VisualRole> visualRoles;
-    if (includeNegative) {
-        for (const QString &key : std::as_const(negativeTagKeys)) {
-            if (!positiveTagKeys.contains(key)) {
-                visualRoles.insert(tagDisplayText.value(key, key), TagFlowWidget::VisualNegative);
-            }
-        }
-    }
-    tagFlowWidget->setTagVisualRoles(visualRoles);
-
-    // 为“提示词顺序”排序提供顺序：取当前选中图的提示词出现顺序（正面在前，启用负面时追加）。
-    QStringList promptOrder;
-    if (QListWidgetItem *cur = ui->listUserImages->currentItem()) {
-        promptOrder = cur->data(ROLE_USER_IMAGE_TAGS).toStringList();
-        if (includeNegative) promptOrder += cur->data(ROLE_USER_IMAGE_NEG_TAGS).toStringList();
-    }
-    tagFlowWidget->setGivenOrder(promptOrder);
-
-    if (applyGalleryFilter) {
-        applyUserGalleryTagFilter(tagFlowWidget->getSelectedTags(),
-                                  resetGalleryScrollToTop);
-    }
-}
-
-void MainWindow::onUserImageClicked(QListWidgetItem *item) {
-    if (!item) return;
-
-    QString path = item->data(ROLE_USER_IMAGE_PATH).toString();
-    QString prompt = item->data(ROLE_USER_IMAGE_PROMPT).toString();
-    QString neg = item->data(ROLE_USER_IMAGE_NEG).toString();
-    QString params = item->data(ROLE_USER_IMAGE_PARAMS).toString();
-
-    m_galleryCurrentImagePath = path;
-    m_galleryCurrentPrompt = prompt;
-    m_galleryCurrentNegative = neg;
-    m_galleryCurrentParams = params;
-
-    QString safePrompt = prompt.toHtmlEscaped();
-    QString safeNeg = neg.toHtmlEscaped();
-    // 参数部分：让“每个参数单独成行”。先按已有换行拆，再把每行按“不在引号内的逗号”拆开。
-    QStringList paramLines;
-    for (const QString &line : GalleryMetadata::splitParameterLines(params)) {
-        paramLines << line.toHtmlEscaped();
-    }
-    const QString paramsHtml = paramLines.join(QStringLiteral("<br>"));
-
-    // 读取图片实际分辨率（A1111/ComfyUI 都展示，原参数文本里不一定带）。
-    QString resolutionHtml;
-    {
-        QImageReader reader(path);
-        const QSize sz = reader.size();
-        if (sz.isValid())
-            resolutionHtml = QString("<b>Resolution / 分辨率:</b> %1 × %2<br>")
-                                 .arg(sz.width()).arg(sz.height());
-    }
-
-    // 格式化显示
-    // 使用 <hr> 分割线，参数部分使用较小的字体和灰色
-    QString html = QString(
-                       "<style>"
-                       "  .content { white-space: pre-wrap; }" // 定义一个样式类
-                       "</style>"
-                       "<p><b><span style='color:%4'>Positive:</span></b><br>"
-                       "<span class='content'>%1</span></p>"
-                       "<p><b><span style='color:%5'>Negative:</span></b><br>"
-                       "<span class='content'>%2</span></p>"
-                       "<hr style='background-color:#444; height:1px; border:none;'>"
-                       "<p><b><span style='color:%6'>Parameters:</span></b><br>"
-                       "<span style='color:%7; font-size:11px; font-family:Consolas, monospace;'>%8%3</span></p>"
-                       ).arg(safePrompt, safeNeg, paramsHtml,
-                             AppStyle::AccentBlue(), AppStyle::HtmlNegative(),
-                             AppStyle::HtmlSubtle(), AppStyle::HtmlDim(), resolutionHtml);
-
-    ui->textUserPrompt->setHtml(html);
-
-    if (m_galleryTagViewActive) {
-        updateGalleryPromptTagView();
-    }
-
-    // 联动更新顶部 Hero 大图
-    ui->heroFrame->setProperty("fullImagePath", path);
-    transitionToImage(path);
-    const bool promptOrderSort = ui->comboUserTagSortMode && ui->comboUserTagSortMode->currentIndex() == 2;
-    if ((ui->chkUserTagCurrentImageOnly && ui->chkUserTagCurrentImageOnly->isChecked()) || promptOrderSort) {
-        // Clicking a gallery item only changes the details/TagFlow source. It
-        // must not be treated as a filter edit, otherwise the gallery relayout
-        // path resets the vertical scroll position to the top.
-        refreshUserTagFlowStats(false);
-    }
-}
-
-void MainWindow::setupGalleryPromptToolbar()
-{
-    if (m_galleryPosTagWidget) return;
-
-    // 1. 在 UI 预留的容器中装配流式标签控件
-    m_galleryPosTagWidget = new TagFlowWidget(ui->galleryPosTagContainer);
-    m_galleryPosTagWidget->setTranslationMap(&translationMap);
-    m_galleryPosTagWidget->setObjectName("galleryPosTagWidget");
-    m_galleryPosTagWidget->setAttribute(Qt::WA_TranslucentBackground);
-    m_galleryPosTagWidget->setEditingEnabled(false);
-    ui->layoutGalleryPosTags->addWidget(m_galleryPosTagWidget);
-
-    m_galleryNegTagWidget = new TagFlowWidget(ui->galleryNegTagContainer);
-    m_galleryNegTagWidget->setTranslationMap(&translationMap);
-    m_galleryNegTagWidget->setObjectName("galleryNegTagWidget");
-    m_galleryNegTagWidget->setAttribute(Qt::WA_TranslucentBackground);
-    m_galleryNegTagWidget->setDefaultVisualRole(TagFlowWidget::VisualNegative);
-    m_galleryNegTagWidget->setEditingEnabled(false);
-    ui->layoutGalleryNegTags->addWidget(m_galleryNegTagWidget);
-
-    // 2. 为参数模型/LoRA Chip 容器配置 FlowLayout
-    if (ui->galleryParamsChipContainer) {
-        m_galleryParamsChipLayout = new FlowLayout(ui->galleryParamsChipContainer, 0, 6, 6);
-    }
-
-    // 3. 绑定工具栏按钮信号
-    if (ui->comboGalleryPromptSortMode) {
-        connect(ui->comboGalleryPromptSortMode, QOverload<int>::of(&QComboBox::currentIndexChanged),
-                this, [this](int) {
-                    applyGalleryPromptSortMode();
-                });
-    }
-
-    if (ui->btnGalleryPromptTranslate) {
-        connect(ui->btnGalleryPromptTranslate, &QPushButton::toggled, this, [this](bool checked) {
-            if (checked && translationMap.isEmpty()) {
-                QMessageBox::warning(this, AppText::tr("提示"), AppText::tr("未加载翻译词表，请在设置中配置 CSV 文件。"));
-                QSignalBlocker blocker(ui->btnGalleryPromptTranslate);
-                ui->btnGalleryPromptTranslate->setChecked(false);
-                return;
-            }
-            if (m_galleryPosTagWidget) m_galleryPosTagWidget->setShowTranslation(checked);
-            if (m_galleryNegTagWidget) m_galleryNegTagWidget->setShowTranslation(checked);
-        });
-    }
-
-    if (ui->btnGalleryPromptSelectAll) {
-        connect(ui->btnGalleryPromptSelectAll, &QPushButton::clicked, this, [this]() {
-            if (m_galleryPosTagWidget) m_galleryPosTagWidget->selectAllVisibleTags();
-            if (m_galleryNegTagWidget) m_galleryNegTagWidget->selectAllVisibleTags();
-        });
-    }
-
-    if (ui->btnGalleryPromptDeselect) {
-        connect(ui->btnGalleryPromptDeselect, &QPushButton::clicked, this, [this]() {
-            if (m_galleryPosTagWidget) m_galleryPosTagWidget->clearSelectedTags();
-            if (m_galleryNegTagWidget) m_galleryNegTagWidget->clearSelectedTags();
-        });
-    }
-
-    if (ui->btnGalleryPromptToggle) {
-        connect(ui->btnGalleryPromptToggle, &QPushButton::toggled, this, [this](bool tagView) {
-            setGalleryTagViewActive(tagView);
-        });
-    }
-
-    // 4. 为图库内部所有滚动部件安装防滚动穿透事件过滤器
-    auto installAntiScrollLeak = [this](QWidget *w) {
-        if (!w) return;
-        w->installEventFilter(this);
-        if (auto *scrollArea = qobject_cast<QAbstractScrollArea*>(w)) {
-            if (scrollArea->viewport()) scrollArea->viewport()->installEventFilter(this);
-        }
-    };
-
-    installAntiScrollLeak(ui->listUserImages);
-    installAntiScrollLeak(ui->scrollAreaTags);
-    installAntiScrollLeak(ui->scrollAreaGalleryPromptTags);
-    installAntiScrollLeak(ui->textUserPrompt);
-    installAntiScrollLeak(ui->scrollArea); // 主滚动区域，用于阻断穿透
-    installAntiScrollLeak(m_galleryPosTagWidget);
-    installAntiScrollLeak(m_galleryNegTagWidget);
-    installAntiScrollLeak(tagFlowWidget);
-    if (ui->galleryPromptTagsContent) ui->galleryPromptTagsContent->installEventFilter(this);
-    if (ui->tagFlowContainer) ui->tagFlowContainer->installEventFilter(this);
-    if (ui->galleryParamsChipContainer) ui->galleryParamsChipContainer->installEventFilter(this);
-    if (ui->lblGalleryParamsPlain) ui->lblGalleryParamsPlain->installEventFilter(this);
-
-    // 5. 初始默认保持文本视图
-    setGalleryTagViewActive(false);
-}
-
-void MainWindow::setGalleryTagViewActive(bool tagView)
-{
-    m_galleryTagViewActive = tagView;
-    if (ui->galleryPromptStack) {
-        ui->galleryPromptStack->setCurrentIndex(tagView ? 1 : 0);
-    }
-    if (ui->comboGalleryPromptSortMode) ui->comboGalleryPromptSortMode->setVisible(tagView);
-    if (ui->btnGalleryPromptTranslate) ui->btnGalleryPromptTranslate->setVisible(tagView);
-    if (ui->btnGalleryPromptSelectAll) ui->btnGalleryPromptSelectAll->setVisible(tagView);
-    if (ui->btnGalleryPromptDeselect) ui->btnGalleryPromptDeselect->setVisible(tagView);
-
-    if (ui->btnGalleryPromptToggle) {
-        ui->btnGalleryPromptToggle->setText(tagView ? AppText::tr("文本") : AppText::tr("标签"));
-        ui->btnGalleryPromptToggle->setToolTip(tagView ? AppText::tr("切换为纯文本视图") : AppText::tr("切换为标签视图"));
-    }
-
-    if (tagView) {
-        updateGalleryPromptTagView();
-    }
-}
-
-void MainWindow::updateGalleryPromptTagView()
-{
-    if (!m_galleryPosTagWidget || !m_galleryNegTagWidget) return;
-
-    // 1. 正面提示词 Tag
-    QMap<QString, int> posCounts;
-    TagUtils::collectPromptTagStats(m_galleryCurrentPrompt, optSplitOnNewline, posCounts, &m_galleryPosTagOrder);
-
-    // 2. 负面提示词 Tag
-    QMap<QString, int> negCounts;
-    TagUtils::collectPromptTagStats(m_galleryCurrentNegative, optSplitOnNewline, negCounts, &m_galleryNegTagOrder);
-
-    m_galleryPosTagWidget->setData(posCounts);
-    m_galleryNegTagWidget->setData(negCounts);
-
-    applyGalleryPromptSortMode();
-
-    // 3. 清理旧的 Chip
-    clearLayout(m_galleryParamsChipLayout);
-
-    // 4. 解析参数中的模型/LoRA (复用统一解析器)
-    UserImageInfo parsedInfo;
-    if (!m_galleryCurrentImagePath.isEmpty() && imageCache.contains(m_galleryCurrentImagePath)) {
-        parsedInfo = imageCache.value(m_galleryCurrentImagePath);
-    }
-    if (!parsedInfo.parsedModelsReady ||
-        parsedInfo.prompt != m_galleryCurrentPrompt ||
-        parsedInfo.parameters != m_galleryCurrentParams) {
-        parsedInfo.prompt = m_galleryCurrentPrompt;
-        parsedInfo.parameters = m_galleryCurrentParams;
-        GalleryMetadata::populateParsedModelFields(parsedInfo);
-    }
-    const QString modelName = parsedInfo.checkpointName;
-    const QString modelHash = parsedInfo.checkpointHash;
-    const QList<ParsedLoraEntry> &loras = parsedInfo.parsedLoras;
-
-    // 5. 创建模型/Checkpoint Chip 按钮
-    if (m_galleryParamsChipLayout && ui->galleryParamsChipContainer) {
-        if (!modelName.isEmpty() || !modelHash.isEmpty()) {
-            const QString displayName = modelName.isEmpty() ? modelHash : modelName;
-            QString labelText = QString("📦 %1").arg(displayName);
-            if (!modelHash.isEmpty() && !modelName.isEmpty()) {
-                labelText += QString(" (%1)").arg(modelHash);
-            }
-            FlowChipButton *chipBtn = setupFilterChipButton(
-                new FlowChipButton(labelText, ui->galleryParamsChipContainer),
-                AppText::tr("底模: %1 (点击跳转)").arg(displayName),
-                QStringLiteral("model"));
-            connect(chipBtn, &QPushButton::clicked, this, [this, modelName, modelHash]() {
-                jumpToModelOrLora(modelName, modelHash);
-            });
-            m_galleryParamsChipLayout->addWidget(chipBtn);
-        }
-
-        // 6. 创建 LoRA Chip 按钮
-        for (const ParsedLoraEntry &lora : loras) {
-            QString labelText = QString("🏷️ %1").arg(lora.name);
-            if (!lora.weight.isEmpty()) {
-                labelText += QString(" [%1]").arg(lora.weight);
-            }
-            if (!lora.hash.isEmpty()) {
-                labelText += QString(" (%1)").arg(lora.hash);
-            }
-            FlowChipButton *chipBtn = setupFilterChipButton(
-                new FlowChipButton(labelText, ui->galleryParamsChipContainer),
-                AppText::tr("LoRA: %1 (点击跳转)").arg(lora.name));
-            connect(chipBtn, &QPushButton::clicked, this, [this, name = lora.name, hash = lora.hash]() {
-                jumpToModelOrLora(name, hash);
-            });
-            m_galleryParamsChipLayout->addWidget(chipBtn);
-        }
-    }
-
-    // 7. 渲染常规参数纯文本
-    if (ui->lblGalleryParamsPlain) {
-        QString plainHtml;
-
-        // 分辨率
-        if (!m_galleryCurrentImagePath.isEmpty()) {
-            QImageReader reader(m_galleryCurrentImagePath);
-            const QSize sz = reader.size();
-            if (sz.isValid()) {
-                plainHtml += QString("<div style='margin: 3px 0; word-break: break-all;'><b>Resolution / 分辨率:</b> %1 × %2</div>")
-                                .arg(sz.width()).arg(sz.height());
-            }
-        }
-
-        for (const QString &t : GalleryMetadata::splitParameterLines(m_galleryCurrentParams)) {
-            if (t.startsWith("Lora hashes:", Qt::CaseInsensitive)) continue;
-            if (t.startsWith("ComfyUI LoRAs:", Qt::CaseInsensitive)) continue;
-            if (t.startsWith("ComfyUI Lora hashes:", Qt::CaseInsensitive)) continue;
-            if (t.startsWith("Model:", Qt::CaseInsensitive)) continue;
-            if (t.startsWith("Model hash:", Qt::CaseInsensitive)) continue;
-            if (t.startsWith("Checkpoint:", Qt::CaseInsensitive)) continue;
-            plainHtml += QString("<div style='margin: 2px 0; word-break: break-all;'>%1</div>").arg(t.toHtmlEscaped());
-        }
-
-        ui->lblGalleryParamsPlain->setText(plainHtml);
-        ui->lblGalleryParamsPlain->setVisible(!plainHtml.trimmed().isEmpty());
-    }
-
-    if (ui->galleryParamsChipContainer) {
-        const bool hasChips = (m_galleryParamsChipLayout && m_galleryParamsChipLayout->count() > 0);
-        ui->galleryParamsChipContainer->setVisible(hasChips);
-        ui->galleryParamsChipContainer->updateGeometry();
-    }
-
-    if (ui->lblGalleryParamsTitle) {
-        const bool hasParams = (!m_galleryCurrentParams.trimmed().isEmpty() ||
-                                (m_galleryParamsChipLayout && m_galleryParamsChipLayout->count() > 0));
-        ui->lblGalleryParamsTitle->setVisible(hasParams);
-    }
-
-    if (ui->lblGalleryPosTitle) ui->lblGalleryPosTitle->setVisible(!posCounts.isEmpty());
-    if (ui->galleryPosTagContainer) ui->galleryPosTagContainer->setVisible(!posCounts.isEmpty());
-    if (ui->lblGalleryNegTitle) ui->lblGalleryNegTitle->setVisible(!negCounts.isEmpty());
-    if (ui->galleryNegTagContainer) ui->galleryNegTagContainer->setVisible(!negCounts.isEmpty());
-}
-
-void MainWindow::applyGalleryPromptSortMode()
-{
-    if (!m_galleryPosTagWidget || !m_galleryNegTagWidget || !ui->comboGalleryPromptSortMode) return;
-
-    TagFlowWidget::SortMode mode = TagFlowWidget::SortByGivenOrder;
-    const int index = ui->comboGalleryPromptSortMode->currentIndex();
-    if (index == 1) mode = TagFlowWidget::SortByCount;
-    else if (index == 2) mode = TagFlowWidget::SortAlphabetically;
-    else if (index == 3) mode = TagFlowWidget::SortByCategory;
-
-    m_galleryPosTagWidget->setGivenOrder(m_galleryPosTagOrder);
-    m_galleryNegTagWidget->setGivenOrder(m_galleryNegTagOrder);
-    m_galleryPosTagWidget->setSortMode(mode);
-    m_galleryNegTagWidget->setSortMode(mode);
-}
-
-void MainWindow::clearGalleryPromptView()
-{
-    m_galleryCurrentPrompt.clear();
-    m_galleryCurrentNegative.clear();
-    m_galleryCurrentParams.clear();
-    m_galleryCurrentImagePath.clear();
-    m_galleryPosTagOrder.clear();
-    m_galleryNegTagOrder.clear();
-
-    if (ui->textUserPrompt) ui->textUserPrompt->clear();
-    if (m_galleryPosTagWidget) m_galleryPosTagWidget->setData({});
-    if (m_galleryNegTagWidget) m_galleryNegTagWidget->setData({});
-
-    if (m_galleryParamsChipLayout) {
-        QLayoutItem *item;
-        while ((item = m_galleryParamsChipLayout->takeAt(0)) != nullptr) {
-            if (item->widget()) delete item->widget();
-            delete item;
-        }
-    }
-    if (ui->lblGalleryParamsPlain) {
-        ui->lblGalleryParamsPlain->clear();
     }
 }
 
@@ -6409,297 +5476,6 @@ void MainWindow::jumpToModelOrLora(const QString &name, const QString &hash)
     ui->statusbar->showMessage(AppText::tr("已定位并跳转至模型: %1").arg(item->text()), 3500);
 }
 
-bool MainWindow::isCursorInsideGalleryScrollAreas() const
-{
-    const QPoint globalPos = QCursor::pos();
-    auto isInside = [&globalPos](QWidget *w) -> bool {
-        if (!w || !w->isVisible()) return false;
-        return w->rect().contains(w->mapFromGlobal(globalPos));
-    };
-
-    // 1. 左侧图片列表
-    if (isInside(ui->listUserImages)) return true;
-    // 2. 右侧上方用户 Tag 区域
-    if (isInside(ui->scrollAreaTags)) return true;
-    // 3. 右侧下方提示词与参数区域（文本模式 或 标签模式）
-    if (isInside(ui->textUserPrompt)) return true;
-    if (isInside(ui->scrollAreaGalleryPromptTags)) return true;
-
-    return false;
-}
-
-bool MainWindow::isGalleryScrollWidget(QObject *watched) const
-{
-    if (!watched) return false;
-
-    // 1. 如果事件目标是外层主滚动区（或其直接承载内容）
-    if (watched == ui->scrollArea || (ui->scrollArea && watched == ui->scrollArea->viewport()) || watched == ui->scrollAreaWidgetContents) {
-        if (ui->pageLocalGallery && ui->pageLocalGallery->isVisible()) {
-            // 仅当光标在图库界面的3个实际内部滚动区域内部时，才阻断穿透；
-            // 如果光标在3个滚动区域外部，放行给外层主滚动区正常滚动整个页面！
-            return isCursorInsideGalleryScrollAreas();
-        }
-        return false;
-    }
-
-    // 2. 如果 watched 是 QWidget，检查它是否属于图库的3个滚动子区域之一（包括其所有深层子组件）
-    QWidget *w = qobject_cast<QWidget*>(watched);
-    if (!w) return false;
-
-    if (ui->listUserImages && (w == ui->listUserImages || ui->listUserImages->isAncestorOf(w))) {
-        return true;
-    }
-    if (ui->scrollAreaTags && (w == ui->scrollAreaTags || ui->scrollAreaTags->isAncestorOf(w))) {
-        return true;
-    }
-    if (ui->textUserPrompt && (w == ui->textUserPrompt || ui->textUserPrompt->isAncestorOf(w))) {
-        return true;
-    }
-    if (ui->scrollAreaGalleryPromptTags && (w == ui->scrollAreaGalleryPromptTags || ui->scrollAreaGalleryPromptTags->isAncestorOf(w))) {
-        return true;
-    }
-
-    return false;
-}
-
-void MainWindow::handleGalleryWheelScroll(QObject *watched, QWheelEvent *event)
-{
-    if (!event) return;
-
-    QScrollBar *vBar = nullptr;
-    QWidget *w = qobject_cast<QWidget*>(watched);
-
-    if (w) {
-        if (ui->listUserImages && (w == ui->listUserImages || ui->listUserImages->isAncestorOf(w))) {
-            vBar = ui->listUserImages->verticalScrollBar();
-        } else if (ui->scrollAreaTags && (w == ui->scrollAreaTags || ui->scrollAreaTags->isAncestorOf(w))) {
-            vBar = ui->scrollAreaTags->verticalScrollBar();
-        } else if (ui->textUserPrompt && (w == ui->textUserPrompt || ui->textUserPrompt->isAncestorOf(w))) {
-            vBar = ui->textUserPrompt->verticalScrollBar();
-        } else if (ui->scrollAreaGalleryPromptTags && (w == ui->scrollAreaGalleryPromptTags || ui->scrollAreaGalleryPromptTags->isAncestorOf(w))) {
-            vBar = ui->scrollAreaGalleryPromptTags->verticalScrollBar();
-        }
-    }
-
-    if (!vBar) {
-        const QPoint globalPos = QCursor::pos();
-        if (ui->scrollAreaGalleryPromptTags && ui->scrollAreaGalleryPromptTags->isVisible() &&
-            ui->scrollAreaGalleryPromptTags->rect().contains(ui->scrollAreaGalleryPromptTags->mapFromGlobal(globalPos))) {
-            vBar = ui->scrollAreaGalleryPromptTags->verticalScrollBar();
-        } else if (ui->textUserPrompt && ui->textUserPrompt->isVisible() &&
-                   ui->textUserPrompt->rect().contains(ui->textUserPrompt->mapFromGlobal(globalPos))) {
-            vBar = ui->textUserPrompt->verticalScrollBar();
-        } else if (ui->scrollAreaTags && ui->scrollAreaTags->isVisible() &&
-                   ui->scrollAreaTags->rect().contains(ui->scrollAreaTags->mapFromGlobal(globalPos))) {
-            vBar = ui->scrollAreaTags->verticalScrollBar();
-        } else if (ui->listUserImages && ui->listUserImages->isVisible() &&
-                   ui->listUserImages->rect().contains(ui->listUserImages->mapFromGlobal(globalPos))) {
-            vBar = ui->listUserImages->verticalScrollBar();
-        }
-    }
-
-    if (vBar && vBar->isEnabled() && vBar->maximum() > vBar->minimum()) {
-        const int delta = event->angleDelta().y();
-        if (delta != 0) {
-            int step = vBar->singleStep();
-            if (step <= 0) step = 20;
-            const double stepsToScroll = static_cast<double>(delta) / 120.0 * 3.0;
-            int deltaValue = qRound(-stepsToScroll * step);
-            if (deltaValue == 0) deltaValue = (delta > 0) ? -step : step;
-            vBar->setValue(vBar->value() + deltaValue);
-        }
-    }
-
-    event->accept();
-}
-
-void MainWindow::onTagFilterChanged(const QSet<QString> &selectedTags) {
-    if (selectedTags.isEmpty()) {
-        m_galleryExtraLoraFilters.clear();
-    }
-    applyUserGalleryTagFilter(selectedTags, true);
-}
-
-void MainWindow::applyUserGalleryTagFilter(const QSet<QString> &selectedTags,
-                                           bool resetScrollToTop) {
-    const quint64 layoutGeneration = ++userGalleryLayoutGeneration;
-    const int previousVerticalScroll = ui->listUserImages->verticalScrollBar()
-                                           ? ui->listUserImages->verticalScrollBar()->value()
-                                           : 0;
-    const int previousHorizontalScroll = ui->listUserImages->horizontalScrollBar()
-                                             ? ui->listUserImages->horizontalScrollBar()->value()
-                                             : 0;
-    int visibleCount = 0;
-    const bool includeNegative = ui->chkUserTagIncludeNegative && ui->chkUserTagIncludeNegative->isChecked();
-    const QString currentImagePath = ui->listUserImages->currentItem()
-                                         ? ui->listUserImages->currentItem()->data(ROLE_USER_IMAGE_PATH).toString()
-                                         : QString();
-    QSet<QString> selectedTagKeys;
-    for (const QString &tag : selectedTags) {
-        const QString key = TagUtils::normalizedGalleryTagKey(tag);
-        if (!key.isEmpty()) selectedTagKeys.insert(key);
-    }
-    QStringList normalizedLoraFilters;
-    for (const QString &l : m_galleryExtraLoraFilters) {
-        const QString clean = GalleryMetadata::cleanModelOrLoraBaseName(l).toLower();
-        if (!clean.isEmpty() && !normalizedLoraFilters.contains(clean)) {
-            normalizedLoraFilters.append(clean);
-        }
-    }
-
-    struct FilteredGalleryItem {
-        QListWidgetItem *item = nullptr;
-        bool visible = false;
-    };
-    QVector<FilteredGalleryItem> filteredItems;
-    filteredItems.reserve(ui->listUserImages->count());
-
-    for (int i = 0; i < ui->listUserImages->count(); ++i) {
-        QListWidgetItem *item = ui->listUserImages->item(i);
-        auto normalizedKeys = [item](int tagRole, int cacheRole) {
-            const QVariant cached = item->data(cacheRole);
-            if (cached.isValid()) return cached.toStringList();
-
-            QStringList keys = TagUtils::normalizedGalleryTagKeys(item->data(tagRole).toStringList());
-            item->setData(cacheRole, keys);
-            return keys;
-        };
-
-        const QStringList positiveTagKeys = normalizedKeys(ROLE_USER_IMAGE_TAGS,
-                                                            ROLE_USER_IMAGE_TAG_KEYS);
-        const QStringList negativeTagKeys = includeNegative
-                                                ? normalizedKeys(ROLE_USER_IMAGE_NEG_TAGS,
-                                                                 ROLE_USER_IMAGE_NEG_KEYS)
-                                                : QStringList();
-
-        bool match = true;
-        if (optFilterGalleryNSFW && optGalleryNSFWMode == 0 && item->data(ROLE_USER_IMAGE_NSFW).toBool()) {
-            match = false;
-        }
-        // AND 逻辑：必须包含所有选中的 Tag
-        for (const QString &selTag : selectedTagKeys) {
-            if (!match) break;
-            const bool tagFound = std::binary_search(positiveTagKeys.cbegin(),
-                                                     positiveTagKeys.cend(), selTag)
-                                  || (includeNegative
-                                      && std::binary_search(negativeTagKeys.cbegin(),
-                                                            negativeTagKeys.cend(), selTag));
-            if (!tagFound) {
-                match = false;
-                break;
-            }
-        }
-
-        if (match && !normalizedLoraFilters.isEmpty()) {
-            const QString imgPath = item->data(ROLE_USER_IMAGE_PATH).toString();
-            UserImageInfo info = imageCache.value(imgPath);
-            if (!info.parsedModelsReady) {
-                info.prompt = item->data(ROLE_USER_IMAGE_PROMPT).toString();
-                info.parameters = item->data(ROLE_USER_IMAGE_PARAMS).toString();
-                GalleryMetadata::populateParsedModelFields(info);
-            }
-            QSet<QString> imageLoras;
-            for (const ParsedLoraEntry &entry : info.parsedLoras) {
-                const QString clean = GalleryMetadata::cleanModelOrLoraBaseName(entry.name).toLower();
-                if (!clean.isEmpty()) imageLoras.insert(clean);
-            }
-            for (const QString &reqLora : normalizedLoraFilters) {
-                if (!imageLoras.contains(reqLora)) {
-                    match = false;
-                    break;
-                }
-            }
-        }
-
-        if (match) {
-            visibleCount++;
-        }
-        filteredItems.append({item, match});
-    }
-
-    ui->listUserImages->setUpdatesEnabled(false);
-    QListWidgetItem *restoredCurrentItem = nullptr;
-    for (const FilteredGalleryItem &entry : std::as_const(filteredItems)) {
-        if (!entry.item) continue;
-        const bool shouldHide = !entry.visible;
-        if (entry.item->isHidden() != shouldHide) {
-            entry.item->setHidden(shouldHide);
-        }
-        if (!currentImagePath.isEmpty()
-            && entry.item->data(ROLE_USER_IMAGE_PATH).toString() == currentImagePath) {
-            restoredCurrentItem = entry.item;
-        }
-    }
-    if (restoredCurrentItem && !restoredCurrentItem->isHidden()) {
-        ui->listUserImages->setCurrentItem(restoredCurrentItem, QItemSelectionModel::NoUpdate);
-    } else {
-        ui->listUserImages->setCurrentItem(nullptr);
-    }
-
-    // IconMode can retain geometry for rows whose hidden state changed. Changing
-    // the grid invalidates that cache once, without emitting thousands of model
-    // row removals/insertions as the previous takeItem/addItem workaround did.
-    const QSize galleryGridSize = ui->listUserImages->gridSize();
-    ui->listUserImages->setGridSize(QSize());
-    ui->listUserImages->setGridSize(galleryGridSize);
-    ui->listUserImages->setUpdatesEnabled(true);
-    ui->listUserImages->doItemsLayout();
-    if (QScrollBar *verticalBar = ui->listUserImages->verticalScrollBar()) {
-        verticalBar->setValue(resetScrollToTop
-                                  ? verticalBar->minimum()
-                                  : qBound(verticalBar->minimum(), previousVerticalScroll,
-                                           verticalBar->maximum()));
-    }
-    if (QScrollBar *horizontalBar = ui->listUserImages->horizontalScrollBar()) {
-        horizontalBar->setValue(resetScrollToTop
-                                    ? horizontalBar->minimum()
-                                    : qBound(horizontalBar->minimum(), previousHorizontalScroll,
-                                             horizontalBar->maximum()));
-    }
-    ui->listUserImages->viewport()->repaint();
-
-    auto resetFilteredGalleryViewport = [this, layoutGeneration, resetScrollToTop,
-                                         previousVerticalScroll, previousHorizontalScroll]() {
-        if (layoutGeneration != userGalleryLayoutGeneration || !ui->listUserImages) return;
-        ui->listUserImages->doItemsLayout();
-        if (resetScrollToTop) {
-            for (int i = 0; i < ui->listUserImages->count(); ++i) {
-                QListWidgetItem *item = ui->listUserImages->item(i);
-                if (item && !item->isHidden()) {
-                    ui->listUserImages->scrollToItem(item, QAbstractItemView::PositionAtTop);
-                    break;
-                }
-            }
-        }
-        if (QScrollBar *verticalBar = ui->listUserImages->verticalScrollBar()) {
-            verticalBar->setValue(resetScrollToTop
-                                      ? verticalBar->minimum()
-                                      : qBound(verticalBar->minimum(), previousVerticalScroll,
-                                               verticalBar->maximum()));
-        }
-        if (QScrollBar *horizontalBar = ui->listUserImages->horizontalScrollBar()) {
-            horizontalBar->setValue(resetScrollToTop
-                                        ? horizontalBar->minimum()
-                                        : qBound(horizontalBar->minimum(), previousHorizontalScroll,
-                                                 horizontalBar->maximum()));
-        }
-        ui->listUserImages->update();
-        ui->listUserImages->viewport()->repaint();
-        scheduleVisibleUserImageThumbLoad();
-    };
-    QTimer::singleShot(0, this, resetFilteredGalleryViewport);
-    // QListView::Adjust may schedule another geometry pass after the first event.
-    QTimer::singleShot(50, this, resetFilteredGalleryViewport);
-
-    if (m_galleryExtraLoraFilters.isEmpty()) {
-        ui->statusbar->showMessage(AppText::tr("筛选: %1 张图片符合条件").arg(visibleCount));
-    } else {
-        ui->statusbar->showMessage(AppText::tr("组合筛选 (含 LoRA %1): %2 张图片符合条件")
-                                       .arg(m_galleryExtraLoraFilters.join(QStringLiteral(", ")))
-                                       .arg(visibleCount));
-    }
-}
-
 void MainWindow::onGalleryButtonClicked()
 {
     userGalleryGlobalMode = true;
@@ -6738,12 +5514,6 @@ void MainWindow::onGalleryButtonClicked()
 
     // 6. 执行全局扫描 (传入空字符串)
     scanForUserImages("");
-}
-
-// 辅助函数：清洗单个 Tag
-// 辅助函数：将 Prompt 字符串解析为 Tag 列表
-QStringList MainWindow::parsePromptsToTags(const QString &rawPrompt) {
-    return TagUtils::parsePromptTags(rawPrompt, optSplitOnNewline, optFilterTags);
 }
 
 void MainWindow::initMenuBar() {
@@ -6877,8 +5647,8 @@ void MainWindow::ensureToolTabLoaded(int index)
             connect(usageAnalysisWidget, &UsageAnalysisWidget::requestFilterInGallery,
                     this, [this](const QString &tagOrLora, bool isLora) {
                         onMenuSwitchToLibrary();
-                        if (!ui->pageLocalGallery || !ui->pageLocalGallery->isVisible()) {
-                            if (ui->listUserImages && ui->listUserImages->count() > 0) {
+                        if (!userGalleryPage || !userGalleryPage->isVisible()) {
+                            if (userGalleryPage && userGalleryPage->imageCount() > 0) {
                                 ui->mainStack->setCurrentIndex(1);
                                 ui->detailContentStack->setCurrentIndex(1);
                                 fitDetailContentToCurrentPage();
@@ -6886,35 +5656,15 @@ void MainWindow::ensureToolTabLoaded(int index)
                                 onGalleryButtonClicked();
                             }
                         }
-                        if (tagFlowWidget) {
-                            if (isLora) {
-                                m_galleryExtraLoraFilters = {tagOrLora};
-                                if (ui->editUserTagSearch) {
-                                    QSignalBlocker blocker(ui->editUserTagSearch);
-                                    ui->editUserTagSearch->setText(tagOrLora);
-                                }
-                                if (userTagSearchDebounceTimer) userTagSearchDebounceTimer->stop();
-                                tagFlowWidget->setSearchText(tagOrLora);
-                                tagFlowWidget->clearSelectedTags();
-                                applyUserGalleryTagFilter({}, true);
-                            } else {
-                                m_galleryExtraLoraFilters.clear();
-                                if (ui->editUserTagSearch) {
-                                    QSignalBlocker blocker(ui->editUserTagSearch);
-                                    ui->editUserTagSearch->clear();
-                                }
-                                if (userTagSearchDebounceTimer) userTagSearchDebounceTimer->stop();
-                                tagFlowWidget->setSearchText(QString());
-                                tagFlowWidget->setSelectedTags({tagOrLora});
-                                applyUserGalleryTagFilter(tagFlowWidget->getSelectedTags(), true);
-                            }
+                        if (userGalleryPage) {
+                            userGalleryPage->filterBySingleTagOrLora(tagOrLora, isLora);
                         }
                     });
             connect(usageAnalysisWidget, &UsageAnalysisWidget::requestFilterMultiInGallery,
                     this, [this](const QStringList &tags, const QStringList &loras) {
                         onMenuSwitchToLibrary();
-                        if (!ui->pageLocalGallery || !ui->pageLocalGallery->isVisible()) {
-                            if (ui->listUserImages && ui->listUserImages->count() > 0) {
+                        if (!userGalleryPage || !userGalleryPage->isVisible()) {
+                            if (userGalleryPage && userGalleryPage->imageCount() > 0) {
                                 ui->mainStack->setCurrentIndex(1);
                                 ui->detailContentStack->setCurrentIndex(1);
                                 fitDetailContentToCurrentPage();
@@ -6922,21 +5672,8 @@ void MainWindow::ensureToolTabLoaded(int index)
                                 onGalleryButtonClicked();
                             }
                         }
-                        if (tagFlowWidget) {
-                            m_galleryExtraLoraFilters = loras;
-                            if (ui->editUserTagSearch) {
-                                QSignalBlocker blocker(ui->editUserTagSearch);
-                                ui->editUserTagSearch->clear();
-                            }
-                            if (userTagSearchDebounceTimer) userTagSearchDebounceTimer->stop();
-                            tagFlowWidget->setSearchText(QString());
-                            QStringList selTags;
-                            for (const QString &t : tags) {
-                                const QString clean = t.trimmed();
-                                if (!clean.isEmpty() && !selTags.contains(clean)) selTags.append(clean);
-                            }
-                            tagFlowWidget->setSelectedTags(selTags);
-                            applyUserGalleryTagFilter(tagFlowWidget->getSelectedTags(), true);
+                        if (userGalleryPage) {
+                            userGalleryPage->filterByMultiTagsAndLoras(tags, loras);
                         }
                     });
             refreshUsageAnalysisWidget();
@@ -8068,6 +6805,7 @@ void MainWindow::applySettingsState(SettingsState state)
         sidebarIconCache.clear();
         homeIconCache.clear();
     }
+    syncUserGalleryOptions();
     if (galleryNsfwChanged) {
         refreshGalleryNsfwDisplay();
     }
@@ -8086,6 +6824,7 @@ void MainWindow::resetFilterTagsToDefault()
     settingsPage->setFilterTagsText(DEFAULT_FILTER_TAGS);
     optFilterTags = DEFAULT_FILTER_TAGS.split(',', Qt::SkipEmptyParts);
     for (QString &s : optFilterTags) s = s.trimmed();
+    syncUserGalleryOptions();
     saveGlobalConfig();
     ui->statusbar->showMessage(AppText::tr("过滤词已重置"), 2000);
 }
@@ -8102,6 +6841,7 @@ void MainWindow::resetGalleryNsfwRulesToDefault()
 
     settingsPage->setGalleryNsfwRulesText(DEFAULT_GALLERY_NSFW_RULES);
     optGalleryNSFWRules = GalleryMetadata::parseNsfwRules(DEFAULT_GALLERY_NSFW_RULES);
+    syncUserGalleryOptions();
     saveGlobalConfig();
     if (optFilterGalleryNSFW) refreshGalleryNsfwDisplay();
     ui->statusbar->showMessage(AppText::tr("返图 NSFW 规则已重置"), 2000);
@@ -8396,11 +7136,14 @@ void MainWindow::saveGlobalConfig() {
             if (!t.trimmed().isEmpty()) homeTagsArr.append(t.trimmed());
         }
         fs["home_tag_filters"] = homeTagsArr;
-        if (ui->comboUserTagSortMode) fs["user_tag_sort_mode"] = ui->comboUserTagSortMode->currentIndex();
-        if (ui->chkUserTagLoraOnly) fs["user_tag_lora_only"] = ui->chkUserTagLoraOnly->isChecked();
-        if (ui->chkUserTagIncludeNegative) fs["user_tag_include_negative"] = ui->chkUserTagIncludeNegative->isChecked();
-        if (ui->comboGalleryPromptSortMode) fs["gallery_prompt_sort_mode"] = ui->comboGalleryPromptSortMode->currentIndex();
-        fs["gallery_tag_view_active"] = m_galleryTagViewActive;
+        if (userGalleryPage) {
+            const UserGalleryFilterState gs = userGalleryPage->filterState();
+            fs["user_tag_sort_mode"] = gs.userTagSortMode;
+            fs["user_tag_lora_only"] = gs.userTagLoraOnly;
+            fs["user_tag_include_negative"] = gs.userTagIncludeNegative;
+            fs["gallery_prompt_sort_mode"] = gs.galleryPromptSortMode;
+            fs["gallery_tag_view_active"] = gs.galleryTagViewActive;
+        }
         root["filter_sort_state"] = fs;
     } else if (!optRestoreFilterSortState) {
         root.remove("filter_sort_state");
@@ -8569,7 +7312,7 @@ void MainWindow::recolorPlaceholderItems()
     };
     recolorList(ui->homeGalleryList, placeholderIcon, noPreviewIcon);
     recolorList(ui->modelList, smallPlaceholderIcon, smallNoPreviewIcon);
-    recolorList(ui->listUserImages, placeholderIcon, placeholderIcon); // 非模型图片始终使用叉
+    if (userGalleryPage) userGalleryPage->recolorPlaceholders(placeholderIcon); // 非模型图片始终使用叉
 
     bool treeChanged = false;
     std::function<void(QTreeWidgetItem *)> recolorNode = [&](QTreeWidgetItem *node) {
@@ -8649,10 +7392,8 @@ void MainWindow::reloadTranslationMaps(bool notifyWidgets, bool asynchronous)
             if (parserWidget) parserWidget->setTranslationMap(&translationMap);
             if (promptTemplateLibraryWidget) promptTemplateLibraryWidget->setTranslationMap(&translationMap);
             if (tagBrowserWidget) tagBrowserWidget->setMergedTranslationMap(&translationMap);
-            if (tagFlowWidget) tagFlowWidget->setTranslationMap(&translationMap);
+            if (userGalleryPage) userGalleryPage->setTranslationMap(&translationMap);
             if (usageAnalysisWidget) usageAnalysisWidget->setTranslationMap(&translationMap);
-            if (m_galleryPosTagWidget) m_galleryPosTagWidget->setTranslationMap(&translationMap);
-            if (m_galleryNegTagWidget) m_galleryNegTagWidget->setTranslationMap(&translationMap);
         }
         qDebug() << "Loaded translation entries:" << translationMap.size() << "from" << activePaths.size() << "CSV file(s)";
     };
@@ -8667,80 +7408,6 @@ void MainWindow::reloadTranslationMaps(bool notifyWidgets, bool asynchronous)
         applyMaps(std::move(result));
     });
     watcher->setFuture(QtConcurrent::run(backgroundThreadPool, readMaps));
-}
-
-void MainWindow::onUserGalleryContextMenu(const QPoint &pos)
-{
-    QListWidgetItem *item = ui->listUserImages->itemAt(pos);
-    if (!item) return;
-
-    QString filePath = item->data(ROLE_USER_IMAGE_PATH).toString();
-    if (filePath.isEmpty()) return;
-    QString prompt = item->data(ROLE_USER_IMAGE_PROMPT).toString();
-    QString neg = item->data(ROLE_USER_IMAGE_NEG).toString();
-    QString params = item->data(ROLE_USER_IMAGE_PARAMS).toString();
-
-    QMenu menu(this);
-
-    QAction *actCopyGenParams = menu.addAction(AppText::tr("复制生成参数 / Copy Gen Params"));
-    actCopyGenParams->setToolTip(AppText::tr("复制符合SD WebUI格式的完整参数，\n粘贴进提示词框后可直接点击↙️按钮读取。"));
-    menu.addSeparator(); // 分隔线
-    QAction *actOpenImg = menu.addAction(AppText::tr("内置图片浏览器 / Image Viewer"));
-    QAction *actOpenSystem = menu.addAction(AppText::tr("使用系统程序打开 / Open with System"));
-    QAction *actOpenDir = menu.addAction(AppText::tr("打开文件位置 / Show in Folder"));
-    QAction *actShowComfyWorkflow = menu.addAction(AppText::tr("查看 ComfyUI Workflow / View Workflow"));
-    QAction *actShowRawMetadata = menu.addAction(AppText::tr("显示原始 Metadata / Raw Metadata"));
-    menu.addSeparator();
-    QAction *actCopyPath = menu.addAction(AppText::tr("复制路径 / Copy Path"));
-
-    QAction *selected = menu.exec(ui->listUserImages->mapToGlobal(pos));
-
-    if (selected == actCopyGenParams) {
-        QStringList parts;
-
-        // 1. 正向提示词
-        if (!prompt.isEmpty()) {
-            parts.append(prompt);
-        }
-
-        // 2. 反向提示词 (需要补上标准前缀 "Negative prompt: ")
-        // 注意：在 parsePngInfo 里如果是 "(empty)" 则跳过
-        if (!neg.isEmpty() && neg != "(empty)") {
-            parts.append("Negative prompt: " + neg);
-        }
-
-        // 3. 参数行 (Steps: 20, Sampler: ...)
-        if (!params.isEmpty()) {
-            parts.append(params);
-        }
-
-        // 用换行符连接，这是 SD WebUI 识别的标准格式
-        QString fullParams = parts.join("\n");
-
-        QClipboard *clip = QGuiApplication::clipboard();
-        clip->setText(fullParams);
-
-        ui->statusbar->showMessage(AppText::tr("已复制 SD 生成参数到剪贴板"), 2000);
-    }
-    else if (selected == actOpenImg) {
-        openImageViewer(visibleUserGalleryImagePaths(), filePath);
-    }
-    else if (selected == actOpenSystem) {
-        QDesktopServices::openUrl(QUrl::fromLocalFile(filePath));
-    }
-    else if (selected == actOpenDir) {
-        showFileInFolder(filePath);
-    }
-    else if (selected == actShowRawMetadata) {
-        showRawImageMetadataDialog(filePath);
-    }
-    else if (selected == actShowComfyWorkflow) {
-        showComfyWorkflowViewer(filePath);
-    }
-    else if (selected == actCopyPath) {
-        QGuiApplication::clipboard()->setText(QDir::toNativeSeparators(filePath));
-        ui->statusbar->showMessage(AppText::tr("路径已复制"), 2000);
-    }
 }
 
 void MainWindow::showComfyWorkflowViewer(const QString &filePath)
