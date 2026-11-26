@@ -96,6 +96,11 @@
 #include "utils/tagutils.h"
 #include "utils/modeluserdatastore.h"
 #include "utils/usergallerycache.h"
+#include "utils/civitaiclient.h"
+#include "services/appupdatechecker.h"
+#include "services/previewdownloadqueue.h"
+#include "services/metadatasyncservice.h"
+#include "services/modelupdatecoordinator.h"
 #include "widgets/flowlayout.h"
 #include "widgets/highlightitemdelegate.h"
 
@@ -293,6 +298,7 @@ MainWindow::MainWindow(QWidget *parent)
     smallNoPreviewIcon = generateNoPreviewIcon(true);
 
     netManager = new QNetworkAccessManager(this);
+    initServices();
 
     // === 1. 初始化菜单栏 ===
     initMenuBar();
@@ -789,6 +795,8 @@ MainWindow::~MainWindow()
     if (bgResizeTimer) bgResizeTimer->stop();
     if (detailGalleryBuildTimer) detailGalleryBuildTimer->stop();
     if (transitionAnim) transitionAnim->stop();
+    if (modelUpdateCoordinator) modelUpdateCoordinator->cancelAll();
+    if (previewDownloadQueue) previewDownloadQueue->clearQueueOnly();
     if (netManager) {
         const QList<QNetworkReply*> replies = netManager->findChildren<QNetworkReply*>();
         for (QNetworkReply *reply : replies) {
@@ -797,7 +805,6 @@ MainWindow::~MainWindow()
             reply->abort();
         }
     }
-    downloadQueue.clear();
     if (downloadManager) downloadManager->shutdown();
     if (hashWatcher && hashWatcher->isRunning()) hashWatcher->waitForFinished();
     if (metadataScanWatcher && metadataScanWatcher->isRunning()) metadataScanWatcher->waitForFinished();
@@ -2058,17 +2065,7 @@ void MainWindow::updateDetailView(const ModelMeta &meta)
     clearLayout(ui->layoutGallery);
 
     // 中止正在进行的画廊预览图下载任务，防止后台积累僵尸队列
-    if (netManager) {
-        const QList<QNetworkReply*> replies = netManager->findChildren<QNetworkReply*>();
-        for (QNetworkReply *reply : replies) {
-            if (reply && reply->property("isGalleryDownload").toBool()) {
-                reply->abort();
-            }
-        }
-    }
-
-    downloadQueue.clear();
-    isDownloading = false;
+    if (previewDownloadQueue) previewDownloadQueue->cancelActiveAndQueued();
     beginGalleryBuild(meta);
 
     // 5. 右侧信息
@@ -2494,16 +2491,7 @@ void MainWindow::clearDetailView()
     clearLayout(ui->layoutGallery);
 
     // 中止正在进行的画廊预览图下载任务
-    if (netManager) {
-        const QList<QNetworkReply*> replies = netManager->findChildren<QNetworkReply*>();
-        for (QNetworkReply *reply : replies) {
-            if (reply && reply->property("isGalleryDownload").toBool()) {
-                reply->abort();
-            }
-        }
-    }
-    downloadQueue.clear();
-    isDownloading = false;
+    if (previewDownloadQueue) previewDownloadQueue->cancelActiveAndQueued();
 
     // ui->widgetLocalMeta->setEnabled(false);
     ui->groupEditImages->setEnabled(false);
@@ -4105,62 +4093,27 @@ QString MainWindow::civitaiApiKey() const
 
 bool MainWindow::isCivitaiUrl(const QUrl &url) const
 {
-    const QString host = url.host().toLower();
-    return host == "civitai.com" || host.endsWith(".civitai.com");
+    return CivitaiClient::isCivitaiUrl(url);
 }
 
 bool MainWindow::shouldUseCivitaiBearerAuth(const QUrl &url) const
 {
-    if (!isCivitaiUrl(url)) return false;
-    const QString host = url.host().toLower();
-
-    // 图片/CDN 链接通常使用 token query 参数认证，Bearer 在这些 host 上容易触发 401。
-    if (host == "image.civitai.com" || host == "imagecache.civitai.com") return false;
-    if (host.startsWith("image.") || host.contains("imagecache")) return false;
-
-    return true;
+    return CivitaiClient::shouldUseBearerAuth(url);
 }
 
 QUrl MainWindow::civitaiUrlWithToken(const QUrl &url) const
 {
-    const QString key = civitaiApiKey();
-    if (key.isEmpty() || !isCivitaiUrl(url)) return url;
-
-    QUrl out(url);
-    QUrlQuery query(out);
-    if (query.hasQueryItem("token")) return out;
-    query.addQueryItem("token", key);
-    out.setQuery(query);
-    return out;
+    return CivitaiClient::urlWithToken(url, civitaiApiKey());
 }
 
 QNetworkRequest MainWindow::makeNetworkRequest(const QUrl &url, bool allowCivitaiAuth) const
 {
-    QNetworkRequest request(url);
-        request.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
-        request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-    #if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
-        request.setTransferTimeout(30000); // 30秒超时，防止异常挂起导致队列卡死
-    #endif
-        if (allowCivitaiAuth && isCivitaiUrl(url) && shouldUseCivitaiBearerAuth(url)) {
-                const QString key = civitaiApiKey();
-            if (!key.isEmpty()) {
-                request.setRawHeader("Authorization", QString("Bearer %1").arg(key).toUtf8());
-            }
-        }
-    return request;
+    return CivitaiClient::makeNetworkRequest(url, currentUserAgent, civitaiApiKey(), allowCivitaiAuth);
 }
 
 QString MainWindow::civitaiNetworkErrorMessage(QNetworkReply *reply) const
 {
-    if (!reply) return "未知网络错误";
-    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    QString text = reply->errorString();
-    if ((status == 401 || status == 403) && isCivitaiUrl(reply->url())) {
-        text += "。请检查 Civitai API Key，或确认该资源是否需要登录权限。";
-    }
-    if (status > 0) text += QString(" (HTTP %1)").arg(status);
-    return text;
+    return CivitaiClient::networkErrorMessage(reply);
 }
 
 void MainWindow::applyCivitaiAttributionToItem(QListWidgetItem *item, const QString &creator, const QStringList &tags)
@@ -4569,77 +4522,9 @@ void MainWindow::onCopyLoraTagClicked()
 
 void MainWindow::downloadThumbnail(const QString &url, const QString &savePath, QPushButton *button)
 {
-    const QUrl requestUrl(url);
-    QNetworkRequest req = makeNetworkRequest(requestUrl);
-
-    QNetworkReply *reply = netManager->get(req);
-    reply->setProperty("tokenRetry", false);
-    QPointer<QPushButton> safeBtn = button;
-
-    connect(reply, &QNetworkReply::finished, this, [this, reply, savePath, safeBtn, requestUrl]() {
-        reply->deleteLater();
-
-        // 检查网络错误
-        if (reply->error() != QNetworkReply::NoError) {
-            const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-            if ((status == 401 || status == 403) && !reply->property("tokenRetry").toBool() && !civitaiApiKey().isEmpty()) {
-                QUrl retryUrl = civitaiUrlWithToken(requestUrl);
-                if (retryUrl != requestUrl) {
-                    QNetworkReply *retryReply = netManager->get(makeNetworkRequest(retryUrl, false));
-                    retryReply->setProperty("tokenRetry", true);
-                    connect(retryReply, &QNetworkReply::finished, this, [this, retryReply, savePath, safeBtn]() {
-                        retryReply->deleteLater();
-                        if (retryReply->error() != QNetworkReply::NoError) {
-                            if (safeBtn) safeBtn->setText(AppText::tr("Error"));
-                            qDebug() << "Download retry error:" << civitaiNetworkErrorMessage(retryReply);
-                            return;
-                        }
-                        QByteArray data = retryReply->readAll();
-                        if (data.isEmpty()) {
-                            if (safeBtn) safeBtn->setText(AppText::tr("Empty"));
-                            return;
-                        }
-                        QFile file(savePath);
-                        if (file.open(QIODevice::WriteOnly)) {
-                            file.write(data);
-                            file.close();
-                            IconLoaderTask *task = new IconLoaderTask(savePath, 100, 0, this, savePath, true);
-                            task->setAutoDelete(true);
-                            threadPool->start(task);
-                            if (safeBtn) safeBtn->setText("");
-                        }
-                    });
-                    return;
-                }
-            }
-            if (safeBtn) safeBtn->setText(AppText::tr("Error"));
-            qDebug() << "Download error:" << civitaiNetworkErrorMessage(reply);
-            return;
-        }
-
-        QByteArray data = reply->readAll();
-
-        // 再次检查数据是否为空 (防止 User-Agent 还是被拦截的情况)
-        if (data.isEmpty()) {
-            if (safeBtn) safeBtn->setText(AppText::tr("Empty"));
-            return;
-        }
-
-        QFile file(savePath);
-        if (file.open(QIODevice::WriteOnly)) {
-            file.write(data);
-            file.close();
-
-            // 启动异步加载图标任务
-            IconLoaderTask *task = new IconLoaderTask(savePath, 100, 0, this, savePath, true);
-            task->setAutoDelete(true);
-            threadPool->start(task);
-
-            if (safeBtn) {
-                safeBtn->setText(""); // 清除 Loading 文字
-            }
-        }
-    });
+    if (previewDownloadQueue) {
+        previewDownloadQueue->downloadThumbnail(url, savePath, button, this);
+    }
 }
 
 QStringList MainWindow::currentModelPreviewPaths() const
@@ -5989,34 +5874,151 @@ void MainWindow::updateBackgroundDuringTransition()
     ui->backgroundLabel->setPixmap(canvas);
 }
 
+void MainWindow::initServices()
+{
+    auto requestFactory = [this](const QUrl &url, bool allowAuth) {
+        return makeNetworkRequest(url, allowAuth);
+    };
+    auto apiKeyProvider = [this]() {
+        return civitaiApiKey();
+    };
+
+    appUpdateChecker = new AppUpdateChecker(netManager, this);
+    connect(appUpdateChecker, &AppUpdateChecker::checkingChanged, this, [this](bool checking) {
+        if (aboutPage) aboutPage->setCheckingForUpdates(checking);
+    });
+    connect(appUpdateChecker, &AppUpdateChecker::statusMessage, this, [this](const QString &msg, int timeoutMs) {
+        if (ui && ui->statusbar) ui->statusbar->showMessage(msg, timeoutMs);
+    });
+    connect(appUpdateChecker, &AppUpdateChecker::updateAvailable, this,
+            [this](const QString &remoteTag, const QString &htmlUrl, const QString &body) {
+        QMessageBox msgBox(this);
+        msgBox.setWindowTitle(AppText::tr("发现新版本"));
+        msgBox.setTextFormat(Qt::RichText);
+        msgBox.setText(AppText::tr("<h3>🚀 发现新版本: %1</h3>"
+                               "<p>当前版本: %2</p>"
+                               "<hr>"
+                               "<p><b>更新日志:</b></p><pre style='font-size:11px'>%3</pre>")
+                           .arg(remoteTag, CURRENT_VERSION, body));
+
+        QPushButton *btnGo = msgBox.addButton(AppText::tr("前往下载 / Download"), QMessageBox::AcceptRole);
+        msgBox.addButton(AppText::tr("稍后 / Later"), QMessageBox::RejectRole);
+        msgBox.exec();
+
+        if (msgBox.clickedButton() == btnGo) {
+            QDesktopServices::openUrl(QUrl(htmlUrl));
+        }
+    });
+    connect(appUpdateChecker, &AppUpdateChecker::alreadyUpToDate, this,
+            [this](const QString &version, bool silent) {
+        if (silent) {
+            ui->statusbar->showMessage(AppText::tr("当前已是最新版本 (%1)").arg(version), 3000);
+        } else {
+            QMessageBox::information(this, AppText::tr("检查更新"), AppText::tr("当前已是最新版本 (%1)。").arg(version));
+        }
+    });
+    connect(appUpdateChecker, &AppUpdateChecker::checkFailed, this,
+            [this](const QString &errorMsg, bool parseError, bool silent) {
+        if (parseError) {
+            if (silent) {
+                ui->statusbar->showMessage(AppText::tr("自动检查更新失败: 无法解析版本信息"), 4000);
+            } else {
+                QMessageBox::warning(this, AppText::tr("错误"), AppText::tr("无法解析版本信息 (Rate Limit Exceeded?)。"));
+            }
+        } else if (silent) {
+            ui->statusbar->showMessage(AppText::tr("自动检查更新失败: ") + errorMsg, 4000);
+        } else {
+            QMessageBox::warning(this, AppText::tr("检查失败"), AppText::tr("无法连接到 GitHub API:\n") + errorMsg);
+        }
+    });
+
+    previewDownloadQueue = new PreviewDownloadQueue(
+        netManager, backgroundThreadPool, threadPool, requestFactory, apiKeyProvider, this);
+    connect(previewDownloadQueue, &PreviewDownloadQueue::previewSaved,
+            this, &MainWindow::applyDownloadedPreviewToUi);
+    connect(previewDownloadQueue, &PreviewDownloadQueue::statusMessage, this,
+            [this](const QString &msg, int timeoutMs) {
+        if (ui && ui->statusbar) ui->statusbar->showMessage(msg, timeoutMs);
+    });
+    connect(previewDownloadQueue, &PreviewDownloadQueue::metadataStatusText, this,
+            [this](const QString &text) {
+        if (downloadsPage) downloadsPage->setStatusText(text);
+    });
+
+    metadataSyncService = new MetadataSyncService(
+        netManager,
+        backgroundThreadPool,
+        previewDownloadQueue,
+        requestFactory,
+        [this]() {
+            return MetadataSyncOptions{optRecalculateKnownMetadataHash, optTryCivArchiveOnMetadataFail};
+        },
+        [this](const MetadataSyncJob &job,
+               const QJsonObject &modelRoot,
+               const QJsonObject &versionHint,
+               bool syncPreviewImages,
+               bool batchRunning) {
+            return saveMetadataFromModelRoot(job, modelRoot, versionHint, syncPreviewImages, batchRunning);
+        },
+        this);
+    connect(previewDownloadQueue, &PreviewDownloadQueue::metadataPreviewTaskFinished,
+            metadataSyncService, &MetadataSyncService::onMetadataPreviewTaskFinished);
+    connect(metadataSyncService, &MetadataSyncService::itemStatusChanged, this,
+            [this](const QString &filePath, const QString &status, const QString &category,
+                   const QString &timestamp, const QString &sourceLabel) {
+        if (downloadsPage) {
+            downloadsPage->updateMetadataScanItemStatus(filePath, status, category, timestamp, sourceLabel);
+        }
+    });
+    connect(metadataSyncService, &MetadataSyncService::batchStatusChanged, this,
+            [this](const QString &text) {
+        if (downloadsPage) downloadsPage->setStatusText(text);
+    });
+    connect(metadataSyncService, &MetadataSyncService::hashCalculated, this,
+            [this](const QString &filePath, const QString &sha256) {
+        if (QListWidgetItem *item = findModelItemByFilePath(filePath)) {
+            item->setData(ROLE_CIVITAI_SHA256, sha256);
+        }
+    });
+    connect(metadataSyncService, &MetadataSyncService::jobFailed,
+            this, &MainWindow::handleMetadataSyncJobFailed);
+    connect(metadataSyncService, &MetadataSyncService::batchCompleted, this, [this](int) {
+        refreshHomeGallery();
+        refreshCollectionTreeView();
+        startMetadataScan();
+        refreshUsageAnalysisWidget();
+    });
+
+    modelUpdateCoordinator = new ModelUpdateCoordinator(
+        netManager, backgroundThreadPool, requestFactory, this);
+    connect(modelUpdateCoordinator, &ModelUpdateCoordinator::statusChanged, this,
+            [this](const QString &text) {
+        if (downloadsPage) downloadsPage->setStatusText(text);
+    });
+    connect(modelUpdateCoordinator, &ModelUpdateCoordinator::buttonsEnabledChanged, this,
+            [this](bool enabled) {
+        if (downloadsPage) downloadsPage->setUpdateCheckButtonsEnabled(enabled);
+    });
+    connect(modelUpdateCoordinator, &ModelUpdateCoordinator::cardUpdated,
+            this, &MainWindow::addOrUpdateDownloadCard);
+    connect(modelUpdateCoordinator, &ModelUpdateCoordinator::modelRootReceived,
+            this, &MainWindow::handleModelUpdateRootReceived);
+    connect(modelUpdateCoordinator, &ModelUpdateCoordinator::allChecksCompleted,
+            this, &MainWindow::handleAllModelUpdateChecksCompleted);
+}
+
 void MainWindow::syncPreviewImagesFromMetadata(const QString &modelDir,
                                                const QString &baseName,
                                                const QVector<ImageInfo> &images,
                                                bool forceNonCoverDownload,
                                                bool countForMetadataSync)
 {
-    if (modelDir.isEmpty() || baseName.isEmpty()) return;
-    for (int index = 0; index < images.size(); ++index) {
-        const ImageInfo &img = images.at(index);
-        const QString suffix = (index == 0) ? ".preview.png" : QString(".preview.%1.png").arg(index);
-        const QString savePath = QFileInfo(QDir(modelDir).filePath(baseName + suffix)).absoluteFilePath();
-        const PreviewMetadataPayload payload = PreviewImageStore::previewPayloadFromImageInfo(img);
-        const bool exists = QFile::exists(savePath);
-
-        if (exists && !(forceNonCoverDownload && index > 0)) {
-            enqueueDownload(img.url, savePath, nullptr, baseName, index, payload, true, true, countForMetadataSync);
-            continue;
-        }
-
-        if (img.url.isEmpty()) continue;
-        if (exists && index > 0 && forceNonCoverDownload) {
-            QFile::remove(savePath);
-        }
-        enqueueDownload(img.url, savePath, nullptr, baseName, index, payload, true, false, countForMetadataSync);
+    if (previewDownloadQueue) {
+        previewDownloadQueue->syncPreviewImagesFromMetadata(
+            modelDir, baseName, images, forceNonCoverDownload, countForMetadataSync);
     }
 }
 
-// 1. 入队函数
 void MainWindow::enqueueDownload(const QString &url,
                                  const QString &savePath,
                                  QPushButton *btn,
@@ -6027,7 +6029,8 @@ void MainWindow::enqueueDownload(const QString &url,
                                  bool metadataOnly,
                                  bool countForMetadataSync)
 {
-    DownloadTask task;
+    if (!previewDownloadQueue) return;
+    PreviewDownloadTask task;
     task.url = url;
     task.savePath = savePath;
     task.localBaseName = localBaseName;
@@ -6037,214 +6040,7 @@ void MainWindow::enqueueDownload(const QString &url,
     task.allowNoButton = allowNoButton;
     task.metadataOnly = metadataOnly;
     task.countForMetadataSync = countForMetadataSync;
-    if (countForMetadataSync) {
-        ++metadataPreviewTasksPending;
-    }
-
-    downloadQueue.enqueue(task);
-
-    // 如果当前没有在下载，立即开始处理
-    if (!isDownloading) {
-        processNextDownload();
-    }
-}
-
-void MainWindow::finishMetadataSyncBatch()
-{
-    metadataSyncWaitingForPreviews = false;
-    metadataSyncPreviewImages = false;
-    downloadsPage->setStatusText(AppText::tr("元信息同步完成，共处理 %1 个模型。").arg(metadataSyncTotal));
-    refreshHomeGallery();
-    refreshCollectionTreeView();
-    startMetadataScan();
-    refreshUsageAnalysisWidget();
-}
-
-void MainWindow::markMetadataPreviewTaskFinished()
-{
-    if (metadataPreviewTasksPending > 0) {
-        --metadataPreviewTasksPending;
-    }
-    if (metadataSyncWaitingForPreviews && metadataPreviewTasksPending > 0 && downloadsPage) {
-        downloadsPage->setStatusText(AppText::tr("正在同步预览图元信息... 剩余 %1 个任务").arg(metadataPreviewTasksPending));
-    }
-    if (metadataSyncWaitingForPreviews && metadataPreviewTasksPending <= 0) {
-        finishMetadataSyncBatch();
-    }
-}
-
-// 2. 队列处理函数 (核心：一张张下)
-void MainWindow::processNextDownload()
-{
-    while (!downloadQueue.isEmpty()) {
-        DownloadTask task = downloadQueue.dequeue();
-
-        if (task.button.isNull() && !task.allowNoButton) {
-            continue; // 按钮已销毁，直接跳过此任务处理下一个
-        }
-
-        isDownloading = true;
-
-        // 设置按钮状态
-        if (task.button) task.button->setText(AppText::tr("Waiting..."));
-
-        QString cleanedSavePath = QFileInfo(task.savePath).absoluteFilePath();
-
-        if (task.metadataOnly || task.url.trimmed().isEmpty()) {
-            if (!task.url.trimmed().isEmpty()) {
-                if (PreviewImageStore::previewFileAlreadyHasPromptMetadata(cleanedSavePath)) {
-                    if (task.countForMetadataSync) markMetadataPreviewTaskFinished();
-                } else {
-                    DownloadTask retryTask = task;
-                    retryTask.metadataOnly = false;
-                    retryTask.allowNoButton = true;
-                    downloadQueue.enqueue(retryTask);
-                }
-                QTimer::singleShot(0, this, &MainWindow::processNextDownload);
-                return;
-            }
-
-            auto *watcher = new QFutureWatcher<bool>(this);
-            connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher, task]() {
-                const bool ok = watcher->result();
-                watcher->deleteLater();
-
-                if (!ok && !task.url.trimmed().isEmpty()) {
-                    DownloadTask retryTask = task;
-                    retryTask.metadataOnly = false;
-                    retryTask.allowNoButton = true;
-                    downloadQueue.enqueue(retryTask);
-                    if (downloadsPage && task.countForMetadataSync) {
-                        downloadsPage->setStatusText(AppText::tr("本地预览图元信息写入失败，正在重新下载: %1")
-                                                         .arg(QFileInfo(task.savePath).fileName()));
-                    }
-                } else if (task.countForMetadataSync) {
-                    markMetadataPreviewTaskFinished();
-                }
-
-                QTimer::singleShot(0, this, &MainWindow::processNextDownload);
-            });
-            watcher->setFuture(QtConcurrent::run(backgroundThreadPool, [path = cleanedSavePath, payload = task.previewMeta]() {
-                return PreviewImageStore::ensurePreviewImageMetadata(path, payload);
-            }));
-            return;
-        }
-
-        const QUrl taskUrl(task.url);
-        const bool hasToken = QUrlQuery(taskUrl).hasQueryItem("token");
-        QNetworkRequest req = makeNetworkRequest(taskUrl, !hasToken);
-
-        QNetworkReply *reply = netManager->get(req);
-        reply->setProperty("isGalleryDownload", true); // 加上标识以便切换页面时精准 abort()
-
-        // --- 新增：测速计时器 ---
-        QSharedPointer<QElapsedTimer> timer = QSharedPointer<QElapsedTimer>::create();
-        timer->start();
-
-        // --- 新增：进度和网速回调 ---
-        connect(reply, &QNetworkReply::downloadProgress, this, [task, timer](qint64 received, qint64 total) {
-            if (task.button.isNull()) return;
-
-            if (total > 0) {
-                int percent = static_cast<int>((received * 100) / total);
-                double seconds = timer->elapsed() / 1000.0;
-                QString speedStr;
-
-                // 超过0.1秒再计算速度避免除零或数据跳动
-                if (seconds > 0.1) {
-                    double speedKB = (received / 1024.0) / seconds;
-                    if (speedKB > 1024.0) {
-                        speedStr = QString::number(speedKB / 1024.0, 'f', 1) + " MB/s";
-                    } else {
-                        speedStr = QString::number(speedKB, 'f', 0) + " KB/s";
-                    }
-                }
-                // 按钮上显示如： "45%\n1.2 MB/s"
-                task.button->setText(QString("%1%\n%2").arg(percent).arg(speedStr));
-            } else if (received > 0) {
-                // 如果总大小未知
-                task.button->setText(AppText::tr("%1 KB").arg(received / 1024));
-            }
-        });
-
-        connect(reply, &QNetworkReply::finished, this, [this, reply, task, cleanedSavePath](){
-            reply->deleteLater();
-
-            // 如果任务是被中止的（例如用户切换了模型清空了旧队列），直接退出回调，阻止僵尸循环继续排队
-            if (reply->error() == QNetworkReply::OperationCanceledError) {
-                if (task.countForMetadataSync) markMetadataPreviewTaskFinished();
-                return;
-            }
-
-            if (reply->error() != QNetworkReply::NoError) {
-                const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-                if ((status == 401 || status == 403) && !task.url.contains("token=", Qt::CaseInsensitive) && !civitaiApiKey().isEmpty()) {
-                    DownloadTask retryTask = task;
-                    retryTask.url = civitaiUrlWithToken(QUrl(task.url)).toString();
-                    downloadQueue.enqueue(retryTask);
-                    if (task.button) task.button->setText(AppText::tr("Retrying..."));
-                    QTimer::singleShot(0, this, &MainWindow::processNextDownload);
-                    return;
-                }
-
-                // --- 新增：暴露具体的 SSL / 网络错误到界面 ---
-                QString errStr = reply->errorString();
-                if (errStr.contains("TLS", Qt::CaseInsensitive) || errStr.contains("SSL", Qt::CaseInsensitive) || errStr.contains("handshake", Qt::CaseInsensitive)) {
-                    if (task.button) task.button->setText(AppText::tr("SSL Error"));
-                    ui->statusbar->showMessage(AppText::tr("HTTPS 连接失败: 缺失 OpenSSL 运行库 (libcrypto / libssl)"), 8000);
-                } else {
-                    if (task.button) task.button->setText(AppText::tr("Err: %1").arg(status > 0 ? QString::number(status) : "Net"));
-                }
-
-                qDebug() << "Queued preview download failed:" << civitaiNetworkErrorMessage(reply) << errStr;
-                if (task.countForMetadataSync) markMetadataPreviewTaskFinished();
-                QTimer::singleShot(500, this, &MainWindow::processNextDownload);
-                return;
-            }
-
-            QByteArray data = reply->readAll();
-            if (data.isEmpty()) {
-                if (task.countForMetadataSync) markMetadataPreviewTaskFinished();
-                QTimer::singleShot(0, this, &MainWindow::processNextDownload);
-                return;
-            }
-
-            // Decoding and re-encoding a large preview as metadata-bearing PNG is
-            // expensive. Keep the serial download queue, but perform that work off
-            // the GUI thread so one completed image cannot freeze the window.
-            auto *saveWatcher = new QFutureWatcher<bool>(this);
-            connect(saveWatcher, &QFutureWatcher<bool>::finished, this,
-                    [this, saveWatcher, task, cleanedSavePath]() {
-                const bool saved = saveWatcher->result();
-                saveWatcher->deleteLater();
-
-                if (saved) {
-                    applyDownloadedPreviewToUi(task.localBaseName, cleanedSavePath);
-                } else {
-                    ui->statusbar->showMessage(
-                        AppText::tr("预览图已保存，但未能写入可解析元信息: ")
-                            + QFileInfo(cleanedSavePath).fileName(),
-                        5000);
-                }
-
-                if (task.button) task.button->setText("");
-                if (task.countForMetadataSync) markMetadataPreviewTaskFinished();
-                QTimer::singleShot(0, this, &MainWindow::processNextDownload);
-            });
-            saveWatcher->setFuture(QtConcurrent::run(
-                backgroundThreadPool,
-                [data = std::move(data),
-                 savePath = cleanedSavePath,
-                 payload = task.previewMeta]() {
-                    return PreviewImageStore::savePreviewImageWithMetadata(data, savePath, payload);
-                }));
-        });
-
-        return; // 成功发送请求并等待回调，退出 while 循环
-    }
-
-    // 队列为空
-    isDownloading = false;
+    previewDownloadQueue->enqueue(task);
 }
 
 // ==========================================
@@ -8042,371 +7838,94 @@ void MainWindow::checkUpdatesForItems(const QList<QListWidgetItem*> &items, bool
     }
 
     if (switchToDownloads) onMenuSwitchToDownloads();
-    ++updateCheckToken;
-    detailUpdateCheckPending = detailPrompt && items.size() == 1;
-    detailUpdateCheckFilePath = detailUpdateCheckPending
-        ? QFileInfo(items.first()->data(ROLE_FILE_PATH).toString()).absoluteFilePath()
-        : QString();
-    pendingUpdateChecksQueue.clear();
-    pendingUpdateHashChecks.clear();
-    activeUpdateNetworkChecks = 0;
-    activeUpdateHashChecks = 0;
-    completedUpdateChecks = 0;
-    downloadsPage->setUpdateCheckButtonsEnabled(false);
+    QList<UpdateCheckSnapshot> snapshots;
+    snapshots.reserve(items.size());
     for (QListWidgetItem *item : items) {
         if (!isModelListItem(item)) continue;
-        UpdateCheckSnapshot snapshot;
-        snapshot.filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
-        snapshot.baseName = item->data(ROLE_MODEL_NAME).toString();
-        snapshot.modelDir = QFileInfo(snapshot.filePath).absolutePath();
-        snapshot.modelId = item->data(ROLE_CIVITAI_MODEL_ID).toInt();
-        snapshot.displayName = item->text();
-        snapshot.currentVersionId = item->data(ROLE_CIVITAI_VERSION_ID).toInt();
-        snapshot.currentSha256 = item->data(ROLE_CIVITAI_SHA256).toString();
-        snapshot.localEdited = item->data(ROLE_LOCAL_EDITED).toBool();
-        snapshot.previewState = static_cast<ModelPreviewState>(
-            item->data(ROLE_MODEL_PREVIEW_STATE).toInt());
-        pendingUpdateChecksQueue.enqueue(snapshot);
+        snapshots.append(snapshotForModelItem(item));
     }
-    pendingUpdateChecks = pendingUpdateChecksQueue.size();
-    if (pendingUpdateChecks <= 0) {
-        downloadsPage->setStatusText(AppText::tr("没有可检查的模型。"));
-        downloadsPage->setUpdateCheckButtonsEnabled(true);
-        detailUpdateCheckPending = false;
-        detailUpdateCheckFilePath.clear();
-        return;
-    }
-    downloadsPage->setStatusText(AppText::tr("正在检查 %1 个模型的更新...").arg(pendingUpdateChecks));
-    QTimer::singleShot(0, this, &MainWindow::dispatchQueuedUpdateChecks);
-}
-
-void MainWindow::checkUpdateForSnapshot(const UpdateCheckSnapshot &snapshot)
-{
-    if (snapshot.filePath.isEmpty()) {
-        markUpdateCheckFinished();
-        return;
-    }
-
-    ModelUpdateInfo pending;
-    pending.filePath = snapshot.filePath;
-    pending.modelDir = snapshot.modelDir;
-    pending.baseName = snapshot.baseName;
-    pending.displayName = snapshot.displayName;
-    pending.modelId = snapshot.modelId;
-    pending.currentVersionId = snapshot.currentVersionId;
-    pending.previewState = snapshot.previewState;
-    if (snapshot.localEdited) {
-        addOrUpdateDownloadCard(pending, "本地/已编辑模型，已跳过");
-        markUpdateCheckFinished();
-        return;
-    }
-    addOrUpdateDownloadCard(pending, "检查中...");
-
-    if (snapshot.modelId > 0) {
-        QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/models/%1").arg(snapshot.modelId))));
-        reply->setProperty("filePath", snapshot.filePath);
-        reply->setProperty("baseName", snapshot.baseName);
-        reply->setProperty("modelDir", snapshot.modelDir);
-        reply->setProperty("currentVersionId", pending.currentVersionId);
-        reply->setProperty("currentSha256", snapshot.currentSha256);
-        reply->setProperty("token", updateCheckToken);
-        reply->setProperty("previewState", static_cast<int>(snapshot.previewState));
-        connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleModelUpdateReply(reply); });
-        return;
-    }
-
-    enqueueUpdateHashCheck(snapshot);
-}
-
-void MainWindow::dispatchQueuedUpdateChecks()
-{
-    // Civitai rate-limits bursts aggressively. Keep model checks serial; the next
-    // item is dispatched after a short cooldown in markUpdateCheckFinished().
-    if (activeUpdateNetworkChecks > 0 || pendingUpdateChecksQueue.isEmpty()) return;
-    const UpdateCheckSnapshot snapshot = pendingUpdateChecksQueue.dequeue();
-    ++activeUpdateNetworkChecks;
-    checkUpdateForSnapshot(snapshot);
-}
-
-void MainWindow::enqueueUpdateHashCheck(const UpdateCheckSnapshot &snapshot)
-{
-    pendingUpdateHashChecks.enqueue(snapshot);
-    ModelUpdateInfo pending;
-    pending.filePath = snapshot.filePath;
-    pending.modelDir = snapshot.modelDir;
-    pending.baseName = snapshot.baseName;
-    pending.displayName = snapshot.displayName;
-    pending.previewState = snapshot.previewState;
-    addOrUpdateDownloadCard(pending, "计算 Hash 中...");
-    dispatchUpdateHashChecks();
-}
-
-void MainWindow::dispatchUpdateHashChecks()
-{
-    constexpr int kMaxConcurrentHashChecks = 2;
-    while (activeUpdateHashChecks < kMaxConcurrentHashChecks && !pendingUpdateHashChecks.isEmpty()) {
-        const UpdateCheckSnapshot snapshot = pendingUpdateHashChecks.dequeue();
-        ++activeUpdateHashChecks;
-        auto *watcher = new QFutureWatcher<QString>(this);
-        watcher->setProperty("token", updateCheckToken);
-        watcher->setProperty("filePath", snapshot.filePath);
-        watcher->setProperty("baseName", snapshot.baseName);
-        watcher->setProperty("modelDir", snapshot.modelDir);
-        watcher->setProperty("displayName", snapshot.displayName);
-        watcher->setProperty("previewState", static_cast<int>(snapshot.previewState));
-        connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher]() {
-            const int token = watcher->property("token").toInt();
-            UpdateCheckSnapshot snapshot;
-            snapshot.filePath = watcher->property("filePath").toString();
-            snapshot.baseName = watcher->property("baseName").toString();
-            snapshot.modelDir = watcher->property("modelDir").toString();
-            snapshot.displayName = watcher->property("displayName").toString();
-            snapshot.previewState = static_cast<ModelPreviewState>(
-                watcher->property("previewState").toInt());
-            const QString hash = watcher->result();
-            watcher->deleteLater();
-            activeUpdateHashChecks = qMax(0, activeUpdateHashChecks - 1);
-
-            if (token != updateCheckToken) {
-                dispatchUpdateHashChecks();
-                return;
-            }
-
-            ModelUpdateInfo pending;
-            pending.filePath = snapshot.filePath;
-            pending.modelDir = snapshot.modelDir;
-            pending.baseName = snapshot.baseName;
-            pending.displayName = snapshot.displayName;
-            pending.previewState = snapshot.previewState;
-            if (hash.isEmpty()) {
-                addOrUpdateDownloadCard(pending, "无法计算 Hash，无法判断");
-                markUpdateCheckFinished();
-                dispatchUpdateHashChecks();
-                return;
-            }
-
-            QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/model-versions/by-hash/%1").arg(hash))));
-            reply->setProperty("filePath", snapshot.filePath);
-            reply->setProperty("baseName", snapshot.baseName);
-            reply->setProperty("modelDir", snapshot.modelDir);
-            reply->setProperty("currentSha256", hash);
-            reply->setProperty("byHash", true);
-            reply->setProperty("token", updateCheckToken);
-            reply->setProperty("previewState", static_cast<int>(snapshot.previewState));
-            connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleModelUpdateReply(reply); });
-            dispatchUpdateHashChecks();
-        });
-        watcher->setFuture(QtConcurrent::run(backgroundThreadPool, [filePath = snapshot.filePath]() {
-            return FileUtils::calculateSha256Hex(filePath);
-        }));
+    if (modelUpdateCoordinator) {
+        modelUpdateCoordinator->startChecks(snapshots, detailPrompt);
     }
 }
 
-void MainWindow::markUpdateCheckFinished()
+void MainWindow::handleModelUpdateRootReceived(const QString &filePath,
+                                               int matchedVersionId,
+                                               const QJsonObject &modelRoot,
+                                               const ModelUpdateInfo &fallbackInfo)
 {
-    if (pendingUpdateChecks <= 0) return;
-    activeUpdateNetworkChecks = qMax(0, activeUpdateNetworkChecks - 1);
-    ++completedUpdateChecks;
-    downloadsPage->setStatusText(AppText::tr("正在检查更新... %1/%2").arg(completedUpdateChecks).arg(pendingUpdateChecks));
-    if (completedUpdateChecks >= pendingUpdateChecks && activeUpdateHashChecks == 0 && pendingUpdateHashChecks.isEmpty()) {
-        downloadsPage->setStatusText(AppText::tr("更新检查完成，共 %1 个模型。").arg(pendingUpdateChecks));
-        downloadsPage->setUpdateCheckButtonsEnabled(true);
-        if (downloadManager) downloadManager->saveCache();
-        if (detailUpdateCheckPending) {
-            const QString filePath = detailUpdateCheckFilePath;
-            detailUpdateCheckPending = false;
-            detailUpdateCheckFilePath.clear();
-            const QString status = downloadsPage ? downloadsPage->cardStatusText(filePath) : QString();
-            const bool hasUpdate = downloadManager && downloadManager->containsInfo(filePath)
-                && downloadManager->info(filePath).hasUpdate;
-            const bool coexisting = status.contains("旧版共存");
-            if (hasUpdate || coexisting) {
-                const QMessageBox::StandardButton choice = QMessageBox::question(
-                    this,
-                    AppText::tr("检测到模型更新"),
-                    AppText::tr("检测到该模型有可用更新。\n\n状态: %1\n\n是否跳转到下载任务列表？")
-                        .arg(status.isEmpty() ? "发现新版本" : status),
-                    QMessageBox::Yes | QMessageBox::No,
-                    QMessageBox::Yes);
-                if (choice == QMessageBox::Yes) {
-                    onMenuSwitchToDownloads();
-                    if (downloadsPage) downloadsPage->setCardSelected(filePath, true);
-                    downloadsPage->updateSelectionSummary();
-                }
-            } else {
-                QMessageBox::information(
-                    this,
-                    AppText::tr("检查更新"),
-                    status.isEmpty() ? AppText::tr("当前模型没有检测到可用更新。") : AppText::tr("当前模型状态: %1").arg(status));
-            }
-        }
-        return;
-    }
-    constexpr int kUpdateCheckIntervalMs = 1200;
-    QTimer::singleShot(kUpdateCheckIntervalMs, this, &MainWindow::dispatchQueuedUpdateChecks);
-}
-
-void MainWindow::handleModelUpdateReply(QNetworkReply *reply)
-{
-    const int token = reply->property("token").toInt();
-    const QString filePath = reply->property("filePath").toString();
-    const QString baseName = reply->property("baseName").toString();
-    const QString modelDir = reply->property("modelDir").toString();
-    const int currentVersionId = reply->property("currentVersionId").toInt();
-    const QString currentSha256 = reply->property("currentSha256").toString();
-    const bool byHash = reply->property("byHash").toBool();
-    const ModelPreviewState previewState = static_cast<ModelPreviewState>(
-        reply->property("previewState").toInt());
-    reply->deleteLater();
-    if (token > 0 && token != updateCheckToken) return;
-
-    ModelUpdateInfo fallback;
-    fallback.filePath = filePath;
-    fallback.baseName = baseName;
-    fallback.modelDir = modelDir;
-    fallback.displayName = QFileInfo(filePath).completeBaseName();
-    fallback.previewState = previewState;
-
-    if (reply->error() != QNetworkReply::NoError) {
-        addOrUpdateDownloadCard(fallback, "检查失败: " + civitaiNetworkErrorMessage(reply));
-        markUpdateCheckFinished();
-        return;
-    }
-
-    const QJsonObject root = QJsonDocument::fromJson(reply->readAll()).object();
-    if (byHash) {
-        const int modelId = root["modelId"].toInt();
-        if (modelId <= 0) {
-            addOrUpdateDownloadCard(fallback, "无法从 Hash 匹配 Civitai 模型");
-            markUpdateCheckFinished();
-            return;
-        }
-        const int matchedVersionId = root["id"].toInt();
-        QTimer::singleShot(600, this, [this, modelId, matchedVersionId, filePath, baseName, modelDir, currentSha256, token, previewState]() {
-            if (token > 0 && token != updateCheckToken) return;
-            QNetworkReply *detailReply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/models/%1").arg(modelId))));
-            detailReply->setProperty("filePath", filePath);
-            detailReply->setProperty("baseName", baseName);
-            detailReply->setProperty("modelDir", modelDir);
-            detailReply->setProperty("currentVersionId", matchedVersionId);
-            detailReply->setProperty("currentSha256", currentSha256);
-            detailReply->setProperty("token", token);
-            detailReply->setProperty("previewState", static_cast<int>(previewState));
-            connect(detailReply, &QNetworkReply::finished, this, [this, detailReply]() { handleModelUpdateReply(detailReply); });
-        });
-        return;
-    }
-
-    ModelUpdateInfo info;
-    QListWidgetItem *sourceItem = nullptr;
-    for (int i = 0; i < ui->modelList->count(); ++i) {
-        QListWidgetItem *item = ui->modelList->item(i);
-        if (item && QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath() == filePath) {
-            sourceItem = item;
-            break;
-        }
-    }
-    if (sourceItem) {
-        sourceItem->setData(ROLE_CIVITAI_MODEL_ID, root["id"].toInt());
-        if (sourceItem->data(ROLE_CIVITAI_VERSION_ID).toInt() <= 0 && currentVersionId > 0) {
-            sourceItem->setData(ROLE_CIVITAI_VERSION_ID, currentVersionId);
-        }
-        sourceItem->setData(ROLE_MODEL_TYPE, root["type"].toString());
-        applyCivitaiAttributionToItem(sourceItem,
-                                      ModelMetadata::jsonModelCreator(root),
-                                      ModelMetadata::jsonModelTags(root));
-        info = parseModelUpdateInfo(sourceItem, root);
-        if (downloadManager) downloadManager->setInfo(info);
-    } else {
-        fallback.modelId = root["id"].toInt();
+    QListWidgetItem *sourceItem = findModelItemByFilePath(filePath);
+    if (!sourceItem) {
+        ModelUpdateInfo fallback = fallbackInfo;
+        fallback.modelId = modelRoot.value("id").toInt();
         addOrUpdateDownloadCard(fallback, "模型列表项不存在，无法判断");
-        markUpdateCheckFinished();
         return;
     }
+
+    sourceItem->setData(ROLE_CIVITAI_MODEL_ID, modelRoot.value("id").toInt());
+    if (sourceItem->data(ROLE_CIVITAI_VERSION_ID).toInt() <= 0 && matchedVersionId > 0) {
+        sourceItem->setData(ROLE_CIVITAI_VERSION_ID, matchedVersionId);
+    }
+    sourceItem->setData(ROLE_MODEL_TYPE, modelRoot.value("type").toString());
+    applyCivitaiAttributionToItem(sourceItem,
+                                  ModelMetadata::jsonModelCreator(modelRoot),
+                                  ModelMetadata::jsonModelTags(modelRoot));
+    const ModelUpdateInfo info = parseModelUpdateInfo(sourceItem, modelRoot);
+    if (downloadManager) downloadManager->setInfo(info);
     const QString status = info.latestFileExistsLocally
-        ? "旧版共存：本地已存在新版本"
-        : (info.hasUpdate ? "发现新版本" : "已是最新");
+        ? QStringLiteral("旧版共存：本地已存在新版本")
+        : (info.hasUpdate ? QStringLiteral("发现新版本") : QStringLiteral("已是最新"));
     addOrUpdateDownloadCard(info, status);
-    markUpdateCheckFinished();
+}
+
+void MainWindow::handleAllModelUpdateChecksCompleted(int, bool detailPrompt, const QString &detailFilePath)
+{
+    if (downloadManager) downloadManager->saveCache();
+    if (!detailPrompt) return;
+
+    const QString status = downloadsPage ? downloadsPage->cardStatusText(detailFilePath) : QString();
+    const bool hasUpdate = downloadManager && downloadManager->containsInfo(detailFilePath)
+        && downloadManager->info(detailFilePath).hasUpdate;
+    const bool coexisting = status.contains("旧版共存");
+    if (hasUpdate || coexisting) {
+        const QMessageBox::StandardButton choice = QMessageBox::question(
+            this,
+            AppText::tr("检测到模型更新"),
+            AppText::tr("检测到该模型有可用更新。\n\n状态: %1\n\n是否跳转到下载任务列表？")
+                .arg(status.isEmpty() ? "发现新版本" : status),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::Yes);
+        if (choice == QMessageBox::Yes) {
+            onMenuSwitchToDownloads();
+            if (downloadsPage) downloadsPage->setCardSelected(detailFilePath, true);
+            downloadsPage->updateSelectionSummary();
+        }
+    } else {
+        QMessageBox::information(
+            this,
+            AppText::tr("检查更新"),
+            status.isEmpty() ? AppText::tr("当前模型没有检测到可用更新。") : AppText::tr("当前模型状态: %1").arg(status));
+    }
 }
 
 ModelUpdateInfo MainWindow::parseModelUpdateInfo(QListWidgetItem *item, const QJsonObject &modelRoot) const
 {
-    ModelUpdateInfo info;
-    info.filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
-    info.modelDir = QFileInfo(info.filePath).absolutePath();
-    info.baseName = item->data(ROLE_MODEL_NAME).toString();
-    info.displayName = item->text();
-    info.modelId = modelRoot["id"].toInt(item->data(ROLE_CIVITAI_MODEL_ID).toInt());
-    info.currentVersionId = item->data(ROLE_CIVITAI_VERSION_ID).toInt();
-    const QString currentSha = item->data(ROLE_CIVITAI_SHA256).toString();
-    info.metadataSource = modelRoot.value("metadataSource").toString();
-    info.sourceUrl = modelRoot.value("sourceUrl").toString();
-    info.previewState = static_cast<ModelPreviewState>(
-        item->data(ROLE_MODEL_PREVIEW_STATE).toInt());
-
-    QJsonArray versions = modelRoot["modelVersions"].toArray();
-    QJsonObject currentVersionObj;
-    QJsonObject latestVersionObj;
-    QDateTime latestTime;
-    for (const QJsonValue &val : versions) {
-        const QJsonObject version = val.toObject();
-        const int versionId = version["id"].toInt();
-        if (versionId == info.currentVersionId) currentVersionObj = version;
-        if (info.currentVersionId <= 0 && !currentSha.isEmpty()) {
-            for (const QJsonValue &fileVal : version["files"].toArray()) {
-                const QString sha = fileVal.toObject()["hashes"].toObject()["SHA256"].toString();
-                if (!sha.isEmpty() && sha.compare(currentSha, Qt::CaseInsensitive) == 0) {
-                    currentVersionObj = version;
-                    info.currentVersionId = versionId;
+    const UpdateCheckSnapshot snapshot = snapshotForModelItem(item);
+    return ModelUpdateCoordinator::parseModelUpdateInfo(
+        snapshot,
+        modelRoot,
+        [this, item](int modelId, int versionId) {
+            for (int i = 0; i < ui->modelList->count(); ++i) {
+                QListWidgetItem *localItem = ui->modelList->item(i);
+                if (!isModelListItem(localItem) || localItem == item) continue;
+                if (localItem->data(ROLE_CIVITAI_MODEL_ID).toInt() != modelId) continue;
+                if (localItem->data(ROLE_CIVITAI_VERSION_ID).toInt() != versionId) continue;
+                if (QFileInfo::exists(localItem->data(ROLE_FILE_PATH).toString())) {
+                    return true;
                 }
             }
-        }
-        QDateTime t = QDateTime::fromString(version["publishedAt"].toString(), Qt::ISODate);
-        if (!t.isValid()) t = QDateTime::fromString(version["createdAt"].toString(), Qt::ISODate);
-        if (!latestVersionObj.isEmpty() && (!t.isValid() || (latestTime.isValid() && t <= latestTime))) continue;
-        latestVersionObj = version;
-        latestTime = t;
-    }
-
-    if (latestVersionObj.isEmpty() && !versions.isEmpty()) latestVersionObj = versions.first().toObject();
-    latestVersionObj = ModelMetadata::mergeCivitaiModelIntoVersion(latestVersionObj, modelRoot);
-    if (!latestVersionObj.contains("modelId")) latestVersionObj["modelId"] = info.modelId;
-    info.latestVersionJson = latestVersionObj;
-    info.latestVersionId = latestVersionObj["id"].toInt();
-    info.latestVersion = latestVersionObj["name"].toString();
-    info.currentVersion = currentVersionObj["name"].toString();
-    if (info.currentVersion.isEmpty()) info.currentVersion = QString("版本ID %1").arg(info.currentVersionId);
-    if (info.latestVersion.isEmpty()) info.latestVersion = QString("版本ID %1").arg(info.latestVersionId);
-
-    QJsonObject selectedFile;
-    for (const QJsonValue &fileVal : latestVersionObj["files"].toArray()) {
-        const QJsonObject f = fileVal.toObject();
-        if (selectedFile.isEmpty() || f["primary"].toBool()) selectedFile = f;
-        if (f["primary"].toBool()) break;
-    }
-    info.downloadUrl = selectedFile["downloadUrl"].toString();
-    info.downloadFileName = selectedFile["name"].toString();
-    info.sha256 = selectedFile["hashes"].toObject()["SHA256"].toString();
-    if (info.sha256.isEmpty()) info.sha256 = currentSha;
-    info.sizeMB = selectedFile["sizeKB"].toDouble() / 1024.0;
-    info.hasUpdate = info.latestVersionId > 0 && info.latestVersionId != info.currentVersionId && !info.downloadUrl.isEmpty();
-    if (info.hasUpdate) {
-        // Local files are commonly renamed after download. Determine coexistence from the
-        // stable Civitai model/version IDs instead of the server-side file name.
-        for (int i = 0; i < ui->modelList->count(); ++i) {
-            QListWidgetItem *localItem = ui->modelList->item(i);
-            if (!isModelListItem(localItem) || localItem == item) continue;
-            if (localItem->data(ROLE_CIVITAI_MODEL_ID).toInt() != info.modelId) continue;
-            if (localItem->data(ROLE_CIVITAI_VERSION_ID).toInt() != info.latestVersionId) continue;
-            const QString localPath = localItem->data(ROLE_FILE_PATH).toString();
-            if (QFileInfo::exists(localPath)) {
-                info.latestFileExistsLocally = true;
-                break;
-            }
-        }
-    }
-    return info;
+            return false;
+        });
 }
 
 void MainWindow::addOrUpdateDownloadCard(const ModelUpdateInfo &info, const QString &status)
@@ -8610,7 +8129,7 @@ void MainWindow::startMetadataSyncForPaths(const QStringList &filePaths, bool up
         if (downloadsPage) downloadsPage->setStatusText(AppText::tr("请先勾选要处理的模型。"));
         return;
     }
-    if (metadataSyncRunning) {
+    if (metadataSyncService && metadataSyncService->isRunning()) {
         downloadsPage->setStatusText(AppText::tr("已有元信息同步任务正在运行。"));
         return;
     }
@@ -8648,9 +8167,9 @@ void MainWindow::startMetadataSyncForPaths(const QStringList &filePaths, bool up
         downloadsPage->setStatusText(AppText::tr("已取消元信息同步。"));
         return;
     }
-    metadataSyncPreviewImages = (previewMsg.clickedButton() == btnYes);
+    const bool syncPreviewImages = (previewMsg.clickedButton() == btnYes);
 
-    pendingMetadataSyncJobs.clear();
+    QQueue<MetadataSyncJob> jobs;
     for (const QString &path : filePaths) {
         QListWidgetItem *item = findModelItemByFilePath(path);
         if (!item) continue;
@@ -8658,347 +8177,16 @@ void MainWindow::startMetadataSyncForPaths(const QStringList &filePaths, bool up
         job.snapshot = snapshotForModelItem(item);
         job.updateExisting = updateExisting;
         job.civArchiveOnly = archiveOnly;
-        if (!job.snapshot.filePath.isEmpty()) pendingMetadataSyncJobs.enqueue(job);
+        if (!job.snapshot.filePath.isEmpty()) jobs.enqueue(job);
     }
-    metadataSyncTotal = pendingMetadataSyncJobs.size();
-    metadataSyncDone = 0;
-    metadataPreviewTasksPending = 0;
-    metadataSyncWaitingForPreviews = false;
-    metadataSyncRunning = metadataSyncTotal > 0;
-    if (!metadataSyncRunning) {
-        metadataSyncPreviewImages = false;
-        downloadsPage->setStatusText(AppText::tr("没有可同步的模型。"));
-        return;
+    if (metadataSyncService) {
+        metadataSyncService->startBatch(jobs, syncPreviewImages, source);
     }
-    downloadsPage->setStatusText(AppText::tr("正在从 %1 同步元信息... 0/%2").arg(source).arg(metadataSyncTotal));
-    processNextMetadataSyncJob();
-}
-
-void MainWindow::processNextMetadataSyncJob()
-{
-    if (!metadataSyncRunning) return;
-    if (pendingMetadataSyncJobs.isEmpty()) {
-        metadataSyncRunning = false;
-        if (metadataSyncPreviewImages && metadataPreviewTasksPending > 0) {
-            metadataSyncWaitingForPreviews = true;
-            downloadsPage->setStatusText(AppText::tr("正在同步预览图元信息... 剩余 %1 个任务").arg(metadataPreviewTasksPending));
-            return;
-        }
-        finishMetadataSyncBatch();
-        return;
-    }
-    const MetadataSyncJob job = pendingMetadataSyncJobs.dequeue();
-    downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "同步中...", QString());
-    fetchMetadataForSyncJob(job);
-}
-
-void MainWindow::fetchMetadataForSyncJob(const MetadataSyncJob &job)
-{
-    if (job.civArchiveOnly) {
-        fetchMetadataFromCivArchive(job, "手动从 CivArchive 补充", true);
-        return;
-    }
-
-    if (job.snapshot.modelId > 0) {
-        if (job.snapshot.currentVersionId > 0) {
-            downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "正在获取完整版本元信息...", QString());
-            QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/model-versions/%1").arg(job.snapshot.currentVersionId))));
-            reply->setProperty("filePath", job.snapshot.filePath);
-            reply->setProperty("baseName", job.snapshot.baseName);
-            reply->setProperty("modelDir", job.snapshot.modelDir);
-            reply->setProperty("displayName", job.snapshot.displayName);
-            reply->setProperty("modelId", job.snapshot.modelId);
-            reply->setProperty("currentVersionId", job.snapshot.currentVersionId);
-            reply->setProperty("currentSha256", job.snapshot.currentSha256);
-            reply->setProperty("updateExisting", job.updateExisting);
-            reply->setProperty("civArchiveOnly", job.civArchiveOnly);
-            reply->setProperty("detailFallback", job.detailFallback);
-            connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleMetadataSyncVersionReply(reply); });
-            return;
-        }
-
-        QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/models/%1").arg(job.snapshot.modelId))));
-        reply->setProperty("filePath", job.snapshot.filePath);
-        reply->setProperty("baseName", job.snapshot.baseName);
-        reply->setProperty("modelDir", job.snapshot.modelDir);
-        reply->setProperty("displayName", job.snapshot.displayName);
-        reply->setProperty("modelId", job.snapshot.modelId);
-        reply->setProperty("currentVersionId", job.snapshot.currentVersionId);
-        reply->setProperty("currentSha256", job.snapshot.currentSha256);
-        reply->setProperty("updateExisting", job.updateExisting);
-        reply->setProperty("civArchiveOnly", job.civArchiveOnly);
-        reply->setProperty("detailFallback", job.detailFallback);
-        connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleMetadataSyncModelReply(reply); });
-        return;
-    }
-
-    const QString cachedHash = job.snapshot.currentSha256.trimmed();
-    if (!optRecalculateKnownMetadataHash && !cachedHash.isEmpty()) {
-        downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "使用缓存 Hash 同步中...", QString());
-        QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/model-versions/by-hash/%1").arg(cachedHash))));
-        reply->setProperty("filePath", job.snapshot.filePath);
-        reply->setProperty("baseName", job.snapshot.baseName);
-        reply->setProperty("modelDir", job.snapshot.modelDir);
-        reply->setProperty("displayName", job.snapshot.displayName);
-        reply->setProperty("currentSha256", cachedHash);
-        reply->setProperty("updateExisting", job.updateExisting);
-        reply->setProperty("civArchiveOnly", job.civArchiveOnly);
-        reply->setProperty("detailFallback", job.detailFallback);
-        connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleMetadataSyncHashReply(reply); });
-        return;
-    }
-
-    downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "正在计算 Hash...", QString());
-    auto *watcher = new QFutureWatcher<QString>(this);
-    watcher->setProperty("filePath", job.snapshot.filePath);
-    watcher->setProperty("baseName", job.snapshot.baseName);
-    watcher->setProperty("modelDir", job.snapshot.modelDir);
-    watcher->setProperty("displayName", job.snapshot.displayName);
-    watcher->setProperty("updateExisting", job.updateExisting);
-    watcher->setProperty("civArchiveOnly", job.civArchiveOnly);
-    watcher->setProperty("detailFallback", job.detailFallback);
-    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher]() {
-        MetadataSyncJob job;
-        job.snapshot.filePath = watcher->property("filePath").toString();
-        job.snapshot.baseName = watcher->property("baseName").toString();
-        job.snapshot.modelDir = watcher->property("modelDir").toString();
-        job.snapshot.displayName = watcher->property("displayName").toString();
-        job.updateExisting = watcher->property("updateExisting").toBool();
-        job.civArchiveOnly = watcher->property("civArchiveOnly").toBool();
-        job.detailFallback = watcher->property("detailFallback").toBool();
-        const QString hash = watcher->result();
-        watcher->deleteLater();
-        if (hash.isEmpty()) {
-            fetchMetadataFromCivArchive(job, "无法计算 Hash，尝试使用 ID 查询 CivArchive");
-            return;
-        }
-        job.snapshot.currentSha256 = hash;
-        // 把刚算出的 Hash 缓存到列表项：这是文件真实的 SHA256，下面的网络匹配即便因网络问题失败，
-        // 下次再点“获取/同步元信息”也能直接走缓存 Hash 路径，无需重新计算（除非用户在设置里开启
-        // “同步元数据时重新计算已有 Hash”）。
-        if (QListWidgetItem *item = findModelItemByFilePath(job.snapshot.filePath))
-            item->setData(ROLE_CIVITAI_SHA256, hash);
-        QNetworkReply *reply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/model-versions/by-hash/%1").arg(hash))));
-        reply->setProperty("filePath", job.snapshot.filePath);
-        reply->setProperty("baseName", job.snapshot.baseName);
-        reply->setProperty("modelDir", job.snapshot.modelDir);
-        reply->setProperty("displayName", job.snapshot.displayName);
-        reply->setProperty("currentSha256", hash);
-        reply->setProperty("updateExisting", job.updateExisting);
-        reply->setProperty("civArchiveOnly", job.civArchiveOnly);
-        reply->setProperty("detailFallback", job.detailFallback);
-        connect(reply, &QNetworkReply::finished, this, [this, reply]() { handleMetadataSyncHashReply(reply); });
-    });
-    watcher->setFuture(QtConcurrent::run(backgroundThreadPool, [filePath = job.snapshot.filePath]() {
-        return FileUtils::calculateSha256Hex(filePath);
-    }));
-}
-
-void MainWindow::handleMetadataSyncVersionReply(QNetworkReply *reply)
-{
-    MetadataSyncJob job;
-    job.snapshot.filePath = reply->property("filePath").toString();
-    job.snapshot.baseName = reply->property("baseName").toString();
-    job.snapshot.modelDir = reply->property("modelDir").toString();
-    job.snapshot.displayName = reply->property("displayName").toString();
-    job.snapshot.modelId = reply->property("modelId").toInt();
-    job.snapshot.currentVersionId = reply->property("currentVersionId").toInt();
-    job.snapshot.currentSha256 = reply->property("currentSha256").toString();
-    job.updateExisting = reply->property("updateExisting").toBool();
-    job.civArchiveOnly = reply->property("civArchiveOnly").toBool();
-    job.detailFallback = reply->property("detailFallback").toBool();
-    reply->deleteLater();
-
-    if (reply->error() != QNetworkReply::NoError) {
-        fetchMetadataFromCivArchive(job, "版本元信息获取失败: " + civitaiNetworkErrorMessage(reply));
-        return;
-    }
-
-    const QJsonObject versionRoot = QJsonDocument::fromJson(reply->readAll()).object();
-    const int modelId = versionRoot.value("modelId").toInt(job.snapshot.modelId);
-    job.snapshot.currentVersionId = versionRoot.value("id").toInt(job.snapshot.currentVersionId);
-    if (modelId <= 0) {
-        fetchMetadataFromCivArchive(job, "版本元信息缺少模型 ID");
-        return;
-    }
-
-    QNetworkReply *detailReply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/models/%1").arg(modelId))));
-    detailReply->setProperty("filePath", job.snapshot.filePath);
-    detailReply->setProperty("baseName", job.snapshot.baseName);
-    detailReply->setProperty("modelDir", job.snapshot.modelDir);
-    detailReply->setProperty("displayName", job.snapshot.displayName);
-    detailReply->setProperty("currentVersionId", job.snapshot.currentVersionId);
-    detailReply->setProperty("currentSha256", job.snapshot.currentSha256);
-    detailReply->setProperty("updateExisting", job.updateExisting);
-    detailReply->setProperty("civArchiveOnly", job.civArchiveOnly);
-    detailReply->setProperty("detailFallback", job.detailFallback);
-    detailReply->setProperty("versionHint", QJsonDocument(versionRoot).toJson(QJsonDocument::Compact));
-    connect(detailReply, &QNetworkReply::finished, this, [this, detailReply]() { handleMetadataSyncModelReply(detailReply); });
-}
-
-void MainWindow::handleMetadataSyncHashReply(QNetworkReply *reply)
-{
-    MetadataSyncJob job;
-    job.snapshot.filePath = reply->property("filePath").toString();
-    job.snapshot.baseName = reply->property("baseName").toString();
-    job.snapshot.modelDir = reply->property("modelDir").toString();
-    job.snapshot.displayName = reply->property("displayName").toString();
-    job.snapshot.currentSha256 = reply->property("currentSha256").toString();
-    job.updateExisting = reply->property("updateExisting").toBool();
-    job.civArchiveOnly = reply->property("civArchiveOnly").toBool();
-    job.detailFallback = reply->property("detailFallback").toBool();
-    reply->deleteLater();
-
-    if (reply->error() != QNetworkReply::NoError) {
-        fetchMetadataFromCivArchive(job, "Hash 匹配失败: " + civitaiNetworkErrorMessage(reply));
-        return;
-    }
-
-    const QJsonObject versionRoot = QJsonDocument::fromJson(reply->readAll()).object();
-    const int modelId = versionRoot.value("modelId").toInt();
-    job.snapshot.currentVersionId = versionRoot.value("id").toInt();
-    if (modelId <= 0) {
-        fetchMetadataFromCivArchive(job, "无法从 Hash 匹配 Civitai 模型");
-        return;
-    }
-
-    QNetworkReply *detailReply = netManager->get(makeNetworkRequest(QUrl(QString("https://civitai.com/api/v1/models/%1").arg(modelId))));
-    detailReply->setProperty("filePath", job.snapshot.filePath);
-    detailReply->setProperty("baseName", job.snapshot.baseName);
-    detailReply->setProperty("modelDir", job.snapshot.modelDir);
-    detailReply->setProperty("displayName", job.snapshot.displayName);
-    detailReply->setProperty("currentVersionId", job.snapshot.currentVersionId);
-    detailReply->setProperty("currentSha256", job.snapshot.currentSha256);
-    detailReply->setProperty("updateExisting", job.updateExisting);
-    detailReply->setProperty("civArchiveOnly", job.civArchiveOnly);
-    detailReply->setProperty("detailFallback", job.detailFallback);
-    detailReply->setProperty("versionHint", QJsonDocument(versionRoot).toJson(QJsonDocument::Compact));
-    connect(detailReply, &QNetworkReply::finished, this, [this, detailReply]() { handleMetadataSyncModelReply(detailReply); });
-}
-
-void MainWindow::handleMetadataSyncModelReply(QNetworkReply *reply)
-{
-    MetadataSyncJob job;
-    job.snapshot.filePath = reply->property("filePath").toString();
-    job.snapshot.baseName = reply->property("baseName").toString();
-    job.snapshot.modelDir = reply->property("modelDir").toString();
-    job.snapshot.displayName = reply->property("displayName").toString();
-    job.snapshot.currentVersionId = reply->property("currentVersionId").toInt();
-    job.snapshot.currentSha256 = reply->property("currentSha256").toString();
-    job.updateExisting = reply->property("updateExisting").toBool();
-    job.civArchiveOnly = reply->property("civArchiveOnly").toBool();
-    job.detailFallback = reply->property("detailFallback").toBool();
-    const QJsonObject versionHint = QJsonDocument::fromJson(reply->property("versionHint").toByteArray()).object();
-    reply->deleteLater();
-
-    if (reply->error() != QNetworkReply::NoError) {
-        fetchMetadataFromCivArchive(job, "同步失败: " + civitaiNetworkErrorMessage(reply));
-        return;
-    }
-
-    const QJsonObject modelRoot = QJsonDocument::fromJson(reply->readAll()).object();
-    const bool ok = saveMetadataFromModelRoot(job, modelRoot, versionHint);
-    if (!ok && !job.civArchiveOnly) {
-        fetchMetadataFromCivArchive(job, "Civitai 返回成功但无法匹配当前版本");
-        return;
-    }
-    if (!ok) {
-        finishMetadataSyncJobWithFailure(job, "同步失败: 未找到可保存的版本");
-        return;
-    }
-    const QString nowText = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm");
-    downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath,
-                                                "metadata 已同步",
-                                                "existing",
-                                                nowText,
-                                                "同步时间");
-    ++metadataSyncDone;
-    downloadsPage->setStatusText(AppText::tr("正在同步元信息... %1/%2").arg(metadataSyncDone).arg(metadataSyncTotal));
-    processNextMetadataSyncJob();
-}
-
-bool MainWindow::tryStartCivArchiveHashCalculation(const MetadataSyncJob &job, const QString &reason)
-{
-    if (job.snapshot.filePath.isEmpty() || !QFileInfo::exists(job.snapshot.filePath)) return false;
-    if (!job.snapshot.currentSha256.trimmed().isEmpty()) return false;
-    if (!optRecalculateKnownMetadataHash && !job.civArchiveOnly) return false;
-
-    downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "正在计算 Hash 以查询 CivArchive...", QString());
-    auto *watcher = new QFutureWatcher<QString>(this);
-    watcher->setProperty("filePath", job.snapshot.filePath);
-    watcher->setProperty("baseName", job.snapshot.baseName);
-    watcher->setProperty("modelDir", job.snapshot.modelDir);
-    watcher->setProperty("displayName", job.snapshot.displayName);
-    watcher->setProperty("modelId", job.snapshot.modelId);
-    watcher->setProperty("currentVersionId", job.snapshot.currentVersionId);
-    watcher->setProperty("updateExisting", job.updateExisting);
-    watcher->setProperty("civArchiveOnly", job.civArchiveOnly);
-    watcher->setProperty("detailFallback", job.detailFallback);
-    watcher->setProperty("reason", reason);
-    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher]() {
-        MetadataSyncJob retryJob;
-        retryJob.snapshot.filePath = watcher->property("filePath").toString();
-        retryJob.snapshot.baseName = watcher->property("baseName").toString();
-        retryJob.snapshot.modelDir = watcher->property("modelDir").toString();
-        retryJob.snapshot.displayName = watcher->property("displayName").toString();
-        retryJob.snapshot.modelId = watcher->property("modelId").toInt();
-        retryJob.snapshot.currentVersionId = watcher->property("currentVersionId").toInt();
-        retryJob.snapshot.currentSha256 = watcher->result();
-        // 同上：缓存算出的 Hash，避免后续重复计算。
-        if (QListWidgetItem *item = findModelItemByFilePath(retryJob.snapshot.filePath);
-                item && !retryJob.snapshot.currentSha256.trimmed().isEmpty())
-            item->setData(ROLE_CIVITAI_SHA256, retryJob.snapshot.currentSha256.trimmed());
-        retryJob.updateExisting = watcher->property("updateExisting").toBool();
-        retryJob.civArchiveOnly = watcher->property("civArchiveOnly").toBool();
-        retryJob.detailFallback = watcher->property("detailFallback").toBool();
-        const QString reason = watcher->property("reason").toString();
-        watcher->deleteLater();
-        fetchMetadataFromCivArchive(retryJob, reason);
-    });
-    watcher->setFuture(QtConcurrent::run(backgroundThreadPool, [filePath = job.snapshot.filePath]() {
-        return FileUtils::calculateSha256Hex(filePath);
-    }));
-    return true;
-}
-
-void MainWindow::fetchMetadataFromCivArchive(const MetadataSyncJob &job, const QString &reason, bool directOnly)
-{
-    if (!downloadsPage) return;
-    if (!directOnly && !job.civArchiveOnly && !optTryCivArchiveOnMetadataFail) {
-        finishMetadataSyncJobWithFailure(job, reason);
-        return;
-    }
-
-    MetadataSyncJob lookupJob = job;
-    QUrl url = CivArchiveParser::civArchiveLookupUrl(lookupJob);
-    if (!url.isValid()) {
-        if (tryStartCivArchiveHashCalculation(job, reason)) return;
-        finishMetadataSyncJobWithFailure(job, reason + "；CivArchive 查询缺少 Hash 或模型 ID", "no_ids");
-        return;
-    }
-
-    downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, "正在查询 CivArchive...", QString());
-    QNetworkReply *reply = netManager->get(makeNetworkRequest(url, false));
-    reply->setProperty("filePath", lookupJob.snapshot.filePath);
-    reply->setProperty("baseName", lookupJob.snapshot.baseName);
-    reply->setProperty("modelDir", lookupJob.snapshot.modelDir);
-    reply->setProperty("displayName", lookupJob.snapshot.displayName);
-    reply->setProperty("modelId", lookupJob.snapshot.modelId);
-    reply->setProperty("currentVersionId", lookupJob.snapshot.currentVersionId);
-    reply->setProperty("currentSha256", lookupJob.snapshot.currentSha256);
-    reply->setProperty("updateExisting", lookupJob.updateExisting);
-    reply->setProperty("civArchiveOnly", lookupJob.civArchiveOnly);
-    reply->setProperty("detailFallback", lookupJob.detailFallback);
-    reply->setProperty("civArchiveReason", reason);
-    reply->setProperty("civArchiveUrl", url.toString());
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        handleMetadataSyncCivArchiveReply(reply);
-    });
 }
 
 bool MainWindow::startDetailCivArchiveFallback(const QString &filePath, const QString &baseName, const QString &modelDir, const QString &reason, const QString &currentSha256)
 {
-    if (!optTryCivArchiveOnMetadataFail || filePath.isEmpty()) return false;
+    if (!optTryCivArchiveOnMetadataFail || filePath.isEmpty() || !metadataSyncService) return false;
     MetadataSyncJob job;
     if (QListWidgetItem *item = findModelItemByFilePath(filePath)) {
         job.snapshot = snapshotForModelItem(item);
@@ -9010,71 +8198,12 @@ bool MainWindow::startDetailCivArchiveFallback(const QString &filePath, const QS
     if (job.snapshot.displayName.isEmpty()) job.snapshot.displayName = QFileInfo(filePath).completeBaseName();
     job.updateExisting = true;
     job.detailFallback = true;
-    metadataSyncTotal = qMax(metadataSyncTotal, 1);
-    metadataSyncDone = 0;
-    metadataSyncRunning = false;
-    metadataSyncPreviewImages = !m_skipPreviewSync;
-    fetchMetadataFromCivArchive(job, reason);
+    metadataSyncService->startDetailCivArchiveFallback(job, reason, !m_skipPreviewSync);
     return true;
 }
 
-void MainWindow::handleMetadataSyncCivArchiveReply(QNetworkReply *reply)
+void MainWindow::handleMetadataSyncJobFailed(const MetadataSyncJob &job, const QString &message, const QString &)
 {
-    MetadataSyncJob job;
-    job.snapshot.filePath = reply->property("filePath").toString();
-    job.snapshot.baseName = reply->property("baseName").toString();
-    job.snapshot.modelDir = reply->property("modelDir").toString();
-    job.snapshot.displayName = reply->property("displayName").toString();
-    job.snapshot.modelId = reply->property("modelId").toInt();
-    job.snapshot.currentVersionId = reply->property("currentVersionId").toInt();
-    job.snapshot.currentSha256 = reply->property("currentSha256").toString();
-    job.updateExisting = reply->property("updateExisting").toBool();
-    job.civArchiveOnly = reply->property("civArchiveOnly").toBool();
-    job.detailFallback = reply->property("detailFallback").toBool();
-    const QString reason = reply->property("civArchiveReason").toString();
-    const QString sourceUrl = reply->property("civArchiveUrl").toString();
-    const QByteArray body = reply->readAll();
-    const QString networkError = reply->error() == QNetworkReply::NoError ? QString() : reply->errorString();
-    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    reply->deleteLater();
-
-    if (!networkError.isEmpty()) {
-        QString message = reason + QString("；CivArchive 查询失败: %1").arg(networkError);
-        if (status > 0) message += QString(" (HTTP %1)").arg(status);
-        finishMetadataSyncJobWithFailure(job, message);
-        return;
-    }
-
-    QJsonObject modelRoot;
-    QJsonObject versionHint;
-    if (!CivArchiveParser::parseCivArchivePayload(body, sourceUrl, modelRoot, versionHint)) {
-        finishMetadataSyncJobWithFailure(job, reason + "；CivArchive 返回内容中未找到可识别的模型元信息");
-        return;
-    }
-
-    const bool ok = saveMetadataFromModelRoot(job, modelRoot, versionHint);
-    if (!ok) {
-        finishMetadataSyncJobWithFailure(job, reason + "；CivArchive 元信息无法匹配当前模型版本");
-        return;
-    }
-
-    const QString nowText = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm");
-    downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath,
-                                                "metadata 已从 CivArchive 补充",
-                                                "existing",
-                                                nowText,
-                                                "CivArchive");
-    ++metadataSyncDone;
-    downloadsPage->setStatusText(AppText::tr("正在同步元信息... %1/%2").arg(metadataSyncDone).arg(metadataSyncTotal));
-    processNextMetadataSyncJob();
-}
-
-void MainWindow::finishMetadataSyncJobWithFailure(const MetadataSyncJob &job, const QString &message, const QString &category)
-{
-    if (downloadsPage) {
-        downloadsPage->updateMetadataScanItemStatus(job.snapshot.filePath, message, category);
-        downloadsPage->setStatusText(AppText::tr("正在同步元信息... %1/%2").arg(metadataSyncDone + 1).arg(metadataSyncTotal));
-    }
     recordModelSyncFailure(job.snapshot.filePath, job.snapshot.baseName, message);
     if (job.detailFallback) {
         setModelTitleError(message);
@@ -9084,11 +8213,13 @@ void MainWindow::finishMetadataSyncJobWithFailure(const MetadataSyncJob &job, co
         m_forceResyncPreview = false;
         m_skipPreviewSync = false;
     }
-    ++metadataSyncDone;
-    processNextMetadataSyncJob();
 }
 
-bool MainWindow::saveMetadataFromModelRoot(const MetadataSyncJob &job, const QJsonObject &modelRoot, const QJsonObject &versionHint)
+bool MainWindow::saveMetadataFromModelRoot(const MetadataSyncJob &job,
+                                           const QJsonObject &modelRoot,
+                                           const QJsonObject &versionHint,
+                                           bool syncPreviewImages,
+                                           bool batchRunning)
 {
     if (modelRoot.isEmpty()) return false;
     QJsonObject selectedVersion = versionHint;
@@ -9137,7 +8268,7 @@ bool MainWindow::saveMetadataFromModelRoot(const MetadataSyncJob &job, const QJs
         root["localOnly"] = false;
     }
     saveLocalMetadata(job.snapshot.modelDir, job.snapshot.baseName, root);
-    if (metadataSyncPreviewImages) {
+    if (syncPreviewImages) {
         syncPreviewImagesFromMetadata(job.snapshot.modelDir,
                                       job.snapshot.baseName,
                                       ModelMetadata::imageInfosFromVersionJson(root),
@@ -9156,7 +8287,7 @@ bool MainWindow::saveMetadataFromModelRoot(const MetadataSyncJob &job, const QJs
         refreshPromptTemplateModelTriggerRows();
     }
     clearModelSyncFailure(job.snapshot.filePath);
-    if (!metadataSyncRunning) {
+    if (!batchRunning) {
         if (QListWidgetItem *current = ui->modelList->currentItem()) {
             if (current && QFileInfo(current->data(ROLE_FILE_PATH).toString()).absoluteFilePath() == job.snapshot.filePath) {
                 ModelMeta meta;
@@ -10843,153 +9974,14 @@ void MainWindow::onCheckUpdateClicked()
 
 void MainWindow::startAppUpdateCheck(bool silentIfLatest)
 {
-    ui->statusbar->showMessage(AppText::tr("正在连接 GitHub 检查更新..."), 3000);
-    if (aboutPage) aboutPage->setCheckingForUpdates(true);
-
-    QNetworkRequest request((QUrl(GITHUB_REPO_API)));
-    request.setHeader(QNetworkRequest::UserAgentHeader, currentUserAgent);
-
-    QNetworkReply *reply = netManager->get(request);
-    reply->setProperty("silentIfLatest", silentIfLatest);
-    connect(reply, &QNetworkReply::finished, this, [this, reply](){
-        onUpdateApiReceived(reply);
-    });
+    if (appUpdateChecker) {
+        appUpdateChecker->checkForUpdates(GITHUB_REPO_API, CURRENT_VERSION, currentUserAgent, silentIfLatest);
+    }
 }
 
-void MainWindow::onUpdateApiReceived(QNetworkReply *reply)
+QString MainWindow::getRandomUserAgent()
 {
-    const bool silentIfLatest = reply->property("silentIfLatest").toBool();
-    if (aboutPage) aboutPage->setCheckingForUpdates(false);
-    reply->deleteLater();
-
-    if (reply->error() != QNetworkReply::NoError) {
-        if (silentIfLatest) {
-            ui->statusbar->showMessage(AppText::tr("自动检查更新失败: ") + reply->errorString(), 4000);
-        } else {
-            QMessageBox::warning(this, AppText::tr("检查失败"), AppText::tr("无法连接到 GitHub API:\n") + reply->errorString());
-        }
-        return;
-    }
-
-    QByteArray data = reply->readAll();
-    QJsonDocument doc = QJsonDocument::fromJson(data);
-    QJsonObject root = doc.object();
-
-    // GitHub API 返回的 tag_name (例如 "1.1.1" 或 "1.1.5")
-    QString remoteTag = root["tag_name"].toString();
-    QString htmlUrl = root["html_url"].toString();
-    QString body = root["body"].toString();
-
-    if (remoteTag.isEmpty()) {
-        if (silentIfLatest) {
-            ui->statusbar->showMessage(AppText::tr("自动检查更新失败: 无法解析版本信息"), 4000);
-        } else {
-            QMessageBox::warning(this, AppText::tr("错误"), AppText::tr("无法解析版本信息 (Rate Limit Exceeded?)。"));
-        }
-        return;
-    }
-
-    // === 版本比较逻辑 (适配不带 v 的情况) ===
-    // 如果 remoteTag 带有 'v' 前缀而 CURRENT_VERSION 没有，可以手动去除
-    if (remoteTag.startsWith("v", Qt::CaseInsensitive)) {
-        remoteTag = remoteTag.mid(1);
-    }
-
-    // 简单比较：只要字符串不相等，且远程版本号通常比本地长或大
-    // 更严谨的方法是用 semver 库，但这里我们可以写个简单的辅助判断
-
-    bool hasNewVersion = false;
-
-    if (remoteTag != CURRENT_VERSION) {
-        // 分割版本号进行数字比较 (1.1.1 vs 1.0.0)
-        QStringList remoteParts = remoteTag.split('.');
-        QStringList localParts = CURRENT_VERSION.split('.');
-
-        int len = qMax(remoteParts.size(), localParts.size());
-        for (int i = 0; i < len; ++i) {
-            int r = (i < remoteParts.size()) ? remoteParts[i].toInt() : 0;
-            int l = (i < localParts.size()) ? localParts[i].toInt() : 0;
-
-            if (r > l) {
-                hasNewVersion = true;
-                break;
-            } else if (r < l) {
-                // 本地版本比远程还新（开发版），不算更新
-                hasNewVersion = false;
-                break;
-            }
-        }
-    }
-
-    if (hasNewVersion) {
-        // 发现新版本
-        QMessageBox msgBox(this);
-        msgBox.setWindowTitle(AppText::tr("发现新版本"));
-        msgBox.setTextFormat(Qt::RichText);
-        msgBox.setText(AppText::tr("<h3>🚀 发现新版本: %1</h3>"
-                               "<p>当前版本: %2</p>"
-                               "<hr>"
-                               "<p><b>更新日志:</b></p><pre style='font-size:11px'>%3</pre>")
-                           .arg(remoteTag)
-                           .arg(CURRENT_VERSION)
-                           .arg(body));
-
-        QPushButton *btnGo = msgBox.addButton(AppText::tr("前往下载 / Download"), QMessageBox::AcceptRole);
-        msgBox.addButton(AppText::tr("稍后 / Later"), QMessageBox::RejectRole);
-        msgBox.exec();
-
-        if (msgBox.clickedButton() == btnGo) {
-            QDesktopServices::openUrl(QUrl(htmlUrl));
-        }
-    } else {
-        if (silentIfLatest) {
-            ui->statusbar->showMessage(AppText::tr("当前已是最新版本 (%1)").arg(CURRENT_VERSION), 3000);
-        } else {
-            QMessageBox::information(this, AppText::tr("检查更新"), AppText::tr("当前已是最新版本 (%1)。").arg(CURRENT_VERSION));
-        }
-    }
-}
-
-QString MainWindow::getRandomUserAgent() {
-    QStringList uas;
-    // Chrome Win10
-    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
-    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
-    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.6834.83 Safari/537.36";
-    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.6943.50 Safari/537.36";
-    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
-    uas << "Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-    // Edge Win10
-    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0";
-    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0";
-    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0";
-    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 Edg/132.0.0.0";
-    uas << "Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.2903.99";
-    // Windows Firefox
-    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0";
-    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0";
-    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0";
-    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0";
-    uas << "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0";
-    // macOS Chrome
-    // Intel Mac
-    uas << "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-    uas << "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36";
-    // macOS Safari
-    uas << "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15";
-    uas << "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15";
-    // macOS Firefox
-    uas << "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.7; rv:132.0) Gecko/20100101 Firefox/132.0";
-    // Linux
-    uas << "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-    uas << "Mozilla/5.0 (X11; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0";
-    uas << "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0";
-
-    // 随机取一个
-    int index = QRandomGenerator::global()->bounded(uas.size());
-    return uas.at(index);
+    return CivitaiClient::randomUserAgent();
 }
 
 // 加载缓存

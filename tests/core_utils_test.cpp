@@ -1,5 +1,8 @@
 #include "utils/civarchiveparser.h"
+#include "utils/civitaiclient.h"
 #include "utils/downloadcache.h"
+#include "services/appupdatechecker.h"
+#include "services/modelupdatecoordinator.h"
 #include "utils/downloadstatus.h"
 #include "utils/fileutils.h"
 #include "utils/gallerymetadata.h"
@@ -850,6 +853,45 @@ void testInspection(const QTemporaryDir &dir)
           && loadedImg.parsedLoras.size() == 1 && loadedImg.parsedLoras.first().name == "my_lora"
           && loadedImg.cleanTags.contains("blue_hair") && !loadedImg.cleanTags.contains("BREAK"),
           "user gallery cache round-trip preserves metadata and filters tags");
+
+    // CivitaiClient helpers
+    check(CivitaiClient::isCivitaiUrl(QUrl("https://civitai.com/api/v1/models/1"))
+          && CivitaiClient::shouldUseBearerAuth(QUrl("https://civitai.com/api/v1/models/1"))
+          && !CivitaiClient::shouldUseBearerAuth(QUrl("https://image.civitai.com/x.png"))
+          && CivitaiClient::urlWithToken(QUrl("https://image.civitai.com/x.png"), "k123").toString().contains("token=k123")
+          && !CivitaiClient::randomUserAgent().isEmpty(),
+          "CivitaiClient URL, bearer auth, token injection and UA selection");
+
+    // AppUpdateChecker semver comparison
+    check(AppUpdateChecker::isRemoteVersionNewer("v1.6.3", "1.6.2")
+          && AppUpdateChecker::isRemoteVersionNewer("1.10.0", "1.6.9")
+          && !AppUpdateChecker::isRemoteVersionNewer("1.6.2", "1.6.2")
+          && !AppUpdateChecker::isRemoteVersionNewer("1.6.1", "1.6.2"),
+          "AppUpdateChecker compares numeric dotted versions accurately");
+
+    // ModelUpdateCoordinator pure version parsing
+    UpdateCheckSnapshot snap;
+    snap.filePath = model;
+    snap.modelDir = dir.path();
+    snap.baseName = "model";
+    snap.displayName = "Model";
+    snap.modelId = 7;
+    snap.currentVersionId = 42;
+    const QJsonObject modelRoot{
+        {"id", 7},
+        {"name", "Demo"},
+        {"modelVersions", QJsonArray{
+            QJsonObject{{"id", 42}, {"name", "v1"}, {"publishedAt", "2026-01-01T00:00:00Z"},
+                        {"files", QJsonArray{QJsonObject{{"primary", true}, {"name", "m_v1.safetensors"}, {"downloadUrl", "https://civitai.com/dl/42"}}}}},
+            QJsonObject{{"id", 43}, {"name", "v2"}, {"publishedAt", "2026-02-01T00:00:00Z"},
+                        {"files", QJsonArray{QJsonObject{{"primary", true}, {"name", "m_v2.safetensors"}, {"sizeKB", 2048.0}, {"downloadUrl", "https://civitai.com/dl/43"}}}}}
+        }}
+    };
+    const ModelUpdateInfo parsedUpd = ModelUpdateCoordinator::parseModelUpdateInfo(
+        snap, modelRoot, [](int mid, int vid) { return mid == 7 && vid == 43; });
+    check(parsedUpd.hasUpdate && parsedUpd.latestVersionId == 43 && parsedUpd.latestVersion == "v2"
+          && parsedUpd.latestFileExistsLocally && qFuzzyCompare(parsedUpd.sizeMB, 2.0),
+          "ModelUpdateCoordinator parses latest version and coexistence predicate");
 }
 }
 

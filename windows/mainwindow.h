@@ -66,23 +66,15 @@ class LauncherWidget;
 class ImageViewerDialog;
 class DownloadsPage;
 class DownloadManager;
+class AppUpdateChecker;
+class PreviewDownloadQueue;
+class MetadataSyncService;
+class ModelUpdateCoordinator;
 
 struct ImageLoadResult {
     QString path;
     QImage originalImg; // 只存原图，模糊交给主线程做
     bool valid = false;
-};
-
-struct DownloadTask {
-    QString url;
-    QString savePath;
-    QString localBaseName;
-    QPointer<QPushButton> button; // 使用 QPointer 防止按钮被销毁后野指针崩溃
-    int imageIndex = -1;
-    PreviewMetadataPayload previewMeta;
-    bool allowNoButton = false;
-    bool metadataOnly = false;
-    bool countForMetadataSync = false;
 };
 
 class MainWindow : public QMainWindow
@@ -145,7 +137,6 @@ private slots:
 
     void onMenuSwitchToAbout();
     void onCheckUpdateClicked();
-    void onUpdateApiReceived(QNetworkReply *reply);
     void onTestCivitaiApiKeyClicked();
     void onLocalMetaSaveClicked();
     void onLocalMetaResetClicked();
@@ -298,6 +289,7 @@ private:
     QVariantAnimation *transitionAnim = nullptr; // 动画控制器
     void transitionToImage(const QString &path);
     void updateBackgroundDuringTransition();
+    void initServices();
     void enqueueDownload(const QString &url,
                          const QString &savePath,
                          QPushButton *btn,
@@ -307,20 +299,16 @@ private:
                          bool allowNoButton = false,
                          bool metadataOnly = false,
                          bool countForMetadataSync = false);
-    void processNextDownload();
-    void markMetadataPreviewTaskFinished();
-    void finishMetadataSyncBatch();
     void syncPreviewImagesFromMetadata(const QString &modelDir, const QString &baseName, const QVector<ImageInfo> &images, bool forceNonCoverDownload, bool countForMetadataSync = false);
     void initDownloadsPage();
     void initSettingsPage();
     void onMenuSwitchToDownloads();
     void checkUpdatesForItems(const QList<QListWidgetItem*> &items, bool switchToDownloads = true, bool detailPrompt = false);
-    void checkUpdateForSnapshot(const UpdateCheckSnapshot &snapshot);
-    void dispatchQueuedUpdateChecks();
-    void enqueueUpdateHashCheck(const UpdateCheckSnapshot &snapshot);
-    void dispatchUpdateHashChecks();
-    void markUpdateCheckFinished();
-    void handleModelUpdateReply(QNetworkReply *reply);
+    void handleModelUpdateRootReceived(const QString &filePath,
+                                       int matchedVersionId,
+                                       const QJsonObject &modelRoot,
+                                       const ModelUpdateInfo &fallbackInfo);
+    void handleAllModelUpdateChecksCompleted(int totalCount, bool detailPrompt, const QString &detailFilePath);
     ModelUpdateInfo parseModelUpdateInfo(QListWidgetItem *item, const QJsonObject &modelRoot) const;
     void addOrUpdateDownloadCard(const ModelUpdateInfo &info, const QString &status);
     QString chooseModelDownloadTarget(const ModelUpdateInfo &info, bool *overwrite);
@@ -332,17 +320,13 @@ private:
     void startMetadataScan();
     void runMetadataHealthCheck();
     void startMetadataSyncForPaths(const QStringList &filePaths, bool updateExisting, bool archiveOnly = false);
-    void processNextMetadataSyncJob();
-    void fetchMetadataForSyncJob(const MetadataSyncJob &job);
-    void handleMetadataSyncModelReply(QNetworkReply *reply);
-    void handleMetadataSyncVersionReply(QNetworkReply *reply);
-    void handleMetadataSyncHashReply(QNetworkReply *reply);
-    void handleMetadataSyncCivArchiveReply(QNetworkReply *reply);
-    bool saveMetadataFromModelRoot(const MetadataSyncJob &job, const QJsonObject &modelRoot, const QJsonObject &versionHint = QJsonObject());
-    void fetchMetadataFromCivArchive(const MetadataSyncJob &job, const QString &reason, bool directOnly = false);
+    bool saveMetadataFromModelRoot(const MetadataSyncJob &job,
+                                   const QJsonObject &modelRoot,
+                                   const QJsonObject &versionHint,
+                                   bool syncPreviewImages,
+                                   bool batchRunning);
     bool startDetailCivArchiveFallback(const QString &filePath, const QString &baseName, const QString &modelDir, const QString &reason, const QString &currentSha256 = QString());
-    void finishMetadataSyncJobWithFailure(const MetadataSyncJob &job, const QString &message, const QString &category = "failed");
-    bool tryStartCivArchiveHashCalculation(const MetadataSyncJob &job, const QString &reason);
+    void handleMetadataSyncJobFailed(const MetadataSyncJob &job, const QString &message, const QString &category);
     UpdateCheckSnapshot snapshotForModelItem(QListWidgetItem *item) const;
     QListWidgetItem *findModelItemByFilePath(const QString &filePath) const;
     QString resolveDownloadPreviewPath(const ModelUpdateInfo &info) const;
@@ -382,13 +366,6 @@ private:
     QFutureWatcher<QString> *hashWatcher = nullptr;
     QFutureWatcher<QVector<MetadataScanItem>> *metadataScanWatcher = nullptr;
     QFutureWatcher<QVector<MetadataHealthIssue>> *metadataHealthWatcher = nullptr;
-    QQueue<MetadataSyncJob> pendingMetadataSyncJobs;
-    int metadataSyncTotal = 0;
-    int metadataSyncDone = 0;
-    bool metadataSyncRunning = false;
-    bool metadataSyncPreviewImages = false;
-    bool metadataSyncWaitingForPreviews = false;
-    int metadataPreviewTasksPending = 0;
     QString currentProcessingPath;
     QString currentProcessingBaseName;
     QString pendingHashSyncPath;
@@ -412,21 +389,14 @@ private:
     QHash<QString, QJsonObject> modelSyncFailures;
     bool currentHashSyncForceRefresh = false;
 
-    QQueue<DownloadTask> downloadQueue; // 任务队列
-    bool isDownloading = false;         // 当前是否有任务在运行
+    AppUpdateChecker *appUpdateChecker = nullptr;
+    PreviewDownloadQueue *previewDownloadQueue = nullptr;
+    MetadataSyncService *metadataSyncService = nullptr;
+    ModelUpdateCoordinator *modelUpdateCoordinator = nullptr;
     DownloadManager *downloadManager = nullptr;
     QMetaObject::Connection pendingDownloadChecksAfterRestore;
     bool isShuttingDown = false;
     bool settingsPageConnectionsInitialized = false;
-    QQueue<UpdateCheckSnapshot> pendingUpdateChecksQueue;
-    QQueue<UpdateCheckSnapshot> pendingUpdateHashChecks;
-    int activeUpdateNetworkChecks = 0;
-    int activeUpdateHashChecks = 0;
-    int pendingUpdateChecks = 0;
-    int completedUpdateChecks = 0;
-    int updateCheckToken = 0;
-    QString detailUpdateCheckFilePath;
-    bool detailUpdateCheckPending = false;
 
     TagFlowWidget *tagFlowWidget = nullptr;
 

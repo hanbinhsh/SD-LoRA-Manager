@@ -83,6 +83,16 @@ qt_add_executable(SD_LoRA_Manager
     utils/modeluserdatastore.cpp
     utils/usergallerycache.h
     utils/usergallerycache.cpp
+    utils/civitaiclient.h
+    utils/civitaiclient.cpp
+    services/appupdatechecker.h
+    services/appupdatechecker.cpp
+    services/previewdownloadqueue.h
+    services/previewdownloadqueue.cpp
+    services/metadatasyncservice.h
+    services/metadatasyncservice.cpp
+    services/modelupdatecoordinator.h
+    services/modelupdatecoordinator.cpp
     widgets/flowlayout.h
     widgets/flowlayout.cpp
     widgets/highlightitemdelegate.h
@@ -182,6 +192,7 @@ if(BUILD_CORE_UTIL_TESTS)
     add_executable(core_utils_test
         tests/core_utils_test.cpp
         utils/civarchiveparser.cpp
+        utils/civitaiclient.cpp
         utils/downloadcache.cpp
         utils/downloadstatus.cpp
         utils/fileutils.cpp
@@ -198,9 +209,11 @@ if(BUILD_CORE_UTIL_TESTS)
         utils/previewimagestore.cpp
         utils/tagutils.cpp
         utils/tagusage.cpp
-        utils/usergallerycache.cpp)
+        utils/usergallerycache.cpp
+        services/appupdatechecker.cpp
+        services/modelupdatecoordinator.cpp)
     target_include_directories(core_utils_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(core_utils_test PRIVATE Qt6::Core Qt6::Gui)
+    target_link_libraries(core_utils_test PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Concurrent app_i18n)
     foreach(group metadata matching scanner preview comfy tags archive paths_filters browser_urls inspection downloads)
         add_test(NAME core_utils_${group} COMMAND core_utils_test ${group})
     endforeach()
