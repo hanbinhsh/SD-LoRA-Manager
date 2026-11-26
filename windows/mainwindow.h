@@ -45,6 +45,7 @@
 #include "core/modeltypes.h"
 #include "pages/settingspage.h"
 #include "pages/aboutpage.h"
+#include "utils/appconfigstore.h"
 
 const QString CURRENT_VERSION = "1.6.2";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
@@ -74,6 +75,7 @@ struct HomeFilterTagInfo;
 class PreviewDownloadQueue;
 class MetadataSyncService;
 class ModelUpdateCoordinator;
+class TranslationDictionaryService;
 
 struct ImageLoadResult {
     QString path;
@@ -331,7 +333,6 @@ private:
     int modelUsageStatsToken = 0;
     int modelScanToken = 0;
     bool modelScanRunning = false;
-    int translationLoadToken = 0;
     bool m_forceResyncPreview = false;
     bool m_skipPreviewSync = false;
 
@@ -365,6 +366,7 @@ private:
     PreviewDownloadQueue *previewDownloadQueue = nullptr;
     MetadataSyncService *metadataSyncService = nullptr;
     ModelUpdateCoordinator *modelUpdateCoordinator = nullptr;
+    TranslationDictionaryService *translationDictionaryService = nullptr;
     DownloadManager *downloadManager = nullptr;
     QMetaObject::Connection pendingDownloadChecksAfterRestore;
     bool isShuttingDown = false;
@@ -469,6 +471,8 @@ private:
     QString       optCustomThemePath                          = "";              // 外部 QSS 主题路径
     QString       currentToolPageQss;                                             // 当前工具页样式
     // 保存与加载
+    SettingsState buildSettingsState() const;
+    void assignSettingsOptions(const SettingsState &state);
     void loadGlobalConfig();        // 加载配置
     void saveGlobalConfig();        // 保存配置
     void startAppUpdateCheck(bool silentIfLatest);
@@ -477,21 +481,7 @@ private:
     int startupTreeScrollPos;                 // 启动时从文件读出的滚动位置
     bool isFirstTreeRefresh;                  // 标记是否是第一次刷新树（用于判断是否使用缓存）
     bool isFirstFilterSortRestore = true;     // 标记是否是第一次模型扫描后恢复排序与筛选
-    int startupSortIndex = 0;
-    QString startupFilterBaseModel = QStringLiteral("All");
-    QString startupFilterModelType = QStringLiteral("All");
-    QString startupSearchText;
-    int startupSidebarTab = 1;
-    int startupUserTagSortMode = 0;
-    bool startupUserTagLoraOnly = false;
-    bool startupUserTagIncludeNegative = false;
-    int startupGalleryPromptSortMode = 0;
-    bool startupGalleryTagViewActive = false;
-    bool startupHomeFilterExpanded = false;
-    bool startupHomeFilterTagsSortByCount = true;
-    QString startupCollectionFilter;
-    QString startupHomeAuthorFilter;
-    QSet<QString> startupHomeTagFilters;
+    StartupFilterSortState startupFilterSortState;
     QSet<QString> collapsedModelFolders;      // Models 列表折叠的文件夹
     // 设置辅助函数
     QString getRandomUserAgent();             // 获取随机 UA

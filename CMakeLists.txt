@@ -83,6 +83,8 @@ qt_add_executable(SD_LoRA_Manager
     utils/modeluserdatastore.cpp
     utils/usergallerycache.h
     utils/usergallerycache.cpp
+    utils/appconfigstore.h
+    utils/appconfigstore.cpp
     utils/civitaiclient.h
     utils/civitaiclient.cpp
     services/appupdatechecker.h
@@ -93,6 +95,8 @@ qt_add_executable(SD_LoRA_Manager
     services/metadatasyncservice.cpp
     services/modelupdatecoordinator.h
     services/modelupdatecoordinator.cpp
+    services/translationdictionaryservice.h
+    services/translationdictionaryservice.cpp
     widgets/flowlayout.h
     widgets/flowlayout.cpp
     widgets/highlightitemdelegate.h
@@ -219,6 +223,7 @@ if(BUILD_CORE_UTIL_TESTS)
         utils/tagutils.cpp
         utils/tagusage.cpp
         utils/usergallerycache.cpp
+        utils/appconfigstore.cpp
         services/appupdatechecker.cpp
         services/modelupdatecoordinator.cpp)
     target_include_directories(core_utils_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

@@ -20,6 +20,7 @@
 #include "utils/tagutils.h"
 #include "utils/tagusage.h"
 #include "utils/usergallerycache.h"
+#include "utils/appconfigstore.h"
 
 #include <QBuffer>
 #include <QCoreApplication>
@@ -892,6 +893,41 @@ void testInspection(const QTemporaryDir &dir)
     check(parsedUpd.hasUpdate && parsedUpd.latestVersionId == 43 && parsedUpd.latestVersion == "v2"
           && parsedUpd.latestFileExistsLocally && qFuzzyCompare(parsedUpd.sizeMB, 2.0),
           "ModelUpdateCoordinator parses latest version and coexistence predicate");
+
+    // AppConfigStore round-trip, path pruning & malformed JSON protection
+    const QString cfgPath = dir.filePath("settings_test.json");
+    AppConfigSaveInput cfgIn;
+    cfgIn.paths.loraPaths = {dir.filePath("a"), dir.filePath("b")};
+    cfgIn.paths.disabledLoraPaths = {dir.filePath("b"), dir.filePath("orphan")};
+    cfgIn.paths.collapsedModelFolders = {dir.filePath("a"), dir.filePath("b")};
+    cfgIn.paths.normalize();
+    check(cfgIn.paths.disabledLoraPaths.size() == 1 && cfgIn.paths.collapsedModelFolders.size() == 1,
+          "AppPathsConfig normalizes and prunes orphaned disabled and collapsed entries");
+    cfgIn.windowSize = QSize(1440, 900);
+    cfgIn.saveTreeState = true;
+    cfgIn.treeState.scrollPos = 120;
+    cfgIn.treeState.expandedItems = {"Fav"};
+    cfgIn.saveFilterSortState = true;
+    cfgIn.filterSortState.sortIndex = 3;
+    cfgIn.filterSortState.homeAuthorFilter = "artist";
+    cfgIn.filterSortState.homeTagFilters = {"anime"};
+    cfgIn.filterSortState.galleryTagViewActive = true;
+    cfgIn.writeSettings = [](QJsonObject &root) { root["custom_keep"] = 77; };
+    check(AppConfigStore::save(cfgPath, cfgIn), "AppConfigStore saves atomically");
+
+    const AppConfigData cfgOut = AppConfigStore::load(cfgPath);
+    check(cfgOut.fileOpened && cfgOut.rawRoot.value("custom_keep").toInt() == 77
+          && cfgOut.rawRoot.value("window_width").toInt() == 1440
+          && cfgOut.hasTreeState && cfgOut.treeState.scrollPos == 120
+          && cfgOut.treeState.expandedItems.contains("Fav")
+          && cfgOut.hasFilterSortState && cfgOut.filterSortState.sortIndex == 3
+          && cfgOut.filterSortState.homeAuthorFilter == "artist"
+          && cfgOut.filterSortState.homeTagFilters.contains("anime")
+          && cfgOut.filterSortState.galleryTagViewActive,
+          "AppConfigStore round-trips settings, paths, tree state and filter/sort state");
+
+    writeFile(cfgPath, "{broken_json");
+    check(!AppConfigStore::save(cfgPath, cfgIn), "AppConfigStore refuses to overwrite malformed JSON");
 }
 }
 

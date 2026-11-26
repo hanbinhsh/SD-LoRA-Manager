@@ -104,6 +104,7 @@
 #include "services/previewdownloadqueue.h"
 #include "services/metadatasyncservice.h"
 #include "services/modelupdatecoordinator.h"
+#include "services/translationdictionaryservice.h"
 #include "widgets/flowlayout.h"
 #include "widgets/highlightitemdelegate.h"
 
@@ -534,7 +535,8 @@ MainWindow::MainWindow(QWidget *parent)
         loadModelUserNotes();
 
         if (optRestoreFilterSortState) {
-            if (startupSidebarTab == 0) {
+            const StartupFilterSortState &fs = startupFilterSortState;
+            if (fs.sidebarTab == 0) {
                 onModelsTabButtonClicked();
             } else {
                 onCollectionsTabButtonClicked();
@@ -542,28 +544,28 @@ MainWindow::MainWindow(QWidget *parent)
             {
                 const QSignalBlocker blocker(ui->comboSort);
                 const int maxIdx = qMax(0, ui->comboSort->count() - 1);
-                ui->comboSort->setCurrentIndex(qBound(0, startupSortIndex, maxIdx));
+                ui->comboSort->setCurrentIndex(qBound(0, fs.sortIndex, maxIdx));
             }
             if (ui->searchEdit) {
                 const QSignalBlocker blocker(ui->searchEdit);
-                ui->searchEdit->setText(startupSearchText);
+                ui->searchEdit->setText(fs.searchText);
             }
-            currentCollectionFilter = startupCollectionFilter;
+            currentCollectionFilter = fs.collectionFilter;
             if (homeGalleryPage) {
                 HomeGalleryFilterState hs;
-                hs.authorFilter = startupHomeAuthorFilter;
-                hs.tagFilters = startupHomeTagFilters;
-                hs.filterExpanded = startupHomeFilterExpanded;
-                hs.tagsSortByCount = startupHomeFilterTagsSortByCount;
+                hs.authorFilter = fs.homeAuthorFilter;
+                hs.tagFilters = fs.homeTagFilters;
+                hs.filterExpanded = fs.homeFilterExpanded;
+                hs.tagsSortByCount = fs.homeFilterTagsSortByCount;
                 homeGalleryPage->restoreFilterState(hs);
             }
             if (userGalleryPage) {
                 UserGalleryFilterState state;
-                state.userTagSortMode = startupUserTagSortMode;
-                state.userTagLoraOnly = startupUserTagLoraOnly;
-                state.userTagIncludeNegative = startupUserTagIncludeNegative;
-                state.galleryPromptSortMode = startupGalleryPromptSortMode;
-                state.galleryTagViewActive = startupGalleryTagViewActive;
+                state.userTagSortMode = fs.userTagSortMode;
+                state.userTagLoraOnly = fs.userTagLoraOnly;
+                state.userTagIncludeNegative = fs.userTagIncludeNegative;
+                state.galleryPromptSortMode = fs.galleryPromptSortMode;
+                state.galleryTagViewActive = fs.galleryTagViewActive;
                 userGalleryPage->restoreFilterState(state);
             }
             refreshHomeCollectionsUI();
@@ -668,6 +670,7 @@ MainWindow::~MainWindow()
     if (detailGalleryBuildTimer) detailGalleryBuildTimer->stop();
     if (transitionAnim) transitionAnim->stop();
     if (modelUpdateCoordinator) modelUpdateCoordinator->cancelAll();
+    if (translationDictionaryService) translationDictionaryService->shutdown();
     if (previewDownloadQueue) previewDownloadQueue->clearQueueOnly();
     if (netManager) {
         const QList<QNetworkReply*> replies = netManager->findChildren<QNetworkReply*>();
@@ -1295,8 +1298,8 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
         }
 
         ui->statusbar->showMessage(AppText::tr("扫描完成，共 %1 个模型").arg(addedCount));
-        if (isFirstFilterSortRestore && optRestoreFilterSortState && !startupFilterBaseModel.isEmpty()) {
-            const int idx = ui->comboBaseModel->findText(startupFilterBaseModel, Qt::MatchFixedString);
+        if (isFirstFilterSortRestore && optRestoreFilterSortState && !startupFilterSortState.filterBaseModel.isEmpty()) {
+            const int idx = ui->comboBaseModel->findText(startupFilterSortState.filterBaseModel, Qt::MatchFixedString);
             if (idx >= 0) ui->comboBaseModel->setCurrentIndex(idx);
         }
         ui->comboBaseModel->blockSignals(false);
@@ -1305,8 +1308,8 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
         QStringList typeList = foundModelTypes.values();
         std::sort(typeList.begin(), typeList.end());
         ui->comboModelType->addItems(typeList);
-        if (isFirstFilterSortRestore && optRestoreFilterSortState && !startupFilterModelType.isEmpty()) {
-            const int idx = ui->comboModelType->findText(startupFilterModelType, Qt::MatchFixedString);
+        if (isFirstFilterSortRestore && optRestoreFilterSortState && !startupFilterSortState.filterModelType.isEmpty()) {
+            const int idx = ui->comboModelType->findText(startupFilterSortState.filterModelType, Qt::MatchFixedString);
             if (idx >= 0) ui->comboModelType->setCurrentIndex(idx);
         }
         ui->comboModelType->blockSignals(false);
@@ -4367,6 +4370,52 @@ void MainWindow::initServices()
     };
 
     appUpdateChecker = new AppUpdateChecker(netManager, this);
+    translationDictionaryService = new TranslationDictionaryService(netManager, backgroundThreadPool, this);
+    connect(translationDictionaryService, &TranslationDictionaryService::aiTagDownloadStateChanged,
+            this, [this](bool downloading, const QString &statusText) {
+                if (settingsPage) settingsPage->setAiTagTranslateDownloadState(downloading, statusText);
+            });
+    connect(translationDictionaryService, &TranslationDictionaryService::aiTagDownloadFailed,
+            this, [this](const QString &title, const QString &message) {
+                QMessageBox::warning(this, title, message);
+            });
+    connect(translationDictionaryService, &TranslationDictionaryService::aiTagDownloadSucceeded,
+            this, [this](const QString &targetPath, int entryCount) {
+                for (int i = translationCsvPaths.size() - 1; i >= 0; --i) {
+                    if (QFileInfo(translationCsvPaths.at(i)).absoluteFilePath().compare(targetPath, Qt::CaseInsensitive) == 0) {
+                        translationCsvPaths.removeAt(i);
+                    }
+                }
+                for (auto it = disabledTranslationCsvPaths.begin(); it != disabledTranslationCsvPaths.end();) {
+                    if (QFileInfo(*it).absoluteFilePath().compare(targetPath, Qt::CaseInsensitive) == 0) {
+                        it = disabledTranslationCsvPaths.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+                translationCsvPaths.append(targetPath);
+                translationCsvPaths = PathUtils::normalizePathList(translationCsvPaths);
+                disabledTranslationCsvPaths = PathUtils::normalizePathSet(disabledTranslationCsvPaths);
+
+                applyPathListsToUi();
+                reloadTranslationMaps();
+                saveGlobalConfig();
+                ui->statusbar->showMessage(AppText::tr("AITagTranslate 词表已更新：%1 条记录").arg(entryCount), 5000);
+            });
+    connect(translationDictionaryService, &TranslationDictionaryService::translationMapsLoaded,
+            this, [this](const QHash<QString, QString> &result, bool notifyWidgets, int sourceFileCount) {
+                if (isShuttingDown) return;
+                translationMap = result;
+                if (notifyWidgets) {
+                    if (parserWidget) parserWidget->setTranslationMap(&translationMap);
+                    if (promptTemplateLibraryWidget) promptTemplateLibraryWidget->setTranslationMap(&translationMap);
+                    if (tagBrowserWidget) tagBrowserWidget->setMergedTranslationMap(&translationMap);
+                    if (userGalleryPage) userGalleryPage->setTranslationMap(&translationMap);
+                    if (usageAnalysisWidget) usageAnalysisWidget->setTranslationMap(&translationMap);
+                }
+                qDebug() << "Loaded translation entries:" << translationMap.size()
+                         << "from" << sourceFileCount << "CSV file(s)";
+            });
     connect(appUpdateChecker, &AppUpdateChecker::checkingChanged, this, [this](bool checking) {
         if (aboutPage) aboutPage->setCheckingForUpdates(checking);
     });
@@ -5766,170 +5815,117 @@ void MainWindow::finishModelDownload(const ModelFileDownloadTask &task)
 }
 
 // === 全局配置加载与保存 (JSON) ===
+SettingsState MainWindow::buildSettingsState() const
+{
+    SettingsState settings;
+    settings.loraRecursive = optLoraRecursive;
+    settings.galleryRecursive = optGalleryRecursive;
+    settings.blurRadius = optBlurRadius;
+    settings.downscaleBlur = optDownscaleBlur;
+    settings.blurProcessWidth = optBlurProcessWidth;
+    settings.filterNSFW = optFilterNSFW;
+    settings.nsfwMode = optNSFWMode;
+    settings.nsfwLevel = optNSFWLevel;
+    settings.filterGalleryNSFW = optFilterGalleryNSFW;
+    settings.galleryNsfwMode = optGalleryNSFWMode;
+    settings.galleryNsfwRulesText = optGalleryNSFWRules.join(", ");
+    settings.renderThreadCount = optRenderThreadCount;
+    settings.restoreTreeState = optRestoreTreeState;
+    settings.restoreFilterSortState = optRestoreFilterSortState;
+    settings.splitOnNewline = optSplitOnNewline;
+    settings.filterTagsText = optFilterTags.join(", ");
+    settings.showEmptyCollections = optShowEmptyCollections;
+    settings.collectionFolderTopLevel = optCollectionFolderTopLevel;
+    settings.collectionFolderSecondLevel = optCollectionFolderSecondLevel;
+    settings.modelListFolderGrouping = optModelListFolderGrouping;
+    settings.useCustomUserAgent = optUseArrangedUA;
+    settings.customUserAgent = optSavedUAString;
+    settings.civitaiApiKey = optCivitaiApiKey;
+    settings.modelUpdateDownloadPolicy = optModelUpdateDownloadPolicy;
+    settings.autoCheckUpdatesOnStartup = optAutoCheckUpdatesOnStartup;
+    settings.useCivitaiName = optUseCivitaiName;
+    settings.suppressLocalWarnings = optSuppressLocalWarnings;
+    settings.userGalleryMatchMode = optUserGalleryMatchMode;
+    settings.comfyModelNameFallback = optComfyModelNameFallback;
+    settings.recalculateKnownMetadataHash = optRecalculateKnownMetadataHash;
+    settings.tryCivArchiveOnMetadataFail = optTryCivArchiveOnMetadataFail;
+    settings.confirmCloseWhileLauncherRunning = optConfirmCloseWhileLauncherRunning;
+    settings.uiScale = optUiScale;
+    settings.themeId = optThemeId;
+    settings.customThemePath = optCustomThemePath;
+    return settings;
+}
+
+void MainWindow::assignSettingsOptions(const SettingsState &state)
+{
+    optLoraRecursive = state.loraRecursive;
+    optGalleryRecursive = state.galleryRecursive;
+    optBlurRadius = state.blurRadius;
+    optDownscaleBlur = state.downscaleBlur;
+    optBlurProcessWidth = state.blurProcessWidth;
+    optFilterNSFW = state.filterNSFW;
+    optNSFWMode = state.nsfwMode;
+    optNSFWLevel = state.nsfwLevel;
+    optFilterGalleryNSFW = state.filterGalleryNSFW;
+    optGalleryNSFWMode = state.galleryNsfwMode;
+    optGalleryNSFWRules = state.galleryNsfwRules();
+    optRenderThreadCount = qMax(1, state.renderThreadCount);
+    optRestoreTreeState = state.restoreTreeState;
+    optRestoreFilterSortState = state.restoreFilterSortState;
+    optSplitOnNewline = state.splitOnNewline;
+    optFilterTags = state.filterTags();
+    optShowEmptyCollections = state.showEmptyCollections;
+    optCollectionFolderTopLevel = state.collectionFolderTopLevel;
+    optCollectionFolderSecondLevel = state.collectionFolderSecondLevel;
+    optModelListFolderGrouping = state.modelListFolderGrouping;
+    optUseArrangedUA = state.useCustomUserAgent;
+    optSavedUAString = state.customUserAgent;
+    optCivitaiApiKey = state.civitaiApiKey;
+    optModelUpdateDownloadPolicy = state.modelUpdateDownloadPolicy;
+    optAutoCheckUpdatesOnStartup = state.autoCheckUpdatesOnStartup;
+    optUseCivitaiName = state.useCivitaiName;
+    optSuppressLocalWarnings = state.suppressLocalWarnings;
+    optUserGalleryMatchMode = state.userGalleryMatchMode;
+    optComfyModelNameFallback = state.comfyModelNameFallback;
+    optRecalculateKnownMetadataHash = state.recalculateKnownMetadataHash;
+    optTryCivArchiveOnMetadataFail = state.tryCivArchiveOnMetadataFail;
+    optConfirmCloseWhileLauncherRunning = state.confirmCloseWhileLauncherRunning;
+    optUiScale = state.uiScale;
+    optThemeId = state.themeId;
+    optCustomThemePath = state.customThemePath;
+}
+
 void MainWindow::loadGlobalConfig() {
-    QString configPath = qApp->applicationDirPath() + "/config/settings.json";
-    QFile file(configPath);
+    const QString configPath = qApp->applicationDirPath() + "/config/settings.json";
     SettingsState settings;
     settings.filterTagsText = DEFAULT_FILTER_TAGS;
     settings.galleryNsfwRulesText = DEFAULT_GALLERY_NSFW_RULES;
-    if (file.open(QIODevice::ReadOnly)) {
-        QJsonParseError parseError;
-        QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
-        QJsonObject root;
-        if (parseError.error == QJsonParseError::NoError && doc.isObject()) {
-            root = doc.object();
-        } else {
-            qWarning() << "Invalid global settings JSON:" << configPath << parseError.errorString();
-        }
 
-        settings = SettingsState::fromJson(root, DEFAULT_FILTER_TAGS, DEFAULT_GALLERY_NSFW_RULES);
-        optUiScale = settings.uiScale;
-        optFilterNSFW = settings.filterNSFW;
-        optNSFWMode = settings.nsfwMode;
-        optNSFWLevel = settings.nsfwLevel;
-        optFilterGalleryNSFW = settings.filterGalleryNSFW;
-        optGalleryNSFWMode = settings.galleryNsfwMode;
-        optGalleryNSFWRules = settings.galleryNsfwRules();
-        optLoraRecursive = settings.loraRecursive;
-        optGalleryRecursive = settings.galleryRecursive;
-        optBlurRadius = settings.blurRadius;
-        optDownscaleBlur = settings.downscaleBlur;
-        optBlurProcessWidth = settings.blurProcessWidth;
-        optRenderThreadCount = settings.renderThreadCount;
-        optRestoreTreeState = settings.restoreTreeState;
-        optRestoreFilterSortState = settings.restoreFilterSortState;
-        optSplitOnNewline = settings.splitOnNewline;
-        optFilterTags = settings.filterTags();
-        optShowEmptyCollections = settings.showEmptyCollections;
-        optCollectionFolderTopLevel = settings.collectionFolderTopLevel;
-        optCollectionFolderSecondLevel = settings.collectionFolderSecondLevel;
-        optModelListFolderGrouping = settings.modelListFolderGrouping;
-        optUseArrangedUA = settings.useCustomUserAgent;
-        optSavedUAString = settings.customUserAgent;
-        optCivitaiApiKey = settings.civitaiApiKey;
-        optUseCivitaiName = settings.useCivitaiName;
-        optSuppressLocalWarnings = settings.suppressLocalWarnings;
-        optUserGalleryMatchMode = settings.userGalleryMatchMode;
-        optComfyModelNameFallback = settings.comfyModelNameFallback;
-        optRecalculateKnownMetadataHash = settings.recalculateKnownMetadataHash;
-        optTryCivArchiveOnMetadataFail = settings.tryCivArchiveOnMetadataFail;
-        optConfirmCloseWhileLauncherRunning = settings.confirmCloseWhileLauncherRunning;
-        optModelUpdateDownloadPolicy = settings.modelUpdateDownloadPolicy;
-        optAutoCheckUpdatesOnStartup = settings.autoCheckUpdatesOnStartup;
-        optThemeId = settings.themeId;
-        optCustomThemePath = settings.customThemePath;
+    const AppConfigData loaded = AppConfigStore::load(configPath);
+    if (loaded.fileOpened) {
+        settings = SettingsState::fromJson(loaded.rawRoot, DEFAULT_FILTER_TAGS, DEFAULT_GALLERY_NSFW_RULES);
+        assignSettingsOptions(settings);
 
-        qDebug() << "Loaded User-Agent:" << currentUserAgent;
-
-        auto readPathList = [](const QJsonObject &obj, const QString &arrayKey, const QStringList &fallbackKeys) {
-            QStringList out;
-            if (obj.contains(arrayKey) && obj[arrayKey].isArray()) {
-                QJsonArray arr = obj[arrayKey].toArray();
-                for (const auto &val : arr) {
-                    QString path = val.toString().trimmed();
-                    if (!path.isEmpty()) out.append(path);
-                }
-                return out;
-            }
-            for (const QString &key : fallbackKeys) {
-                QString val = obj.value(key).toString().trimmed();
-                if (!val.isEmpty()) {
-                    out.append(val);
-                    break;
-                }
-            }
-            return out;
-        };
-        auto readPathSet = [](const QJsonObject &obj, const QString &arrayKey) {
-            QSet<QString> out;
-            if (!obj.contains(arrayKey) || !obj[arrayKey].isArray()) return out;
-            const QJsonArray arr = obj[arrayKey].toArray();
-            for (const auto &val : arr) {
-                const QString path = val.toString().trimmed();
-                if (!path.isEmpty()) out.insert(path);
-            }
-            return out;
-        };
-
-        loraPaths = PathUtils::normalizePathList(readPathList(root, "lora_paths", {"lora_path"}));
-        galleryPaths = PathUtils::normalizePathList(readPathList(root, "gallery_paths", {"gallery_path", "sd_folder"}));
-        translationCsvPaths = PathUtils::normalizePathList(readPathList(root, "translation_paths", {"translation_path"}));
-        disabledLoraPaths = PathUtils::normalizePathSet(readPathSet(root, "lora_paths_disabled"));
-        disabledGalleryPaths = PathUtils::normalizePathSet(readPathSet(root, "gallery_paths_disabled"));
-        disabledTranslationCsvPaths = PathUtils::normalizePathSet(readPathSet(root, "translation_paths_disabled"));
-        collapsedModelFolders = PathUtils::normalizePathSet(readPathSet(root, "model_list_collapsed_folders"));
-        {
-            QSet<QString> filtered;
-            for (const QString &path : loraPaths) {
-                if (disabledLoraPaths.contains(path)) filtered.insert(path);
-            }
-            disabledLoraPaths = filtered;
-        }
-        {
-            QSet<QString> enabledLoraPathSet;
-            for (const QString &path : loraPaths) {
-                if (!disabledLoraPaths.contains(path)) enabledLoraPathSet.insert(path);
-            }
-            QSet<QString> filtered;
-            for (const QString &path : collapsedModelFolders) {
-                if (enabledLoraPathSet.contains(path)) filtered.insert(path);
-            }
-            collapsedModelFolders = filtered;
-        }
-        {
-            QSet<QString> filtered;
-            for (const QString &path : galleryPaths) {
-                if (disabledGalleryPaths.contains(path)) filtered.insert(path);
-            }
-            disabledGalleryPaths = filtered;
-        }
-        {
-            QSet<QString> filtered;
-            for (const QString &path : translationCsvPaths) {
-                if (disabledTranslationCsvPaths.contains(path)) filtered.insert(path);
-            }
-            disabledTranslationCsvPaths = filtered;
-        }
+        loraPaths = loaded.paths.loraPaths;
+        galleryPaths = loaded.paths.galleryPaths;
+        translationCsvPaths = loaded.paths.translationCsvPaths;
+        disabledLoraPaths = loaded.paths.disabledLoraPaths;
+        disabledGalleryPaths = loaded.paths.disabledGalleryPaths;
+        disabledTranslationCsvPaths = loaded.paths.disabledTranslationCsvPaths;
+        collapsedModelFolders = loaded.paths.collapsedModelFolders;
         translationCsvPath = PathUtils::collectEnabledPaths(translationCsvPaths, disabledTranslationCsvPaths).value(0);
 
-        // 读取树状菜单状态
-        if (optRestoreTreeState && root.contains("tree_state")) {
-            QJsonObject treeState = root["tree_state"].toObject();
-            startupTreeScrollPos = treeState["scroll_pos"].toInt(0);
-            QJsonArray arr = treeState["expanded_items"].toArray();
-            for (const auto &val : arr) {
-                startupExpandedCollections.insert(val.toString());
-            }
+        if (optRestoreTreeState && loaded.hasTreeState) {
+            startupTreeScrollPos = loaded.treeState.scrollPos;
+            startupExpandedCollections = loaded.treeState.expandedItems;
+        }
+        if (optRestoreFilterSortState && loaded.hasFilterSortState) {
+            startupFilterSortState = loaded.filterSortState;
         }
 
-        // 读取上次退出时的排序与筛选状态
-        if (optRestoreFilterSortState && root.contains("filter_sort_state")) {
-            const QJsonObject fs = root["filter_sort_state"].toObject();
-            startupSortIndex = fs.value("sort_index").toInt(0);
-            startupFilterBaseModel = fs.value("base_model").toString(QStringLiteral("All"));
-            startupFilterModelType = fs.value("model_type").toString(QStringLiteral("All"));
-            startupSearchText = fs.value("search_text").toString();
-            startupSidebarTab = fs.value("sidebar_tab").toInt(1);
-            startupCollectionFilter = fs.value("collection_filter").toString();
-            startupHomeAuthorFilter = fs.value("home_author_filter").toString();
-            startupHomeFilterExpanded = fs.value("home_filter_expanded").toBool(false);
-            startupHomeFilterTagsSortByCount = fs.value("home_tag_sort_by_count").toBool(true);
-            startupHomeTagFilters.clear();
-            const QJsonArray tagArr = fs.value("home_tag_filters").toArray();
-            for (const QJsonValue &v : tagArr) {
-                const QString clean = v.toString().trimmed();
-                if (!clean.isEmpty()) startupHomeTagFilters.insert(clean);
-            }
-            startupUserTagSortMode = fs.value("user_tag_sort_mode").toInt(0);
-            startupUserTagLoraOnly = fs.value("user_tag_lora_only").toBool(false);
-            startupUserTagIncludeNegative = fs.value("user_tag_include_negative").toBool(false);
-            startupGalleryPromptSortMode = fs.value("gallery_prompt_sort_mode").toInt(0);
-            startupGalleryTagViewActive = fs.value("gallery_tag_view_active").toBool(false);
-        }
-
-        // 设置UA
-        if (optUseArrangedUA && !optSavedUAString.isEmpty())currentUserAgent = optSavedUAString;
+        if (optUseArrangedUA && !optSavedUAString.isEmpty()) currentUserAgent = optSavedUAString;
         else currentUserAgent = getRandomUserAgent();
+        qDebug() << "Loaded User-Agent:" << currentUserAgent;
     }
 
     applyPathListsToUi();
@@ -5971,6 +5967,7 @@ void MainWindow::initSettingsPage()
 
 void MainWindow::downloadAiTagTranslateDictionary()
 {
+    if (!translationDictionaryService) return;
     const QString directory = QDir(qApp->applicationDirPath()).filePath("config/translations");
     const QString targetPath = QFileInfo(QDir(directory).filePath("AITagTranslate_autocomplete.txt")).absoluteFilePath();
     if (QFileInfo::exists(targetPath)) {
@@ -5981,83 +5978,7 @@ void MainWindow::downloadAiTagTranslateDictionary()
         if (answer != QMessageBox::Yes) return;
     }
 
-    if (!QDir().mkpath(directory)) {
-        QMessageBox::warning(this, AppText::tr("下载失败"), AppText::tr("无法创建词表目录：\n") + directory);
-        return;
-    }
-
-    if (settingsPage) settingsPage->setAiTagTranslateDownloadState(true, AppText::tr("正在下载 AITagTranslate 词表..."));
-    QNetworkReply *reply = netManager->get(makeNetworkRequest(
-        QUrl("https://raw.githubusercontent.com/hanbinhsh/AITagTranslate/main/autocomplete.txt"), false));
-    connect(reply, &QNetworkReply::finished, this, [this, reply, targetPath]() {
-        const QByteArray data = reply->readAll();
-        const QString errorText = reply->errorString();
-        const bool networkOk = reply->error() == QNetworkReply::NoError;
-        reply->deleteLater();
-
-        if (!networkOk) {
-            if (settingsPage) settingsPage->setAiTagTranslateDownloadState(false, AppText::tr("下载失败：") + errorText);
-            QMessageBox::warning(this, AppText::tr("下载失败"), AppText::tr("无法下载 AITagTranslate 词表：\n") + errorText);
-            return;
-        }
-
-        if (data.trimmed().startsWith('<')) {
-            if (settingsPage) settingsPage->setAiTagTranslateDownloadState(false, AppText::tr("下载内容不是有效的 Tag 词表。"));
-            QMessageBox::warning(this, AppText::tr("下载失败"), AppText::tr("GitHub 返回的内容不是有效的 AITagTranslate 词表，旧文件未被修改。"));
-            return;
-        }
-
-        if (settingsPage) settingsPage->setAiTagTranslateDownloadState(true, AppText::tr("下载完成，正在后台验证词表..."));
-        auto *watcher = new QFutureWatcher<int>(this);
-        connect(watcher, &QFutureWatcher<int>::finished, this, [this, watcher, data, targetPath]() {
-            const int entryCount = watcher->result();
-            watcher->deleteLater();
-            if (entryCount < 10) {
-                if (settingsPage) settingsPage->setAiTagTranslateDownloadState(false, AppText::tr("下载内容不是有效的 Tag 词表。"));
-                QMessageBox::warning(this, AppText::tr("下载失败"), AppText::tr("GitHub 返回的内容不是有效的 AITagTranslate 词表，旧文件未被修改。"));
-                return;
-            }
-
-            QSaveFile output(targetPath);
-            if (!output.open(QIODevice::WriteOnly)
-                || output.write(data) != data.size()
-                || !output.commit()) {
-                const QString message = output.errorString();
-                if (settingsPage) settingsPage->setAiTagTranslateDownloadState(false, AppText::tr("保存失败：") + message);
-                QMessageBox::warning(this, AppText::tr("保存失败"), AppText::tr("无法保存 AITagTranslate 词表：\n") + message);
-                return;
-            }
-
-            for (int i = translationCsvPaths.size() - 1; i >= 0; --i) {
-                if (QFileInfo(translationCsvPaths.at(i)).absoluteFilePath().compare(targetPath, Qt::CaseInsensitive) == 0) {
-                    translationCsvPaths.removeAt(i);
-                }
-            }
-            for (auto it = disabledTranslationCsvPaths.begin(); it != disabledTranslationCsvPaths.end();) {
-                const QString disabledPath = QFileInfo(*it).absoluteFilePath();
-                if (disabledPath.compare(targetPath, Qt::CaseInsensitive) == 0) {
-                    it = disabledTranslationCsvPaths.erase(it);
-                } else {
-                    ++it;
-                }
-            }
-            translationCsvPaths.append(targetPath);
-            translationCsvPaths = PathUtils::normalizePathList(translationCsvPaths);
-            disabledTranslationCsvPaths = PathUtils::normalizePathSet(disabledTranslationCsvPaths);
-
-            applyPathListsToUi();
-            reloadTranslationMaps();
-            saveGlobalConfig();
-            if (settingsPage) {
-                settingsPage->setAiTagTranslateDownloadState(
-                    false, AppText::tr("已加载 %1 条记录，词表优先级位于最底部。").arg(entryCount));
-            }
-            ui->statusbar->showMessage(AppText::tr("AITagTranslate 词表已更新：%1 条记录").arg(entryCount), 5000);
-        });
-        watcher->setFuture(QtConcurrent::run(backgroundThreadPool, [data]() {
-            return static_cast<int>(TranslationCsv::parseUtf8(data).size());
-        }));
-    });
+    translationDictionaryService->downloadAiTagTranslate(targetPath, currentUserAgent);
 }
 
 void MainWindow::applySettingsState(SettingsState state)
@@ -6089,41 +6010,7 @@ void MainWindow::applySettingsState(SettingsState state)
     const bool customUaModeChanged = optUseArrangedUA != state.useCustomUserAgent;
     const bool themeChanged = optThemeId != state.themeId || optCustomThemePath != state.customThemePath;
 
-    optLoraRecursive = state.loraRecursive;
-    optGalleryRecursive = state.galleryRecursive;
-    optBlurRadius = state.blurRadius;
-    optDownscaleBlur = state.downscaleBlur;
-    optBlurProcessWidth = state.blurProcessWidth;
-    optFilterNSFW = state.filterNSFW;
-    optNSFWMode = state.nsfwMode;
-    optNSFWLevel = state.nsfwLevel;
-    optFilterGalleryNSFW = state.filterGalleryNSFW;
-    optGalleryNSFWMode = state.galleryNsfwMode;
-    optGalleryNSFWRules = newGalleryNsfwRules;
-    optRenderThreadCount = qMax(1, state.renderThreadCount);
-    optRestoreTreeState = state.restoreTreeState;
-    optRestoreFilterSortState = state.restoreFilterSortState;
-    optSplitOnNewline = state.splitOnNewline;
-    optFilterTags = state.filterTags();
-    optShowEmptyCollections = state.showEmptyCollections;
-    optCollectionFolderTopLevel = state.collectionFolderTopLevel;
-    optCollectionFolderSecondLevel = state.collectionFolderSecondLevel;
-    optModelListFolderGrouping = state.modelListFolderGrouping;
-    optUseArrangedUA = state.useCustomUserAgent;
-    optSavedUAString = state.customUserAgent;
-    optCivitaiApiKey = state.civitaiApiKey;
-    optModelUpdateDownloadPolicy = state.modelUpdateDownloadPolicy;
-    optAutoCheckUpdatesOnStartup = state.autoCheckUpdatesOnStartup;
-    optUseCivitaiName = state.useCivitaiName;
-    optSuppressLocalWarnings = state.suppressLocalWarnings;
-    optUserGalleryMatchMode = state.userGalleryMatchMode;
-    optComfyModelNameFallback = state.comfyModelNameFallback;
-    optRecalculateKnownMetadataHash = state.recalculateKnownMetadataHash;
-    optTryCivArchiveOnMetadataFail = state.tryCivArchiveOnMetadataFail;
-    optConfirmCloseWhileLauncherRunning = state.confirmCloseWhileLauncherRunning;
-    optUiScale = state.uiScale;
-    optThemeId = state.themeId;
-    optCustomThemePath = state.customThemePath;
+    assignSettingsOptions(state);
 
     if (renderThreadsChanged) {
         threadPool->setMaxThreadCount(optRenderThreadCount);
@@ -6347,176 +6234,81 @@ void MainWindow::refreshLoadedToolPageThemes()
 }
 
 void MainWindow::saveGlobalConfig() {
-    QString configDir = qApp->applicationDirPath() + "/config";
-    QDir().mkpath(configDir);
+    const QString configPath = qApp->applicationDirPath() + "/config/settings.json";
+    const SettingsState settings = settingsPage ? settingsPage->state() : buildSettingsState();
 
-    QString configPath = configDir + "/settings.json";
-    QJsonObject root;
-    QFile readFile(configPath);
-    if (readFile.open(QIODevice::ReadOnly)) {
-        QJsonParseError parseError;
-        const QJsonDocument document = QJsonDocument::fromJson(readFile.readAll(), &parseError);
-        if (parseError.error == QJsonParseError::NoError && document.isObject()) {
-            root = document.object();
-        } else {
-            qWarning() << "Refusing to overwrite malformed settings JSON:" << configPath
-                       << parseError.errorString();
-            return;
-        }
-        readFile.close();
-    }
-    SettingsState settings = settingsPage ? settingsPage->state() : SettingsState{};
-    if (!settingsPage) {
-        settings.loraRecursive = optLoraRecursive;
-        settings.galleryRecursive = optGalleryRecursive;
-        settings.blurRadius = optBlurRadius;
-        settings.downscaleBlur = optDownscaleBlur;
-        settings.blurProcessWidth = optBlurProcessWidth;
-        settings.filterNSFW = optFilterNSFW;
-        settings.nsfwMode = optNSFWMode;
-        settings.nsfwLevel = optNSFWLevel;
-        settings.filterGalleryNSFW = optFilterGalleryNSFW;
-        settings.galleryNsfwMode = optGalleryNSFWMode;
-        settings.galleryNsfwRulesText = optGalleryNSFWRules.join(", ");
-        settings.renderThreadCount = optRenderThreadCount;
-        settings.restoreTreeState = optRestoreTreeState;
-        settings.restoreFilterSortState = optRestoreFilterSortState;
-        settings.splitOnNewline = optSplitOnNewline;
-        settings.filterTagsText = optFilterTags.join(", ");
-        settings.showEmptyCollections = optShowEmptyCollections;
-        settings.collectionFolderTopLevel = optCollectionFolderTopLevel;
-        settings.collectionFolderSecondLevel = optCollectionFolderSecondLevel;
-        settings.modelListFolderGrouping = optModelListFolderGrouping;
-        settings.useCustomUserAgent = optUseArrangedUA;
-        settings.customUserAgent = optSavedUAString;
-        settings.civitaiApiKey = optCivitaiApiKey;
-        settings.modelUpdateDownloadPolicy = optModelUpdateDownloadPolicy;
-        settings.autoCheckUpdatesOnStartup = optAutoCheckUpdatesOnStartup;
-        settings.useCivitaiName = optUseCivitaiName;
-        settings.suppressLocalWarnings = optSuppressLocalWarnings;
-        settings.userGalleryMatchMode = optUserGalleryMatchMode;
-        settings.comfyModelNameFallback = optComfyModelNameFallback;
-        settings.recalculateKnownMetadataHash = optRecalculateKnownMetadataHash;
-        settings.tryCivArchiveOnMetadataFail = optTryCivArchiveOnMetadataFail;
-        settings.confirmCloseWhileLauncherRunning = optConfirmCloseWhileLauncherRunning;
-        settings.uiScale = optUiScale;
-        settings.themeId = optThemeId;
-        settings.customThemePath = optCustomThemePath;
-    }
+    AppConfigSaveInput input;
+    input.paths.loraPaths = loraPaths;
+    input.paths.galleryPaths = galleryPaths;
+    input.paths.translationCsvPaths = translationCsvPaths;
+    input.paths.disabledLoraPaths = disabledLoraPaths;
+    input.paths.disabledGalleryPaths = disabledGalleryPaths;
+    input.paths.disabledTranslationCsvPaths = disabledTranslationCsvPaths;
+    input.paths.collapsedModelFolders = collapsedModelFolders;
+    input.writeSettings = [&settings](QJsonObject &root) {
+        settings.writeToJson(root);
+    };
 
-    QJsonArray loraArr;
-    for (const QString &path : loraPaths) loraArr.append(path);
-    QJsonArray galleryArr;
-    for (const QString &path : galleryPaths) galleryArr.append(path);
-    QJsonArray translationArr;
-    for (const QString &path : translationCsvPaths) translationArr.append(path);
-    QJsonArray loraDisabledArr;
-    for (const QString &path : disabledLoraPaths) loraDisabledArr.append(path);
-    QJsonArray galleryDisabledArr;
-    for (const QString &path : disabledGalleryPaths) galleryDisabledArr.append(path);
-    QJsonArray translationDisabledArr;
-    for (const QString &path : disabledTranslationCsvPaths) translationDisabledArr.append(path);
-    QJsonArray collapsedModelFoldersArr;
-    for (const QString &path : collapsedModelFolders) collapsedModelFoldersArr.append(path);
-    root["lora_paths"]                 = loraArr;
-    root["gallery_paths"]              = galleryArr;
-    root["translation_paths"]          = translationArr;
-    root["lora_paths_disabled"]        = loraDisabledArr;
-    root["gallery_paths_disabled"]     = galleryDisabledArr;
-    root["translation_paths_disabled"] = translationDisabledArr;
-    root["model_list_collapsed_folders"] = collapsedModelFoldersArr;
-    root["translation_path"]           = PathUtils::collectEnabledPaths(translationCsvPaths, disabledTranslationCsvPaths).value(0);
-    settings.writeToJson(root);
-    root.remove("model_switch_delay_ms");
-
-    // 记录当前窗口的实际大小（这样用户拉伸窗口后，下次启动会记住大小）
-    // 只有当窗口没有最大化/全屏时才记录
     if (!this->isMaximized() && !this->isFullScreen()) {
-        root["window_width"] = this->width();
-        root["window_height"] = this->height();
+        input.windowSize = this->size();
     } else {
-        // 如果处于最大化状态，可以保存正常的几何尺寸
-        root["window_width"] = this->normalGeometry().width();
-        root["window_height"] = this->normalGeometry().height();
+        input.windowSize = this->normalGeometry().size();
     }
 
     if (optRestoreTreeState) {
-        QJsonObject treeState;
-
-        // 1. 获取当前展开的项
-        QJsonArray expandedArr;
-        // 如果 UI 还没初始化完(比如刚启动就关闭)，尽量保留读取到的旧状态，防止清空
-        // 但这里我们主要处理运行时保存：
+        input.saveTreeState = true;
         if (ui->collectionTree->topLevelItemCount() > 0) {
             std::function<void(QTreeWidgetItem*)> collectExpanded = [&](QTreeWidgetItem *item) {
                 if (!item) return;
                 if (item->isExpanded()) {
                     const QString key = item->data(0, ROLE_COLLECTION_EXPAND_KEY).toString();
-                    expandedArr.append(key.isEmpty() ? item->data(0, ROLE_COLLECTION_NAME).toString() : key);
+                    input.treeState.expandedItems.insert(key.isEmpty() ? item->data(0, ROLE_COLLECTION_NAME).toString() : key);
                 }
                 for (int i = 0; i < item->childCount(); ++i) collectExpanded(item->child(i));
             };
             for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
                 collectExpanded(ui->collectionTree->topLevelItem(i));
             }
-            treeState["expanded_items"] = expandedArr;
-            treeState["scroll_pos"] = ui->collectionTree->verticalScrollBar()->value();
+            input.treeState.scrollPos = ui->collectionTree->verticalScrollBar()->value();
         } else {
-            // 如果树是空的（极少情况），可能还没加载，保留启动时读到的缓存
-            QJsonArray cachedArr;
-            for (const QString &s : startupExpandedCollections) cachedArr.append(s);
-            treeState["expanded_items"] = cachedArr;
-            treeState["scroll_pos"] = startupTreeScrollPos;
+            input.treeState.expandedItems = startupExpandedCollections;
+            input.treeState.scrollPos = startupTreeScrollPos;
         }
-
-        root["tree_state"] = treeState;
     }
 
     if (optRestoreFilterSortState && ui) {
-        QJsonObject fs;
-        if (ui->comboSort) fs["sort_index"] = ui->comboSort->currentIndex();
+        input.saveFilterSortState = true;
+        StartupFilterSortState &fs = input.filterSortState;
+        if (ui->comboSort) fs.sortIndex = ui->comboSort->currentIndex();
         if (ui->comboBaseModel) {
-            fs["base_model"] = ui->comboBaseModel->currentIndex() <= 0
+            fs.filterBaseModel = ui->comboBaseModel->currentIndex() <= 0
                 ? QStringLiteral("All") : ui->comboBaseModel->currentText();
         }
         if (ui->comboModelType) {
-            fs["model_type"] = ui->comboModelType->currentIndex() <= 0
+            fs.filterModelType = ui->comboModelType->currentIndex() <= 0
                 ? QStringLiteral("All") : ui->comboModelType->currentText();
         }
-        if (ui->searchEdit) fs["search_text"] = ui->searchEdit->text();
-        if (ui->sidebarStack) fs["sidebar_tab"] = ui->sidebarStack->currentIndex();
-        fs["collection_filter"] = currentCollectionFilter;
+        if (ui->searchEdit) fs.searchText = ui->searchEdit->text();
+        if (ui->sidebarStack) fs.sidebarTab = ui->sidebarStack->currentIndex();
+        fs.collectionFilter = currentCollectionFilter;
         if (homeGalleryPage) {
             const HomeGalleryFilterState hs = homeGalleryPage->filterState();
-            fs["home_author_filter"] = hs.authorFilter;
-            fs["home_filter_expanded"] = hs.filterExpanded;
-            fs["home_tag_sort_by_count"] = hs.tagsSortByCount;
-            QJsonArray homeTagsArr;
-            for (const QString &t : hs.tagFilters) {
-                if (!t.trimmed().isEmpty()) homeTagsArr.append(t.trimmed());
-            }
-            fs["home_tag_filters"] = homeTagsArr;
+            fs.homeAuthorFilter = hs.authorFilter;
+            fs.homeFilterExpanded = hs.filterExpanded;
+            fs.homeFilterTagsSortByCount = hs.tagsSortByCount;
+            fs.homeTagFilters = hs.tagFilters;
         }
         if (userGalleryPage) {
             const UserGalleryFilterState gs = userGalleryPage->filterState();
-            fs["user_tag_sort_mode"] = gs.userTagSortMode;
-            fs["user_tag_lora_only"] = gs.userTagLoraOnly;
-            fs["user_tag_include_negative"] = gs.userTagIncludeNegative;
-            fs["gallery_prompt_sort_mode"] = gs.galleryPromptSortMode;
-            fs["gallery_tag_view_active"] = gs.galleryTagViewActive;
+            fs.userTagSortMode = gs.userTagSortMode;
+            fs.userTagLoraOnly = gs.userTagLoraOnly;
+            fs.userTagIncludeNegative = gs.userTagIncludeNegative;
+            fs.galleryPromptSortMode = gs.galleryPromptSortMode;
+            fs.galleryTagViewActive = gs.galleryTagViewActive;
         }
-        root["filter_sort_state"] = fs;
-    } else if (!optRestoreFilterSortState) {
-        root.remove("filter_sort_state");
     }
 
-    QSaveFile file(configPath);
-    const QByteArray payload = QJsonDocument(root).toJson();
-    if (!file.open(QIODevice::WriteOnly)
-        || file.write(payload) != payload.size()
-        || !file.commit()) {
-        qWarning() << "Unable to save global settings atomically:" << file.errorString();
-    }
+    AppConfigStore::save(configPath, input);
 }
 
 void MainWindow::applyPathListsToUi()
@@ -6555,24 +6347,8 @@ bool MainWindow::editLoraPaths(bool rescanAfter)
     loraPaths = PathUtils::normalizePathList(loraPaths);
     disabledLoraPaths = PathUtils::normalizePathSet(disabledLoraPaths);
     collapsedModelFolders = PathUtils::normalizePathSet(collapsedModelFolders);
-    {
-        QSet<QString> filtered;
-        for (const QString &path : loraPaths) {
-            if (disabledLoraPaths.contains(path)) filtered.insert(path);
-        }
-        disabledLoraPaths = filtered;
-    }
-    {
-        QSet<QString> activeRoots;
-        for (const QString &path : loraPaths) {
-            if (!disabledLoraPaths.contains(path)) activeRoots.insert(path);
-        }
-        QSet<QString> filtered;
-        for (const QString &path : collapsedModelFolders) {
-            if (activeRoots.contains(path)) filtered.insert(path);
-        }
-        collapsedModelFolders = filtered;
-    }
+    AppPathsConfig::pruneSetToPaths(disabledLoraPaths, loraPaths);
+    AppPathsConfig::pruneSetToPaths(collapsedModelFolders, PathUtils::collectEnabledPaths(loraPaths, disabledLoraPaths));
     applyPathListsToUi();
     saveGlobalConfig();
 
@@ -6595,13 +6371,7 @@ bool MainWindow::editGalleryPaths(bool rescanAfter)
     PathUtils::applyPathEntries(dlg.pathEntries(), galleryPaths, disabledGalleryPaths);
     galleryPaths = PathUtils::normalizePathList(galleryPaths);
     disabledGalleryPaths = PathUtils::normalizePathSet(disabledGalleryPaths);
-    {
-        QSet<QString> filtered;
-        for (const QString &path : galleryPaths) {
-            if (disabledGalleryPaths.contains(path)) filtered.insert(path);
-        }
-        disabledGalleryPaths = filtered;
-    }
+    AppPathsConfig::pruneSetToPaths(disabledGalleryPaths, galleryPaths);
     applyPathListsToUi();
     saveGlobalConfig();
 
@@ -6716,13 +6486,7 @@ bool MainWindow::editTranslationCsvPaths()
     PathUtils::applyPathEntries(dlg.pathEntries(), translationCsvPaths, disabledTranslationCsvPaths);
     translationCsvPaths = PathUtils::normalizePathList(translationCsvPaths);
     disabledTranslationCsvPaths = PathUtils::normalizePathSet(disabledTranslationCsvPaths);
-    {
-        QSet<QString> filtered;
-        for (const QString &path : translationCsvPaths) {
-            if (disabledTranslationCsvPaths.contains(path)) filtered.insert(path);
-        }
-        disabledTranslationCsvPaths = filtered;
-    }
+    AppPathsConfig::pruneSetToPaths(disabledTranslationCsvPaths, translationCsvPaths);
 
     applyPathListsToUi();
     reloadTranslationMaps();
@@ -6732,43 +6496,11 @@ bool MainWindow::editTranslationCsvPaths()
 
 void MainWindow::reloadTranslationMaps(bool notifyWidgets, bool asynchronous)
 {
-    const int token = ++translationLoadToken;
     const QStringList activePaths = PathUtils::collectEnabledPaths(translationCsvPaths, disabledTranslationCsvPaths);
     translationCsvPath = activePaths.value(0);
-    const auto readMaps = [activePaths]() {
-        QHash<QString, QString> result;
-        for (int i = activePaths.size() - 1; i >= 0; --i) {
-            const QVector<TranslationCsvEntry> entries = TranslationCsv::readFile(activePaths.at(i));
-            for (const TranslationCsvEntry &entry : entries) {
-                const QString display = entry.displayValue().trimmed();
-                if (!entry.tag.isEmpty() && !display.isEmpty()) result.insert(entry.tag, display);
-            }
-        }
-        return result;
-    };
-    const auto applyMaps = [this, token, notifyWidgets, activePaths](QHash<QString, QString> result) {
-        if (isShuttingDown || token != translationLoadToken) return;
-        translationMap = std::move(result);
-        if (notifyWidgets) {
-            if (parserWidget) parserWidget->setTranslationMap(&translationMap);
-            if (promptTemplateLibraryWidget) promptTemplateLibraryWidget->setTranslationMap(&translationMap);
-            if (tagBrowserWidget) tagBrowserWidget->setMergedTranslationMap(&translationMap);
-            if (userGalleryPage) userGalleryPage->setTranslationMap(&translationMap);
-            if (usageAnalysisWidget) usageAnalysisWidget->setTranslationMap(&translationMap);
-        }
-        qDebug() << "Loaded translation entries:" << translationMap.size() << "from" << activePaths.size() << "CSV file(s)";
-    };
-    if (!asynchronous) {
-        applyMaps(readMaps());
-        return;
+    if (translationDictionaryService) {
+        translationDictionaryService->reloadMaps(activePaths, notifyWidgets, asynchronous);
     }
-    auto *watcher = new QFutureWatcher<QHash<QString, QString>>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [watcher, applyMaps]() {
-        auto result = watcher->result();
-        watcher->deleteLater();
-        applyMaps(std::move(result));
-    });
-    watcher->setFuture(QtConcurrent::run(backgroundThreadPool, readMaps));
 }
 
 void MainWindow::showComfyWorkflowViewer(const QString &filePath)
