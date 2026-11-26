@@ -13,5 +13,7 @@ QStringList parseNsfwRules(const QString &rawRules);
 bool matchesPositivePromptNsfwRules(const QString &rawPrompt,
                                     const QStringList &cleanTags,
                                     const QStringList &rules);
+QStringList splitTopLevelCommas(const QString &text);
+QStringList splitParameterLines(const QString &params);
 
 }

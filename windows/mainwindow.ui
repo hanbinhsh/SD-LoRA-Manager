@@ -3238,6 +3238,155 @@ Hash: ...</string>
         </item>
        </layout>
       </widget>
+      <widget class="QTabWidget" name="toolsTabWidget">
+       <property name="tabPosition">
+        <enum>QTabWidget::TabPosition::West</enum>
+       </property>
+       <property name="currentIndex">
+        <number>0</number>
+       </property>
+       <property name="autoFillBackground">
+        <bool>true</bool>
+       </property>
+       <widget class="QWidget" name="tabToolSync">
+        <property name="isToolPlaceholder" stdset="0">
+         <bool>true</bool>
+        </property>
+        <attribute name="title">
+         <string>🔄 图片同步 / Sync</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="layoutToolSyncPlaceholder">
+         <item>
+          <widget class="QLabel" name="lblToolSyncPlaceholder">
+           <property name="text">
+            <string>点击后加载图片同步工具...</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignCenter</set>
+           </property>
+           <property name="isToolPlaceholderLabel" stdset="0">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="tabToolParser">
+        <property name="isToolPlaceholder" stdset="0">
+         <bool>true</bool>
+        </property>
+        <attribute name="title">
+         <string>📝 提示词解析 / Prompt</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="layoutToolParserPlaceholder">
+         <item>
+          <widget class="QLabel" name="lblToolParserPlaceholder">
+           <property name="text">
+            <string>点击后加载提示词解析工具...</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignCenter</set>
+           </property>
+           <property name="isToolPlaceholderLabel" stdset="0">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="tabToolTagBrowser">
+        <property name="isToolPlaceholder" stdset="0">
+         <bool>true</bool>
+        </property>
+        <attribute name="title">
+         <string>🏷️ Tag 浏览 / Tag</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="layoutToolTagBrowserPlaceholder">
+         <item>
+          <widget class="QLabel" name="lblToolTagBrowserPlaceholder">
+           <property name="text">
+            <string>点击后加载 Tag 浏览工具...</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignCenter</set>
+           </property>
+           <property name="isToolPlaceholderLabel" stdset="0">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="tabToolLlm">
+        <property name="isToolPlaceholder" stdset="0">
+         <bool>true</bool>
+        </property>
+        <attribute name="title">
+         <string>🤖 大模型提示词 / LLM</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="layoutToolLlmPlaceholder">
+         <item>
+          <widget class="QLabel" name="lblToolLlmPlaceholder">
+           <property name="text">
+            <string>点击后加载大模型提示词工具...</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignCenter</set>
+           </property>
+           <property name="isToolPlaceholderLabel" stdset="0">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="tabToolAnalysis">
+        <property name="isToolPlaceholder" stdset="0">
+         <bool>true</bool>
+        </property>
+        <attribute name="title">
+         <string>📊 模型分析 / Analysis</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="layoutToolAnalysisPlaceholder">
+         <item>
+          <widget class="QLabel" name="lblToolAnalysisPlaceholder">
+           <property name="text">
+            <string>点击后加载模型分析工具...</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignCenter</set>
+           </property>
+           <property name="isToolPlaceholderLabel" stdset="0">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="tabToolTemplates">
+        <property name="isToolPlaceholder" stdset="0">
+         <bool>true</bool>
+        </property>
+        <attribute name="title">
+         <string>🧩 提示词模板 / Templates</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="layoutToolTemplatesPlaceholder">
+         <item>
+          <widget class="QLabel" name="lblToolTemplatesPlaceholder">
+           <property name="text">
+            <string>点击后加载提示词模板库...</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignCenter</set>
+           </property>
+           <property name="isToolPlaceholderLabel" stdset="0">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </widget>
      </widget>
     </item>
    </layout>

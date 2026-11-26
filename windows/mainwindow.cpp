@@ -78,6 +78,7 @@
 #include "pages/aboutpage.h"
 #include "dialogs/modelnotedialog.h"
 #include "dialogs/imageviewerdialog.h"
+#include "dialogs/textviewerdialog.h"
 #include "dialogs/themeeditordialog.h"
 #include "utils/styleconstants.h"
 #include "utils/fileutils.h"
@@ -112,6 +113,59 @@ QVector<TagTranslationSource> buildTagTranslationSources(const QStringList &path
 QString normalizedHomeTagKey(const QString &tag)
 {
     return tag.trimmed().toCaseFolded();
+}
+
+QLabel *createMutedEmptyLabel(const QString &text, Qt::Alignment alignment = Qt::AlignLeft | Qt::AlignVCenter)
+{
+    auto *label = new QLabel(text);
+    label->setStyleSheet(AppStyle::MutedLabelStyle());
+    label->setAlignment(alignment);
+    return label;
+}
+
+template<typename ButtonT>
+ButtonT *setupFilterChipButton(ButtonT *button,
+                               const QString &tooltip,
+                               const QString &tagSource = QString(),
+                               int maxWidth = -1)
+{
+    button->setProperty("class", "filterChip");
+    if (!tagSource.isEmpty()) {
+        button->setProperty("tagSource", tagSource);
+    }
+    button->setCursor(Qt::PointingHandCursor);
+    if (!tooltip.isEmpty()) {
+        button->setToolTip(tooltip);
+    }
+    if (maxWidth > 0) {
+        button->setMaximumWidth(maxWidth);
+        button->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+    }
+    return button;
+}
+
+template<typename AssignRoleFn>
+void copyCommonModelRoles(const QListWidgetItem *source, AssignRoleFn assign)
+{
+    static constexpr int kCopiedRoles[] = {
+        ROLE_FILE_PATH,
+        ROLE_PREVIEW_PATH,
+        ROLE_NSFW_LEVEL,
+        ROLE_MODEL_NAME,
+        ROLE_CIVITAI_NAME,
+        ROLE_MODEL_TYPE,
+        ROLE_MODEL_TRAINED_WORDS,
+        ROLE_MODEL_CREATOR,
+        ROLE_MODEL_TAGS,
+        ROLE_USER_RATING,
+        ROLE_USER_NOTE,
+        ROLE_USER_TAGS,
+        ROLE_USER_CUSTOM_TRIGGERS,
+        ROLE_MODEL_PREVIEW_STATE,
+    };
+    for (int role : kCopiedRoles) {
+        assign(role, source->data(role));
+    }
 }
 
 QString loadQssResource(const QString &path)
@@ -786,19 +840,7 @@ MainWindow::MainWindow(QWidget *parent)
                 focusQuery = QFileInfo(currentMeta.filePath).completeBaseName();
             }
             const int scope = (ui->listUserImages && ui->listUserImages->count() > 0) ? 1 : 0;
-            if (toolsTabWidget) {
-                const bool wasLoaded = (usageAnalysisWidget != nullptr);
-                ui->rootStack->setCurrentWidget(toolsTabWidget);
-                toolsTabWidget->setCurrentIndex(4);
-                ensureToolTabLoaded(4);
-                QTimer::singleShot(0, this, [this, scope, focusQuery, wasLoaded]() {
-                    if (!usageAnalysisWidget) return;
-                    if (wasLoaded) {
-                        refreshUsageAnalysisWidget();
-                    }
-                    usageAnalysisWidget->openTagModelGraph(scope, focusQuery);
-                });
-            }
+            openTagModelGraph(scope, focusQuery);
         });
     }
     connect(ui->comboUserTagSortMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index){
@@ -1356,6 +1398,33 @@ void MainWindow::refreshHomeGallery()
     QString targetBaseModel = ui->comboBaseModel->currentIndex() == 0 ? "All" : ui->comboBaseModel->currentText();
     QString targetModelType = ui->comboModelType->currentIndex() == 0 ? "All" : ui->comboModelType->currentText();
 
+    QSet<QString> requiredTagKeys;
+    if (!currentHomeTagFilters.isEmpty()) {
+        requiredTagKeys.reserve(currentHomeTagFilters.size());
+        for (const QString &tag : std::as_const(currentHomeTagFilters)) {
+            const QString key = tag.trimmed().toCaseFolded();
+            if (!key.isEmpty()) requiredTagKeys.insert(key);
+        }
+    }
+
+    const bool filterByCollection = !currentCollectionFilter.isEmpty();
+    const bool filterUncategorized = (currentCollectionFilter == FILTER_UNCATEGORIZED);
+    QSet<QString> categorizedSet;
+    QSet<QString> activeCollectionSet;
+    if (filterUncategorized) {
+        for (auto it = collections.cbegin(); it != collections.cend(); ++it) {
+            for (const QString &member : it.value()) {
+                categorizedSet.insert(member);
+            }
+        }
+    } else if (filterByCollection) {
+        const QStringList members = collections.value(currentCollectionFilter);
+        activeCollectionSet.reserve(members.size());
+        for (const QString &member : members) {
+            activeCollectionSet.insert(member);
+        }
+    }
+
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *sideItem = ui->modelList->item(i);
         if (!isModelListItem(sideItem)) continue;
@@ -1368,9 +1437,6 @@ void MainWindow::refreshHomeGallery()
         if (displayName.isEmpty()) displayName = modelKey;
         QString previewPath = sideItem->data(ROLE_PREVIEW_PATH).toString();
         QString filePath = sideItem->data(ROLE_FILE_PATH).toString();
-        const QString itemCreator = sideItem->data(ROLE_MODEL_CREATOR).toString();
-        const QStringList itemModelTags = sideItem->data(ROLE_MODEL_TAGS).toStringList();
-        const QStringList itemUserTags = sideItem->data(ROLE_USER_TAGS).toStringList();
 
         // --- NSFW 拦截逻辑 ---
         if (optFilterNSFW && isNSFW && optNSFWMode == 0) {
@@ -1380,20 +1446,31 @@ void MainWindow::refreshHomeGallery()
         if (!ModelFilter::matches(modelFilterRecord(sideItem), searchText,
                                   targetBaseModel, targetModelType)) continue;
 
-        if (!currentHomeAuthorFilter.isEmpty() &&
-            itemCreator.compare(currentHomeAuthorFilter, Qt::CaseInsensitive) != 0) {
-            continue;
+        if (!currentHomeAuthorFilter.isEmpty()) {
+            const QString itemCreator = sideItem->data(ROLE_MODEL_CREATOR).toString();
+            if (itemCreator.compare(currentHomeAuthorFilter, Qt::CaseInsensitive) != 0) {
+                continue;
+            }
         }
 
-        if (!currentHomeTagFilters.isEmpty()) {
+        if (!requiredTagKeys.isEmpty()) {
+            const QStringList itemModelTags = sideItem->data(ROLE_MODEL_TAGS).toStringList();
+            const QStringList itemUserTags = sideItem->data(ROLE_USER_TAGS).toStringList();
+            if (itemModelTags.isEmpty() && itemUserTags.isEmpty()) continue;
+
             QSet<QString> modelTagSet;
-            for (const QString &tag : itemModelTags + itemUserTags) {
-                const QString key = tag.trimmed().toCaseFolded();
-                if (!key.isEmpty()) modelTagSet.insert(key);
-            }
+            modelTagSet.reserve(itemModelTags.size() + itemUserTags.size());
+            auto collectNormalized = [&modelTagSet](const QStringList &tags) {
+                for (const QString &tag : tags) {
+                    const QString key = tag.trimmed().toCaseFolded();
+                    if (!key.isEmpty()) modelTagSet.insert(key);
+                }
+            };
+            collectNormalized(itemModelTags);
+            collectNormalized(itemUserTags);
             bool allTagsMatched = true;
-            for (const QString &tag : currentHomeTagFilters) {
-                if (!modelTagSet.contains(tag.trimmed().toCaseFolded())) {
+            for (const QString &reqKey : std::as_const(requiredTagKeys)) {
+                if (!modelTagSet.contains(reqKey)) {
                     allTagsMatched = false;
                     break;
                 }
@@ -1401,41 +1478,18 @@ void MainWindow::refreshHomeGallery()
             if (!allTagsMatched) continue;
         }
 
-        if (!currentCollectionFilter.isEmpty()) {
-            if (currentCollectionFilter == FILTER_UNCATEGORIZED) {
-                // 如果当前选的是“未分类”：
-                // 检查这个 baseName 是否存在于任何一个已有的收藏夹 List 中
-                bool categorized = false;
-                for (auto it = collections.begin(); it != collections.end(); ++it) {
-                    if (it.value().contains(modelKey)) {
-                        categorized = true;
-                        break;
-                    }
-                }
-                if (categorized) continue; // 已分类的模型，不显示在“未分类”中
+        if (filterByCollection) {
+            if (filterUncategorized) {
+                if (categorizedSet.contains(modelKey)) continue; // 已分类的模型，不显示在“未分类”中
             } else {
-                // 正常的收藏夹筛选逻辑
-                QStringList list = collections.value(currentCollectionFilter);
-                if (!list.contains(modelKey)) continue;
+                if (!activeCollectionSet.contains(modelKey)) continue;
             }
         }
 
         QListWidgetItem *item = new QListWidgetItem();
-        item->setToolTip(displayName);
-        item->setData(ROLE_FILE_PATH, filePath);
-        item->setData(ROLE_PREVIEW_PATH, previewPath);
-        item->setData(ROLE_NSFW_LEVEL, nsfwLevel);
-        item->setData(ROLE_MODEL_NAME, modelKey);
-        item->setData(ROLE_CIVITAI_NAME, sideItem->data(ROLE_CIVITAI_NAME));
-        item->setData(ROLE_MODEL_TYPE, sideItem->data(ROLE_MODEL_TYPE));
-        item->setData(ROLE_MODEL_TRAINED_WORDS, sideItem->data(ROLE_MODEL_TRAINED_WORDS));
-        item->setData(ROLE_MODEL_CREATOR, sideItem->data(ROLE_MODEL_CREATOR));
-        item->setData(ROLE_MODEL_TAGS, sideItem->data(ROLE_MODEL_TAGS));
-        item->setData(ROLE_USER_RATING, sideItem->data(ROLE_USER_RATING));
-        item->setData(ROLE_USER_NOTE, sideItem->data(ROLE_USER_NOTE));
-        item->setData(ROLE_USER_TAGS, sideItem->data(ROLE_USER_TAGS));
-        item->setData(ROLE_USER_CUSTOM_TRIGGERS, sideItem->data(ROLE_USER_CUSTOM_TRIGGERS));
-        item->setData(ROLE_MODEL_PREVIEW_STATE, sideItem->data(ROLE_MODEL_PREVIEW_STATE));
+        copyCommonModelRoles(sideItem, [item](int role, const QVariant &val) {
+            item->setData(role, val);
+        });
         item->setToolTip(formatModelUserNoteTooltip(filePath, displayName));
 
         const ModelPreviewState previewState = static_cast<ModelPreviewState>(
@@ -3220,11 +3274,11 @@ void MainWindow::applyParametersToImage(const QString &params, ImageInfo &img)
 {
     if (params.isEmpty()) return;
 
-    QRegularExpression reSteps("Steps:\\s*(\\d+)", QRegularExpression::CaseInsensitiveOption);
-    QRegularExpression reSampler("Sampler:\\s*([^,]+)", QRegularExpression::CaseInsensitiveOption);
-    QRegularExpression reCfg("CFG\\s*scale:\\s*([0-9.]+)", QRegularExpression::CaseInsensitiveOption);
-    QRegularExpression reCfgAlt("CFG:\\s*([0-9.]+)", QRegularExpression::CaseInsensitiveOption);
-    QRegularExpression reSeed("Seed:\\s*([-0-9]+)", QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression reSteps("Steps:\\s*(\\d+)", QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression reSampler("Sampler:\\s*([^,]+)", QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression reCfg("CFG\\s*scale:\\s*([0-9.]+)", QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression reCfgAlt("CFG:\\s*([0-9.]+)", QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression reSeed("Seed:\\s*([-0-9]+)", QRegularExpression::CaseInsensitiveOption);
 
     QRegularExpressionMatch m;
     m = reSteps.match(params);
@@ -3574,18 +3628,12 @@ void MainWindow::applyModelUserNoteData(QTreeWidgetItem *item)
 void MainWindow::refreshModelUserNoteItems(const QString &filePath)
 {
     const QString key = QFileInfo(filePath).absoluteFilePath();
-    auto refreshList = [&](QListWidget *list) {
-        if (!list) return;
-        for (int i = 0; i < list->count(); ++i) {
-            QListWidgetItem *item = list->item(i);
-            if (!item) continue;
-            if (QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath() == key) {
-                applyModelUserNoteData(item);
-            }
-        }
-    };
-    refreshList(ui->modelList);
-    refreshList(ui->homeGalleryList);
+    if (QListWidgetItem *sideItem = findModelItemByFilePath(key)) {
+        applyModelUserNoteData(sideItem);
+    }
+    if (QListWidgetItem *homeItem = homeItemByPath.value(key, nullptr)) {
+        applyModelUserNoteData(homeItem);
+    }
 }
 
 void MainWindow::refreshModelUserNotePanel(const QString &filePath)
@@ -3600,18 +3648,14 @@ void MainWindow::refreshModelUserNotePanel(const QString &filePath)
 
     clearLayout(ui->layoutUserTags);
     if (note.tags.isEmpty()) {
-        QLabel *empty = new QLabel(AppText::tr("无用户标签"));
-        empty->setStyleSheet(AppStyle::MutedLabelStyle());
-        ui->layoutUserTags->addWidget(empty);
+        ui->layoutUserTags->addWidget(createMutedEmptyLabel(AppText::tr("无用户标签")));
     } else {
         for (const QString &tag : note.tags) {
-            QPushButton *button = new QPushButton(forceWrap(tag));
-            button->setProperty("class", "filterChip");
-            button->setProperty("tagSource", "user");
-            button->setCursor(Qt::PointingHandCursor);
-            button->setToolTip(AppText::tr("点击在主页添加该用户 Tag 筛选"));
-            button->setMaximumWidth(150);
-            button->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+            QPushButton *button = setupFilterChipButton(
+                new QPushButton(forceWrap(tag)),
+                AppText::tr("点击在主页添加该用户 Tag 筛选"),
+                QStringLiteral("user"),
+                150);
             connect(button, &QPushButton::clicked, this, [this, tag]() {
                 ui->rootStack->setCurrentWidget(ui->pageLibrary);
                 ui->mainStack->setCurrentWidget(ui->pageHome);
@@ -3632,16 +3676,13 @@ void MainWindow::refreshModelAttributionPanel(const ModelMeta &meta)
     clearLayout(ui->layoutModelTags);
 
     if (meta.creatorName.trimmed().isEmpty()) {
-        QLabel *empty = new QLabel(AppText::tr("暂无作者信息"));
-        empty->setStyleSheet(AppStyle::MutedLabelStyle());
-        ui->layoutModelAuthor->addWidget(empty);
+        ui->layoutModelAuthor->addWidget(createMutedEmptyLabel(AppText::tr("暂无作者信息")));
     } else {
-        QPushButton *author = new QPushButton(forceWrap(meta.creatorName));
-        author->setProperty("class", "filterChip");
-        author->setCursor(Qt::PointingHandCursor);
-        author->setToolTip(AppText::tr("点击在主页筛选该作者"));
-        author->setMaximumWidth(260);
-        author->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+        QPushButton *author = setupFilterChipButton(
+            new QPushButton(forceWrap(meta.creatorName)),
+            AppText::tr("点击在主页筛选该作者"),
+            QString(),
+            260);
         connect(author, &QPushButton::clicked, this, [this, name = meta.creatorName]() {
             ui->rootStack->setCurrentWidget(ui->pageLibrary);
             ui->mainStack->setCurrentWidget(ui->pageHome);
@@ -3653,21 +3694,18 @@ void MainWindow::refreshModelAttributionPanel(const ModelMeta &meta)
     ui->layoutModelAuthor->addStretch();
 
     if (meta.modelTags.isEmpty()) {
-        QLabel *empty = new QLabel(AppText::tr("暂无模型标签"));
-        empty->setStyleSheet(AppStyle::MutedLabelStyle());
-        ui->layoutModelTags->addWidget(empty);
+        ui->layoutModelTags->addWidget(createMutedEmptyLabel(AppText::tr("暂无模型标签")));
     } else {
         QWidget *tagFlowWidget = new QWidget();
         tagFlowWidget->setStyleSheet("background:transparent;");
         tagFlowWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
         FlowLayout *tagFlowLayout = new FlowLayout(tagFlowWidget, 0, 6, 6);
         for (const QString &tag : meta.modelTags) {
-            QPushButton *tagButton = new QPushButton(forceWrap(tag));
-            tagButton->setProperty("class", "filterChip");
-            tagButton->setCursor(Qt::PointingHandCursor);
-            tagButton->setToolTip(AppText::tr("点击在主页添加该 Tag 筛选"));
-            tagButton->setMaximumWidth(150);
-            tagButton->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+            QPushButton *tagButton = setupFilterChipButton(
+                new QPushButton(forceWrap(tag)),
+                AppText::tr("点击在主页添加该 Tag 筛选"),
+                QString(),
+                150);
             connect(tagButton, &QPushButton::clicked, this, [this, tag]() {
                 ui->rootStack->setCurrentWidget(ui->pageLibrary);
                 ui->mainStack->setCurrentWidget(ui->pageHome);
@@ -3965,9 +4003,7 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
             if (ui->detailContentStack->currentIndex() == 1) {
                 scanForUserImages(baseName);
             } else {
-                ui->listUserImages->clear();
-                clearGalleryPromptView();
-                tagFlowWidget->setData({});
+                clearUserGalleryView();
             }
             return;
         }
@@ -3988,9 +4024,7 @@ void MainWindow::onModelListClicked(QListWidgetItem *item) {
         scanForUserImages(baseName);
     } else {
         // 如果在主详情页，先清空返图页的旧数据，防止用户等会儿切过去看到上一个模型的图
-        ui->listUserImages->clear();
-        clearGalleryPromptView();
-        tagFlowWidget->setData({});
+        clearUserGalleryView();
     }
 }
 
@@ -4121,7 +4155,8 @@ void MainWindow::onLocalMetaSaveClicked()
     auto parseModelTags = [](const QString &text) {
         QStringList tags;
         QSet<QString> seen;
-        const QStringList parts = text.split(QRegularExpression("[,\\n\\r]+"), Qt::SkipEmptyParts);
+        static const QRegularExpression separatorRegex("[,\\n\\r]+");
+        const QStringList parts = text.split(separatorRegex, Qt::SkipEmptyParts);
         for (QString tag : parts) {
             tag = tag.trimmed();
             if (tag.isEmpty()) continue;
@@ -4190,7 +4225,7 @@ void MainWindow::onLocalMetaSaveClicked()
     if (modelId <= 0) modelId = root["model"].toObject()["id"].toInt();
     if (!modelUrl.isEmpty()) {
         root["modelUrl"] = modelUrl;
-        QRegularExpression re("/models/(\\d+)");
+        static const QRegularExpression re("/models/(\\d+)");
         QRegularExpressionMatch match = re.match(modelUrl);
         if (match.hasMatch()) {
             modelId = match.captured(1).toInt();
@@ -5231,21 +5266,18 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
             return;
         }
 
-        for (int i = 0; i < ui->listUserImages->count(); ++i) {
-            QListWidgetItem *item = ui->listUserImages->item(i);
-            if (item && item->data(ROLE_USER_IMAGE_PATH).toString() == filePath) {
-                const bool blurNsfw = optFilterGalleryNSFW && optGalleryNSFWMode == 1
-                                   && item->data(ROLE_USER_IMAGE_NSFW).toBool();
-                if (blurNsfw) {
-                    QPixmap pix = QPixmap::fromImage(image);
-                    QPixmap blurred = ImagePresentation::applyNSFWBlur(pix);
-                    item->setIcon(QIcon(ImagePresentation::applyRoundedMask(blurred, 4)));
-                } else {
-                    item->setIcon(QIcon(QPixmap::fromImage(image)));
-                }
-                item->setData(ROLE_PREVIEW_PLACEHOLDER, false);
-                break;
+        QListWidgetItem *item = userImageItemByPath.value(filePath, nullptr);
+        if (item && item->data(ROLE_USER_IMAGE_PATH).toString() == filePath) {
+            const bool blurNsfw = optFilterGalleryNSFW && optGalleryNSFWMode == 1
+                               && item->data(ROLE_USER_IMAGE_NSFW).toBool();
+            if (blurNsfw) {
+                QPixmap pix = QPixmap::fromImage(image);
+                QPixmap blurred = ImagePresentation::applyNSFWBlur(pix);
+                item->setIcon(QIcon(ImagePresentation::applyRoundedMask(blurred, 4)));
+            } else {
+                item->setIcon(QIcon(QPixmap::fromImage(image)));
             }
+            item->setData(ROLE_PREVIEW_PLACEHOLDER, false);
         }
         failedUserImageThumbLoads.remove(filePath);
         loadedUserImageThumbPaths.insert(filePath);
@@ -5591,6 +5623,7 @@ void MainWindow::onSearchTextChanged(const QString &text)
     }
 
     // 2. 遍历筛选
+    ui->modelList->setUpdatesEnabled(false);
     for(int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *item = ui->modelList->item(i);
         if (!isModelListItem(item)) {
@@ -5604,6 +5637,7 @@ void MainWindow::onSearchTextChanged(const QString &text)
                                            targetBaseModel, targetModelType));
     }
     applyModelFolderVisibility();
+    ui->modelList->setUpdatesEnabled(true);
 
     // 3. 刷新主页
     refreshHomeGallery();
@@ -6732,6 +6766,23 @@ void MainWindow::onToggleDetailTab() {
     }
 }
 
+void MainWindow::openTagModelGraph(int scope, const QString &focusQuery)
+{
+    if (!ui->toolsTabWidget) return;
+
+    const bool wasLoaded = (usageAnalysisWidget != nullptr);
+    ui->rootStack->setCurrentWidget(ui->toolsTabWidget);
+    ui->toolsTabWidget->setCurrentIndex(4);
+    ensureToolTabLoaded(4);
+    QTimer::singleShot(0, this, [this, scope, focusQuery, wasLoaded]() {
+        if (!usageAnalysisWidget) return;
+        if (wasLoaded) {
+            refreshUsageAnalysisWidget();
+        }
+        usageAnalysisWidget->openTagModelGraph(scope, focusQuery);
+    });
+}
+
 void MainWindow::onOpenModelGraphClicked()
 {
     QString focusQuery;
@@ -6740,19 +6791,7 @@ void MainWindow::onOpenModelGraphClicked()
     } else if (!currentMeta.name.isEmpty()) {
         focusQuery = currentMeta.name;
     }
-    if (!toolsTabWidget) return;
-
-    const bool wasLoaded = (usageAnalysisWidget != nullptr);
-    ui->rootStack->setCurrentWidget(toolsTabWidget);
-    toolsTabWidget->setCurrentIndex(4);
-    ensureToolTabLoaded(4);
-    QTimer::singleShot(0, this, [this, focusQuery, wasLoaded]() {
-        if (!usageAnalysisWidget) return;
-        if (wasLoaded) {
-            refreshUsageAnalysisWidget();
-        }
-        usageAnalysisWidget->openTagModelGraph(0, focusQuery);
-    });
+    openTagModelGraph(0, focusQuery);
 }
 
 void MainWindow::onRescanUserClicked() {
@@ -6805,6 +6844,19 @@ void MainWindow::resetUserImageThumbLoading()
     if (userImageThumbLoadTimer) {
         userImageThumbLoadTimer->stop();
     }
+}
+
+void MainWindow::clearUserGalleryView()
+{
+    userImageItemByPath.clear();
+    if (ui && ui->listUserImages) {
+        ui->listUserImages->clear();
+    }
+    clearGalleryPromptView();
+    if (tagFlowWidget) {
+        tagFlowWidget->setData({});
+    }
+    resetUserImageThumbLoading();
 }
 
 void MainWindow::scheduleVisibleUserImageThumbLoad()
@@ -6860,17 +6912,19 @@ void MainWindow::dispatchVisibleUserImageThumbLoad()
 
     if (candidates.isEmpty()) return;
 
-    std::sort(candidates.begin(), candidates.end(), [](const ThumbCandidate &a, const ThumbCandidate &b) {
+    const int threadCount = qMax(1, threadPool ? threadPool->maxThreadCount() : 4);
+    const int maxLaunchPerPass = qMax(8, threadCount * 2);
+    const int topCount = qMin(candidates.size(), maxLaunchPerPass);
+    std::partial_sort(candidates.begin(), candidates.begin() + topCount, candidates.end(),
+                      [](const ThumbCandidate &a, const ThumbCandidate &b) {
         if (a.priority != b.priority) return a.priority < b.priority;
         return a.distance < b.distance;
     });
 
-    const int threadCount = qMax(1, threadPool ? threadPool->maxThreadCount() : 4);
-    const int maxLaunchPerPass = qMax(8, threadCount * 2);
     int launched = 0;
-    for (const ThumbCandidate &candidate : candidates) {
+    for (int idx = 0; idx < topCount; ++idx) {
+        const ThumbCandidate &candidate = candidates.at(idx);
         if (candidate.priority > 1 && launched >= threadCount) break;
-        if (launched >= maxLaunchPerPass) break;
 
         const QString taskId = QStringLiteral("USERGALLERY|%1|%2")
                                    .arg(userGalleryGeneration)
@@ -6899,10 +6953,7 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
     ++userGalleryLayoutGeneration;
     userGalleryGlobalMode = loraBaseName.isEmpty();
     placeholderIcon = generatePlaceholderIcon(); // 用当前主题色重建，保证占位X颜色正确
-    ui->listUserImages->clear();
-    clearGalleryPromptView();
-    tagFlowWidget->setData({}); // 清空 Tag
-    resetUserImageThumbLoading();
+    clearUserGalleryView();
 
     // 1. 检查目录
     const QStringList activeGalleryPaths = PathUtils::collectEnabledPaths(galleryPaths, disabledGalleryPaths);
@@ -7107,21 +7158,10 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
                 item->setData(ROLE_USER_IMAGE_PARAMS, info.parameters);
                 item->setData(ROLE_USER_IMAGE_TAGS, info.cleanTags);
                 item->setData(ROLE_USER_IMAGE_NEG_TAGS, info.negativeCleanTags);
-                auto makeNormalizedTagKeys = [](const QStringList &tags) {
-                    QStringList keys;
-                    keys.reserve(tags.size());
-                    for (const QString &tag : tags) {
-                        const QString key = TagUtils::normalizedGalleryTagKey(tag);
-                        if (!key.isEmpty()) keys.append(key);
-                    }
-                    std::sort(keys.begin(), keys.end());
-                    keys.removeDuplicates();
-                    return keys;
-                };
                 item->setData(ROLE_USER_IMAGE_TAG_KEYS,
-                              makeNormalizedTagKeys(info.cleanTags));
+                              TagUtils::normalizedGalleryTagKeys(info.cleanTags));
                 item->setData(ROLE_USER_IMAGE_NEG_KEYS,
-                              makeNormalizedTagKeys(info.negativeCleanTags));
+                              TagUtils::normalizedGalleryTagKeys(info.negativeCleanTags));
                 const bool isNsfw = isGalleryImageNsfw(info.prompt, info.cleanTags);
                 item->setData(ROLE_USER_IMAGE_NSFW, isNsfw);
                 if (optFilterGalleryNSFW && optGalleryNSFWMode == 0 && isNsfw) {
@@ -7130,6 +7170,9 @@ void MainWindow::scanForUserImages(const QString &loraBaseName) {
                 item->setIcon(placeholderIcon);
                 item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
                 ui->listUserImages->addItem(item);
+                if (!info.path.isEmpty()) {
+                    userImageItemByPath.insert(info.path, item);
+                }
             }
             ui->listUserImages->setUpdatesEnabled(true);
 
@@ -7182,6 +7225,11 @@ bool MainWindow::isGalleryImageNsfwByPath(const QString &imagePath) const
         return isGalleryImageNsfw(it.value().prompt, it.value().cleanTags);
     }
 
+    if (QListWidgetItem *directItem = userImageItemByPath.value(imagePath, nullptr)) {
+        return isGalleryImageNsfw(directItem->data(ROLE_USER_IMAGE_PROMPT).toString(),
+                                  directItem->data(ROLE_USER_IMAGE_TAGS).toStringList());
+    }
+
     if (ui && ui->listUserImages) {
         const QString cleanTarget = QDir::cleanPath(QFileInfo(imagePath).absoluteFilePath());
         for (int i = 0; i < ui->listUserImages->count(); ++i) {
@@ -7229,10 +7277,11 @@ void MainWindow::refreshGalleryNsfwDisplay()
 void MainWindow::refreshUserTagFlowStats(bool applyGalleryFilter,
                                          bool resetGalleryScrollToTop)
 {
-    QMap<QString, int> tagCounts;
+    QHash<QString, int> tagCountsByKey;
     QHash<QString, QString> tagDisplayText;
     QSet<QString> positiveTagKeys;
     QSet<QString> negativeTagKeys;
+    QSet<QString> perImageTagKeys;
     const bool currentOnly = ui->chkUserTagCurrentImageOnly && ui->chkUserTagCurrentImageOnly->isChecked();
     const bool includeNegative = ui->chkUserTagIncludeNegative && ui->chkUserTagIncludeNegative->isChecked();
     const bool hideNsfwItems = optFilterGalleryNSFW && optGalleryNSFWMode == 0;
@@ -7240,7 +7289,7 @@ void MainWindow::refreshUserTagFlowStats(bool applyGalleryFilter,
     auto addTagsFromItem = [&](QListWidgetItem *item) {
         if (!item) return;
         if (hideNsfwItems && item->data(ROLE_USER_IMAGE_NSFW).toBool()) return;
-        QSet<QString> perImageTagKeys;
+        perImageTagKeys.clear();
         const QStringList positiveTags = item->data(ROLE_USER_IMAGE_TAGS).toStringList();
         for (const QString &tag : positiveTags) {
             if (tag.compare("BREAK", Qt::CaseInsensitive) == 0) continue;
@@ -7261,19 +7310,26 @@ void MainWindow::refreshUserTagFlowStats(bool applyGalleryFilter,
                 if (!tagDisplayText.contains(key)) tagDisplayText.insert(key, tag);
             }
         }
-        for (const QString &key : perImageTagKeys) {
-            tagCounts[tagDisplayText.value(key, key)]++;
+        for (const QString &key : std::as_const(perImageTagKeys)) {
+            tagCountsByKey[key]++;
         }
     };
 
     if (currentOnly) {
         addTagsFromItem(ui->listUserImages->currentItem());
     } else {
-        for (int i = 0; i < ui->listUserImages->count(); ++i) {
+        const int count = ui->listUserImages->count();
+        tagCountsByKey.reserve(qMin(count * 4, 16384));
+        tagDisplayText.reserve(qMin(count * 4, 16384));
+        for (int i = 0; i < count; ++i) {
             addTagsFromItem(ui->listUserImages->item(i));
         }
     }
 
+    QMap<QString, int> tagCounts;
+    for (auto it = tagCountsByKey.cbegin(); it != tagCountsByKey.cend(); ++it) {
+        tagCounts.insert(tagDisplayText.value(it.key(), it.key()), it.value());
+    }
     tagFlowWidget->setData(tagCounts);
     QHash<QString, TagFlowWidget::VisualRole> visualRoles;
     if (includeNegative) {
@@ -7315,27 +7371,9 @@ void MainWindow::onUserImageClicked(QListWidgetItem *item) {
     QString safePrompt = prompt.toHtmlEscaped();
     QString safeNeg = neg.toHtmlEscaped();
     // 参数部分：让“每个参数单独成行”。先按已有换行拆，再把每行按“不在引号内的逗号”拆开。
-    // A1111 的参数是一整行逗号分隔（且 Lora hashes 的值里带引号包裹的逗号，需跳过），拆分后每项一行；
-    // ComfyUI 本就每行一个参数，二次拆分对其无影响。
-    auto splitTopLevelCommas = [](const QString &s) {
-        QStringList out;
-        QString cur;
-        bool inQuotes = false;
-        for (const QChar c : s) {
-            if (c == '"') { inQuotes = !inQuotes; cur += c; }
-            else if (c == ',' && !inQuotes) { out << cur; cur.clear(); }
-            else cur += c;
-        }
-        out << cur;
-        return out;
-    };
     QStringList paramLines;
-    const QStringList rawParamLines = params.split('\n');
-    for (const QString &line : rawParamLines) {
-        for (const QString &seg : splitTopLevelCommas(line)) {
-            const QString t = seg.trimmed();
-            if (!t.isEmpty()) paramLines << t.toHtmlEscaped();
-        }
+    for (const QString &line : GalleryMetadata::splitParameterLines(params)) {
+        paramLines << line.toHtmlEscaped();
     }
     const QString paramsHtml = paramLines.join(QStringLiteral("<br>"));
 
@@ -7503,35 +7541,11 @@ void MainWindow::updateGalleryPromptTagView()
 
     // 1. 正面提示词 Tag
     QMap<QString, int> posCounts;
-    m_galleryPosTagOrder.clear();
-    QSet<QString> posSeen;
-    const QStringList posParts = TagUtils::splitPromptParts(m_galleryCurrentPrompt, optSplitOnNewline);
-    for (const QString &part : posParts) {
-        const QString clean = TagUtils::cleanPromptTag(part);
-        if (!clean.isEmpty()) {
-            posCounts[clean]++;
-            if (!posSeen.contains(clean)) {
-                posSeen.insert(clean);
-                m_galleryPosTagOrder << clean;
-            }
-        }
-    }
+    TagUtils::collectPromptTagStats(m_galleryCurrentPrompt, optSplitOnNewline, posCounts, &m_galleryPosTagOrder);
 
     // 2. 负面提示词 Tag
     QMap<QString, int> negCounts;
-    m_galleryNegTagOrder.clear();
-    QSet<QString> negSeen;
-    const QStringList negParts = TagUtils::splitPromptParts(m_galleryCurrentNegative, optSplitOnNewline);
-    for (const QString &part : negParts) {
-        const QString clean = TagUtils::cleanPromptTag(part);
-        if (!clean.isEmpty()) {
-            negCounts[clean]++;
-            if (!negSeen.contains(clean)) {
-                negSeen.insert(clean);
-                m_galleryNegTagOrder << clean;
-            }
-        }
-    }
+    TagUtils::collectPromptTagStats(m_galleryCurrentNegative, optSplitOnNewline, negCounts, &m_galleryNegTagOrder);
 
     m_galleryPosTagWidget->setData(posCounts);
     m_galleryNegTagWidget->setData(negCounts);
@@ -7539,13 +7553,7 @@ void MainWindow::updateGalleryPromptTagView()
     applyGalleryPromptSortMode();
 
     // 3. 清理旧的 Chip
-    if (m_galleryParamsChipLayout) {
-        QLayoutItem *item;
-        while ((item = m_galleryParamsChipLayout->takeAt(0)) != nullptr) {
-            if (item->widget()) delete item->widget();
-            delete item;
-        }
-    }
+    clearLayout(m_galleryParamsChipLayout);
 
     // 4. 解析参数中的模型/LoRA (复用统一解析器)
     UserImageInfo parsedInfo;
@@ -7571,11 +7579,10 @@ void MainWindow::updateGalleryPromptTagView()
             if (!modelHash.isEmpty() && !modelName.isEmpty()) {
                 labelText += QString(" (%1)").arg(modelHash);
             }
-            FlowChipButton *chipBtn = new FlowChipButton(labelText, ui->galleryParamsChipContainer);
-            chipBtn->setProperty("class", "filterChip");
-            chipBtn->setProperty("tagSource", "model");
-            chipBtn->setCursor(Qt::PointingHandCursor);
-            chipBtn->setToolTip(AppText::tr("底模: %1 (点击跳转)").arg(displayName));
+            FlowChipButton *chipBtn = setupFilterChipButton(
+                new FlowChipButton(labelText, ui->galleryParamsChipContainer),
+                AppText::tr("底模: %1 (点击跳转)").arg(displayName),
+                QStringLiteral("model"));
             connect(chipBtn, &QPushButton::clicked, this, [this, modelName, modelHash]() {
                 jumpToModelOrLora(modelName, modelHash);
             });
@@ -7591,10 +7598,9 @@ void MainWindow::updateGalleryPromptTagView()
             if (!lora.hash.isEmpty()) {
                 labelText += QString(" (%1)").arg(lora.hash);
             }
-            FlowChipButton *chipBtn = new FlowChipButton(labelText, ui->galleryParamsChipContainer);
-            chipBtn->setProperty("class", "filterChip");
-            chipBtn->setCursor(Qt::PointingHandCursor);
-            chipBtn->setToolTip(AppText::tr("LoRA: %1 (点击跳转)").arg(lora.name));
+            FlowChipButton *chipBtn = setupFilterChipButton(
+                new FlowChipButton(labelText, ui->galleryParamsChipContainer),
+                AppText::tr("LoRA: %1 (点击跳转)").arg(lora.name));
             connect(chipBtn, &QPushButton::clicked, this, [this, name = lora.name, hash = lora.hash]() {
                 jumpToModelOrLora(name, hash);
             });
@@ -7616,32 +7622,14 @@ void MainWindow::updateGalleryPromptTagView()
             }
         }
 
-        auto splitTopLevelCommas = [](const QString &s) {
-            QStringList out;
-            QString cur;
-            bool inQuotes = false;
-            for (const QChar c : s) {
-                if (c == '"') { inQuotes = !inQuotes; cur += c; }
-                else if (c == ',' && !inQuotes) { out << cur; cur.clear(); }
-                else cur += c;
-            }
-            out << cur;
-            return out;
-        };
-
-        const QStringList rawLines = m_galleryCurrentParams.split('\n');
-        for (const QString &line : rawLines) {
-            for (const QString &seg : splitTopLevelCommas(line)) {
-                const QString t = seg.trimmed();
-                if (t.isEmpty()) continue;
-                if (t.startsWith("Lora hashes:", Qt::CaseInsensitive)) continue;
-                if (t.startsWith("ComfyUI LoRAs:", Qt::CaseInsensitive)) continue;
-                if (t.startsWith("ComfyUI Lora hashes:", Qt::CaseInsensitive)) continue;
-                if (t.startsWith("Model:", Qt::CaseInsensitive)) continue;
-                if (t.startsWith("Model hash:", Qt::CaseInsensitive)) continue;
-                if (t.startsWith("Checkpoint:", Qt::CaseInsensitive)) continue;
-                plainHtml += QString("<div style='margin: 2px 0; word-break: break-all;'>%1</div>").arg(t.toHtmlEscaped());
-            }
+        for (const QString &t : GalleryMetadata::splitParameterLines(m_galleryCurrentParams)) {
+            if (t.startsWith("Lora hashes:", Qt::CaseInsensitive)) continue;
+            if (t.startsWith("ComfyUI LoRAs:", Qt::CaseInsensitive)) continue;
+            if (t.startsWith("ComfyUI Lora hashes:", Qt::CaseInsensitive)) continue;
+            if (t.startsWith("Model:", Qt::CaseInsensitive)) continue;
+            if (t.startsWith("Model hash:", Qt::CaseInsensitive)) continue;
+            if (t.startsWith("Checkpoint:", Qt::CaseInsensitive)) continue;
+            plainHtml += QString("<div style='margin: 2px 0; word-break: break-all;'>%1</div>").arg(t.toHtmlEscaped());
         }
 
         ui->lblGalleryParamsPlain->setText(plainHtml);
@@ -7725,64 +7713,43 @@ QListWidgetItem *MainWindow::findModelItemByNameOrHash(const QString &name, cons
         }
     }
 
-    // 2. 根据名称匹配
+    // 2. 根据名称匹配（单次遍历同时记录 exact / civitai / fuzzy 最高优先级命中）
     if (name.trimmed().isEmpty()) return nullptr;
 
-    auto normalizeName = [](QString s) -> QString {
-        s = s.trimmed();
-        s.replace('\\', '/');
-        if (s.endsWith(".safetensors", Qt::CaseInsensitive) ||
-            s.endsWith(".ckpt", Qt::CaseInsensitive) ||
-            s.endsWith(".pt", Qt::CaseInsensitive)) {
-            s = QFileInfo(s).completeBaseName();
-        }
-        return s.toLower();
+    const QString searchNorm = GalleryMetadata::cleanModelOrLoraBaseName(name).toLower();
+    if (searchNorm.isEmpty()) return nullptr;
+
+    const bool allowFuzzy = searchNorm.length() >= 3;
+    auto fuzzyMatches = [&searchNorm](const QString &target) -> bool {
+        if (target.length() < 3) return false;
+        if (target.contains(searchNorm)) return true;
+        if (target.length() >= 4 && searchNorm.contains(target)) return true;
+        return false;
     };
 
-    const QString searchNorm = normalizeName(name);
-    const QString searchBase = searchNorm.contains('/') ? QFileInfo(searchNorm).fileName() : searchNorm;
-
-    // (a) 精确 baseName / modelName 匹配
+    QListWidgetItem *civitaiMatch = nullptr;
+    QListWidgetItem *fuzzyMatch = nullptr;
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *item = ui->modelList->item(i);
         if (!isModelListItem(item)) continue;
-        const QString itemName = normalizeName(item->data(ROLE_MODEL_NAME).toString());
-        const QString itemFile = normalizeName(QFileInfo(item->data(ROLE_FILE_PATH).toString()).completeBaseName());
-        if ((!itemName.isEmpty() && (itemName == searchNorm || itemName == searchBase)) ||
-            (!itemFile.isEmpty() && (itemFile == searchNorm || itemFile == searchBase))) {
+        const QString itemName = GalleryMetadata::cleanModelOrLoraBaseName(item->data(ROLE_MODEL_NAME).toString()).toLower();
+        const QString itemFile = QFileInfo(item->data(ROLE_FILE_PATH).toString()).completeBaseName().toLower();
+        if ((!itemName.isEmpty() && itemName == searchNorm) ||
+            (!itemFile.isEmpty() && itemFile == searchNorm)) {
             return item;
+        }
+        const QString civModel = GalleryMetadata::cleanModelOrLoraBaseName(item->data(ROLE_CIVITAI_NAME).toString()).toLower();
+        if (!civitaiMatch && !civModel.isEmpty() && civModel == searchNorm) {
+            civitaiMatch = item;
+        }
+        if (allowFuzzy && !fuzzyMatch &&
+            (fuzzyMatches(itemName) || fuzzyMatches(itemFile) || fuzzyMatches(civModel))) {
+            fuzzyMatch = item;
         }
     }
 
-    // (b) Civitai model name 匹配
-    for (int i = 0; i < ui->modelList->count(); ++i) {
-        QListWidgetItem *item = ui->modelList->item(i);
-        if (!isModelListItem(item)) continue;
-        const QString civModel = normalizeName(item->data(ROLE_CIVITAI_NAME).toString());
-        if (!civModel.isEmpty() && (civModel == searchNorm || civModel == searchBase)) {
-            return item;
-        }
-    }
-
-    // (c) 模糊包含匹配（限制最短长度，防止误匹配）
-    if (searchBase.length() >= 3) {
-        auto fuzzyMatches = [&searchBase](const QString &target) -> bool {
-            if (target.length() < 3) return false;
-            if (target.contains(searchBase)) return true;
-            if (target.length() >= 4 && searchBase.contains(target)) return true;
-            return false;
-        };
-        for (int i = 0; i < ui->modelList->count(); ++i) {
-            QListWidgetItem *item = ui->modelList->item(i);
-            if (!isModelListItem(item)) continue;
-            const QString itemName = normalizeName(item->data(ROLE_MODEL_NAME).toString());
-            const QString itemFile = normalizeName(QFileInfo(item->data(ROLE_FILE_PATH).toString()).completeBaseName());
-            const QString civModel = normalizeName(item->data(ROLE_CIVITAI_NAME).toString());
-            if (fuzzyMatches(itemName) || fuzzyMatches(itemFile) || fuzzyMatches(civModel)) {
-                return item;
-            }
-        }
-    }
+    if (civitaiMatch) return civitaiMatch;
+    if (fuzzyMatch) return fuzzyMatch;
 
     return nullptr;
 }
@@ -7967,15 +7934,7 @@ void MainWindow::applyUserGalleryTagFilter(const QSet<QString> &selectedTags,
             const QVariant cached = item->data(cacheRole);
             if (cached.isValid()) return cached.toStringList();
 
-            QStringList keys;
-            const QStringList tags = item->data(tagRole).toStringList();
-            keys.reserve(tags.size());
-            for (const QString &tag : tags) {
-                const QString key = TagUtils::normalizedGalleryTagKey(tag);
-                if (!key.isEmpty()) keys.append(key);
-            }
-            std::sort(keys.begin(), keys.end());
-            keys.removeDuplicates();
+            QStringList keys = TagUtils::normalizedGalleryTagKeys(item->data(tagRole).toStringList());
             item->setData(cacheRole, keys);
             return keys;
         };
@@ -8185,48 +8144,29 @@ void MainWindow::initMenuBar() {
     connect(actDownloads, &QAction::triggered, this, &MainWindow::onMenuSwitchToDownloads);
     bar->addAction(actDownloads);
 
-    // 5. 工具页
-    if (!toolsTabWidget) { // 确保只初始化一次
-        toolsTabWidget = new QTabWidget(this);
-        toolsTabWidget->setObjectName("toolsTabWidget");
-
-        auto makeToolPlaceholder = [this](const QString &text) {
-            QWidget *page = new QWidget(toolsTabWidget);
-            page->setObjectName("toolPlaceholder");
-            QVBoxLayout *layout = new QVBoxLayout(page);
-            QLabel *label = new QLabel(text, page);
-            label->setAlignment(Qt::AlignCenter);
-            label->setStyleSheet(AppStyle::MutedLabelStyle());
-            layout->addWidget(label);
-            return page;
-        };
-
-        toolsTabWidget->addTab(makeToolPlaceholder(AppText::tr("点击后加载图片同步工具...")), AppText::tr("🔄 图片同步 / Sync"));
-        toolsTabWidget->addTab(makeToolPlaceholder(AppText::tr("点击后加载提示词解析工具...")), AppText::tr("📝 提示词解析 / Prompt"));
-        toolsTabWidget->addTab(makeToolPlaceholder(AppText::tr("点击后加载 Tag 浏览工具...")), AppText::tr("🏷️ Tag 浏览 / Tag"));
-        toolsTabWidget->addTab(makeToolPlaceholder(AppText::tr("点击后加载大模型提示词工具...")), AppText::tr("🤖 大模型提示词 / LLM"));
-        toolsTabWidget->addTab(makeToolPlaceholder(AppText::tr("点击后加载模型分析工具...")), AppText::tr("📊 模型分析 / Analysis"));
-        toolsTabWidget->addTab(makeToolPlaceholder(AppText::tr("点击后加载提示词模板库...")), AppText::tr("🧩 提示词模板 / Templates"));
-        toolsTabWidget->setTabPosition(QTabWidget::West);
-
-        toolsTabWidget->setAutoFillBackground(true);
-        QPalette pal = toolsTabWidget->palette();
+    // 5. 工具页 (静态 QTabWidget 与 6 个占位页已在 mainwindow.ui 中定义)
+    if (ui->toolsTabWidget) {
+        ui->toolsTabWidget->setAutoFillBackground(true);
+        QPalette pal = ui->toolsTabWidget->palette();
         pal.setColor(QPalette::Window, AppStyle::color("sidebarBg"));
-        toolsTabWidget->setPalette(pal);
+        ui->toolsTabWidget->setPalette(pal);
 
-        // 核心动作：加入堆栈
-        ui->rootStack->addWidget(toolsTabWidget);
+        for (QLabel *label : ui->toolsTabWidget->findChildren<QLabel*>()) {
+            if (label->property("isToolPlaceholderLabel").toBool()) {
+                label->setStyleSheet(AppStyle::MutedLabelStyle());
+            }
+        }
 
-        connect(toolsTabWidget, &QTabWidget::currentChanged, this, &MainWindow::ensureToolTabLoaded);
+        connect(ui->toolsTabWidget, &QTabWidget::currentChanged,
+                this, &MainWindow::ensureToolTabLoaded, Qt::UniqueConnection);
     }
 
     QAction *actTools = new QAction(AppText::tr("🛠️ 工具箱 / Tools"), this);
     actTools->setShortcut(QKeySequence("Ctrl+4"));
     connect(actTools, &QAction::triggered, this, [this](){
-        ui->rootStack->setCurrentWidget(toolsTabWidget);
-        if (toolsTabWidget) {
-            ensureToolTabLoaded(toolsTabWidget->currentIndex());
-        }
+        if (!ui->toolsTabWidget) return;
+        ui->rootStack->setCurrentWidget(ui->toolsTabWidget);
+        ensureToolTabLoaded(ui->toolsTabWidget->currentIndex());
     });
     bar->addAction(actTools);
 
@@ -8254,30 +8194,32 @@ void MainWindow::initMenuBar() {
 
 void MainWindow::ensureToolTabLoaded(int index)
 {
-    if (!toolsTabWidget || index < 0 || index >= toolsTabWidget->count()) return;
-    QWidget *currentPage = toolsTabWidget->widget(index);
-    if (!currentPage || currentPage->objectName() != "toolPlaceholder") return;
+    QTabWidget *toolsTab = ui ? ui->toolsTabWidget : nullptr;
+    if (!toolsTab || index < 0 || index >= toolsTab->count()) return;
+    QWidget *currentPage = toolsTab->widget(index);
+    if (!currentPage || !currentPage->property("isToolPlaceholder").toBool()) return;
     if (pendingToolTabLoads.contains(index)) return;
 
     pendingToolTabLoads.insert(index);
     QTimer::singleShot(0, this, [this, index]() {
         pendingToolTabLoads.remove(index);
-        if (!toolsTabWidget || index < 0 || index >= toolsTabWidget->count()) return;
-        QWidget *currentPage = toolsTabWidget->widget(index);
-        if (!currentPage || currentPage->objectName() != "toolPlaceholder") return;
+        QTabWidget *toolsTab = ui ? ui->toolsTabWidget : nullptr;
+        if (!toolsTab || index < 0 || index >= toolsTab->count()) return;
+        QWidget *currentPage = toolsTab->widget(index);
+        if (!currentPage || !currentPage->property("isToolPlaceholder").toBool()) return;
 
         QWidget *newPage = nullptr;
         switch (index) {
         case 0:
-            newPage = new SyncWidget(toolsTabWidget);
+            newPage = new SyncWidget(toolsTab);
             break;
         case 1:
-            parserWidget = new PromptParserWidget(toolsTabWidget);
+            parserWidget = new PromptParserWidget(toolsTab);
             parserWidget->setTranslationMap(&translationMap);
             newPage = parserWidget;
             break;
         case 2:
-            tagBrowserWidget = new TagBrowserWidget(toolsTabWidget);
+            tagBrowserWidget = new TagBrowserWidget(toolsTab);
             tagBrowserWidget->setTranslationSources(
                 buildTagTranslationSources(translationCsvPaths, disabledTranslationCsvPaths));
             tagBrowserWidget->setMergedTranslationMap(&translationMap);
@@ -8288,7 +8230,7 @@ void MainWindow::ensureToolTabLoaded(int index)
             newPage = tagBrowserWidget;
             break;
         case 3:
-            llmPromptWidget = new LlmPromptWidget(toolsTabWidget);
+            llmPromptWidget = new LlmPromptWidget(toolsTab);
             llmPromptWidget->setLibraryPaths(
                 PathUtils::collectEnabledPaths(loraPaths, disabledLoraPaths),
                 PathUtils::collectEnabledPaths(galleryPaths, disabledGalleryPaths)
@@ -8296,7 +8238,7 @@ void MainWindow::ensureToolTabLoaded(int index)
             newPage = llmPromptWidget;
             break;
         case 4:
-            usageAnalysisWidget = new UsageAnalysisWidget(toolsTabWidget);
+            usageAnalysisWidget = new UsageAnalysisWidget(toolsTab);
             usageAnalysisWidget->setTranslationMap(&translationMap);
             connect(usageAnalysisWidget, &UsageAnalysisWidget::requestRefresh,
                     this, &MainWindow::refreshUsageAnalysisWidget);
@@ -8375,7 +8317,7 @@ void MainWindow::ensureToolTabLoaded(int index)
             newPage = usageAnalysisWidget;
             break;
         case 5:
-            promptTemplateLibraryWidget = new PromptTemplateLibraryWidget(toolsTabWidget);
+            promptTemplateLibraryWidget = new PromptTemplateLibraryWidget(toolsTab);
             promptTemplateLibraryWidget->setTranslationMap(&translationMap);
             connect(promptTemplateLibraryWidget, &PromptTemplateLibraryWidget::modelTriggerRowsRequested,
                     this, &MainWindow::refreshPromptTemplateModelTriggerRows);
@@ -8387,13 +8329,13 @@ void MainWindow::ensureToolTabLoaded(int index)
 
         if (!newPage) return;
         applyToolPageTheme(newPage);
-        const QString label = toolsTabWidget->tabText(index);
-        QSignalBlocker blocker(toolsTabWidget);
-        toolsTabWidget->removeTab(index);
+        const QString label = toolsTab->tabText(index);
+        QSignalBlocker blocker(toolsTab);
+        toolsTab->removeTab(index);
         currentPage->setParent(nullptr);
         currentPage->deleteLater();
-        toolsTabWidget->insertTab(index, newPage, label);
-        toolsTabWidget->setCurrentIndex(index);
+        toolsTab->insertTab(index, newPage, label);
+        toolsTab->setCurrentIndex(index);
     });
 }
 
@@ -10324,14 +10266,23 @@ void MainWindow::refreshLoadedToolPageThemes()
     if (launcherWidget) launcherWidget->applyTheme();
     if (settingsPage) settingsPage->applyTheme();
     if (downloadsPage) downloadsPage->applyTheme();
-    if (toolsTabWidget) {
+    if (ui->toolsTabWidget) {
         // West 标签条空白区背景靠 palette 决定，随主题重新着色。
-        QPalette pal = toolsTabWidget->palette();
+        QPalette pal = ui->toolsTabWidget->palette();
         pal.setColor(QPalette::Window, AppStyle::color("sidebarBg"));
-        toolsTabWidget->setPalette(pal);
-        for (int i = 0; i < toolsTabWidget->count(); ++i) {
-            QWidget *page = toolsTabWidget->widget(i);
-            if (page && page->objectName() != "toolPlaceholder") applyToolPageTheme(page);
+        ui->toolsTabWidget->setPalette(pal);
+        for (int i = 0; i < ui->toolsTabWidget->count(); ++i) {
+            QWidget *page = ui->toolsTabWidget->widget(i);
+            if (!page) continue;
+            if (page->property("isToolPlaceholder").toBool()) {
+                for (QLabel *label : page->findChildren<QLabel*>()) {
+                    if (label->property("isToolPlaceholderLabel").toBool()) {
+                        label->setStyleSheet(AppStyle::MutedLabelStyle());
+                    }
+                }
+            } else {
+                applyToolPageTheme(page);
+            }
         }
     }
 }
@@ -10848,56 +10799,11 @@ void MainWindow::showModelDescriptionDialog()
         return;
     }
 
-    QDialog dialog(this);
-    dialog.setWindowTitle(AppText::tr("模型简介 / Description"));
-    dialog.resize(820, 620);
-
-    auto *layout = new QVBoxLayout(&dialog);
-    auto *title = new QLabel(currentMeta.name.isEmpty() ? currentMeta.fileNameServer : currentMeta.name, &dialog);
-    title->setObjectName("lblTitle");
-    title->setWordWrap(true);
-    title->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    layout->addWidget(title);
-
-    auto *textEdit = new QTextEdit(&dialog);
-    textEdit->setReadOnly(true);
-    textEdit->setAcceptRichText(true);
-    textEdit->setHtml(descriptionHtml);
-    textEdit->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard | Qt::LinksAccessibleByMouse);
-    layout->addWidget(textEdit, 1);
-
-    auto *buttons = new QHBoxLayout();
-    auto *btnCopySelected = new QPushButton(AppText::tr("复制选中 / Copy Selected"), &dialog);
-    auto *btnCopyAll = new QPushButton(AppText::tr("复制全部 / Copy All"), &dialog);
-    auto *btnClose = new QPushButton(AppText::tr("关闭 / Close"), &dialog);
-    buttons->addWidget(btnCopySelected);
-    buttons->addWidget(btnCopyAll);
-    buttons->addStretch(1);
-    buttons->addWidget(btnClose);
-    layout->addLayout(buttons);
-
-    auto normalizeCopiedText = [](QString text) {
-        text.replace(QChar(0x2029), '\n');
-        text.replace(QChar(0x2028), '\n');
-        return text.trimmed();
-    };
-
-    connect(btnCopySelected, &QPushButton::clicked, &dialog, [this, textEdit, normalizeCopiedText]() {
-        const QString selected = normalizeCopiedText(textEdit->textCursor().selectedText());
-        if (selected.isEmpty()) {
-            ui->statusbar->showMessage(AppText::tr("请先在简介中选中要复制的文本。"), 2000);
-            return;
-        }
-        QGuiApplication::clipboard()->setText(selected);
-        ui->statusbar->showMessage(AppText::tr("已复制选中的简介文本。"), 2000);
-    });
-
-    connect(btnCopyAll, &QPushButton::clicked, &dialog, [this, textEdit, normalizeCopiedText]() {
-        QGuiApplication::clipboard()->setText(normalizeCopiedText(textEdit->toPlainText()));
-        ui->statusbar->showMessage(AppText::tr("已复制完整简介。"), 2000);
-    });
-
-    connect(btnClose, &QPushButton::clicked, &dialog, &QDialog::accept);
+    TextViewerDialog dialog(this);
+    dialog.configureForHtmlDescription(
+        currentMeta.name.isEmpty() ? currentMeta.fileNameServer : currentMeta.name,
+        descriptionHtml);
+    connect(&dialog, &TextViewerDialog::statusMessageRequested, ui->statusbar, &QStatusBar::showMessage);
     dialog.exec();
 }
 
@@ -10909,74 +10815,12 @@ void MainWindow::showRawImageMetadataDialog(const QString &filePath)
     for (auto it = chunks.begin(); it != chunks.end(); ++it) {
         sections << QString("===== %1 =====\n%2").arg(it.key(), it.value());
     }
-    QString rawText = sections.isEmpty()
-                          ? QString("未找到图片 metadata。")
-                          : sections.join("\n\n");
+    const QString rawText = sections.isEmpty()
+        ? QStringLiteral("未找到图片 metadata。")
+        : sections.join(QStringLiteral("\n\n"));
 
-    QDialog dialog(this);
-    dialog.setWindowTitle(AppText::tr("原始 Metadata / Raw Metadata"));
-    dialog.resize(900, 650);
-
-    QVBoxLayout *layout = new QVBoxLayout(&dialog);
-    QLabel *title = new QLabel(QFileInfo(filePath).fileName(), &dialog);
-    title->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    layout->addWidget(title);
-
-    QTextEdit *textEdit = new QTextEdit(&dialog);
-    textEdit->setPlainText(rawText);
-    textEdit->setLineWrapMode(QTextEdit::NoWrap);
-    textEdit->setReadOnly(false);
-    layout->addWidget(textEdit, 1);
-
-    QHBoxLayout *buttons = new QHBoxLayout();
-    QPushButton *btnCopy = new QPushButton(AppText::tr("复制 / Copy"), &dialog);
-    QPushButton *btnFormatJson = new QPushButton(AppText::tr("格式化 JSON / Format JSON"), &dialog);
-    QPushButton *btnClose = new QPushButton(AppText::tr("关闭 / Close"), &dialog);
-    buttons->addWidget(btnCopy);
-    buttons->addWidget(btnFormatJson);
-    buttons->addStretch(1);
-    buttons->addWidget(btnClose);
-    layout->addLayout(buttons);
-
-    connect(btnCopy, &QPushButton::clicked, &dialog, [textEdit]() {
-        QGuiApplication::clipboard()->setText(textEdit->toPlainText());
-    });
-
-    connect(btnFormatJson, &QPushButton::clicked, &dialog, [textEdit]() {
-        QString text = textEdit->toPlainText();
-        static QRegularExpression sectionRegex("===== ([^=]+) =====\\n(.*?)(?=\\n\\n===== |\\z)",
-                                               QRegularExpression::DotMatchesEverythingOption);
-        QRegularExpressionMatchIterator it = sectionRegex.globalMatch(text);
-        QStringList formattedSections;
-        while (it.hasNext()) {
-            const QRegularExpressionMatch match = it.next();
-            const QString key = match.captured(1).trimmed();
-            const QString value = match.captured(2);
-            QJsonParseError error;
-            const QJsonDocument doc = QJsonDocument::fromJson(value.toUtf8(), &error);
-            if (error.error == QJsonParseError::NoError && !doc.isNull()) {
-                formattedSections << QString("===== %1 =====\n%2")
-                                         .arg(key, QString::fromUtf8(doc.toJson(QJsonDocument::Indented)));
-            } else {
-                formattedSections << QString("===== %1 =====\n%2").arg(key, value);
-            }
-        }
-
-        if (formattedSections.isEmpty()) {
-            QJsonParseError error;
-            const QJsonDocument doc = QJsonDocument::fromJson(text.toUtf8(), &error);
-            if (error.error == QJsonParseError::NoError && !doc.isNull()) {
-                textEdit->setPlainText(QString::fromUtf8(doc.toJson(QJsonDocument::Indented)));
-            } else {
-                QMessageBox::information(textEdit, AppText::tr("格式化 JSON"), AppText::tr("当前内容不是有效 JSON。"));
-            }
-            return;
-        }
-
-        textEdit->setPlainText(formattedSections.join("\n\n"));
-    });
-
-    connect(btnClose, &QPushButton::clicked, &dialog, &QDialog::accept);
+    TextViewerDialog dialog(this);
+    dialog.configureForRawMetadata(QFileInfo(filePath).fileName(), rawText);
     dialog.exec();
 }
 
@@ -11189,9 +11033,10 @@ void MainWindow::refreshCollectionTreeView()
     }
 
     // 清理和生成
+    ui->collectionTree->setUpdatesEnabled(false);
+    ui->collectionTree->setAnimated(false);
     collectionTreeItemsByPath.clear();
     ui->collectionTree->clear();
-    ui->collectionTree->setAnimated(true);
     ui->collectionTree->setIconSize(QSize(32, 32));
     ui->collectionTree->setRootIsDecorated(false);
     ui->collectionTree->setIndentation(10); // 子节点的缩进保持正常
@@ -11204,8 +11049,10 @@ void MainWindow::refreshCollectionTreeView()
     const QString PRE_OPEN   = " - "; // 展开时：减号 + 空格
     const QString PRE_CLOSED = " + "; // 折叠时：加号 + 空格
 
-    QMap<QString, QListWidgetItem*> visibleItemMap; // BaseName -> Item
-    QMap<QString, int> visibleItemRank;             // BaseName -> SortIndex (排名)
+    QHash<QString, QListWidgetItem*> visibleItemMap; // BaseName -> Item
+    QHash<QString, int> visibleItemRank;             // BaseName -> SortIndex (排名)
+    visibleItemMap.reserve(ui->modelList->count());
+    visibleItemRank.reserve(ui->modelList->count());
 
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *item = ui->modelList->item(i);
@@ -11239,25 +11086,13 @@ void MainWindow::refreshCollectionTreeView()
 
         // 3. 生成节点
         for (const QString &baseName : models) {
-            if (visibleItemMap.contains(baseName)) {
-                QListWidgetItem *sourceItem = visibleItemMap.value(baseName);
-
+            if (QListWidgetItem *sourceItem = visibleItemMap.value(baseName, nullptr)) {
                 QTreeWidgetItem *child = new QTreeWidgetItem(parent);
                 child->setText(0, sourceItem->text());
-                child->setData(0, ROLE_FILE_PATH, sourceItem->data(ROLE_FILE_PATH));
-                child->setData(0, ROLE_PREVIEW_PATH, sourceItem->data(ROLE_PREVIEW_PATH));
-                child->setData(0, ROLE_NSFW_LEVEL, sourceItem->data(ROLE_NSFW_LEVEL));
-                child->setData(0, ROLE_MODEL_NAME, sourceItem->data(ROLE_MODEL_NAME));
-                child->setData(0, ROLE_MODEL_TYPE, sourceItem->data(ROLE_MODEL_TYPE));
-                child->setData(0, ROLE_MODEL_TRAINED_WORDS, sourceItem->data(ROLE_MODEL_TRAINED_WORDS));
-                child->setData(0, ROLE_MODEL_CREATOR, sourceItem->data(ROLE_MODEL_CREATOR));
-                child->setData(0, ROLE_MODEL_TAGS, sourceItem->data(ROLE_MODEL_TAGS));
-                child->setData(0, ROLE_USER_RATING, sourceItem->data(ROLE_USER_RATING));
-                child->setData(0, ROLE_USER_NOTE, sourceItem->data(ROLE_USER_NOTE));
-                child->setData(0, ROLE_USER_TAGS, sourceItem->data(ROLE_USER_TAGS));
-                child->setData(0, ROLE_USER_CUSTOM_TRIGGERS, sourceItem->data(ROLE_USER_CUSTOM_TRIGGERS));
+                copyCommonModelRoles(sourceItem, [child](int role, const QVariant &val) {
+                    child->setData(0, role, val);
+                });
                 child->setData(0, ROLE_PREVIEW_PLACEHOLDER, sourceItem->data(ROLE_PREVIEW_PLACEHOLDER));
-                child->setData(0, ROLE_MODEL_PREVIEW_STATE, sourceItem->data(ROLE_MODEL_PREVIEW_STATE));
                 child->setIcon(0, sourceItem->icon());
                 applyModelHighlightColor(child);
                 applyModelUserNoteData(child);
@@ -11306,26 +11141,22 @@ void MainWindow::refreshCollectionTreeView()
         if (!item) return false;
         return item->data(ROLE_MODEL_ROOT_PATH).toString() == folderPath;
     };
-    auto folderNameForPath = [&](const QString &folderPath) {
-        for (auto it = visibleItemMap.begin(); it != visibleItemMap.end(); ++it) {
-            QListWidgetItem *item = it.value();
-            if (item->data(ROLE_MODEL_ROOT_PATH).toString() == folderPath) {
-                QString folderName = item->data(ROLE_MODEL_ROOT_NAME).toString();
-                return folderName.isEmpty() ? folderPath : folderName;
-            }
-        }
-        return folderPath.isEmpty() ? QString("未指定文件夹") : folderPath;
-    };
     auto addFolderChildrenForCollection = [&](QTreeWidgetItem *collectionNode, const QString &collectionKeyPrefix, QStringList models) {
-        QMap<QString, QStringList> modelsByFolder;
-        QMap<QString, QString> folderNames;
+        QHash<QString, QStringList> modelsByFolder;
+        QHash<QString, QString> folderNames;
         for (const QString &baseName : models) {
-            if (!visibleItemMap.contains(baseName)) continue;
-            QListWidgetItem *item = visibleItemMap.value(baseName);
+            QListWidgetItem *item = visibleItemMap.value(baseName, nullptr);
+            if (!item) continue;
             QString folderPath = item->data(ROLE_MODEL_ROOT_PATH).toString();
-            if (folderPath.isEmpty()) folderPath = "__unknown__";
+            if (folderPath.isEmpty()) folderPath = QStringLiteral("__unknown__");
             modelsByFolder[folderPath].append(baseName);
-            folderNames.insert(folderPath, folderNameForPath(folderPath));
+            if (!folderNames.contains(folderPath)) {
+                QString folderName = item->data(ROLE_MODEL_ROOT_NAME).toString();
+                if (folderName.isEmpty()) {
+                    folderName = (folderPath == QStringLiteral("__unknown__")) ? QStringLiteral("未指定文件夹") : folderPath;
+                }
+                folderNames.insert(folderPath, folderName);
+            }
         }
 
         QStringList folderPaths = modelsByFolder.keys();
@@ -11394,13 +11225,17 @@ void MainWindow::refreshCollectionTreeView()
 
     if (optCollectionFolderTopLevel) {
         QMap<QString, QString> folderNames;
-        for (auto it = visibleItemMap.begin(); it != visibleItemMap.end(); ++it) {
+        QHash<QString, int> folderCounts;
+        for (auto it = visibleItemMap.cbegin(); it != visibleItemMap.cend(); ++it) {
             QListWidgetItem *item = it.value();
             const QString folderPath = item->data(ROLE_MODEL_ROOT_PATH).toString();
             if (folderPath.isEmpty()) continue;
-            QString folderName = item->data(ROLE_MODEL_ROOT_NAME).toString();
-            if (folderName.isEmpty()) folderName = folderPath;
-            folderNames.insert(folderPath, folderName);
+            folderCounts[folderPath]++;
+            if (!folderNames.contains(folderPath)) {
+                QString folderName = item->data(ROLE_MODEL_ROOT_NAME).toString();
+                if (folderName.isEmpty()) folderName = folderPath;
+                folderNames.insert(folderPath, folderName);
+            }
         }
 
         QStringList folderPaths = folderNames.keys();
@@ -11409,10 +11244,7 @@ void MainWindow::refreshCollectionTreeView()
         });
 
         for (const QString &folderPath : folderPaths) {
-            int folderVisibleCount = 0;
-            for (auto it = visibleItemMap.begin(); it != visibleItemMap.end(); ++it) {
-                if (modelBelongsToFolder(it.key(), folderPath)) folderVisibleCount++;
-            }
+            const int folderVisibleCount = folderCounts.value(folderPath, 0);
             if (folderVisibleCount <= 0 && !optShowEmptyCollections) continue;
 
             const QString folderKey = "folder:" + folderPath;
@@ -11424,6 +11256,9 @@ void MainWindow::refreshCollectionTreeView()
     } else {
         addCollectionGroup(nullptr, QString());
     }
+
+    ui->collectionTree->setAnimated(true);
+    ui->collectionTree->setUpdatesEnabled(true);
 
     // 恢复滚动条
     // 使用 QTimer 0 延时，确保 UI 布局完成后再滚动，否则可能滚不到位

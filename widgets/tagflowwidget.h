@@ -158,6 +158,7 @@ public:
     // 提供“给定顺序”（如当前图提示词的出现顺序）；仅在 SortByGivenOrder 模式下生效。
     void setGivenOrder(const QStringList &order) {
         m_givenOrder.clear();
+        m_givenOrder.reserve(order.size());
         for (int i = 0; i < order.size(); ++i) {
             if (!m_givenOrder.contains(order[i])) m_givenOrder.insert(order[i], i);
         }
@@ -215,11 +216,18 @@ public:
     }
 
     void selectAllVisibleTags() {
-        QStringList visibleTexts;
-        visibleTexts.reserve(m_tags.size());
-        for (const TagState &tag : m_tags) visibleTexts.append(tag.text);
-        if (visibleTexts.isEmpty()) return;
-        for (const QString &text : visibleTexts) setSelectedByText(text, true);
+        if (m_tags.isEmpty()) return;
+        QSet<QString> selectedSet;
+        selectedSet.reserve(m_tags.size());
+        for (TagState &tag : m_tags) {
+            tag.selected = true;
+            selectedSet.insert(tag.text);
+        }
+        for (TagState &tag : m_allTags) {
+            if (selectedSet.contains(tag.text)) {
+                tag.selected = true;
+            }
+        }
         m_cacheDirty = true;
         update();
         emit filterChanged(getSelectedTags());
@@ -276,8 +284,7 @@ protected:
         return tag.contains("lora:", Qt::CaseInsensitive);
     }
 
-    bool matchesSearch(const TagState &tag) const {
-        const QString needle = normalizeForSearch(m_searchText);
+    bool matchesSearch(const TagState &tag, const QString &needle) const {
         if (needle.isEmpty()) return true;
 
         if (normalizeForSearch(tag.text).contains(needle)) return true;
@@ -297,9 +304,11 @@ protected:
 
     void rebuildVisibleTags() {
         m_tags.clear();
-        for (const TagState &tag : m_allTags) {
+        m_tags.reserve(m_allTags.size());
+        const QString needle = normalizeForSearch(m_searchText);
+        for (const TagState &tag : std::as_const(m_allTags)) {
             if (m_loraOnly && !isLoraTag(tag.text)) continue;
-            if (!matchesSearch(tag)) continue;
+            if (!matchesSearch(tag, needle)) continue;
             m_tags.append(tag);
         }
 
@@ -318,9 +327,14 @@ protected:
                 return a.count > b.count;
             });
         } else if (m_sortMode == SortByCategory) {
-            std::sort(m_tags.begin(), m_tags.end(), [this](const TagState &a, const TagState &b) {
-                const QString categoryA = categoryForTag(a.text);
-                const QString categoryB = categoryForTag(b.text);
+            QHash<QString, QString> categoryCache;
+            categoryCache.reserve(m_tags.size());
+            for (const TagState &tag : std::as_const(m_tags)) {
+                categoryCache.insert(tag.text, categoryForTag(tag.text));
+            }
+            std::sort(m_tags.begin(), m_tags.end(), [&categoryCache](const TagState &a, const TagState &b) {
+                const QString &categoryA = categoryCache.value(a.text);
+                const QString &categoryB = categoryCache.value(b.text);
                 if (categoryA.isEmpty() != categoryB.isEmpty()) return !categoryA.isEmpty();
                 const int categoryCmp = QString::compare(categoryA, categoryB, Qt::CaseInsensitive);
                 if (categoryCmp != 0) return categoryCmp < 0;
@@ -512,12 +526,16 @@ protected:
             const QString line2 = m_showTranslation ? tryGetTranslation(tag.text) : QString();
 
             QColor bgColor = AppStyle::color("buttonBg");
-            const VisualRole visualRole = m_visualRoles.value(normalizedTagKey(tag.text), m_defaultVisualRole);
+            const VisualRole visualRole = m_visualRoles.isEmpty()
+                ? m_defaultVisualRole
+                : m_visualRoles.value(normalizedTagKey(tag.text), m_defaultVisualRole);
             if (visualRole == VisualNegative) bgColor = AppStyle::color("negativeTagBg");
-            const DiffState diffState = m_diffStates.value(tag.text, DiffNone);
-            if (diffState == DiffOnlyA) bgColor = AppStyle::color("imgCompareA");
-            else if (diffState == DiffOnlyB) bgColor = AppStyle::color("imgCompareB");
-            else if (diffState == DiffCommon) bgColor = AppStyle::color("tagDiffCommon");
+            if (!m_diffStates.isEmpty()) {
+                const DiffState diffState = m_diffStates.value(tag.text, DiffNone);
+                if (diffState == DiffOnlyA) bgColor = AppStyle::color("imgCompareA");
+                else if (diffState == DiffOnlyB) bgColor = AppStyle::color("imgCompareB");
+                else if (diffState == DiffCommon) bgColor = AppStyle::color("tagDiffCommon");
+            }
             if (tag.selected) bgColor = AppStyle::color("accentBlue");
             p.setBrush(bgColor);
             p.setPen(Qt::NoPen);

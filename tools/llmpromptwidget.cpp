@@ -2319,7 +2319,7 @@ QString LlmPromptWidget::buildConservativeReplacementPrompt() const
         }
 
         if (!shouldDrop && isLora) {
-            QRegularExpression re("<lora:([^:>]+)");
+            static const QRegularExpression re("<lora:([^:>]+)");
             QRegularExpressionMatch match = re.match(token);
             if (match.hasMatch() && !oldNorm.isEmpty()) {
                 QString loraNameNorm = normalizeLooseText(match.captured(1));

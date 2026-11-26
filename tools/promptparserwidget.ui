@@ -341,39 +341,49 @@ Click or Drag Image Here</string>
           </layout>
          </item>
          <item>
-          <widget class="QScrollArea" name="scrollAreaPos">
-           <property name="verticalScrollBarPolicy">
-            <enum>Qt::ScrollBarPolicy::ScrollBarAsNeeded</enum>
+          <widget class="QStackedWidget" name="stackPosPrompt">
+           <property name="currentIndex">
+            <number>1</number>
            </property>
-           <property name="widgetResizable">
-            <bool>true</bool>
-           </property>
-           <widget class="QWidget" name="scrollAreaWidgetContentsPos">
-            <property name="geometry">
-             <rect>
-              <x>0</x>
-              <y>0</y>
-              <width>660</width>
-              <height>356</height>
-             </rect>
+           <widget class="QPlainTextEdit" name="editPosPrompt">
+            <property name="placeholderText">
+             <string>提示词文本（可编辑 / 复制 / 粘贴），切到“标签”视图可解析并翻译</string>
             </property>
-            <layout class="QVBoxLayout" name="layoutTagsPos">
-             <property name="spacing">
-              <number>0</number>
+           </widget>
+           <widget class="QScrollArea" name="scrollAreaPos">
+            <property name="verticalScrollBarPolicy">
+             <enum>Qt::ScrollBarPolicy::ScrollBarAsNeeded</enum>
+            </property>
+            <property name="widgetResizable">
+             <bool>true</bool>
+            </property>
+            <widget class="QWidget" name="scrollAreaWidgetContentsPos">
+             <property name="geometry">
+              <rect>
+               <x>0</x>
+               <y>0</y>
+               <width>660</width>
+               <height>356</height>
+              </rect>
              </property>
-             <property name="leftMargin">
-              <number>5</number>
-             </property>
-             <property name="topMargin">
-              <number>5</number>
-             </property>
-             <property name="rightMargin">
-              <number>5</number>
-             </property>
-             <property name="bottomMargin">
-              <number>5</number>
-             </property>
-            </layout>
+             <layout class="QVBoxLayout" name="layoutTagsPos">
+              <property name="spacing">
+               <number>0</number>
+              </property>
+              <property name="leftMargin">
+               <number>5</number>
+              </property>
+              <property name="topMargin">
+               <number>5</number>
+              </property>
+              <property name="rightMargin">
+               <number>5</number>
+              </property>
+              <property name="bottomMargin">
+               <number>5</number>
+              </property>
+             </layout>
+            </widget>
            </widget>
           </widget>
          </item>
@@ -385,39 +395,49 @@ Click or Drag Image Here</string>
           </widget>
          </item>
          <item>
-          <widget class="QScrollArea" name="scrollAreaNeg">
-           <property name="verticalScrollBarPolicy">
-            <enum>Qt::ScrollBarPolicy::ScrollBarAsNeeded</enum>
+          <widget class="QStackedWidget" name="stackNegPrompt">
+           <property name="currentIndex">
+            <number>1</number>
            </property>
-           <property name="widgetResizable">
-            <bool>true</bool>
-           </property>
-           <widget class="QWidget" name="scrollAreaWidgetContentsNeg">
-            <property name="geometry">
-             <rect>
-              <x>0</x>
-              <y>0</y>
-              <width>660</width>
-              <height>356</height>
-             </rect>
+           <widget class="QPlainTextEdit" name="editNegPrompt">
+            <property name="placeholderText">
+             <string>提示词文本（可编辑 / 复制 / 粘贴），切到“标签”视图可解析并翻译</string>
             </property>
-            <layout class="QVBoxLayout" name="layoutTagsNeg">
-             <property name="spacing">
-              <number>0</number>
+           </widget>
+           <widget class="QScrollArea" name="scrollAreaNeg">
+            <property name="verticalScrollBarPolicy">
+             <enum>Qt::ScrollBarPolicy::ScrollBarAsNeeded</enum>
+            </property>
+            <property name="widgetResizable">
+             <bool>true</bool>
+            </property>
+            <widget class="QWidget" name="scrollAreaWidgetContentsNeg">
+             <property name="geometry">
+              <rect>
+               <x>0</x>
+               <y>0</y>
+               <width>660</width>
+               <height>356</height>
+              </rect>
              </property>
-             <property name="leftMargin">
-              <number>5</number>
-             </property>
-             <property name="topMargin">
-              <number>5</number>
-             </property>
-             <property name="rightMargin">
-              <number>5</number>
-             </property>
-             <property name="bottomMargin">
-              <number>5</number>
-             </property>
-            </layout>
+             <layout class="QVBoxLayout" name="layoutTagsNeg">
+              <property name="spacing">
+               <number>0</number>
+              </property>
+              <property name="leftMargin">
+               <number>5</number>
+              </property>
+              <property name="topMargin">
+               <number>5</number>
+              </property>
+              <property name="rightMargin">
+               <number>5</number>
+              </property>
+              <property name="bottomMargin">
+               <number>5</number>
+              </property>
+             </layout>
+            </widget>
            </widget>
           </widget>
          </item>

@@ -116,6 +116,9 @@ qt_add_executable(SD_LoRA_Manager
     dialogs/launcherimportdialog.h
     dialogs/launcherimportdialog.cpp
     dialogs/launcherimportdialog.ui
+    dialogs/textviewerdialog.h
+    dialogs/textviewerdialog.cpp
+    dialogs/textviewerdialog.ui
     tools/usageanalysiswidget.h
     tools/usageanalysiswidget.cpp
     tools/usageanalysiswidget.ui

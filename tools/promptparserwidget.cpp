@@ -2,6 +2,7 @@
 #include "promptparserwidget.h"
 #include "ui_promptparserwidget.h"
 #include "tagutils.h"
+#include "gallerymetadata.h"
 #include "tagusage.h"
 #include "imagemetadataparser.h"
 #include "tableviewstylehelper.h"
@@ -352,15 +353,13 @@ PromptParserWidget::PromptParserWidget(QWidget *parent)
         negTagWidget->clearSelectedTags();
     });
 
-    // 把正/负面 tagflow 滚动区包成“文本/标签”双视图：文本视图可编辑/复制/粘贴。
-    setupPromptTextToggle();
     connect(ui->btnToggleTagText, &QPushButton::toggled, this, [this](bool tagView) {
         setTagViewActive(tagView);
     });
     // 刷新：用图片原始提示词覆盖当前（可能已被编辑的）文本。
     connect(ui->btnRefreshPrompt, &QPushButton::clicked, this, [this]() {
-        if (m_posEdit) m_posEdit->setPlainText(m_lastParsedPositive);
-        if (m_negEdit) m_negEdit->setPlainText(m_lastParsedNegative);
+        if (ui->editPosPrompt) ui->editPosPrompt->setPlainText(m_lastParsedPositive);
+        if (ui->editNegPrompt) ui->editNegPrompt->setPlainText(m_lastParsedNegative);
         if (m_tagViewActive) refreshTagFlowsFromText();
     });
     setTagViewActive(m_tagViewActive); // 同步初始可见性/页面（默认标签视图）
@@ -762,31 +761,6 @@ void PromptParserWidget::updateWd14ImagePreview(const QString &filePath)
     updateImageLabelPreview(ui->lblWd14Image, filePath, "图片加载失败\nFailed to load image");
 }
 
-QMap<QString, int> PromptParserWidget::parsePromptToMap(const QString &rawPrompt)
-{
-    QMap<QString, int> result;
-    const QStringList parts = TagUtils::splitPromptParts(rawPrompt, true);
-    for (const QString &part : parts) {
-        const QString clean = TagUtils::cleanPromptTag(part);
-        if (!clean.isEmpty()) result[clean]++;
-    }
-    return result;
-}
-
-QStringList PromptParserWidget::parsePromptOrder(const QString &rawPrompt) const
-{
-    QStringList order;
-    QSet<QString> seen;
-    const QStringList parts = TagUtils::splitPromptParts(rawPrompt, true);
-    for (const QString &part : parts) {
-        const QString clean = TagUtils::cleanPromptTag(part);
-        if (clean.isEmpty() || seen.contains(clean)) continue;
-        seen.insert(clean);
-        order << clean;
-    }
-    return order;
-}
-
 void PromptParserWidget::applyTagSortMode()
 {
     TagFlowWidget::SortMode mode = TagFlowWidget::SortByGivenOrder;
@@ -801,37 +775,11 @@ void PromptParserWidget::applyTagSortMode()
     negTagWidget->setSortMode(mode);
 }
 
-// 把一个 tagflow 滚动区在其所在布局里替换为 QStackedWidget：第 0 页为可编辑文本框，第 1 页为原滚动区。
-static QStackedWidget *wrapScrollWithEditor(QBoxLayout *layout, QScrollArea *area, QPlainTextEdit *&editOut)
-{
-    if (!layout || !area) return nullptr;
-    auto *stack = new QStackedWidget(area->parentWidget());
-    stack->setSizePolicy(area->sizePolicy());
-
-    auto *edit = new QPlainTextEdit(stack);
-    edit->setSizePolicy(area->sizePolicy());
-    edit->setPlaceholderText(AppText::tr("提示词文本（可编辑 / 复制 / 粘贴），切到“标签”视图可解析并翻译"));
-
-    // 用 stack 接管滚动区在布局中的位置，再把滚动区重新父化进 stack。
-    delete layout->replaceWidget(area, stack);
-    stack->addWidget(edit);   // page 0: 文本
-    stack->addWidget(area);   // page 1: tagflow
-    stack->setCurrentIndex(1);
-    editOut = edit;
-    return stack;
-}
-
-void PromptParserWidget::setupPromptTextToggle()
-{
-    m_posStack = wrapScrollWithEditor(ui->layoutRight, ui->scrollAreaPos, m_posEdit);
-    m_negStack = wrapScrollWithEditor(ui->layoutRight, ui->scrollAreaNeg, m_negEdit);
-}
-
 void PromptParserWidget::setTagViewActive(bool tagView)
 {
     m_tagViewActive = tagView;
-    if (m_posStack) m_posStack->setCurrentIndex(tagView ? 1 : 0);
-    if (m_negStack) m_negStack->setCurrentIndex(tagView ? 1 : 0);
+    if (ui->stackPosPrompt) ui->stackPosPrompt->setCurrentIndex(tagView ? 1 : 0);
+    if (ui->stackNegPrompt) ui->stackNegPrompt->setCurrentIndex(tagView ? 1 : 0);
     // 标签相关按钮只在标签视图下有意义。
     ui->btnTranslate->setVisible(tagView);
     ui->btnSelectAllTags->setVisible(tagView);
@@ -843,19 +791,19 @@ void PromptParserWidget::setTagViewActive(bool tagView)
 
 void PromptParserWidget::refreshTagFlowsFromText()
 {
-    if (!m_posEdit || !m_negEdit) return;
-    const QString posText = m_posEdit->toPlainText();
-    const QString negText = m_negEdit->toPlainText();
-    m_posTagOrder = parsePromptOrder(posText);
-    m_negTagOrder = parsePromptOrder(negText);
-    posTagWidget->setData(parsePromptToMap(posText));
-    negTagWidget->setData(parsePromptToMap(negText));
+    if (!ui->editPosPrompt || !ui->editNegPrompt) return;
+    QMap<QString, int> posCounts;
+    QMap<QString, int> negCounts;
+    TagUtils::collectPromptTagStats(ui->editPosPrompt->toPlainText(), true, posCounts, &m_posTagOrder);
+    TagUtils::collectPromptTagStats(ui->editNegPrompt->toPlainText(), true, negCounts, &m_negTagOrder);
+    posTagWidget->setData(posCounts);
+    negTagWidget->setData(negCounts);
     applyTagSortMode();
 }
 
 void PromptParserWidget::editPromptTag(bool negative, const QString &tag)
 {
-    QPlainTextEdit *editor = negative ? m_negEdit : m_posEdit;
+    QPlainTextEdit *editor = negative ? ui->editNegPrompt : ui->editPosPrompt;
     if (!editor || tag.trimmed().isEmpty()) return;
 
     bool accepted = false;
@@ -884,34 +832,6 @@ void PromptParserWidget::editPromptTag(bool negative, const QString &tag)
     refreshTagFlowsFromText();
 }
 
-// 让参数“每项单独成行”：先按已有换行拆，再把每行按“不在引号内的逗号”拆开。
-// A1111 的参数是一整行逗号分隔（且 Lora hashes 的值里带引号包裹的逗号，需跳过）；
-// ComfyUI 本就每行一个参数，二次拆分对其无影响。与图库参数展示的处理保持一致。
-static QString formatParamsPerLine(const QString &params)
-{
-    auto splitTopLevelCommas = [](const QString &s) {
-        QStringList out;
-        QString cur;
-        bool inQuotes = false;
-        for (const QChar c : s) {
-            if (c == '"') { inQuotes = !inQuotes; cur += c; }
-            else if (c == ',' && !inQuotes) { out << cur; cur.clear(); }
-            else cur += c;
-        }
-        out << cur;
-        return out;
-    };
-    QStringList lines;
-    const QStringList raw = params.split('\n');
-    for (const QString &line : raw) {
-        for (const QString &seg : splitTopLevelCommas(line)) {
-            const QString t = seg.trimmed();
-            if (!t.isEmpty()) lines << t;
-        }
-    }
-    return lines.join('\n');
-}
-
 void PromptParserWidget::processImage(const QString &filePath)
 {
     updateImagePreview(filePath);
@@ -921,8 +841,8 @@ void PromptParserWidget::processImage(const QString &filePath)
         ui->txtParams->setText(AppText::tr("未找到生成参数 / No generation parameters found."));
         m_lastParsedPositive.clear();
         m_lastParsedNegative.clear();
-        if (m_posEdit) m_posEdit->clear();
-        if (m_negEdit) m_negEdit->clear();
+        if (ui->editPosPrompt) ui->editPosPrompt->clear();
+        if (ui->editNegPrompt) ui->editNegPrompt->clear();
         m_posTagOrder.clear();
         m_negTagOrder.clear();
         posTagWidget->setData({});
@@ -931,7 +851,7 @@ void PromptParserWidget::processImage(const QString &filePath)
     }
 
     // 分辨率放在第一行：直接读图片实际尺寸（ComfyUI 的元信息里可能没有分辨率），与图库一致。
-    QString paramsText = formatParamsPerLine(parsed.parametersText);
+    QString paramsText = GalleryMetadata::splitParameterLines(parsed.parametersText).join('\n');
     {
         QImageReader reader(filePath);
         const QSize sz = reader.size();
@@ -945,8 +865,8 @@ void PromptParserWidget::processImage(const QString &filePath)
     m_lastParsedPositive = parsed.positivePrompt;
     m_lastParsedNegative = parsed.negativePrompt;
     // 文本框是数据源：填入解析出的提示词文本（用户可编辑/复制/粘贴），tagflow 从文本框派生。
-    if (m_posEdit) m_posEdit->setPlainText(parsed.positivePrompt);
-    if (m_negEdit) m_negEdit->setPlainText(parsed.negativePrompt);
+    if (ui->editPosPrompt) ui->editPosPrompt->setPlainText(parsed.positivePrompt);
+    if (ui->editNegPrompt) ui->editNegPrompt->setPlainText(parsed.negativePrompt);
     if (m_tagViewActive) refreshTagFlowsFromText();
 }
 
@@ -1053,8 +973,10 @@ void PromptParserWidget::updateImageCompare()
     const bool useNegative = ui->chkCompareNegative->isChecked();
     const QString promptA = useNegative ? compareMetaA.negativePrompt : compareMetaA.positivePrompt;
     const QString promptB = useNegative ? compareMetaB.negativePrompt : compareMetaB.positivePrompt;
-    const QMap<QString, int> tagsA = parsePromptToMap(promptA);
-    const QMap<QString, int> tagsB = parsePromptToMap(promptB);
+    QMap<QString, int> tagsA;
+    QMap<QString, int> tagsB;
+    TagUtils::collectPromptTagStats(promptA, true, tagsA);
+    TagUtils::collectPromptTagStats(promptB, true, tagsB);
 
     compareTagWidgetA->setData(tagsA);
     compareTagWidgetB->setData(tagsB);

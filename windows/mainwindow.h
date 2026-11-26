@@ -213,7 +213,6 @@ private slots:
 
 private:
     Ui::MainWindow *ui = nullptr;
-    QTabWidget *toolsTabWidget = nullptr;
     PromptParserWidget *parserWidget = nullptr;
     TagBrowserWidget *tagBrowserWidget = nullptr;
     LlmPromptWidget *llmPromptWidget = nullptr;
@@ -522,6 +521,7 @@ private:
     void applyUserGalleryTagFilter(const QSet<QString> &selectedTags,
                                    bool resetScrollToTop);
     void resetUserImageThumbLoading();
+    void clearUserGalleryView();
     void scheduleVisibleUserImageThumbLoad();
     void dispatchVisibleUserImageThumbLoad();
 
@@ -545,6 +545,7 @@ private:
     void syncTreeSelection(const QString &filePath);
     void initMenuBar();       // 菜单初始化
     void ensureToolTabLoaded(int index);
+    void openTagModelGraph(int scope, const QString &focusQuery);
 
     QString currentUserAgent;                           // 当前UA
 
@@ -590,6 +591,7 @@ private:
     QSet<QString> loadedHomeThumbPaths;
     QHash<QString, QListWidgetItem*> modelItemByPath;
     QHash<QString, QListWidgetItem*> homeItemByPath;
+    QHash<QString, QListWidgetItem*> userImageItemByPath;
     QMultiHash<QString, QTreeWidgetItem*> collectionTreeItemsByPath;
     QTimer *searchDebounceTimer = nullptr;
     QTimer *homeAuthorFilterDebounceTimer = nullptr;

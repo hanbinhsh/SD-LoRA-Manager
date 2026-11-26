@@ -3,6 +3,7 @@
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QSet>
+#include <algorithm>
 
 namespace TagUtils {
 
@@ -10,6 +11,19 @@ QString normalizedGalleryTagKey(QString tag)
 {
     tag.replace('_', ' ');
     return tag.simplified().toCaseFolded();
+}
+
+QStringList normalizedGalleryTagKeys(const QStringList &tags)
+{
+    QStringList keys;
+    keys.reserve(tags.size());
+    for (const QString &tag : tags) {
+        const QString key = normalizedGalleryTagKey(tag);
+        if (!key.isEmpty()) keys.append(key);
+    }
+    std::sort(keys.begin(), keys.end());
+    keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+    return keys;
 }
 
 QStringList parsePromptTags(const QString &rawPrompt, bool splitOnNewline, const QStringList &filterTags)
@@ -76,6 +90,27 @@ QStringList splitPromptParts(const QString &rawPrompt, bool splitOnNewline)
         processText.replace("\r", ",");
     }
     return processText.split(',', Qt::SkipEmptyParts);
+}
+
+void collectPromptTagStats(const QString &rawPrompt,
+                           bool splitOnNewline,
+                           QMap<QString, int> &countsOut,
+                           QStringList *uniqueOrderOut)
+{
+    countsOut.clear();
+    if (uniqueOrderOut) uniqueOrderOut->clear();
+
+    QSet<QString> seen;
+    const QStringList parts = splitPromptParts(rawPrompt, splitOnNewline);
+    for (const QString &part : parts) {
+        const QString clean = cleanPromptTag(part);
+        if (clean.isEmpty()) continue;
+        countsOut[clean]++;
+        if (uniqueOrderOut && !seen.contains(clean)) {
+            seen.insert(clean);
+            uniqueOrderOut->append(clean);
+        }
+    }
 }
 
 }

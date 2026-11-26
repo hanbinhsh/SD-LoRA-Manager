@@ -138,6 +138,16 @@ void testMetadata(const QTemporaryDir &dir)
               QStringLiteral("1girl, sexy dress"), {QStringLiteral("1girl"), QStringLiteral("sexy dress")},
               QStringList{QStringLiteral("sex")}),
           "plain word rule respects word boundary");
+
+    const QStringList splitParams = GalleryMetadata::splitParameterLines(
+        QStringLiteral("Steps: 20, Lora hashes: \"a: 1111, b: 2222\", Model: base\nCFG scale: 7"));
+    check(splitParams == QStringList({
+              QStringLiteral("Steps: 20"),
+              QStringLiteral("Lora hashes: \"a: 1111, b: 2222\""),
+              QStringLiteral("Model: base"),
+              QStringLiteral("CFG scale: 7")
+          }),
+          "splitParameterLines preserves quoted commas inside parameter values");
 }
 
 void testMatcher(const QTemporaryDir &dir)
@@ -334,6 +344,28 @@ void testTags(const QTemporaryDir &dir)
     stale.parserVersion = GalleryMetadata::ParserVersion;
     GalleryMetadata::parseImage(dir.filePath("missing.png"), stale, true, {});
     check(stale.parserVersion == 0, "missing file cannot retain a successful parser version");
+
+    QMap<QString, int> tagCounts;
+    QStringList tagOrder;
+    TagUtils::collectPromptTagStats(
+        QStringLiteral("(1girl:1.2), smile\n1girl, blue eyes"),
+        true,
+        tagCounts,
+        &tagOrder);
+    check(tagCounts.value(QStringLiteral("1girl")) == 2
+              && tagCounts.value(QStringLiteral("smile")) == 1
+              && tagCounts.value(QStringLiteral("blue eyes")) == 1
+              && tagOrder == QStringList({QStringLiteral("1girl"), QStringLiteral("smile"), QStringLiteral("blue eyes")}),
+          "collectPromptTagStats aggregates counts and preserves first-seen order");
+
+    const QStringList normGalleryKeys = TagUtils::normalizedGalleryTagKeys({
+        QStringLiteral("blue_hair"),
+        QStringLiteral("Blue   Hair"),
+        QStringLiteral("smile"),
+        QStringLiteral("  ")
+    });
+    check(normGalleryKeys == QStringList({QStringLiteral("blue hair"), QStringLiteral("smile")}),
+          "normalizedGalleryTagKeys deduplicates and sorts folded gallery tag keys");
 }
 
 void testComfyModels(const QTemporaryDir &dir, const QString &attachmentPath)

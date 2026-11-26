@@ -379,4 +379,39 @@ bool matchesPositivePromptNsfwRules(const QString &rawPrompt,
     return false;
 }
 
+QStringList splitTopLevelCommas(const QString &text)
+{
+    QStringList out;
+    QString cur;
+    bool inQuotes = false;
+    for (const QChar c : text) {
+        if (c == QLatin1Char('"')) {
+            inQuotes = !inQuotes;
+            cur += c;
+        } else if (c == QLatin1Char(',') && !inQuotes) {
+            out << cur;
+            cur.clear();
+        } else {
+            cur += c;
+        }
+    }
+    out << cur;
+    return out;
+}
+
+QStringList splitParameterLines(const QString &params)
+{
+    QStringList lines;
+    const QStringList rawLines = params.split(QLatin1Char('\n'));
+    for (const QString &line : rawLines) {
+        for (const QString &seg : splitTopLevelCommas(line)) {
+            const QString trimmed = seg.trimmed();
+            if (!trimmed.isEmpty()) {
+                lines << trimmed;
+            }
+        }
+    }
+    return lines;
+}
+
 }
