@@ -10,131 +10,374 @@
     <height>657</height>
    </rect>
   </property>
-  <layout class="QGridLayout" name="gridLayout">
-   <item row="0" column="0">
-    <layout class="QHBoxLayout" name="horizontalLayout">
-     <item>
-      <widget class="QCheckBox" name="chkAutoStart">
-       <property name="text">
-        <string>启动软件时自动开启同步 / Auto Start</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QCheckBox" name="chkWhitelist">
-       <property name="text">
-        <string>白名单验证 / Whitelist</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="label">
-       <property name="text">
-        <string>端口 / Port:</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLineEdit" name="editPort">
-       <property name="maximumSize">
-        <size>
-         <width>80</width>
-         <height>16777215</height>
-        </size>
-       </property>
-       <property name="text">
-        <string>12345</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="label_2">
-       <property name="text">
-        <string>AES Key:</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLineEdit" name="editAesKey">
-       <property name="echoMode">
-        <enum>QLineEdit::EchoMode::PasswordEchoOnEdit</enum>
-       </property>
-       <property name="placeholderText">
-        <string>需与手机端一致</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="btnGetMobileApp">
-       <property name="cursor">
-        <cursorShape>PointingHandCursor</cursorShape>
-       </property>
-       <property name="toolTip">
-        <string>使用系统浏览器打开手机版同步 App 的最新 GitHub Release 页面。</string>
-       </property>
-       <property name="text">
-        <string>获取手机版 App</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <spacer name="horizontalSpacer">
-       <property name="orientation">
-        <enum>Qt::Orientation::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-     <item>
-      <widget class="QPushButton" name="btnStart">
-       <property name="text">
-        <string>▶ 启动服务 / Start</string>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item row="1" column="0">
-    <widget class="Line" name="line">
-     <property name="orientation">
-      <enum>Qt::Orientation::Horizontal</enum>
+  <layout class="QVBoxLayout" name="rootSyncLayout">
+   <property name="leftMargin">
+    <number>6</number>
+   </property>
+   <property name="topMargin">
+    <number>6</number>
+   </property>
+   <property name="rightMargin">
+    <number>6</number>
+   </property>
+   <property name="bottomMargin">
+    <number>6</number>
+   </property>
+   <item>
+    <widget class="QTabWidget" name="syncTabWidget">
+     <property name="currentIndex">
+      <number>0</number>
      </property>
-    </widget>
-   </item>
-   <item row="2" column="0">
-    <widget class="QSplitter" name="splitter">
-     <property name="orientation">
-      <enum>Qt::Orientation::Horizontal</enum>
-     </property>
-     <widget class="QWidget" name="layoutWidget">
-      <layout class="QVBoxLayout" name="verticalLayout_2">
-       <item>
-        <widget class="QGroupBox" name="groupBox">
-         <property name="title">
-          <string>同步文件夹列表 / Sync Folders:</string>
+     <widget class="QWidget" name="tabMobileSync">
+      <attribute name="title">
+       <string>📱 手机图库同步 / Mobile Sync</string>
+      </attribute>
+      <layout class="QGridLayout" name="gridLayout">
+       <item row="0" column="0">
+        <layout class="QHBoxLayout" name="horizontalLayout">
+         <item>
+          <widget class="QCheckBox" name="chkAutoStart">
+           <property name="text">
+            <string>启动软件时自动开启同步 / Auto Start</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QCheckBox" name="chkWhitelist">
+           <property name="text">
+            <string>白名单验证 / Whitelist</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="label">
+           <property name="text">
+            <string>端口 / Port:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="editPort">
+           <property name="maximumSize">
+            <size>
+             <width>80</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>12345</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_2">
+           <property name="text">
+            <string>AES Key:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="editAesKey">
+           <property name="echoMode">
+            <enum>QLineEdit::EchoMode::PasswordEchoOnEdit</enum>
+           </property>
+           <property name="placeholderText">
+            <string>需与手机端一致</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnGetMobileApp">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="toolTip">
+            <string>使用系统浏览器打开手机版同步 App 的最新 GitHub Release 页面。</string>
+           </property>
+           <property name="text">
+            <string>获取手机版 App</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer">
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnStart">
+           <property name="text">
+            <string>▶ 启动服务 / Start</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item row="1" column="0">
+        <widget class="Line" name="line">
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
          </property>
-         <layout class="QVBoxLayout" name="verticalLayout">
-          <property name="leftMargin">
-           <number>0</number>
+        </widget>
+       </item>
+       <item row="2" column="0">
+        <widget class="QSplitter" name="splitter">
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+         <widget class="QWidget" name="layoutWidget">
+          <layout class="QVBoxLayout" name="verticalLayout_2">
+           <item>
+            <widget class="QGroupBox" name="groupBox">
+             <property name="title">
+              <string>同步文件夹列表 / Sync Folders:</string>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayout">
+              <property name="leftMargin">
+               <number>0</number>
+              </property>
+              <property name="topMargin">
+               <number>0</number>
+              </property>
+              <property name="rightMargin">
+               <number>0</number>
+              </property>
+              <property name="bottomMargin">
+               <number>0</number>
+              </property>
+              <item>
+               <widget class="QListWidget" name="listFolders">
+                <property name="lineWidth">
+                 <number>0</number>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_2">
+             <item>
+              <widget class="QPushButton" name="btnAddFolder">
+               <property name="text">
+                <string>添加文件夹 / Add</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="layoutWidget1">
+          <layout class="QVBoxLayout" name="verticalLayout_3">
+           <item>
+            <widget class="QGroupBox" name="groupBox_2">
+             <property name="title">
+              <string>待审核设备 / Pending Approval:</string>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayout_5">
+              <property name="spacing">
+               <number>0</number>
+              </property>
+              <property name="leftMargin">
+               <number>0</number>
+              </property>
+              <property name="topMargin">
+               <number>0</number>
+              </property>
+              <property name="rightMargin">
+               <number>0</number>
+              </property>
+              <property name="bottomMargin">
+               <number>0</number>
+              </property>
+              <item>
+               <widget class="QListWidget" name="listDevices"/>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QGroupBox" name="groupBox_3">
+             <property name="title">
+              <string>已许可白名单 / Permitted:</string>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayout_6">
+              <property name="spacing">
+               <number>0</number>
+              </property>
+              <property name="leftMargin">
+               <number>0</number>
+              </property>
+              <property name="topMargin">
+               <number>0</number>
+              </property>
+              <property name="rightMargin">
+               <number>0</number>
+              </property>
+              <property name="bottomMargin">
+               <number>0</number>
+              </property>
+              <item>
+               <widget class="QListWidget" name="listWhitelist"/>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QGroupBox" name="groupBox_4">
+             <property name="title">
+              <string>已连接设备 / Connected:</string>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayout_7">
+              <property name="spacing">
+               <number>0</number>
+              </property>
+              <property name="leftMargin">
+               <number>0</number>
+              </property>
+              <property name="topMargin">
+               <number>0</number>
+              </property>
+              <property name="rightMargin">
+               <number>0</number>
+              </property>
+              <property name="bottomMargin">
+               <number>0</number>
+              </property>
+              <item>
+               <widget class="QListWidget" name="listActive"/>
+              </item>
+             </layout>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="layoutWidget2">
+          <layout class="QVBoxLayout" name="verticalLayout_4">
+           <item>
+            <widget class="QGroupBox" name="groupBox_5">
+             <property name="title">
+              <string>服务日志 / Log:</string>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayout_8">
+              <property name="spacing">
+               <number>0</number>
+              </property>
+              <property name="leftMargin">
+               <number>0</number>
+              </property>
+              <property name="topMargin">
+               <number>0</number>
+              </property>
+              <property name="rightMargin">
+               <number>0</number>
+              </property>
+              <property name="bottomMargin">
+               <number>0</number>
+              </property>
+              <item>
+               <widget class="QTextEdit" name="logOutput">
+                <property name="readOnly">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tabFolderSync">
+      <attribute name="title">
+       <string>📁 文件夹同步 / Folder Sync</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="folderSyncMainLayout">
+       <property name="spacing">
+        <number>10</number>
+       </property>
+       <item>
+        <widget class="QGroupBox" name="groupFolderSyncPaths">
+         <property name="title">
+          <string>文件夹路径 / Folder Paths</string>
+         </property>
+         <layout class="QGridLayout" name="folderPathsGridLayout">
+          <property name="horizontalSpacing">
+           <number>8</number>
           </property>
-          <property name="topMargin">
-           <number>0</number>
+          <property name="verticalSpacing">
+           <number>8</number>
           </property>
-          <property name="rightMargin">
-           <number>0</number>
-          </property>
-          <property name="bottomMargin">
-           <number>0</number>
-          </property>
-          <item>
-           <widget class="QListWidget" name="listFolders">
-            <property name="lineWidth">
-             <number>0</number>
+          <item row="0" column="0">
+           <widget class="QLabel" name="lblFolderA">
+            <property name="text">
+             <string>文件夹 A（源目录）:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="editFolderA">
+            <property name="placeholderText">
+             <string>选择或输入文件夹 A 路径</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="2">
+           <widget class="QPushButton" name="btnBrowseFolderA">
+            <property name="cursor">
+             <cursorShape>PointingHandCursor</cursorShape>
+            </property>
+            <property name="text">
+             <string>浏览...</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="3" rowspan="2">
+           <widget class="QPushButton" name="btnSwapFolders">
+            <property name="cursor">
+             <cursorShape>PointingHandCursor</cursorShape>
+            </property>
+            <property name="toolTip">
+             <string>互换文件夹 A 与文件夹 B 的路径</string>
+            </property>
+            <property name="text">
+             <string>⇄ 互换</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="lblFolderB">
+            <property name="text">
+             <string>文件夹 B（目标目录）:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="editFolderB">
+            <property name="placeholderText">
+             <string>选择或输入文件夹 B 路径</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="2">
+           <widget class="QPushButton" name="btnBrowseFolderB">
+            <property name="cursor">
+             <cursorShape>PointingHandCursor</cursorShape>
+            </property>
+            <property name="text">
+             <string>浏览...</string>
             </property>
            </widget>
           </item>
@@ -142,26 +385,169 @@
         </widget>
        </item>
        <item>
-        <layout class="QHBoxLayout" name="horizontalLayout_2">
+        <widget class="QGroupBox" name="groupFolderSyncMode">
+         <property name="title">
+          <string>同步方式 / Sync Mode</string>
+         </property>
+         <layout class="QVBoxLayout" name="folderModeLayout">
+          <property name="spacing">
+           <number>8</number>
+          </property>
+          <item>
+           <layout class="QHBoxLayout" name="folderModeRadioLayout">
+            <property name="spacing">
+             <number>18</number>
+            </property>
+            <item>
+             <widget class="QRadioButton" name="radioSyncCopy">
+              <property name="text">
+               <string>单向同步（复制：A → B）</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QRadioButton" name="radioSyncMove">
+              <property name="text">
+               <string>单向同步（移动：A → B）</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QRadioButton" name="radioSyncTwoWay">
+              <property name="text">
+               <string>双向同步（A ⇄ B）</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="folderModeSpacer">
+              <property name="orientation">
+               <enum>Qt::Orientation::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="chkSyncSubdirs">
+              <property name="text">
+               <string>包含子文件夹</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="lblFolderSyncModeHint">
+            <property name="text">
+             <string>将文件夹 A 中新增或更新的文件复制到文件夹 B，保留 A 中的原始文件。</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="folderSyncActionLayout">
+         <property name="spacing">
+          <number>8</number>
+         </property>
          <item>
-          <widget class="QPushButton" name="btnAddFolder">
+          <widget class="QPushButton" name="btnPreviewFolderSync">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
            <property name="text">
-            <string>添加文件夹 / Add</string>
+            <string>预览变更</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnStartFolderSync">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="text">
+            <string>▶ 开始同步</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnCancelFolderSync">
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="text">
+            <string>取消</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnClearFolderSyncLog">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="text">
+            <string>清空日志</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QProgressBar" name="progressFolderSync">
+           <property name="minimumSize">
+            <size>
+             <width>180</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="value">
+            <number>0</number>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="lblFolderSyncSummary">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+             <horstretch>1</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="text">
+            <string>就绪</string>
            </property>
           </widget>
          </item>
         </layout>
        </item>
-      </layout>
-     </widget>
-     <widget class="QWidget" name="layoutWidget1">
-      <layout class="QVBoxLayout" name="verticalLayout_3">
        <item>
-        <widget class="QGroupBox" name="groupBox_2">
-         <property name="title">
-          <string>待审核设备 / Pending Approval:</string>
+        <widget class="QGroupBox" name="groupFolderSyncLog">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+           <horstretch>0</horstretch>
+           <verstretch>1</verstretch>
+          </sizepolicy>
          </property>
-         <layout class="QVBoxLayout" name="verticalLayout_5">
+         <property name="title">
+          <string>同步预览与日志 / Sync Log</string>
+         </property>
+         <layout class="QVBoxLayout" name="folderLogLayout">
           <property name="spacing">
            <number>0</number>
           </property>
@@ -178,92 +564,7 @@
            <number>0</number>
           </property>
           <item>
-           <widget class="QListWidget" name="listDevices"/>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="groupBox_3">
-         <property name="title">
-          <string>已许可白名单 / Permitted:</string>
-         </property>
-         <layout class="QVBoxLayout" name="verticalLayout_6">
-          <property name="spacing">
-           <number>0</number>
-          </property>
-          <property name="leftMargin">
-           <number>0</number>
-          </property>
-          <property name="topMargin">
-           <number>0</number>
-          </property>
-          <property name="rightMargin">
-           <number>0</number>
-          </property>
-          <property name="bottomMargin">
-           <number>0</number>
-          </property>
-          <item>
-           <widget class="QListWidget" name="listWhitelist"/>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="groupBox_4">
-         <property name="title">
-          <string>已连接设备 / Connected:</string>
-         </property>
-         <layout class="QVBoxLayout" name="verticalLayout_7">
-          <property name="spacing">
-           <number>0</number>
-          </property>
-          <property name="leftMargin">
-           <number>0</number>
-          </property>
-          <property name="topMargin">
-           <number>0</number>
-          </property>
-          <property name="rightMargin">
-           <number>0</number>
-          </property>
-          <property name="bottomMargin">
-           <number>0</number>
-          </property>
-          <item>
-           <widget class="QListWidget" name="listActive"/>
-          </item>
-         </layout>
-        </widget>
-       </item>
-      </layout>
-     </widget>
-     <widget class="QWidget" name="layoutWidget2">
-      <layout class="QVBoxLayout" name="verticalLayout_4">
-       <item>
-        <widget class="QGroupBox" name="groupBox_5">
-         <property name="title">
-          <string>服务日志 / Log:</string>
-         </property>
-         <layout class="QVBoxLayout" name="verticalLayout_8">
-          <property name="spacing">
-           <number>0</number>
-          </property>
-          <property name="leftMargin">
-           <number>0</number>
-          </property>
-          <property name="topMargin">
-           <number>0</number>
-          </property>
-          <property name="rightMargin">
-           <number>0</number>
-          </property>
-          <property name="bottomMargin">
-           <number>0</number>
-          </property>
-          <item>
-           <widget class="QTextEdit" name="logOutput">
+           <widget class="QTextEdit" name="folderSyncLogOutput">
             <property name="readOnly">
              <bool>true</bool>
             </property>

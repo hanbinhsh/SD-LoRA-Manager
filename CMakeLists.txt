@@ -142,6 +142,8 @@ qt_add_executable(SD_LoRA_Manager
     utils/launchscriptparser.cpp
     utils/fileutils.h
     utils/fileutils.cpp
+    utils/foldersyncengine.h
+    utils/foldersyncengine.cpp
     utils/modellistcache.h
     utils/modellistcache.cpp
     utils/modeluserdatastore.h
@@ -278,6 +280,7 @@ if(BUILD_CORE_UTIL_TESTS)
         utils/downloadcache.cpp
         utils/downloadstatus.cpp
         utils/fileutils.cpp
+        utils/foldersyncengine.cpp
         utils/gallerymetadata.cpp
         utils/imagemetadataparser.cpp
         utils/metadatainspection.cpp
@@ -297,7 +300,7 @@ if(BUILD_CORE_UTIL_TESTS)
         services/modelupdatecoordinator.cpp)
     target_include_directories(core_utils_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(core_utils_test PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Concurrent app_i18n)
-    foreach(group metadata matching scanner preview comfy tags archive paths_filters browser_urls inspection downloads)
+    foreach(group metadata matching scanner preview comfy tags archive paths_filters browser_urls inspection downloads folder_sync)
         add_test(NAME core_utils_${group} COMMAND core_utils_test ${group})
     endforeach()
 endif()

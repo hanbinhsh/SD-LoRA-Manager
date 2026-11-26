@@ -5,6 +5,7 @@
 #include "services/modelupdatecoordinator.h"
 #include "utils/downloadstatus.h"
 #include "utils/fileutils.h"
+#include "utils/foldersyncengine.h"
 #include "utils/gallerymetadata.h"
 #include "utils/imagemetadataparser.h"
 #include "utils/metadatainspection.h"
@@ -929,6 +930,137 @@ void testInspection(const QTemporaryDir &dir)
     writeFile(cfgPath, "{broken_json");
     check(!AppConfigStore::save(cfgPath, cfgIn), "AppConfigStore refuses to overwrite malformed JSON");
 }
+
+void setFileMtime(const QString &path, const QDateTime &dt)
+{
+    QFile f(path);
+    if (f.open(QIODevice::ReadWrite | QIODevice::ExistingOnly)) {
+        f.setFileTime(dt, QFileDevice::FileModificationTime);
+        f.close();
+    }
+}
+
+QByteArray readFileBytes(const QString &path)
+{
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    return f.readAll();
+}
+
+void testFolderSync(const QTemporaryDir &dir)
+{
+    const QString root = dir.filePath("folder_sync_tests");
+    const QString dirA = root + "/a";
+    const QString dirB = root + "/b";
+    QDir().mkpath(dirA);
+    QDir().mkpath(dirB);
+
+    // 1. Validation & safety checks
+    check(!FolderSyncEngine::planSync("", dirB, FolderSyncMode::OneWayCopy).valid,
+          "folder sync rejects empty source path");
+    check(!FolderSyncEngine::planSync(root + "/missing", dirB, FolderSyncMode::OneWayCopy).valid,
+          "folder sync rejects non-existent source directory");
+    check(!FolderSyncEngine::planSync(dirA, dirA, FolderSyncMode::OneWayCopy).valid,
+          "folder sync rejects identical directories");
+    check(!FolderSyncEngine::planSync(dirA, dirA + "/nested", FolderSyncMode::OneWayCopy).valid,
+          "folder sync rejects target nested inside source");
+    check(!FolderSyncEngine::planSync(dirA + "/nested", dirA, FolderSyncMode::TwoWaySync).valid,
+          "folder sync rejects source nested inside target");
+
+    // 2. One-way copy (with nested subdirs, skip unchanged, update newer, preserve B-only)
+    const QDateTime oldTime = QDateTime::fromSecsSinceEpoch(1700000000);
+    const QDateTime newTime = QDateTime::fromSecsSinceEpoch(1700001000);
+    QDir().mkpath(dirA + "/sub");
+    writeFile(dirA + "/one.txt", "hello-a");
+    writeFile(dirA + "/sub/two.txt", "nested-a");
+    writeFile(dirB + "/only_b.txt", "keep-b");
+    setFileMtime(dirA + "/one.txt", oldTime);
+    setFileMtime(dirA + "/sub/two.txt", oldTime);
+
+    const FolderSyncPlan copyPlan1 = FolderSyncEngine::planSync(dirA, dirB, FolderSyncMode::OneWayCopy, true);
+    check(copyPlan1.valid && copyPlan1.copyAtoBCount == 2 && copyPlan1.skipCount == 0,
+          "one-way copy plans missing files including subdirectories");
+    const FolderSyncResult copyRes1 = FolderSyncEngine::executeSync(copyPlan1);
+    check(copyRes1.success && copyRes1.copiedCount == 2 && copyRes1.failedCount == 0
+          && readFileBytes(dirB + "/one.txt") == "hello-a"
+          && readFileBytes(dirB + "/sub/two.txt") == "nested-a"
+          && readFileBytes(dirB + "/only_b.txt") == "keep-b"
+          && QFile::exists(dirA + "/one.txt"),
+          "one-way copy copies files, preserves source, and keeps target-only files");
+
+    const FolderSyncPlan copyPlan2 = FolderSyncEngine::planSync(dirA, dirB, FolderSyncMode::OneWayCopy, true);
+    check(copyPlan2.valid && copyPlan2.copyAtoBCount == 0 && copyPlan2.skipCount == 2,
+          "one-way copy skips unchanged files on repeated run");
+
+    writeFile(dirA + "/one.txt", "hello-a-v2");
+    setFileMtime(dirA + "/one.txt", newTime);
+    const FolderSyncPlan copyPlan3 = FolderSyncEngine::planSync(dirA, dirB, FolderSyncMode::OneWayCopy, true);
+    check(copyPlan3.valid && copyPlan3.copyAtoBCount == 1 && copyPlan3.skipCount == 1,
+          "one-way copy detects updated source file");
+    const FolderSyncResult copyRes3 = FolderSyncEngine::executeSync(copyPlan3);
+    check(copyRes3.success && readFileBytes(dirB + "/one.txt") == "hello-a-v2",
+          "one-way copy atomically replaces older destination file");
+
+    // 3. Two-way sync (missing both ways + newer wins both ways)
+    const QString twA = root + "/tw_a";
+    const QString twB = root + "/tw_b";
+    QDir().mkpath(twA);
+    QDir().mkpath(twB);
+    writeFile(twA + "/from_a.txt", "A-only");
+    writeFile(twB + "/from_b.txt", "B-only");
+    writeFile(twA + "/conflict_a_newer.txt", "A-wins");
+    writeFile(twB + "/conflict_a_newer.txt", "B-old");
+    setFileMtime(twA + "/conflict_a_newer.txt", newTime);
+    setFileMtime(twB + "/conflict_a_newer.txt", oldTime);
+    writeFile(twA + "/conflict_b_newer.txt", "A-old");
+    writeFile(twB + "/conflict_b_newer.txt", "B-wins");
+    setFileMtime(twA + "/conflict_b_newer.txt", oldTime);
+    setFileMtime(twB + "/conflict_b_newer.txt", newTime);
+
+    const FolderSyncPlan twPlan = FolderSyncEngine::planSync(twA, twB, FolderSyncMode::TwoWaySync, true);
+    check(twPlan.valid && twPlan.copyAtoBCount == 2 && twPlan.copyBtoACount == 2,
+          "two-way sync plans copies in both directions");
+    const FolderSyncResult twRes = FolderSyncEngine::executeSync(twPlan);
+    check(twRes.success && twRes.copiedCount == 4
+          && readFileBytes(twB + "/from_a.txt") == "A-only"
+          && readFileBytes(twA + "/from_b.txt") == "B-only"
+          && readFileBytes(twB + "/conflict_a_newer.txt") == "A-wins"
+          && readFileBytes(twA + "/conflict_b_newer.txt") == "B-wins",
+          "two-way sync converges both folders with newer files winning");
+
+    const FolderSyncPlan twPlanRepeat = FolderSyncEngine::planSync(twA, twB, FolderSyncMode::TwoWaySync, true);
+    check(twPlanRepeat.valid && twPlanRepeat.pendingTransferCount() == 0 && twPlanRepeat.skipCount == 4,
+          "two-way sync becomes a no-op after convergence");
+
+    // 4. One-way move (moves files, cleans empty subdirs, preserves root A)
+    const QString mvA = root + "/mv_a";
+    const QString mvB = root + "/mv_b";
+    QDir().mkpath(mvA + "/nested/deep");
+    writeFile(mvA + "/nested/deep/file.bin", "payload-123");
+    writeFile(mvA + "/top.txt", "top-data");
+    const FolderSyncPlan mvPlan = FolderSyncEngine::planSync(mvA, mvB, FolderSyncMode::OneWayMove, true);
+    check(mvPlan.valid && mvPlan.moveAtoBCount == 2, "one-way move plans moving all source files");
+    const FolderSyncResult mvRes = FolderSyncEngine::executeSync(mvPlan);
+    check(mvRes.success && mvRes.movedCount == 2 && mvRes.removedEmptyDirs >= 2
+          && QDir(mvA).exists()
+          && !QFile::exists(mvA + "/top.txt")
+          && !QDir(mvA + "/nested").exists()
+          && readFileBytes(mvB + "/nested/deep/file.bin") == "payload-123"
+          && readFileBytes(mvB + "/top.txt") == "top-data",
+          "one-way move moves files, cleans empty source subdirs, and keeps source root");
+
+    // 5. Cancellation flag
+    const QString cancelA = root + "/cancel_a";
+    const QString cancelB = root + "/cancel_b";
+    QDir().mkpath(cancelA);
+    writeFile(cancelA + "/f1.txt", "1");
+    writeFile(cancelA + "/f2.txt", "2");
+    const FolderSyncPlan cancelPlan = FolderSyncEngine::planSync(cancelA, cancelB, FolderSyncMode::OneWayCopy, true);
+    std::atomic_bool cancelFlag(true);
+    const FolderSyncResult cancelRes = FolderSyncEngine::executeSync(cancelPlan, {}, &cancelFlag);
+    check(cancelRes.canceled && !cancelRes.success && cancelRes.copiedCount == 0,
+          "folder sync honors cancellation flag cleanly");
+}
 }
 
 int main(int argc, char **argv)
@@ -951,6 +1083,7 @@ int main(int argc, char **argv)
     else if (group == "browser_urls") testModelBrowserUrls();
     else if (group == "inspection") testInspection(dir);
     else if (group == "downloads") testDownloadCache(dir);
+    else if (group == "folder_sync") testFolderSync(dir);
     else return 2;
     qInfo() << group << (failures ? "FAILED" : "passed");
     return failures ? 1 : 0;

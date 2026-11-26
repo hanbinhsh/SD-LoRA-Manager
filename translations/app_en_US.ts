@@ -6104,5 +6104,163 @@ Uncategorized</translation>
       <source>🩺 元数据健康检查 / Metadata Health Check</source>
       <translation>🩺 Metadata Health Check</translation>
     </message>
+    <message>
+      <source>📱 手机图库同步 / Mobile Sync</source>
+      <translation>📱 Mobile Sync</translation>
+    </message>
+    <message>
+      <source>📁 文件夹同步 / Folder Sync</source>
+      <translation>📁 Folder Sync</translation>
+    </message>
+    <message>
+      <source>文件夹路径 / Folder Paths</source>
+      <translation>Folder Paths</translation>
+    </message>
+    <message>
+      <source>文件夹 A（源目录）:</source>
+      <translation>Folder A (Source):</translation>
+    </message>
+    <message>
+      <source>选择或输入文件夹 A 路径</source>
+      <translation>Select or enter Folder A path</translation>
+    </message>
+    <message>
+      <source>互换文件夹 A 与文件夹 B 的路径</source>
+      <translation>Swap Folder A and Folder B paths</translation>
+    </message>
+    <message>
+      <source>⇄ 互换</source>
+      <translation>⇄ Swap</translation>
+    </message>
+    <message>
+      <source>文件夹 B（目标目录）:</source>
+      <translation>Folder B (Target):</translation>
+    </message>
+    <message>
+      <source>选择或输入文件夹 B 路径</source>
+      <translation>Select or enter Folder B path</translation>
+    </message>
+    <message>
+      <source>同步方式 / Sync Mode</source>
+      <translation>Sync Mode</translation>
+    </message>
+    <message>
+      <source>单向同步（复制：A → B）</source>
+      <translation>One-way Sync (Copy: A → B)</translation>
+    </message>
+    <message>
+      <source>单向同步（移动：A → B）</source>
+      <translation>One-way Sync (Move: A → B)</translation>
+    </message>
+    <message>
+      <source>双向同步（A ⇄ B）</source>
+      <translation>Two-way Sync (A ⇄ B)</translation>
+    </message>
+    <message>
+      <source>包含子文件夹</source>
+      <translation>Include subfolders</translation>
+    </message>
+    <message>
+      <source>将文件夹 A 中新增或更新的文件复制到文件夹 B，保留 A 中的原始文件。</source>
+      <translation>Copy new or updated files from Folder A to Folder B while keeping original files in A.</translation>
+    </message>
+    <message>
+      <source>将文件夹 A 中的文件移动到文件夹 B（移动成功后移除 A 中的源文件并清理空子目录）。</source>
+      <translation>Move files from Folder A to Folder B (removes source files in A and empty subfolders after moving).</translation>
+    </message>
+    <message>
+      <source>双向对比文件夹 A 与文件夹 B：自动补齐缺失文件，并以修改时间较新的一侧更新另一侧。</source>
+      <translation>Compare Folder A and Folder B in both directions: copy missing files and update older files with newer ones.</translation>
+    </message>
+    <message>
+      <source>预览变更</source>
+      <translation>Preview Changes</translation>
+    </message>
+    <message>
+      <source>▶ 开始同步</source>
+      <translation>▶ Start Sync</translation>
+    </message>
+    <message>
+      <source>清空日志</source>
+      <translation>Clear Log</translation>
+    </message>
+    <message>
+      <source>就绪</source>
+      <translation>Ready</translation>
+    </message>
+    <message>
+      <source>同步预览与日志 / Sync Log</source>
+      <translation>Sync Preview &amp; Log</translation>
+    </message>
+    <message>
+      <source>选择文件夹 A（源目录）</source>
+      <translation>Select Folder A (Source)</translation>
+    </message>
+    <message>
+      <source>选择文件夹 B（目标目录）</source>
+      <translation>Select Folder B (Target)</translation>
+    </message>
+    <message>
+      <source>参数无效</source>
+      <translation>Invalid Parameters</translation>
+    </message>
+    <message>
+      <source>确认移动同步</source>
+      <translation>Confirm Move Sync</translation>
+    </message>
+    <message>
+      <source>单向移动同步会将文件夹 A 中的 %1 个文件移动到文件夹 B，并在成功后移除 A 中的源文件。
+确定继续吗？</source>
+      <translation>One-way move sync will move %1 file(s) from Folder A to Folder B and remove the source files in A after moving.
+Continue?</translation>
+    </message>
+    <message>
+      <source>预览完成：A→B 复制 %1，A→B 移动 %2，B→A 复制 %3，跳过 %4（待传输 %5）</source>
+      <translation>Preview complete: A→B copy %1, A→B move %2, B→A copy %3, skipped %4 (%5 to transfer)</translation>
+    </message>
+    <message>
+      <source>✅ 两个目录已一致，无需传输任何文件。</source>
+      <translation>✅ Both folders are already up to date; nothing to transfer.</translation>
+    </message>
+    <message>
+      <source>... 其余 %1 项已省略，点击“开始同步”将全部执行。</source>
+      <translation>... %1 more item(s) omitted; clicking Start Sync will process all of them.</translation>
+    </message>
+    <message>
+      <source>两个目录已一致（跳过 %1 个文件），无需同步。</source>
+      <translation>Both folders are already in sync (%1 file(s) skipped).</translation>
+    </message>
+    <message>
+      <source>正在同步 0 / %1 ...</source>
+      <translation>Syncing 0 / %1 ...</translation>
+    </message>
+    <message>
+      <source>正在同步 %1 / %2 ...</source>
+      <translation>Syncing %1 / %2 ...</translation>
+    </message>
+    <message>
+      <source>▶ 开始同步：%1 -> %2（共 %3 个待处理文件，%4）</source>
+      <translation>▶ Starting sync: %1 -> %2 (%3 pending file(s), %4)</translation>
+    </message>
+    <message>
+      <source>正在取消同步...</source>
+      <translation>Canceling sync...</translation>
+    </message>
+    <message>
+      <source>⏹ 已请求取消同步，等待当前文件处理完成...</source>
+      <translation>⏹ Cancellation requested; waiting for current file to finish...</translation>
+    </message>
+    <message>
+      <source>同步已取消：已复制 %1，已移动 %2，跳过 %3，失败 %4</source>
+      <translation>Sync canceled: copied %1, moved %2, skipped %3, failed %4</translation>
+    </message>
+    <message>
+      <source>同步完成：复制 %1，移动 %2，跳过 %3，失败 %4（传输 %5）</source>
+      <translation>Sync complete: copied %1, moved %2, skipped %3, failed %4 (%5 transferred)</translation>
+    </message>
+    <message>
+      <source>，清理空目录 %1 个</source>
+      <translation>, removed %1 empty folder(s)</translation>
+    </message>
   </context>
 </TS>

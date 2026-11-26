@@ -10,6 +10,11 @@
 #include <QMap>
 #include <QSet>
 #include <QJsonObject>
+#include <QFutureWatcher>
+#include <atomic>
+#include <memory>
+
+#include "utils/foldersyncengine.h"
 
 namespace Ui {
 class SyncWidget;
@@ -39,6 +44,17 @@ private slots:
     void onDiscoveryReadyRead();
     void handleDirectoryChange(const QString &path);
 
+    // 文件夹同步槽函数
+    void onBrowseFolderA();
+    void onBrowseFolderB();
+    void onSwapFolders();
+    void onFolderSyncModeChanged();
+    void onPreviewFolderSync();
+    void onStartFolderSync();
+    void onCancelFolderSync();
+    void onClearFolderSyncLog();
+    void onFolderSyncFinished();
+
 private:
     Ui::SyncWidget *ui;
 
@@ -58,6 +74,16 @@ private:
     QSet<QString> m_whitelistedDevices;
 
     bool m_isLoading = false;
+
+    // 文件夹同步状态
+    QFutureWatcher<FolderSyncResult> *m_folderSyncWatcher = nullptr;
+    std::shared_ptr<std::atomic_bool> m_folderSyncCancelFlag;
+    bool m_folderSyncRunning = false;
+
+    FolderSyncMode currentFolderSyncMode() const;
+    void updateFolderSyncModeHint();
+    void setFolderSyncUiBusy(bool busy);
+    void logFolderSyncMsg(const QString &msg);
 
     // 动态生成带按钮的列表项的辅助函数
     void addFolderItem(const QString &path);

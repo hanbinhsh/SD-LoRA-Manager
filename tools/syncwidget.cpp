@@ -18,6 +18,9 @@
 #include <openssl/rand.h>
 #include <QHBoxLayout>
 #include <QUrl>
+#include <QMetaObject>
+#include <QPointer>
+#include <QtConcurrent/QtConcurrent>
 
 SyncWidget::SyncWidget(QWidget *parent) :
     QWidget(parent),
@@ -47,8 +50,30 @@ SyncWidget::SyncWidget(QWidget *parent) :
     // 调整 Splitter 比例
     ui->splitter->setSizes(QList<int>() << 300 << 250 << 400);
 
+    // 初始化文件夹同步控制器与信号连接
+    m_folderSyncWatcher = new QFutureWatcher<FolderSyncResult>(this);
+    connect(m_folderSyncWatcher, &QFutureWatcher<FolderSyncResult>::finished,
+            this, &SyncWidget::onFolderSyncFinished);
+
+    connect(ui->btnBrowseFolderA, &QPushButton::clicked, this, &SyncWidget::onBrowseFolderA);
+    connect(ui->btnBrowseFolderB, &QPushButton::clicked, this, &SyncWidget::onBrowseFolderB);
+    connect(ui->btnSwapFolders, &QPushButton::clicked, this, &SyncWidget::onSwapFolders);
+    connect(ui->btnPreviewFolderSync, &QPushButton::clicked, this, &SyncWidget::onPreviewFolderSync);
+    connect(ui->btnStartFolderSync, &QPushButton::clicked, this, &SyncWidget::onStartFolderSync);
+    connect(ui->btnCancelFolderSync, &QPushButton::clicked, this, &SyncWidget::onCancelFolderSync);
+    connect(ui->btnClearFolderSyncLog, &QPushButton::clicked, this, &SyncWidget::onClearFolderSyncLog);
+
+    connect(ui->radioSyncCopy, &QRadioButton::toggled, this, &SyncWidget::onFolderSyncModeChanged);
+    connect(ui->radioSyncMove, &QRadioButton::toggled, this, &SyncWidget::onFolderSyncModeChanged);
+    connect(ui->radioSyncTwoWay, &QRadioButton::toggled, this, &SyncWidget::onFolderSyncModeChanged);
+    connect(ui->chkSyncSubdirs, &QCheckBox::toggled, this, [this](bool) { saveSettings(); });
+    connect(ui->editFolderA, &QLineEdit::editingFinished, this, [this]() { saveSettings(); });
+    connect(ui->editFolderB, &QLineEdit::editingFinished, this, [this]() { saveSettings(); });
+    connect(ui->syncTabWidget, &QTabWidget::currentChanged, this, [this](int) { saveSettings(); });
+
     // 加载设置
     loadSettings();
+    updateFolderSyncModeHint();
 
     // 自动启动服务
     if (ui->chkAutoStart->isChecked()) {
@@ -59,6 +84,15 @@ SyncWidget::SyncWidget(QWidget *parent) :
 SyncWidget::~SyncWidget()
 {
     saveSettings();
+    if (m_folderSyncCancelFlag) {
+        m_folderSyncCancelFlag->store(true);
+    }
+    if (m_folderSyncWatcher) {
+        m_folderSyncWatcher->disconnect(this);
+        if (m_folderSyncWatcher->isRunning()) {
+            m_folderSyncWatcher->waitForFinished();
+        }
+    }
     if (watcher) {
         watcher->disconnect(this);
         const QStringList watchedFiles = watcher->files();
@@ -118,6 +152,24 @@ void SyncWidget::loadSettings() {
     }
     settings.endGroup();
 
+    settings.beginGroup("FolderSync");
+    ui->editFolderA->setText(settings.value("folderA", "").toString());
+    ui->editFolderB->setText(settings.value("folderB", "").toString());
+    const int savedMode = settings.value("mode", 0).toInt();
+    if (savedMode == 1) {
+        ui->radioSyncMove->setChecked(true);
+    } else if (savedMode == 2) {
+        ui->radioSyncTwoWay->setChecked(true);
+    } else {
+        ui->radioSyncCopy->setChecked(true);
+    }
+    ui->chkSyncSubdirs->setChecked(settings.value("includeSubdirs", true).toBool());
+    const int savedTab = settings.value("currentTab", 0).toInt();
+    if (savedTab >= 0 && savedTab < ui->syncTabWidget->count()) {
+        ui->syncTabWidget->setCurrentIndex(savedTab);
+    }
+    settings.endGroup();
+
     m_isLoading = false; // 关闭加载模式
 }
 
@@ -132,6 +184,14 @@ void SyncWidget::saveSettings() {
     settings.setValue("aesKey", ui->editAesKey->text());
     settings.setValue("whitelist", QStringList(m_whitelistedDevices.begin(), m_whitelistedDevices.end()));
     settings.setValue("rootPaths", m_rootPaths);
+    settings.endGroup();
+
+    settings.beginGroup("FolderSync");
+    settings.setValue("folderA", ui->editFolderA->text().trimmed());
+    settings.setValue("folderB", ui->editFolderB->text().trimmed());
+    settings.setValue("mode", static_cast<int>(currentFolderSyncMode()));
+    settings.setValue("includeSubdirs", ui->chkSyncSubdirs->isChecked());
+    settings.setValue("currentTab", ui->syncTabWidget->currentIndex());
     settings.endGroup();
 }
 
@@ -841,4 +901,264 @@ void SyncWidget::handleClientDisconnected() {
     clients.removeAll(client);
     client->deleteLater();
     logMsg("🔌 客户端已断开连接");
+}
+
+// ======================= 文件夹同步 =======================
+namespace {
+QString formatSyncByteSize(qint64 bytes)
+{
+    if (bytes < 1024) return QStringLiteral("%1 B").arg(bytes);
+    if (bytes < 1024LL * 1024LL) return QStringLiteral("%1 KB").arg(bytes / 1024.0, 0, 'f', 1);
+    if (bytes < 1024LL * 1024LL * 1024LL) return QStringLiteral("%1 MB").arg(bytes / (1024.0 * 1024.0), 0, 'f', 2);
+    return QStringLiteral("%1 GB").arg(bytes / (1024.0 * 1024.0 * 1024.0), 0, 'f', 2);
+}
+} // namespace
+
+FolderSyncMode SyncWidget::currentFolderSyncMode() const
+{
+    if (ui->radioSyncMove->isChecked()) return FolderSyncMode::OneWayMove;
+    if (ui->radioSyncTwoWay->isChecked()) return FolderSyncMode::TwoWaySync;
+    return FolderSyncMode::OneWayCopy;
+}
+
+void SyncWidget::updateFolderSyncModeHint()
+{
+    const FolderSyncMode mode = currentFolderSyncMode();
+    if (mode == FolderSyncMode::OneWayCopy) {
+        ui->lblFolderSyncModeHint->setText(
+            AppText::tr("将文件夹 A 中新增或更新的文件复制到文件夹 B，保留 A 中的原始文件。"));
+    } else if (mode == FolderSyncMode::OneWayMove) {
+        ui->lblFolderSyncModeHint->setText(
+            AppText::tr("将文件夹 A 中的文件移动到文件夹 B（移动成功后移除 A 中的源文件并清理空子目录）。"));
+    } else {
+        ui->lblFolderSyncModeHint->setText(
+            AppText::tr("双向对比文件夹 A 与文件夹 B：自动补齐缺失文件，并以修改时间较新的一侧更新另一侧。"));
+    }
+}
+
+void SyncWidget::setFolderSyncUiBusy(bool busy)
+{
+    m_folderSyncRunning = busy;
+    ui->editFolderA->setEnabled(!busy);
+    ui->editFolderB->setEnabled(!busy);
+    ui->btnBrowseFolderA->setEnabled(!busy);
+    ui->btnBrowseFolderB->setEnabled(!busy);
+    ui->btnSwapFolders->setEnabled(!busy);
+    ui->radioSyncCopy->setEnabled(!busy);
+    ui->radioSyncMove->setEnabled(!busy);
+    ui->radioSyncTwoWay->setEnabled(!busy);
+    ui->chkSyncSubdirs->setEnabled(!busy);
+    ui->btnPreviewFolderSync->setEnabled(!busy);
+    ui->btnStartFolderSync->setEnabled(!busy);
+    ui->btnCancelFolderSync->setEnabled(busy);
+}
+
+void SyncWidget::logFolderSyncMsg(const QString &msg)
+{
+    const QString timeStr = QDateTime::currentDateTime().toString("[HH:mm:ss] ");
+    ui->folderSyncLogOutput->append(timeStr + msg);
+}
+
+void SyncWidget::onBrowseFolderA()
+{
+    const QString current = ui->editFolderA->text().trimmed();
+    const QString dir = QFileDialog::getExistingDirectory(this, AppText::tr("选择文件夹 A（源目录）"), current);
+    if (dir.isEmpty()) return;
+    ui->editFolderA->setText(dir);
+    saveSettings();
+}
+
+void SyncWidget::onBrowseFolderB()
+{
+    const QString current = ui->editFolderB->text().trimmed();
+    const QString dir = QFileDialog::getExistingDirectory(this, AppText::tr("选择文件夹 B（目标目录）"), current);
+    if (dir.isEmpty()) return;
+    ui->editFolderB->setText(dir);
+    saveSettings();
+}
+
+void SyncWidget::onSwapFolders()
+{
+    const QString a = ui->editFolderA->text();
+    const QString b = ui->editFolderB->text();
+    ui->editFolderA->setText(b);
+    ui->editFolderB->setText(a);
+    saveSettings();
+}
+
+void SyncWidget::onFolderSyncModeChanged()
+{
+    updateFolderSyncModeHint();
+    saveSettings();
+}
+
+void SyncWidget::onClearFolderSyncLog()
+{
+    ui->folderSyncLogOutput->clear();
+    if (!m_folderSyncRunning) {
+        ui->progressFolderSync->setValue(0);
+        ui->lblFolderSyncSummary->setText(AppText::tr("就绪"));
+    }
+}
+
+void SyncWidget::onPreviewFolderSync()
+{
+    if (m_folderSyncRunning) return;
+
+    const FolderSyncPlan plan = FolderSyncEngine::planSync(
+        ui->editFolderA->text(),
+        ui->editFolderB->text(),
+        currentFolderSyncMode(),
+        ui->chkSyncSubdirs->isChecked());
+
+    if (!plan.valid) {
+        QMessageBox::warning(this, AppText::tr("参数无效"), plan.errorMessage);
+        logFolderSyncMsg("⚠️ " + plan.errorMessage);
+        return;
+    }
+
+    const int pending = plan.pendingTransferCount();
+    const QString summary = AppText::tr("预览完成：A→B 复制 %1，A→B 移动 %2，B→A 复制 %3，跳过 %4（待传输 %5）")
+                                .arg(plan.copyAtoBCount)
+                                .arg(plan.moveAtoBCount)
+                                .arg(plan.copyBtoACount)
+                                .arg(plan.skipCount)
+                                .arg(formatSyncByteSize(plan.totalTransferBytes));
+    ui->lblFolderSyncSummary->setText(summary);
+    logFolderSyncMsg("🔍 " + summary);
+
+    if (pending == 0) {
+        logFolderSyncMsg(AppText::tr("✅ 两个目录已一致，无需传输任何文件。"));
+        return;
+    }
+
+    constexpr int kMaxPreviewLines = 200;
+    int printed = 0;
+    for (const FolderSyncAction &action : plan.actions) {
+        if (action.type == FolderSyncActionType::Skip) continue;
+        if (printed >= kMaxPreviewLines) {
+            logFolderSyncMsg(AppText::tr("... 其余 %1 项已省略，点击“开始同步”将全部执行。")
+                                 .arg(pending - printed));
+            break;
+        }
+        QString tag;
+        if (action.type == FolderSyncActionType::CopyAtoB) tag = QStringLiteral("[A → B 复制]");
+        else if (action.type == FolderSyncActionType::MoveAtoB) tag = QStringLiteral("[A → B 移动]");
+        else if (action.type == FolderSyncActionType::CopyBtoA) tag = QStringLiteral("[B → A 复制]");
+        logFolderSyncMsg(QStringLiteral("  %1 %2 (%3, %4)")
+                             .arg(tag, action.relativePath, formatSyncByteSize(action.fileSize), action.reason));
+        ++printed;
+    }
+}
+
+void SyncWidget::onStartFolderSync()
+{
+    if (m_folderSyncRunning) return;
+
+    const FolderSyncMode mode = currentFolderSyncMode();
+    const FolderSyncPlan plan = FolderSyncEngine::planSync(
+        ui->editFolderA->text(),
+        ui->editFolderB->text(),
+        mode,
+        ui->chkSyncSubdirs->isChecked());
+
+    if (!plan.valid) {
+        QMessageBox::warning(this, AppText::tr("参数无效"), plan.errorMessage);
+        logFolderSyncMsg("⚠️ " + plan.errorMessage);
+        return;
+    }
+
+    if (mode == FolderSyncMode::OneWayMove && plan.moveAtoBCount > 0) {
+        const auto answer = QMessageBox::question(
+            this,
+            AppText::tr("确认移动同步"),
+            AppText::tr("单向移动同步会将文件夹 A 中的 %1 个文件移动到文件夹 B，并在成功后移除 A 中的源文件。\n确定继续吗？")
+                .arg(plan.moveAtoBCount),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No);
+        if (answer != QMessageBox::Yes) return;
+    }
+
+    saveSettings();
+
+    const int pending = plan.pendingTransferCount();
+    if (pending == 0) {
+        const QString msg = AppText::tr("两个目录已一致（跳过 %1 个文件），无需同步。").arg(plan.skipCount);
+        ui->progressFolderSync->setRange(0, 100);
+        ui->progressFolderSync->setValue(100);
+        ui->lblFolderSyncSummary->setText(msg);
+        logFolderSyncMsg("✅ " + msg);
+        return;
+    }
+
+    setFolderSyncUiBusy(true);
+    ui->progressFolderSync->setRange(0, pending);
+    ui->progressFolderSync->setValue(0);
+    ui->lblFolderSyncSummary->setText(AppText::tr("正在同步 0 / %1 ...").arg(pending));
+    logFolderSyncMsg(AppText::tr("▶ 开始同步：%1 -> %2（共 %3 个待处理文件，%4）")
+                         .arg(plan.folderA, plan.folderB)
+                         .arg(pending)
+                         .arg(formatSyncByteSize(plan.totalTransferBytes)));
+
+    auto cancelFlag = std::make_shared<std::atomic_bool>(false);
+    m_folderSyncCancelFlag = cancelFlag;
+    QPointer<SyncWidget> self(this);
+
+    auto progressCb = [self](int done, int total, const QString &line) {
+        if (!self) return;
+        QMetaObject::invokeMethod(self, [self, done, total, line]() {
+            if (!self) return;
+            self->ui->progressFolderSync->setRange(0, qMax(1, total));
+            self->ui->progressFolderSync->setValue(done);
+            self->ui->lblFolderSyncSummary->setText(
+                AppText::tr("正在同步 %1 / %2 ...").arg(done).arg(total));
+            self->logFolderSyncMsg(line);
+        }, Qt::QueuedConnection);
+    };
+
+    QFuture<FolderSyncResult> future = QtConcurrent::run([plan, progressCb, cancelFlag]() {
+        return FolderSyncEngine::executeSync(plan, progressCb, cancelFlag.get());
+    });
+    m_folderSyncWatcher->setFuture(future);
+}
+
+void SyncWidget::onCancelFolderSync()
+{
+    if (!m_folderSyncRunning || !m_folderSyncCancelFlag) return;
+    m_folderSyncCancelFlag->store(true);
+    ui->btnCancelFolderSync->setEnabled(false);
+    ui->lblFolderSyncSummary->setText(AppText::tr("正在取消同步..."));
+    logFolderSyncMsg(AppText::tr("⏹ 已请求取消同步，等待当前文件处理完成..."));
+}
+
+void SyncWidget::onFolderSyncFinished()
+{
+    const FolderSyncResult result = m_folderSyncWatcher->result();
+    setFolderSyncUiBusy(false);
+
+    if (result.canceled) {
+        const QString msg = AppText::tr("同步已取消：已复制 %1，已移动 %2，跳过 %3，失败 %4")
+                                .arg(result.copiedCount)
+                                .arg(result.movedCount)
+                                .arg(result.skippedCount)
+                                .arg(result.failedCount);
+        ui->lblFolderSyncSummary->setText(msg);
+        logFolderSyncMsg("⏹ " + msg);
+        return;
+    }
+
+    QString summary = AppText::tr("同步完成：复制 %1，移动 %2，跳过 %3，失败 %4（传输 %5）")
+                          .arg(result.copiedCount)
+                          .arg(result.movedCount)
+                          .arg(result.skippedCount)
+                          .arg(result.failedCount)
+                          .arg(formatSyncByteSize(result.transferredBytes));
+    if (result.removedEmptyDirs > 0) {
+        summary += AppText::tr("，清理空目录 %1 个").arg(result.removedEmptyDirs);
+    }
+
+    ui->progressFolderSync->setRange(0, 100);
+    ui->progressFolderSync->setValue(100);
+    ui->lblFolderSyncSummary->setText(summary);
+    logFolderSyncMsg((result.failedCount == 0 ? "✅ " : "⚠️ ") + summary);
 }

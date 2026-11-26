@@ -49,7 +49,8 @@ QListWidget#listChatMessages::item:selected {
 }
 
 QLabel#lblStatus, QLabel#lblUserTagStatus, QLabel#lblGenerateStatus,
-QLabel#lblWd14Status, QLabel#lblWd14Elapsed, QLabel#lblWd14Memory {
+QLabel#lblWd14Status, QLabel#lblWd14Elapsed, QLabel#lblWd14Memory,
+QLabel#lblFolderSyncModeHint, QLabel#lblFolderSyncSummary {
     color: @mutedText;
 }
 
@@ -74,7 +75,7 @@ QTextBrowser#txtParams {
     padding: 8px;
 }
 
-QTextEdit#logOutput {
+QTextEdit#logOutput, QTextEdit#folderSyncLogOutput {
     background-color: @consoleBg;
     border: 1px solid @consoleBg;
     color: @subtleText;
