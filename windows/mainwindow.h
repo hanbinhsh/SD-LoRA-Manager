@@ -76,12 +76,7 @@ class PreviewDownloadQueue;
 class MetadataSyncService;
 class ModelUpdateCoordinator;
 class TranslationDictionaryService;
-
-struct ImageLoadResult {
-    QString path;
-    QImage originalImg; // 只存原图，模糊交给主线程做
-    bool valid = false;
-};
+class HeroBlurController;
 
 class MainWindow : public QMainWindow
 {
@@ -161,8 +156,6 @@ private:
     LocalMetaEditorPage *localMetaEditorPage = nullptr;
     QSet<int> pendingToolTabLoads;
     QNetworkAccessManager *netManager = nullptr;
-    QPixmap currentHeroPixmap;
-    QString currentHeroPath;
     ModelMeta currentMeta;
 
     // === 收藏夹管理 ===
@@ -256,16 +249,7 @@ private:
     // 快速读取单个 JSON 的元数据用于列表显示
     void preloadItemMetadata(QListWidgetItem *item, const QString &jsonPath);
     void refreshModelUsageStatsAsync();
-    QFutureWatcher<ImageLoadResult> *imageLoadWatcher = nullptr;
-    QPixmap applyBlurToImage(const QImage &srcImg, const QSize &bgSize, const QSize &heroSize);
-    static ImageLoadResult processImageTask(const QString &path);
-    QPixmap nextHeroPixmap;         // 即将显示的新 Hero 图
-    QPixmap currentBlurredBgPix;    // 当前背景的模糊完成图 (用于过渡缓存)
-    QPixmap nextBlurredBgPix;       // 下一张背景的模糊完成图 (用于过渡缓存)
-    float transitionOpacity = 0.0;  // 过渡透明度 (0.0 - 1.0)
-    QVariantAnimation *transitionAnim = nullptr; // 动画控制器
     void transitionToImage(const QString &path);
-    void updateBackgroundDuringTransition();
     void initServices();
     void enqueueDownload(const QString &url,
                          const QString &savePath,
@@ -352,7 +336,6 @@ private:
     QIcon noPreviewIcon;         // 已同步/本地模型明确无预览：空心圆
     QIcon smallNoPreviewIcon;    // 侧边栏/收藏树用空心圆
 
-    QTimer *bgResizeTimer = nullptr;
     QTimer *detailGalleryBuildTimer = nullptr;
     ModelMeta pendingGalleryMeta;
     QString pendingGalleryModelDir;
@@ -367,6 +350,7 @@ private:
     MetadataSyncService *metadataSyncService = nullptr;
     ModelUpdateCoordinator *modelUpdateCoordinator = nullptr;
     TranslationDictionaryService *translationDictionaryService = nullptr;
+    HeroBlurController *heroBlurController = nullptr;
     DownloadManager *downloadManager = nullptr;
     QMetaObject::Connection pendingDownloadChecksAfterRestore;
     bool isShuttingDown = false;

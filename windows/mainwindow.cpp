@@ -106,6 +106,7 @@
 #include "services/modelupdatecoordinator.h"
 #include "services/translationdictionaryservice.h"
 #include "services/sidebarcollectioncontroller.h"
+#include "services/heroblurcontroller.h"
 #include "widgets/flowlayout.h"
 #include "widgets/highlightitemdelegate.h"
 
@@ -273,95 +274,30 @@ MainWindow::MainWindow(QWidget *parent)
     // Hash 计算器
     hashWatcher = new QFutureWatcher<QString>(this);
     connect(hashWatcher, &QFutureWatcherBase::finished, this, &MainWindow::onHashCalculated);
-    // 图片加载器
-    imageLoadWatcher = new QFutureWatcher<ImageLoadResult>(this);
-    connect(imageLoadWatcher, &QFutureWatcher<ImageLoadResult>::finished, this, [this](){
-        // A. 获取后台加载的原图
-        ImageLoadResult result = imageLoadWatcher->result();
-        if (result.path != currentHeroPath) {
-            qDebug() << "Discarding obsolete image load:" << result.path;
-            return;
-        }
-        if (!result.valid) {
-            // 图片无效，淡出
-            nextHeroPixmap = QPixmap();
-            nextBlurredBgPix = QPixmap();
-        } else {
-            QPixmap rawPix = QPixmap::fromImage(result.originalImg);
-
-            // --- NSFW 大图处理 ---
-            bool shouldBlur = false;
-            // 判断这张图是否为 NSFW。可以通过 path 在 currentMeta.images 里查找
-            // 简单处理：如果是当前详情页的封面，直接看 currentMeta.nsfw
-            if (optFilterNSFW && optNSFWMode == 1) {
-                // 检查该图在详情页列表中是否标记为 NSFW
-                for(const auto& img : currentMeta.images) {
-                    if(result.path.contains(img.hash) || result.path == currentMeta.previewPath) {
-                        if(img.nsfwLevel > optNSFWLevel) shouldBlur = true;
-                        break;
-                    }
+    // Hero 大图与背景模糊控制器
+    heroBlurController = new HeroBlurController(ui->heroFrame, ui->backgroundLabel, ui->scrollAreaWidgetContents, this);
+    heroBlurController->setThreadPool(threadPool);
+    heroBlurController->setBlurOptions(optDownscaleBlur, optBlurProcessWidth, optBlurRadius);
+    heroBlurController->setNsfwBlurPredicate([this](const QString &path) {
+        if (optFilterNSFW && optNSFWMode == 1) {
+            for (const auto &img : currentMeta.images) {
+                if (path.contains(img.hash) || path == currentMeta.previewPath) {
+                    if (img.nsfwLevel > optNSFWLevel) return true;
+                    break;
                 }
             }
-            if (!shouldBlur && optFilterGalleryNSFW && optGalleryNSFWMode == 1 &&
-                ((ui && ui->detailContentStack && ui->detailContentStack->currentIndex() == 1) ||
-                 userGalleryGlobalMode ||
-                 (userGalleryPage && result.path == userGalleryPage->currentImagePath()))) {
-                if (isGalleryImageNsfwByPath(result.path)) {
-                    shouldBlur = true;
-                }
-            }
-            if (shouldBlur) {
-                nextHeroPixmap = ImagePresentation::applyNSFWBlur(rawPix);
-            } else {
-                nextHeroPixmap = rawPix;
-            }
-            // C. 准备背景图
-            QSize targetSize = ui->scrollAreaWidgetContents ? ui->scrollAreaWidgetContents->size() : ui->backgroundLabel->size();
-            if (QWidget *viewport = ui->scrollAreaWidgetContents ? ui->scrollAreaWidgetContents->parentWidget() : nullptr) {
-                targetSize.setWidth(qMax(targetSize.width(), viewport->width()));
-                targetSize.setHeight(qMax(targetSize.height(), viewport->height()));
-            }
-            if (targetSize.isEmpty()) targetSize = QSize(1920, 1080);
-            if (ui->backgroundLabel) {
-                const QRect bgRect(QPoint(0, 0), targetSize);
-                if (ui->backgroundLabel->geometry() != bgRect) {
-                    ui->backgroundLabel->setGeometry(bgRect);
-                }
-            }
-            QSize heroSize = ui->heroFrame->size();
-            if (heroSize.isEmpty()) heroSize = QSize(targetSize.width(), 400);
-            if (currentBlurredBgPix.isNull() && !currentHeroPixmap.isNull()) {
-                currentBlurredBgPix = applyBlurToImage(currentHeroPixmap.toImage(), targetSize, heroSize);
-            }
-            nextBlurredBgPix = applyBlurToImage(result.originalImg, targetSize, heroSize);
         }
-        transitionOpacity = 0.0;
-        if (transitionAnim->state() == QAbstractAnimation::Running) {
-            transitionAnim->stop();
+        if (optFilterGalleryNSFW && optGalleryNSFWMode == 1 &&
+            ((ui && ui->detailContentStack && ui->detailContentStack->currentIndex() == 1) ||
+             userGalleryGlobalMode ||
+             (userGalleryPage && path == userGalleryPage->currentImagePath()))) {
+            if (isGalleryImageNsfwByPath(path)) {
+                return true;
+            }
         }
-        transitionAnim->start();
+        return false;
     });
-
-    // 动画初始化
-    transitionAnim = new QVariantAnimation(this);
-    transitionAnim->setStartValue(0.0f);
-    transitionAnim->setEndValue(1.0f);
-    transitionAnim->setDuration(250);
-    transitionAnim->setEasingCurve(QEasingCurve::InOutQuad);
-    connect(transitionAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant &val){
-        transitionOpacity = val.toFloat();
-        ui->heroFrame->update();
-        updateBackgroundDuringTransition();
-    });
-    connect(transitionAnim, &QVariantAnimation::finished, this, [this](){
-        currentHeroPixmap = nextHeroPixmap;
-        currentBlurredBgPix = nextBlurredBgPix;
-        nextHeroPixmap = QPixmap();
-        nextBlurredBgPix = QPixmap();
-        transitionOpacity = 0.0;
-        ui->heroFrame->update();
-        updateBackgroundDuringTransition();
-    });
+    connect(heroBlurController, &HeroBlurController::heroClicked, this, &MainWindow::openImageViewerForPath);
     placeholderIcon = generatePlaceholderIcon();
     noPreviewIcon = generateNoPreviewIcon(false);
     smallNoPreviewIcon = generateNoPreviewIcon(true);
@@ -397,9 +333,6 @@ MainWindow::MainWindow(QWidget *parent)
     shadow->setColor(Qt::black);
     shadow->setOffset(0, 0);
     ui->lblModelName->setGraphicsEffect(shadow);
-
-    ui->heroFrame->installEventFilter(this);
-    ui->heroFrame->setCursor(Qt::PointingHandCursor);
 
     ui->btnFavorite->setContextMenuPolicy(Qt::CustomContextMenu);
 
@@ -506,20 +439,12 @@ MainWindow::MainWindow(QWidget *parent)
     ui->sidebarStack->setCurrentIndex(1);       // 侧边栏默认显示收藏夹树
     ui->btnCollectionsTab->setChecked(true);    // 确保收藏夹按钮选中
 
-    bgResizeTimer = new QTimer(this);
-    bgResizeTimer->setSingleShot(true);
-    // 当定时器时间到，执行更新背景函数
-    connect(bgResizeTimer, &QTimer::timeout, this, &MainWindow::updateBackgroundImage);
-
     detailGalleryBuildTimer = new QTimer(this);
     detailGalleryBuildTimer->setSingleShot(true);
     connect(detailGalleryBuildTimer, &QTimer::timeout, this, &MainWindow::buildGalleryBatch);
 
-    if (ui->backgroundLabel && ui->scrollAreaWidgetContents) {
+    if (ui->scrollAreaWidgetContents) {
         ui->scrollAreaWidgetContents->installEventFilter(this);
-        ui->backgroundLabel->setScaledContents(false);
-        ui->backgroundLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-        updateBackgroundImage();
     }
 
     clearDetailView();
@@ -667,9 +592,8 @@ MainWindow::~MainWindow()
     if (searchDebounceTimer) searchDebounceTimer->stop();
     if (homeGalleryPage) homeGalleryPage->shutdown();
     if (userGalleryPage) userGalleryPage->shutdown();
-    if (bgResizeTimer) bgResizeTimer->stop();
     if (detailGalleryBuildTimer) detailGalleryBuildTimer->stop();
-    if (transitionAnim) transitionAnim->stop();
+    if (heroBlurController) heroBlurController->shutdown();
     if (modelUpdateCoordinator) modelUpdateCoordinator->cancelAll();
     if (translationDictionaryService) translationDictionaryService->shutdown();
     if (previewDownloadQueue) previewDownloadQueue->clearQueueOnly();
@@ -685,7 +609,6 @@ MainWindow::~MainWindow()
     if (hashWatcher && hashWatcher->isRunning()) hashWatcher->waitForFinished();
     if (metadataScanWatcher && metadataScanWatcher->isRunning()) metadataScanWatcher->waitForFinished();
     if (metadataHealthWatcher && metadataHealthWatcher->isRunning()) metadataHealthWatcher->waitForFinished();
-    if (imageLoadWatcher && imageLoadWatcher->isRunning()) imageLoadWatcher->waitForFinished();
     saveGlobalConfig();
     cancelPendingTasks();
     if (backgroundThreadPool) backgroundThreadPool->clear();
@@ -1052,79 +975,9 @@ void MainWindow::onBtnFavoriteClicked()
 
 // === 辅助：生成正方形图标 ===
 
-// === 核心：事件过滤器 (绘图 + 点击) ===
+// === 核心：事件过滤器 (滚轮转发 + 缩略图双击) ===
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
-    if (watched == ui->heroFrame) {
-        if (event->type() == QEvent::Paint) {
-            QPainter painter(ui->heroFrame);
-
-            // 绘制背景底色（浅色主题下使用浅色底，深色主题下保持黑底）
-            const bool isLightTheme = AppStyle::color("windowBg").lightness() > 128;
-            const QColor heroFallbackBg = isLightTheme ? AppStyle::color("headerBg") : QColor(Qt::black);
-            painter.fillRect(ui->heroFrame->rect(), heroFallbackBg);
-
-            // 辅助 Lambda：用于绘制单张图片 (Cover 模式)
-            auto drawPix = [&](const QPixmap &pix, qreal opacity) {
-                if (pix.isNull()) return;
-                QSize widgetSize = ui->heroFrame->size();
-                QSize imgSize = pix.size();
-                if (imgSize.isEmpty()) return;
-
-                // Cover 算法
-                double scaleW = (double)widgetSize.width() / imgSize.width();
-                double scaleH = (double)widgetSize.height() / imgSize.height();
-                double scale = qMax(scaleW, scaleH);
-
-                double newW = imgSize.width() * scale;
-                double newH = imgSize.height() * scale;
-                double offsetX = (widgetSize.width() - newW) / 2.0;
-                double offsetY = (widgetSize.height() - newH) / 4.0;
-
-                painter.setOpacity(opacity);
-                painter.setRenderHint(QPainter::SmoothPixmapTransform);
-                painter.setRenderHint(QPainter::Antialiasing);
-                painter.drawPixmap(QRectF(offsetX, offsetY, newW, newH), pix, pix.rect());
-            };
-
-            // 情况 A: 正在切换到一张新图片 (Next 存在)
-            if (!nextHeroPixmap.isNull()) {
-                // 1. 底层：画旧图 (始终 1.0，让新图盖在上面，这样没有黑缝)
-                drawPix(currentHeroPixmap, 1.0);
-                // 2. 顶层：画新图 (透明度从 0 -> 1)
-                drawPix(nextHeroPixmap, transitionOpacity);
-            }
-            // 情况 B: 正在切换到“无图片”状态 (Next 为空，且正在动画中)
-            else if (transitionAnim->state() == QAbstractAnimation::Running) {
-                // 让旧图慢慢消失 (透明度 1 -> 0)
-                drawPix(currentHeroPixmap, 1.0 - transitionOpacity);
-            }
-            // 情况 C: 静止状态 (动画结束)
-            else {
-                drawPix(currentHeroPixmap, 1.0);
-            }
-
-            return true;
-        }
-
-        // --- 处理点击 (查看大图) ---
-        if (event->type() == QEvent::MouseButtonPress) {
-            QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
-            if (mouseEvent->button() == Qt::LeftButton) {
-                if (!currentHeroPath.isEmpty() && QFile::exists(currentHeroPath)) {
-                    openImageViewerForPath(currentHeroPath);
-                    return true;
-                }
-            }
-        }
-    }
-
-    if (watched == ui->scrollAreaWidgetContents && event->type() == QEvent::Resize) {
-        if (ui->backgroundLabel) {
-            bgResizeTimer->start(0);
-        }
-    }
-
     if (event->type() == QEvent::Wheel && userGalleryPage && userGalleryPage->isVisible()) {
         if (watched == ui->scrollArea ||
             (ui->scrollArea && watched == ui->scrollArea->viewport()) ||
@@ -2708,7 +2561,7 @@ void MainWindow::onEditMetaTabClicked()
     const int currentIndex = ui->detailContentStack->currentIndex();
     const int targetIndex = (currentIndex == editIndex) ? 0 : editIndex;
 
-    ui->scrollAreaWidgetContents->removeEventFilter(this);
+    if (heroBlurController) heroBlurController->setResizeTrackingEnabled(false);
     ui->detailContentStack->setCurrentIndex(targetIndex);
     if (targetIndex == editIndex && localMetaEditorPage) {
         localMetaEditorPage->ensureImagesRefreshed();
@@ -2717,7 +2570,7 @@ void MainWindow::onEditMetaTabClicked()
     fitDetailContentToCurrentPage();
 
     QTimer::singleShot(50, this, [this, targetIndex](){
-        ui->scrollAreaWidgetContents->installEventFilter(this);
+        if (heroBlurController) heroBlurController->setResizeTrackingEnabled(true);
         if (targetIndex == 0) {
             fitDetailContentToCurrentPage();
         }
@@ -3033,7 +2886,7 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
     if (currentItem && belongsToDownloadedModel(currentItem->data(ROLE_FILE_PATH).toString())) {
         if (isCoverPreview) {
             currentMeta.previewPath = savePath;
-            currentHeroPath = "";
+            if (heroBlurController) heroBlurController->clearCurrentPath();
             needsDetailThumbnail = true;
         }
     }
@@ -3400,7 +3253,7 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
         // --- C. Hero 大图过渡 ---
         if (filePath == currentMeta.previewPath) {
             // 只有当路径匹配且当前没有显示这张图时才刷新
-            if (currentHeroPath != filePath) {
+            if (!heroBlurController || heroBlurController->currentHeroPath() != filePath) {
                 transitionToImage(filePath);
             }
         }
@@ -3464,42 +3317,8 @@ void MainWindow::onHashCalculated()
 
 void MainWindow::updateBackgroundImage()
 {
-    if (!ui->backgroundLabel || !ui->heroFrame || !ui->scrollAreaWidgetContents) return;
-
-    // The background remains in content coordinates so it scrolls together
-    // with the hero, while the blur composition itself uses stable absolute
-    // fade positions and no QLabel stretching.
-    QSize targetSize = ui->scrollAreaWidgetContents->size();
-    if (QWidget *viewport = ui->scrollAreaWidgetContents->parentWidget()) {
-        targetSize.setWidth(qMax(targetSize.width(), viewport->width()));
-        targetSize.setHeight(qMax(targetSize.height(), viewport->height()));
-    }
-    if (targetSize.isEmpty()) targetSize = QSize(1920, 1080);
-    const QRect bgRect(QPoint(0, 0), targetSize);
-    if (ui->backgroundLabel->geometry() != bgRect) {
-        ui->backgroundLabel->setGeometry(bgRect);
-    }
-
-    // 如果正在动画，不处理 Resize，由动画循环处理
-    if (transitionAnim && transitionAnim->state() == QAbstractAnimation::Running) return;
-
-    // 获取 Hero 尺寸用于对齐
-    QSize heroSize = ui->heroFrame->size();
-    if (heroSize.isEmpty()) heroSize = QSize(targetSize.width(), 400);
-
-    if (!currentHeroPixmap.isNull()) {
-        currentBlurredBgPix = applyBlurToImage(currentHeroPixmap.toImage(), targetSize, heroSize);
-        ui->backgroundLabel->setPixmap(currentBlurredBgPix);
-    } else if (!currentHeroPath.isEmpty() && QFile::exists(currentHeroPath)) {
-        // 如果缓存丢了但有路径，重新读图生成
-        QImage img(currentHeroPath);
-        currentBlurredBgPix = applyBlurToImage(img, targetSize, heroSize);
-        ui->backgroundLabel->setPixmap(currentBlurredBgPix);
-    } else {
-        ui->backgroundLabel->clear();
-        QPixmap empty(targetSize);
-        empty.fill(QColor(AppStyle::MainBackground()));
-        ui->backgroundLabel->setPixmap(empty);
+    if (heroBlurController) {
+        heroBlurController->updateBackgroundImage();
     }
 }
 
@@ -3848,106 +3667,11 @@ void MainWindow::updateSortFilterButtonText() {
         ui->btnSortFilter, ui->comboSort, ui->comboBaseModel, ui->comboModelType);
 }
 
-// 静态函数，运行在后台线程
-ImageLoadResult MainWindow::processImageTask(const QString &path)
-{
-    ImageLoadResult result;
-    result.path = path;
-
-    QImageReader reader(path);
-    reader.setAutoTransform(true);
-    result.originalImg = reader.read();
-    result.valid = !result.originalImg.isNull();
-    return result;
-}
-
 void MainWindow::transitionToImage(const QString &path)
 {
-    //if (path == currentHeroPath && transitionAnim->state() != QAbstractAnimation::Running) return;
-    // 下面这行替换了上面的，修复了切换模型导致的动画闪烁问题，不过尚不清楚有无其他bug
-    if (path == currentHeroPath) {
-        return;
+    if (heroBlurController) {
+        heroBlurController->transitionToImage(path);
     }
-
-    // qDebug() << "Transition to:" << path;
-
-    currentHeroPath = path;
-
-    // 如果正在动画中，立即停止并将状态快进到“当前显示的是上一张图”
-    if (transitionAnim->state() == QAbstractAnimation::Running) {
-        transitionAnim->stop();
-        // 如果 next 已经准备好了，就把它作为 current，以此为基础过渡到最新的 new
-        if (!nextHeroPixmap.isNull()) {
-            currentHeroPixmap = nextHeroPixmap;
-            currentBlurredBgPix = nextBlurredBgPix;
-        }
-    }
-
-    // 清理 Watcher
-    if (imageLoadWatcher->isRunning()) {
-        // 虽然 cancel 不能杀线程，但能断开一部分连接，配合上面的 path 校验双重保险
-        imageLoadWatcher->cancel();
-    }
-
-    // 重置动画参数
-    nextHeroPixmap = QPixmap();
-    nextBlurredBgPix = QPixmap();
-    transitionOpacity = 0.0;
-
-    // 5. 根据路径执行
-    if (path.isEmpty()) {
-        transitionAnim->start(); // 淡出到黑
-    } else {
-        QFuture<ImageLoadResult> future = QtConcurrent::run(threadPool, &MainWindow::processImageTask, path);
-        imageLoadWatcher->setFuture(future);
-    }
-}
-
-QPixmap MainWindow::applyBlurToImage(const QImage &srcImg, const QSize &bgSize, const QSize &heroSize)
-{
-    const ImagePresentation::BlurOptions options{
-        optDownscaleBlur, optBlurProcessWidth, optBlurRadius, QColor(AppStyle::MainBackground())};
-    return ImagePresentation::blurredDetailBackground(srcImg, bgSize, heroSize, options);
-}
-
-void MainWindow::updateBackgroundDuringTransition()
-{
-    if (!ui->backgroundLabel) return;
-    QSize bgSize = ui->backgroundLabel->size();
-    if (bgSize.isEmpty()) return;
-
-    QPixmap canvas(bgSize);
-    canvas.fill(QColor(AppStyle::MainBackground())); // 纯色打底，防止交叉淡化时露出底色
-
-    QPainter painter(&canvas);
-    painter.setRenderHint(QPainter::SmoothPixmapTransform);
-
-    // === 核心修改：使用交叉淡化 (Cross-Fade) ===
-
-    // 情况 A: 正在切换新图
-    if (!nextBlurredBgPix.isNull()) {
-        // 旧图：随着 transitionOpacity 增加而减少 (1.0 -> 0.0)
-        if (!currentBlurredBgPix.isNull()) {
-            painter.setOpacity(1.0 - transitionOpacity);
-            painter.drawPixmap(0, 0, currentBlurredBgPix);
-        }
-
-        // 新图：随着 transitionOpacity 增加而增加 (0.0 -> 1.0)
-        painter.setOpacity(transitionOpacity);
-        painter.drawPixmap(0, 0, nextBlurredBgPix);
-    }
-    // 情况 B: 正在变为空图 (Fade out)
-    else {
-        if (!currentBlurredBgPix.isNull()) {
-            qreal alpha = 1.0 - transitionOpacity;
-            if (alpha < 0.0) alpha = 0.0;
-            painter.setOpacity(alpha);
-            painter.drawPixmap(0, 0, currentBlurredBgPix);
-        }
-    }
-
-    painter.end();
-    ui->backgroundLabel->setPixmap(canvas);
 }
 
 void MainWindow::initServices()
@@ -4172,7 +3896,7 @@ void MainWindow::onToggleDetailTab() {
     int currentIndex = ui->detailContentStack->currentIndex();
     int nextIndex = (currentIndex == 1) ? 0 : 1;
 
-    ui->scrollAreaWidgetContents->removeEventFilter(this);
+    if (heroBlurController) heroBlurController->setResizeTrackingEnabled(false);
 
     // 1. 切换页面
     ui->detailContentStack->setCurrentIndex(nextIndex);
@@ -4182,7 +3906,7 @@ void MainWindow::onToggleDetailTab() {
 
     QTimer::singleShot(50, this, [this, nextIndex](){
         // 恢复事件监听
-        ui->scrollAreaWidgetContents->installEventFilter(this);
+        if (heroBlurController) heroBlurController->setResizeTrackingEnabled(true);
 
         // 如果切换到详情页，调整容器大小
         if (nextIndex == 0) {
@@ -4378,7 +4102,7 @@ void MainWindow::refreshGalleryNsfwDisplay()
         const QString currentGalleryPath = userGalleryPage->currentImagePath();
         if (!currentGalleryPath.isEmpty() &&
             ((ui && ui->detailContentStack && ui->detailContentStack->currentIndex() == 1) || userGalleryGlobalMode)) {
-            currentHeroPath.clear();
+            if (heroBlurController) heroBlurController->clearCurrentPath();
             transitionToImage(currentGalleryPath);
         }
     }
@@ -4505,7 +4229,7 @@ void MainWindow::onGalleryButtonClicked()
     ui->btnCopyLoraTag->setVisible(false);
 
     // 5. 清除背景图 (或者你可以放一张默认的图库壁纸)
-    currentHeroPath = "";
+    if (heroBlurController) heroBlurController->clearCurrentPath();
     transitionToImage("");
 
     // 6. 执行全局扫描 (传入空字符串)
@@ -5453,6 +5177,9 @@ void MainWindow::assignSettingsOptions(const SettingsState &state)
     optBlurRadius = state.blurRadius;
     optDownscaleBlur = state.downscaleBlur;
     optBlurProcessWidth = state.blurProcessWidth;
+    if (heroBlurController) {
+        heroBlurController->setBlurOptions(optDownscaleBlur, optBlurProcessWidth, optBlurRadius);
+    }
     optFilterNSFW = state.filterNSFW;
     optNSFWMode = state.nsfwMode;
     optNSFWLevel = state.nsfwLevel;
@@ -5543,6 +5270,9 @@ void MainWindow::initSettingsPage()
     });
     connect(settingsPage, &SettingsPage::blurChanged, this, [this](int value, bool finalSave) {
         optBlurRadius = value;
+        if (heroBlurController) {
+            heroBlurController->setBlurOptions(optDownscaleBlur, optBlurProcessWidth, optBlurRadius);
+        }
         if (settingsPage) settingsPage->setBlurValue(value);
         updateBackgroundImage();
         if (finalSave) saveGlobalConfig();
@@ -5711,7 +5441,7 @@ void MainWindow::applyApplicationTheme(const QString &themeId, const QString &cu
     refreshLoadedToolPageThemes();
     recolorPlaceholderItems(); // 重染"加载失败X"占位（列表项 + 下载卡）
     updateBackgroundImage(); // 重新生成 Hero 模糊背景上的渐变叠加（steamBackground 已随主题变）
-    if (ui && ui->heroFrame) ui->heroFrame->update();
+    if (heroBlurController) heroBlurController->updateHeroFrame();
     if (settingsPage && updateStatus) {
         settingsPage->setThemeStatus(bundle.status);
     }
@@ -5730,7 +5460,7 @@ void MainWindow::applyActivePaletteToUi()
     refreshLoadedToolPageThemes();
     recolorPlaceholderItems(); // 编辑器预览时也重染占位X
     updateBackgroundImage();
-    if (ui && ui->heroFrame) ui->heroFrame->update();
+    if (heroBlurController) heroBlurController->updateHeroFrame();
 }
 
 void MainWindow::onEditThemeRequested(const QString &baseThemeId)

@@ -99,6 +99,8 @@ qt_add_executable(SD_LoRA_Manager
     services/translationdictionaryservice.cpp
     services/sidebarcollectioncontroller.h
     services/sidebarcollectioncontroller.cpp
+    services/heroblurcontroller.h
+    services/heroblurcontroller.cpp
     widgets/flowlayout.h
     widgets/flowlayout.cpp
     widgets/highlightitemdelegate.h
