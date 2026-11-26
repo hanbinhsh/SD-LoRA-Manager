@@ -108,6 +108,9 @@ qt_add_executable(SD_LoRA_Manager
     pages/aboutpage.h
     pages/aboutpage.cpp
     pages/aboutpage.ui
+    pages/localmetaeditorpage.h
+    pages/localmetaeditorpage.cpp
+    pages/localmetaeditorpage.ui
     utils/imagemetadataparser.h
     utils/imagemetadataparser.cpp
     tools/comfyworkflowviewer.h
@@ -332,7 +335,7 @@ if(BUILD_CORE_UTIL_TESTS)
         windows/mainwindow.ui tools/promptparserwidget.ui
         tools/prompttemplatelibrarywidget.ui tools/llmpromptwidget.ui
         tools/tagbrowserwidget.ui tools/syncwidget.ui tools/usageanalysiswidget.ui
-        pages/launcherwidget.ui pages/aboutpage.ui
+        pages/launcherwidget.ui pages/aboutpage.ui pages/localmetaeditorpage.ui
         dialogs/modelnotedialog.ui dialogs/pathlistdialog.ui
         dialogs/imageviewerdialog.ui dialogs/launcherimportdialog.ui
         widgets/gallerylistwidget.cpp widgets/gallerylistwidget.h

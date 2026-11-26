@@ -66,7 +66,9 @@ class LauncherWidget;
 class ImageViewerDialog;
 class DownloadsPage;
 class DownloadManager;
+class LocalMetaEditorPage;
 class AppUpdateChecker;
+struct LocalMetaEditorContext;
 class PreviewDownloadQueue;
 class MetadataSyncService;
 class ModelUpdateCoordinator;
@@ -138,14 +140,9 @@ private slots:
     void onMenuSwitchToAbout();
     void onCheckUpdateClicked();
     void onTestCivitaiApiKeyClicked();
-    void onLocalMetaSaveClicked();
+    void onLocalMetaSaved(const QString &filePath, const QString &jsonPath, const QString &previewPath);
     void onLocalMetaResetClicked();
     void onEditMetaTabClicked();
-    void onEditImageSelectionChanged(int row);
-    void onEditAddImageClicked();
-    void onEditReplaceImageClicked();
-    void onEditRemoveImageClicked();
-    void onEditSetCoverClicked();
 
 private:
     Ui::MainWindow *ui = nullptr;
@@ -159,6 +156,7 @@ private:
     SettingsPage *settingsPage = nullptr;
     QPointer<ImageViewerDialog> imageViewer;
     AboutPage *aboutPage = nullptr;
+    LocalMetaEditorPage *localMetaEditorPage = nullptr;
     QSet<int> pendingToolTabLoads;
     QNetworkAccessManager *netManager = nullptr;
     QPixmap currentHeroPixmap;
@@ -257,20 +255,12 @@ private:
     void updateBackgroundImage();
     void updateLocalEditorFromMeta(const ModelMeta &meta);
     void setLocalMetaStatus(const ModelMeta &meta);
+    LocalMetaEditorContext buildLocalMetaEditorContext(const ModelMeta &meta) const;
     void refreshCurrentDetailCacheStatus();
     void refreshUsageAnalysisWidget();
     void refreshPromptTemplateModelTriggerRows();
     int countLocalEditedModels() const;
     bool confirmLocalEditOverwrite(QListWidgetItem *item);
-    void refreshEditImages(const ModelMeta &meta);
-    void loadEditImageFields(int index);
-    void commitEditImageFields();
-    QString currentEditBaseName() const;
-    QString currentEditModelDir() const;
-    QString editPreviewPathForIndex(int index) const;
-    bool saveImageToPreviewPath(const QString &srcPath, const QString &destPath, int &outW, int &outH);
-    void applyImageMetadataFromFile(const QString &srcPath, ImageInfo &img);
-    void applyParametersToImage(const QString &params, ImageInfo &img);
     void showCollectionMenu(const QList<QListWidgetItem*> &items, const QPoint &globalPos);
     void applyModelHighlightColor(QListWidgetItem *item);
     void applyModelHighlightColor(QTreeWidgetItem *item);
@@ -353,13 +343,10 @@ private:
     // 执行筛选
     void executeFilter();
 
-    int currentEditImageIndex = -1;
-    int editImageLoadToken = 0;
     int modelUsageStatsToken = 0;
     int modelScanToken = 0;
     bool modelScanRunning = false;
     int translationLoadToken = 0;
-    bool editImagesNeedRefresh = false;
     bool m_forceResyncPreview = false;
     bool m_skipPreviewSync = false;
 

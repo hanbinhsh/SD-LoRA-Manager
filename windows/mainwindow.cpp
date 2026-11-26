@@ -76,6 +76,7 @@
 #include "pages/downloadspage.h"
 #include "pages/settingspage.h"
 #include "pages/aboutpage.h"
+#include "pages/localmetaeditorpage.h"
 #include "dialogs/modelnotedialog.h"
 #include "dialogs/imageviewerdialog.h"
 #include "dialogs/textviewerdialog.h"
@@ -193,6 +194,18 @@ MainWindow::MainWindow(QWidget *parent)
     ui->rootStack->addWidget(aboutPage);
     aboutPage->setVersionText(CURRENT_VERSION);
     connect(aboutPage, &AboutPage::checkUpdateRequested, this, &MainWindow::onCheckUpdateClicked);
+    localMetaEditorPage = new LocalMetaEditorPage(this);
+    ui->detailContentStack->addWidget(localMetaEditorPage);
+    connect(localMetaEditorPage, &LocalMetaEditorPage::metadataSaved, this, &MainWindow::onLocalMetaSaved);
+    connect(localMetaEditorPage, &LocalMetaEditorPage::resetRequested, this, &MainWindow::onLocalMetaResetClicked);
+    connect(localMetaEditorPage, &LocalMetaEditorPage::imagesChanged,
+            this, [this](const QList<ImageInfo> &images, const QString &previewPath, const QString &invalidatedIconPath) {
+                currentMeta.images = images;
+                currentMeta.previewPath = previewPath;
+                if (!invalidatedIconPath.isEmpty()) {
+                    invalidateIconCacheForPath(invalidatedIconPath);
+                }
+            });
 
     currentUserAgent = getRandomUserAgent();
 
@@ -296,6 +309,10 @@ MainWindow::MainWindow(QWidget *parent)
     placeholderIcon = generatePlaceholderIcon();
     noPreviewIcon = generateNoPreviewIcon(false);
     smallNoPreviewIcon = generateNoPreviewIcon(true);
+    if (localMetaEditorPage) {
+        localMetaEditorPage->setThreadPool(threadPool);
+        localMetaEditorPage->setPlaceholderIcon(placeholderIcon);
+    }
 
     netManager = new QNetworkAccessManager(this);
     initServices();
@@ -394,8 +411,6 @@ MainWindow::MainWindow(QWidget *parent)
         if (QListWidgetItem *item = ui->modelList->currentItem(); isModelListItem(item)) items << item;
         checkUpdatesForItems(items, false, true);
     });
-    connect(ui->btnLocalMetaSave, &QPushButton::clicked, this, &MainWindow::onLocalMetaSaveClicked);
-    connect(ui->btnLocalMetaReset, &QPushButton::clicked, this, &MainWindow::onLocalMetaResetClicked);
     connect(ui->btnEditMeta, &QPushButton::clicked, this, &MainWindow::onEditMetaTabClicked);
     connect(ui->btnShowDescriptionDetail, &QPushButton::clicked, this, &MainWindow::showModelDescriptionDialog);
     connect(ui->btnEditUserNote, &QPushButton::clicked, this, [this]() {
@@ -403,11 +418,6 @@ MainWindow::MainWindow(QWidget *parent)
             openModelNoteDialog(item);
         }
     });
-    connect(ui->listEditImages, &QListWidget::currentRowChanged, this, &MainWindow::onEditImageSelectionChanged);
-    connect(ui->btnEditAddImage, &QPushButton::clicked, this, &MainWindow::onEditAddImageClicked);
-    connect(ui->btnEditReplaceImage, &QPushButton::clicked, this, &MainWindow::onEditReplaceImageClicked);
-    connect(ui->btnEditRemoveImage, &QPushButton::clicked, this, &MainWindow::onEditRemoveImageClicked);
-    connect(ui->btnEditSetCover, &QPushButton::clicked, this, &MainWindow::onEditSetCoverClicked);
     initDownloadsPage();
     searchDebounceTimer = new QTimer(this);
     searchDebounceTimer->setSingleShot(true);
@@ -450,10 +460,6 @@ MainWindow::MainWindow(QWidget *parent)
         homeFilterExpanded = checked;
         refreshHomeFilterChips();
     });
-
-    ui->listEditImages->setUniformItemSizes(true);
-    ui->listEditImages->setGridSize(QSize(118, 186));
-    ui->listEditImages->setWordWrap(false);
 
     // === 用户图库页面初始化 ===
     // 1. 初始化 Tag 流式控件，放入 XML 定义好的 scrollAreaTags 中
@@ -2467,7 +2473,6 @@ void MainWindow::clearLayout(QLayout *layout)
 void MainWindow::clearDetailView()
 {
     cancelGalleryBuild();
-    editImagesNeedRefresh = false;
     ui->lblModelName->setText(AppText::tr("请选择一个模型 / Select a Model"));
     setModelTitleNormal();
     ui->lblModelName->setStyleSheet(AppStyle::modelTitleNormalStyle());
@@ -2493,34 +2498,7 @@ void MainWindow::clearDetailView()
     // 中止正在进行的画廊预览图下载任务
     if (previewDownloadQueue) previewDownloadQueue->cancelActiveAndQueued();
 
-    // ui->widgetLocalMeta->setEnabled(false);
-    ui->groupEditImages->setEnabled(false);
-    ui->groupEditMeta->setEnabled(false);
-    ui->editLocalModelName->clear();
-    ui->editLocalVersion->clear();
-    ui->editLocalBaseModel->clear();
-    ui->editLocalType->clear();
-    ui->editLocalModelUrl->clear();
-    ui->editLocalCreatedAt->clear();
-    ui->editLocalDownloads->clear();
-    ui->editLocalLikes->clear();
-    ui->editLocalCreator->clear();
-    ui->textLocalModelTags->clear();
-    ui->chkLocalNSFW->setChecked(false);
-    ui->textLocalTriggers->clear();
-    ui->textLocalDescription->clear();
-    ui->lblLocalMetaStatus->setText(AppText::tr("状态: -"));
-    ui->listEditImages->clear();
-    ui->lblEditImagePath->setText(AppText::tr("文件: -"));
-    ui->lblEditImageSize->setText(AppText::tr("尺寸: -"));
-    ui->textEditImgPrompt->clear();
-    ui->textEditImgNegPrompt->clear();
-    ui->editImgSampler->clear();
-    ui->editImgSteps->clear();
-    ui->editImgCfg->clear();
-    ui->editImgSeed->clear();
-    ui->spinImgNsfw->setValue(1);
-    currentEditImageIndex = -1;
+    if (localMetaEditorPage) localMetaEditorPage->clear();
     QTimer::singleShot(0, this, &MainWindow::fitDetailContentToCurrentPage);
 }
 
@@ -2563,104 +2541,50 @@ void MainWindow::showPendingLocalModelDetail(const ModelMeta &meta, const QStrin
     QTimer::singleShot(0, this, &MainWindow::fitDetailContentToCurrentPage);
 }
 
+LocalMetaEditorContext MainWindow::buildLocalMetaEditorContext(const ModelMeta &meta) const
+{
+    LocalMetaEditorContext ctx;
+    QListWidgetItem *item = (ui && ui->modelList) ? ui->modelList->currentItem() : nullptr;
+
+    if (item) {
+        const QString itemPath = item->data(ROLE_FILE_PATH).toString();
+        if (!itemPath.isEmpty()) ctx.filePath = itemPath;
+        ctx.baseName = item->data(ROLE_MODEL_NAME).toString();
+        if (ctx.baseName.isEmpty()) ctx.baseName = item->text();
+        ctx.usageCount = item->data(ROLE_SORT_USAGE_COUNT).toInt();
+        ctx.lastUsedMs = item->data(ROLE_SORT_LAST_USED).toLongLong();
+    }
+    if (ctx.filePath.isEmpty() && !meta.filePath.isEmpty()) {
+        ctx.filePath = meta.filePath;
+    }
+    if (ctx.baseName.isEmpty() && !ctx.filePath.isEmpty()) {
+        ctx.baseName = QFileInfo(ctx.filePath).completeBaseName();
+    }
+    if (!ctx.filePath.isEmpty()) {
+        ctx.modelDir = QFileInfo(ctx.filePath).absolutePath();
+        const QString absPath = QFileInfo(ctx.filePath).absoluteFilePath();
+        if (modelSyncFailures.contains(absPath)) {
+            ctx.hasSyncFailure = true;
+            ctx.syncFailureError = modelSyncFailures.value(absPath)["error"].toString();
+        }
+    } else {
+        ctx.modelDir = currentLoraPath;
+    }
+    return ctx;
+}
+
 void MainWindow::updateLocalEditorFromMeta(const ModelMeta &meta)
 {
-    // ui->widgetLocalMeta->setEnabled(true);
-    ui->groupEditImages->setEnabled(true);
-    ui->groupEditMeta->setEnabled(true);
-
-    QString modelName = meta.modelName.isEmpty() ? meta.name : meta.modelName;
-    ui->editLocalModelName->setText(modelName);
-    ui->editLocalVersion->setText(meta.versionName);
-    ui->editLocalBaseModel->setText(meta.baseModel);
-    ui->editLocalType->setText(meta.type);
-    ui->editLocalModelUrl->setText(meta.modelUrl);
-    ui->editLocalCreatedAt->setText(meta.createdAt);
-    ui->editLocalDownloads->setText(QString::number(meta.downloadCount));
-    ui->editLocalLikes->setText(QString::number(meta.thumbsUpCount));
-    ui->editLocalCreator->setText(meta.creatorName);
-    ui->textLocalModelTags->setPlainText(meta.modelTags.join("\n"));
-    ui->chkLocalNSFW->setChecked(meta.nsfw);
-    ui->textLocalTriggers->setPlainText(meta.trainedWordsGroups.join("\n"));
-
-    QString descPlain = meta.description;
-    if (!descPlain.isEmpty()) {
-        QTextDocument doc;
-        doc.setHtml(descPlain);
-        descPlain = doc.toPlainText();
-    }
-    ui->textLocalDescription->setPlainText(descPlain);
-
-    setLocalMetaStatus(meta);
-    editImagesNeedRefresh = true;
-    if (ui->detailContentStack->currentIndex() == 2) {
-        refreshEditImages(meta);
-    }
+    if (!localMetaEditorPage) return;
+    const bool isVisibleNow = ui && ui->detailContentStack
+        && ui->detailContentStack->currentWidget() == localMetaEditorPage;
+    localMetaEditorPage->loadModel(meta, buildLocalMetaEditorContext(meta), isVisibleNow);
 }
 
 void MainWindow::setLocalMetaStatus(const ModelMeta &meta)
 {
-    QString status;
-    QString color = AppStyle::str("primaryText"); // 随主题（浅色下为深字）
-    if (meta.isLocalOnly && meta.isLocalEdited) {
-        status = AppText::tr("状态: 本地模型 (已编辑)");
-        color = AppStyle::WarningYellow();
-    } else if (meta.isLocalEdited) {
-        status = AppText::tr("状态: 已编辑 (本地元数据)");
-        color = AppStyle::WarningYellow();
-    } else if (meta.isLocalOnly) {
-        status = AppText::tr("状态: 本地模型");
-        color = AppStyle::str("accentBlue");
-    } else {
-        status = AppText::tr("状态: Civitai 元数据");
-    }
-
-    QStringList details;
-    QString filePath;
-    if (!meta.filePath.isEmpty()) filePath = QFileInfo(meta.filePath).absoluteFilePath();
-    if (filePath.isEmpty() && ui && ui->modelList && ui->modelList->currentItem()) {
-        const QString itemPath = ui->modelList->currentItem()->data(ROLE_FILE_PATH).toString();
-        if (!itemPath.isEmpty()) filePath = QFileInfo(itemPath).absoluteFilePath();
-    }
-
-    QString jsonPath;
-    QString baseName;
-    if (!filePath.isEmpty()) {
-        QFileInfo modelInfo(filePath);
-        baseName = modelInfo.completeBaseName();
-        jsonPath = modelInfo.absoluteDir().filePath(baseName + ".json");
-        details << (QFileInfo::exists(jsonPath) ? AppText::tr("JSON: 已缓存") : AppText::tr("JSON: 未缓存"));
-    }
-
-    if (meta.modelId > 0) details << QString("Model ID: %1").arg(meta.modelId);
-    if (meta.versionId > 0) details << QString("Version ID: %1").arg(meta.versionId);
-    if (!meta.sha256.isEmpty()) details << AppText::tr("SHA256: 已记录");
-
-    if (ui && ui->modelList && ui->modelList->currentItem()) {
-        QListWidgetItem *item = ui->modelList->currentItem();
-        const int usageCount = item->data(ROLE_SORT_USAGE_COUNT).toInt();
-        const qint64 lastUsed = item->data(ROLE_SORT_LAST_USED).toLongLong();
-        details << AppText::tr("本地返图: %1 张").arg(usageCount);
-        if (lastUsed > 0) {
-            details << AppText::tr("最近使用: %1").arg(QDateTime::fromMSecsSinceEpoch(lastUsed).toString("yyyy-MM-dd"));
-        }
-    }
-
-    if (!filePath.isEmpty() && modelSyncFailures.contains(filePath)) {
-        const QString error = modelSyncFailures.value(filePath)["error"].toString();
-        details << (error.isEmpty() ? AppText::tr("同步失败缓存: 已记录") : AppText::tr("同步失败缓存: %1").arg(error));
-        color = AppStyle::str("errorRed");
-    } else if (!jsonPath.isEmpty() && !QFileInfo::exists(jsonPath)) {
-        details << AppText::tr("提示: 点击刷新模型详情可同步元数据");
-    }
-
-    if (!details.isEmpty()) {
-        status += "\n" + details.join(" · ");
-    }
-    ui->lblLocalMetaStatus->setWordWrap(true);
-    ui->lblLocalMetaStatus->setText(AppText::display(status));
-    ui->lblLocalMetaStatus->setStyleSheet(QString("color: %1;").arg(color));
-    ui->lblLocalMetaStatus->setToolTip(status);
+    if (!localMetaEditorPage) return;
+    localMetaEditorPage->updateStatus(meta, buildLocalMetaEditorContext(meta));
 }
 
 void MainWindow::refreshCurrentDetailCacheStatus()
@@ -2830,218 +2754,6 @@ void MainWindow::refreshPromptTemplateModelTriggerRows()
         return a.source < b.source;
     });
     promptTemplateLibraryWidget->setModelTriggerRows(rows);
-}
-
-QString MainWindow::currentEditBaseName() const
-{
-    if (QListWidgetItem *item = ui->modelList->currentItem()) {
-        QString baseName = item->data(ROLE_MODEL_NAME).toString();
-        if (!baseName.isEmpty()) return baseName;
-        return item->text();
-    }
-    if (!currentMeta.filePath.isEmpty()) {
-        return QFileInfo(currentMeta.filePath).completeBaseName();
-    }
-    return QString();
-}
-
-QString MainWindow::currentEditModelDir() const
-{
-    if (QListWidgetItem *item = ui->modelList->currentItem()) {
-        QString filePath = item->data(ROLE_FILE_PATH).toString();
-        if (!filePath.isEmpty()) return QFileInfo(filePath).absolutePath();
-    }
-    if (!currentMeta.filePath.isEmpty()) {
-        return QFileInfo(currentMeta.filePath).absolutePath();
-    }
-    return currentLoraPath;
-}
-
-QString MainWindow::editPreviewPathForIndex(int index) const
-{
-    QString modelDir = currentEditModelDir();
-    QString baseName = currentEditBaseName();
-    if (modelDir.isEmpty() || baseName.isEmpty()) return QString();
-    return ModelMetadata::previewPath(modelDir, baseName, index);
-}
-
-bool MainWindow::saveImageToPreviewPath(const QString &srcPath, const QString &destPath, int &outW, int &outH)
-{
-    outW = 0;
-    outH = 0;
-    if (srcPath.isEmpty() || destPath.isEmpty()) return false;
-
-    QImage img(srcPath);
-    if (img.isNull()) return false;
-
-    outW = img.width();
-    outH = img.height();
-
-    QFileInfo destInfo(destPath);
-    QDir().mkpath(destInfo.absolutePath());
-    QSaveFile output(destPath);
-    if (!output.open(QIODevice::WriteOnly)) return false;
-    if (!img.save(&output, "PNG")) return false;
-    return output.commit();
-}
-
-void MainWindow::applyParametersToImage(const QString &params, ImageInfo &img)
-{
-    if (params.isEmpty()) return;
-
-    static const QRegularExpression reSteps("Steps:\\s*(\\d+)", QRegularExpression::CaseInsensitiveOption);
-    static const QRegularExpression reSampler("Sampler:\\s*([^,]+)", QRegularExpression::CaseInsensitiveOption);
-    static const QRegularExpression reCfg("CFG\\s*scale:\\s*([0-9.]+)", QRegularExpression::CaseInsensitiveOption);
-    static const QRegularExpression reCfgAlt("CFG:\\s*([0-9.]+)", QRegularExpression::CaseInsensitiveOption);
-    static const QRegularExpression reSeed("Seed:\\s*([-0-9]+)", QRegularExpression::CaseInsensitiveOption);
-
-    QRegularExpressionMatch m;
-    m = reSteps.match(params);
-    if (m.hasMatch()) img.steps = m.captured(1).trimmed();
-    m = reSampler.match(params);
-    if (m.hasMatch()) img.sampler = m.captured(1).trimmed();
-    m = reCfg.match(params);
-    if (m.hasMatch()) img.cfgScale = m.captured(1).trimmed();
-    else {
-        m = reCfgAlt.match(params);
-        if (m.hasMatch()) img.cfgScale = m.captured(1).trimmed();
-    }
-    m = reSeed.match(params);
-    if (m.hasMatch()) img.seed = m.captured(1).trimmed();
-}
-
-void MainWindow::applyImageMetadataFromFile(const QString &srcPath, ImageInfo &img)
-{
-    if (srcPath.isEmpty()) return;
-    UserImageInfo info;
-    parsePngInfo(srcPath, info);
-    if (!info.prompt.isEmpty()) img.prompt = info.prompt;
-    if (!info.negativePrompt.isEmpty() && info.negativePrompt != "(empty)") {
-        img.negativePrompt = info.negativePrompt;
-    }
-    if (!info.parameters.isEmpty()) {
-        applyParametersToImage(info.parameters, img);
-    }
-}
-
-void MainWindow::refreshEditImages(const ModelMeta &meta)
-{
-    editImagesNeedRefresh = false;
-    ++editImageLoadToken;
-    const int currentToken = editImageLoadToken;
-
-    ui->listEditImages->clear();
-    currentEditImageIndex = -1;
-
-    QString baseName = currentEditBaseName();
-    QString modelDir = currentEditModelDir();
-
-    QList<ImageInfo> images = meta.images;
-    if (images.isEmpty()) {
-        QString coverPath = ModelMetadata::previewPath(modelDir, baseName, 0);
-        if (QFile::exists(coverPath)) {
-            QImageReader reader(coverPath);
-            ImageInfo img;
-            img.width = reader.size().width();
-            img.height = reader.size().height();
-            img.nsfwLevel = 1;
-            images.append(img);
-            currentMeta.images = images;
-        }
-    }
-
-    for (int i = 0; i < images.size(); ++i) {
-        QString title = (i == 0) ? AppText::tr("封面 / Cover") : AppText::tr("预览 %1").arg(i);
-        QListWidgetItem *item = new QListWidgetItem(title);
-        item->setData(Qt::UserRole, i);
-        item->setData(ROLE_EDIT_IMAGE_PATH, QString());
-        item->setTextAlignment(Qt::AlignHCenter);
-        item->setSizeHint(QSize(114, 182));
-
-        QString path = ModelMetadata::previewPath(modelDir, baseName, i);
-        if (QFile::exists(path)) {
-            item->setData(ROLE_EDIT_IMAGE_PATH, path);
-            item->setIcon(placeholderIcon);
-            item->setText(title);
-            item->setToolTip(title + AppText::tr(" (Loading...)"));
-
-            QString taskId = QString("EDITIMG|%1|%2|%3").arg(currentToken).arg(i).arg(path);
-            IconLoaderTask *task = new IconLoaderTask(path, 100, 0, this, taskId, true);
-            task->setAutoDelete(true);
-            threadPool->start(task);
-        } else if (i < meta.images.size() && !meta.images[i].url.isEmpty()) {
-            item->setText(title);
-            item->setToolTip(title + AppText::tr(" (Remote)"));
-        } else {
-            item->setText(title);
-            item->setToolTip(title + AppText::tr(" (Missing)"));
-        }
-
-        ui->listEditImages->addItem(item);
-    }
-
-    if (ui->listEditImages->count() > 0) {
-        ui->listEditImages->setCurrentRow(0);
-    } else {
-        ui->lblEditImagePath->setText(AppText::tr("文件: -"));
-        ui->lblEditImageSize->setText(AppText::tr("尺寸: -"));
-        ui->textEditImgPrompt->clear();
-        ui->textEditImgNegPrompt->clear();
-        ui->editImgSampler->clear();
-        ui->editImgSteps->clear();
-        ui->editImgCfg->clear();
-        ui->editImgSeed->clear();
-        ui->spinImgNsfw->setValue(1);
-    }
-}
-
-void MainWindow::commitEditImageFields()
-{
-    if (currentEditImageIndex < 0 || currentEditImageIndex >= currentMeta.images.size()) return;
-    ImageInfo &img = currentMeta.images[currentEditImageIndex];
-
-    img.prompt = ui->textEditImgPrompt->toPlainText().trimmed();
-    img.negativePrompt = ui->textEditImgNegPrompt->toPlainText().trimmed();
-    img.sampler = ui->editImgSampler->text().trimmed();
-    img.steps = ui->editImgSteps->text().trimmed();
-    img.cfgScale = ui->editImgCfg->text().trimmed();
-    img.seed = ui->editImgSeed->text().trimmed();
-    img.nsfwLevel = ui->spinImgNsfw->value();
-    img.nsfw = (img.nsfwLevel > 1);
-}
-
-void MainWindow::loadEditImageFields(int index)
-{
-    if (index < 0 || index >= currentMeta.images.size()) return;
-    const ImageInfo &img = currentMeta.images[index];
-
-    QString path = editPreviewPathForIndex(index);
-    ui->lblEditImagePath->setText(
-        path.isEmpty()
-        ? AppText::tr("文件: -")
-        : AppText::tr("文件: ") + forceWrap(path)
-    );
-    if (img.width > 0 && img.height > 0) {
-        ui->lblEditImageSize->setText(AppText::tr("尺寸: %1 x %2").arg(img.width).arg(img.height));
-    } else {
-        ui->lblEditImageSize->setText(AppText::tr("尺寸: -"));
-    }
-
-    ui->textEditImgPrompt->setPlainText(img.prompt);
-    ui->textEditImgNegPrompt->setPlainText(img.negativePrompt);
-    ui->editImgSampler->setText(img.sampler);
-    ui->editImgSteps->setText(img.steps);
-    ui->editImgCfg->setText(img.cfgScale);
-    ui->editImgSeed->setText(img.seed);
-    ui->spinImgNsfw->setValue(img.nsfwLevel > 0 ? img.nsfwLevel : 1);
-}
-
-void MainWindow::onEditImageSelectionChanged(int row)
-{
-    if (row == currentEditImageIndex) return;
-    commitEditImageFields();
-    currentEditImageIndex = row;
-    loadEditImageFields(row);
 }
 
 int MainWindow::countLocalEditedModels() const
@@ -3616,205 +3328,24 @@ void MainWindow::onForceUpdateClicked() {
     startModelHashSync(filePath, baseName, true);
 }
 
-void MainWindow::onLocalMetaSaveClicked()
+void MainWindow::onLocalMetaSaved(const QString &filePath, const QString &jsonPath, const QString &previewPath)
 {
     QListWidgetItem *item = ui->modelList->currentItem();
-    if (!item) {
-        QMessageBox::information(this, AppText::tr("提示"), AppText::tr("请先选择一个模型。"));
-        return;
+    if (!item || QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath() != QFileInfo(filePath).absoluteFilePath()) {
+        item = findModelItemByFilePath(filePath);
     }
+    if (!item) return;
 
-    QString baseName = item->data(ROLE_MODEL_NAME).toString();
-    QString filePath = item->data(ROLE_FILE_PATH).toString();
-    if (baseName.isEmpty() || filePath.isEmpty()) return;
-
-    QString modelDir = QFileInfo(filePath).absolutePath();
-    QString jsonPath = QDir(modelDir).filePath(baseName + ".json");
-
-    QJsonObject root;
-    QFile jsonFile(jsonPath);
-    if (jsonFile.exists() && jsonFile.open(QIODevice::ReadOnly)) {
-        QJsonDocument doc = QJsonDocument::fromJson(jsonFile.readAll());
-        root = doc.object();
-        jsonFile.close();
-    }
-
-    QString modelName = ui->editLocalModelName->text().trimmed();
-    if (modelName.isEmpty()) modelName = baseName;
-    QString versionName = ui->editLocalVersion->text().trimmed();
-    QString baseModel = ui->editLocalBaseModel->text().trimmed();
-    QString type = ui->editLocalType->text().trimmed();
-    QString modelUrl = ui->editLocalModelUrl->text().trimmed();
-    QString createdAt = ui->editLocalCreatedAt->text().trimmed();
-    bool nsfw = ui->chkLocalNSFW->isChecked();
-    QString description = ui->textLocalDescription->toPlainText().trimmed();
-    bool okDownloads = false;
-    int downloads = ui->editLocalDownloads->text().trimmed().toInt(&okDownloads);
-    if (!okDownloads) downloads = 0;
-    bool okLikes = false;
-    int likes = ui->editLocalLikes->text().trimmed().toInt(&okLikes);
-    if (!okLikes) likes = 0;
-    const QString creatorName = ui->editLocalCreator->text().trimmed();
-    auto parseModelTags = [](const QString &text) {
-        QStringList tags;
-        QSet<QString> seen;
-        static const QRegularExpression separatorRegex("[,\\n\\r]+");
-        const QStringList parts = text.split(separatorRegex, Qt::SkipEmptyParts);
-        for (QString tag : parts) {
-            tag = tag.trimmed();
-            if (tag.isEmpty()) continue;
-            const QString key = tag.toCaseFolded();
-            if (seen.contains(key)) continue;
-            seen.insert(key);
-            tags.append(tag);
-        }
-        return tags;
-    };
-    const QStringList modelTags = parseModelTags(ui->textLocalModelTags->toPlainText());
-
-    QJsonObject modelObj = root["model"].toObject();
-    modelObj["name"] = modelName;
-    if (!type.isEmpty()) modelObj["type"] = type;
-    else modelObj.remove("type");
-    modelObj["nsfw"] = nsfw;
-    QJsonObject creatorObj = modelObj.value("creator").toObject();
-    QJsonObject topCreatorObj = root.value("creator").toObject();
-    if (!creatorName.isEmpty()) {
-        creatorObj["username"] = creatorName;
-        topCreatorObj["username"] = creatorName;
-        modelObj["creator"] = creatorObj;
-        root["creator"] = topCreatorObj;
-    } else {
-        creatorObj.remove("username");
-        creatorObj.remove("name");
-        topCreatorObj.remove("username");
-        topCreatorObj.remove("name");
-        if (creatorObj.isEmpty()) modelObj.remove("creator");
-        else modelObj["creator"] = creatorObj;
-        if (topCreatorObj.isEmpty()) root.remove("creator");
-        else root["creator"] = topCreatorObj;
-    }
-    QJsonArray tagArray;
-    for (const QString &tag : modelTags) tagArray.append(tag);
-    if (modelTags.isEmpty()) {
-        modelObj.remove("tags");
-        root.remove("tags");
-    } else {
-        modelObj["tags"] = tagArray;
-        root["tags"] = tagArray;
-    }
-    root["model"] = modelObj;
-
-    root["name"] = versionName;
-    if (!baseModel.isEmpty()) root["baseModel"] = baseModel;
-    else root.remove("baseModel");
-    root["description"] = description;
-
-    QStringList triggers;
-    const QStringList lines = ui->textLocalTriggers->toPlainText().split('\n', Qt::SkipEmptyParts);
-    for (QString line : lines) {
-        line = line.trimmed();
-        if (line.endsWith(",")) line.chop(1);
-        if (!line.isEmpty()) triggers.append(line);
-    }
-    QJsonArray twArray;
-    for (const QString &w : triggers) twArray.append(w);
-    root["trainedWords"] = twArray;
-
-    root["localEdited"] = true;
-    root["localEditedAt"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
-
-    int modelId = root["modelId"].toInt();
-    if (modelId <= 0) modelId = root["model"].toObject()["id"].toInt();
-    if (!modelUrl.isEmpty()) {
-        root["modelUrl"] = modelUrl;
-        static const QRegularExpression re("/models/(\\d+)");
-        QRegularExpressionMatch match = re.match(modelUrl);
-        if (match.hasMatch()) {
-            modelId = match.captured(1).toInt();
-        }
-    } else {
-        root.remove("modelUrl");
-        modelId = 0;
-    }
-    root["modelId"] = modelId;
-
-    bool localOnly = root["localOnly"].toBool(false);
-    if (modelId <= 0) localOnly = true;
-    root["localOnly"] = localOnly;
-
-    QFileInfo fi(filePath);
-    double sizeKB = fi.exists() ? fi.size() / 1024.0 : 0.0;
-    QJsonArray files = root["files"].toArray();
-    QJsonObject fileObj = files.isEmpty() ? QJsonObject() : files[0].toObject();
-    if (sizeKB > 0) fileObj["sizeKB"] = sizeKB;
-    fileObj["name"] = fi.fileName();
-    if (files.isEmpty()) files.append(fileObj);
-    else files[0] = fileObj;
-    root["files"] = files;
-
-    if (!createdAt.isEmpty()) {
-        root["createdAt"] = createdAt;
-    } else {
-        root.remove("createdAt");
-    }
-
-    QJsonObject statsObj = root["stats"].toObject();
-    statsObj["downloadCount"] = downloads;
-    statsObj["thumbsUpCount"] = likes;
-    root["stats"] = statsObj;
-
-    commitEditImageFields();
-    QJsonArray imagesArr;
-    const QJsonArray oldImagesArr = root["images"].toArray();
-    for (int imageIndex = 0; imageIndex < currentMeta.images.size(); ++imageIndex) {
-        const ImageInfo &img = currentMeta.images.at(imageIndex);
-        QJsonObject imgObj = imageIndex < oldImagesArr.size() ? oldImagesArr.at(imageIndex).toObject() : QJsonObject();
-        if (!img.url.isEmpty()) imgObj["url"] = img.url;
-        if (!img.hash.isEmpty()) imgObj["hash"] = img.hash;
-        if (img.width > 0) imgObj["width"] = img.width;
-        if (img.height > 0) imgObj["height"] = img.height;
-        if (img.nsfwLevel > 0) imgObj["nsfwLevel"] = img.nsfwLevel;
-        QJsonObject imgMeta = imgObj["meta"].toObject();
-        if (!img.prompt.isEmpty()) imgMeta["prompt"] = img.prompt;
-        else imgMeta.remove("prompt");
-        if (!img.negativePrompt.isEmpty()) imgMeta["negativePrompt"] = img.negativePrompt;
-        else imgMeta.remove("negativePrompt");
-        if (!img.sampler.isEmpty()) imgMeta["sampler"] = img.sampler;
-        else imgMeta.remove("sampler");
-        bool okSteps = false;
-        int steps = img.steps.toInt(&okSteps);
-        if (okSteps) imgMeta["steps"] = steps;
-        else if (!img.steps.isEmpty()) imgMeta["steps"] = img.steps;
-        else imgMeta.remove("steps");
-        bool okCfg = false;
-        double cfg = img.cfgScale.toDouble(&okCfg);
-        if (okCfg) imgMeta["cfgScale"] = cfg;
-        else if (!img.cfgScale.isEmpty()) imgMeta["cfgScale"] = img.cfgScale;
-        else imgMeta.remove("cfgScale");
-        bool okSeed = false;
-        qlonglong seed = img.seed.toLongLong(&okSeed);
-        if (okSeed) imgMeta["seed"] = seed;
-        else if (!img.seed.isEmpty()) imgMeta["seed"] = img.seed;
-        else imgMeta.remove("seed");
-        if (!imgMeta.isEmpty()) imgObj["meta"] = imgMeta;
-        else imgObj.remove("meta");
-        imagesArr.append(imgObj);
-    }
-    root["images"] = imagesArr;
-
-    QFile saveFile(jsonPath);
-    if (!saveFile.open(QIODevice::WriteOnly)) {
-        QMessageBox::warning(this, AppText::tr("保存失败"), AppText::tr("无法写入本地元数据文件。"));
-        return;
-    }
-    saveFile.write(QJsonDocument(root).toJson());
-    saveFile.close();
+    const QFileInfo fi(filePath);
+    const QString baseName = item->data(ROLE_MODEL_NAME).toString().isEmpty()
+        ? fi.completeBaseName()
+        : item->data(ROLE_MODEL_NAME).toString();
+    const QString modelDir = fi.absolutePath();
 
     // 重新读取并刷新详情
     ModelMeta meta;
     meta.filePath = filePath;
-    meta.previewPath = item->data(ROLE_PREVIEW_PATH).toString();
+    meta.previewPath = !previewPath.isEmpty() ? previewPath : item->data(ROLE_PREVIEW_PATH).toString();
     meta.fileName = fi.fileName();
     if (ModelMetadata::readLocalJson(modelDir, baseName, meta)) {
         currentMeta = meta;
@@ -3827,7 +3358,7 @@ void MainWindow::onLocalMetaSaveClicked()
     refreshCollectionTreeView();
     refreshHomeFilterChips();
     refreshHomeGallery();
-    QString civitaiName = item->data(ROLE_CIVITAI_NAME).toString();
+    const QString civitaiName = item->data(ROLE_CIVITAI_NAME).toString();
     if (optUseCivitaiName && !civitaiName.isEmpty()) {
         item->setText(civitaiName);
     } else {
@@ -3874,13 +3405,14 @@ void MainWindow::onEditMetaTabClicked()
         return;
     }
 
-    int currentIndex = ui->detailContentStack->currentIndex();
-    int targetIndex = (currentIndex == 2) ? 0 : 2;
+    const int editIndex = localMetaEditorPage ? ui->detailContentStack->indexOf(localMetaEditorPage) : 2;
+    const int currentIndex = ui->detailContentStack->currentIndex();
+    const int targetIndex = (currentIndex == editIndex) ? 0 : editIndex;
 
     ui->scrollAreaWidgetContents->removeEventFilter(this);
     ui->detailContentStack->setCurrentIndex(targetIndex);
-    if (targetIndex == 2 && editImagesNeedRefresh) {
-        refreshEditImages(currentMeta);
+    if (targetIndex == editIndex && localMetaEditorPage) {
+        localMetaEditorPage->ensureImagesRefreshed();
     }
 
     fitDetailContentToCurrentPage();
@@ -3892,198 +3424,6 @@ void MainWindow::onEditMetaTabClicked()
         }
         updateBackgroundImage();
     });
-}
-
-void MainWindow::onEditAddImageClicked()
-{
-    if (!ui->modelList->currentItem()) {
-        QMessageBox::information(this, AppText::tr("提示"), AppText::tr("请先选择一个模型。"));
-        return;
-    }
-
-    commitEditImageFields();
-
-    QString srcPath = QFileDialog::getOpenFileName(this, AppText::tr("选择预览图片"),
-                                                   currentEditModelDir(),
-                                                   AppText::tr("Image Files (*.png *.jpg *.jpeg *.webp)"));
-    if (srcPath.isEmpty()) return;
-
-    QString baseName = currentEditBaseName();
-    QString modelDir = currentEditModelDir();
-    int index = currentMeta.images.size();
-    QString destPath = ModelMetadata::previewPath(modelDir, baseName, index);
-
-    int w = 0, h = 0;
-    if (!saveImageToPreviewPath(srcPath, destPath, w, h)) {
-        QMessageBox::warning(this, AppText::tr("错误"), AppText::tr("图片保存失败，请检查文件格式。"));
-        return;
-    }
-
-    ImageInfo img;
-    img.url = "";
-    img.hash = "";
-    img.width = w;
-    img.height = h;
-    img.nsfwLevel = 1;
-    img.nsfw = false;
-    applyImageMetadataFromFile(srcPath, img);
-    currentMeta.images.append(img);
-    if (index == 0) {
-        currentMeta.previewPath = destPath;
-    }
-
-    refreshEditImages(currentMeta);
-    ui->listEditImages->setCurrentRow(index);
-}
-
-void MainWindow::onEditReplaceImageClicked()
-{
-    int row = ui->listEditImages->currentRow();
-    if (row < 0 || row >= currentMeta.images.size()) return;
-
-    commitEditImageFields();
-
-    QString srcPath = QFileDialog::getOpenFileName(this, AppText::tr("替换预览图片"),
-                                                   currentEditModelDir(),
-                                                   AppText::tr("Image Files (*.png *.jpg *.jpeg *.webp)"));
-    if (srcPath.isEmpty()) return;
-
-    QString destPath = editPreviewPathForIndex(row);
-    int w = 0, h = 0;
-    if (!saveImageToPreviewPath(srcPath, destPath, w, h)) {
-        QMessageBox::warning(this, AppText::tr("错误"), AppText::tr("图片保存失败，请检查文件格式。"));
-        return;
-    }
-    invalidateIconCacheForPath(destPath);
-
-    currentMeta.images[row].width = w;
-    currentMeta.images[row].height = h;
-    applyImageMetadataFromFile(srcPath, currentMeta.images[row]);
-    if (row == 0) {
-        currentMeta.previewPath = destPath;
-    }
-
-    refreshEditImages(currentMeta);
-    ui->listEditImages->setCurrentRow(row);
-}
-
-void MainWindow::onEditRemoveImageClicked()
-{
-    int row = ui->listEditImages->currentRow();
-    if (row < 0 || row >= currentMeta.images.size()) return;
-
-    QMessageBox::StandardButton reply = QMessageBox::question(
-        this, AppText::tr("删除预览图"), AppText::tr("确定删除选中的预览图吗？"), QMessageBox::Yes | QMessageBox::No, QMessageBox::No
-    );
-    if (reply != QMessageBox::Yes) return;
-
-    commitEditImageFields();
-
-    const QString transactionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    QMap<int, QPair<QString, QString>> stagedFiles;
-    for (int i = row; i < currentMeta.images.size(); ++i) {
-        const QString originalPath = editPreviewPathForIndex(i);
-        if (!QFile::exists(originalPath)) continue;
-        const QString stagedPath = originalPath + ".edit-backup-" + transactionId;
-        if (!QFile::rename(originalPath, stagedPath)) {
-            auto it = stagedFiles.constEnd();
-            while (it != stagedFiles.constBegin()) {
-                --it;
-                QFile::rename(it.value().second, it.value().first);
-            }
-            QMessageBox::warning(this, AppText::tr("删除失败"), AppText::tr("无法安全暂存预览图，原文件未删除。"));
-            return;
-        }
-        stagedFiles.insert(i, qMakePair(originalPath, stagedPath));
-    }
-
-    QList<int> movedIndexes;
-    bool moveFailed = false;
-    for (int i = row + 1; i < currentMeta.images.size(); ++i) {
-        if (!stagedFiles.contains(i)) continue;
-        const QString destination = editPreviewPathForIndex(i - 1);
-        if (!QFile::rename(stagedFiles.value(i).second, destination)) {
-            moveFailed = true;
-            break;
-        }
-        movedIndexes.append(i);
-    }
-    if (moveFailed) {
-        for (auto it = movedIndexes.crbegin(); it != movedIndexes.crend(); ++it) {
-            const int index = *it;
-            QFile::rename(editPreviewPathForIndex(index - 1), stagedFiles.value(index).second);
-        }
-        bool restored = true;
-        auto it = stagedFiles.constEnd();
-        while (it != stagedFiles.constBegin()) {
-            --it;
-            if (QFile::exists(it.value().second)
-                && !QFile::rename(it.value().second, it.value().first)) {
-                restored = false;
-            }
-        }
-        QMessageBox::critical(this, AppText::tr("删除失败"),
-                              restored ? AppText::tr("预览图重新编号失败，原文件已恢复。")
-                                       : AppText::tr("预览图重新编号失败，部分备份文件无法恢复，请检查模型目录。"));
-        return;
-    }
-
-    if (stagedFiles.contains(row) && !QFile::remove(stagedFiles.value(row).second)) {
-        qWarning() << "Unable to remove staged preview image:" << stagedFiles.value(row).second;
-    }
-
-    invalidateIconCacheForPath(editPreviewPathForIndex(0));
-    currentMeta.images.removeAt(row);
-    if (!currentMeta.images.isEmpty()) {
-        currentMeta.previewPath = editPreviewPathForIndex(0);
-    } else {
-        currentMeta.previewPath.clear();
-    }
-    refreshEditImages(currentMeta);
-    int nextRow = qMin(row, ui->listEditImages->count() - 1);
-    if (nextRow >= 0) ui->listEditImages->setCurrentRow(nextRow);
-}
-
-void MainWindow::onEditSetCoverClicked()
-{
-    int row = ui->listEditImages->currentRow();
-    if (row <= 0 || row >= currentMeta.images.size()) return;
-
-    commitEditImageFields();
-
-    QString path0 = editPreviewPathForIndex(0);
-    QString pathN = editPreviewPathForIndex(row);
-    if (!QFile::exists(path0) || !QFile::exists(pathN)) {
-        QMessageBox::warning(this, AppText::tr("设置封面失败"), AppText::tr("封面或目标预览图文件不存在，未修改图片顺序。"));
-        return;
-    }
-
-    QString tempPath = path0 + ".swap-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
-    if (!QFile::rename(path0, tempPath)) {
-        QMessageBox::warning(this, AppText::tr("设置封面失败"), AppText::tr("无法暂存当前封面，原文件未修改。"));
-        return;
-    }
-    if (!QFile::rename(pathN, path0)) {
-        QFile::rename(tempPath, path0);
-        QMessageBox::warning(this, AppText::tr("设置封面失败"), AppText::tr("无法移动目标预览图，原封面已恢复。"));
-        return;
-    }
-    if (!QFile::rename(tempPath, pathN)) {
-        const bool restoredTarget = QFile::rename(path0, pathN);
-        const bool restoredCover = QFile::rename(tempPath, path0);
-        QMessageBox::critical(this, AppText::tr("设置封面失败"),
-                              restoredTarget && restoredCover
-                                  ? AppText::tr("无法完成封面交换，原文件已恢复。")
-                                  : AppText::tr("无法完成封面交换，自动恢复失败，请检查模型目录。"));
-        return;
-    }
-
-    qSwap(currentMeta.images[0], currentMeta.images[row]);
-
-    currentMeta.previewPath = editPreviewPathForIndex(0);
-    invalidateIconCacheForPath(currentMeta.previewPath);
-    refreshEditImages(currentMeta);
-    ui->listEditImages->setCurrentRow(0);
 }
 
 QString MainWindow::civitaiApiKey() const
@@ -4690,31 +4030,6 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
     if (image.isNull()) {
         if (id.startsWith(QStringLiteral("HOME:"))) {
             queuedHomeThumbPaths.remove(id.mid(5));
-        }
-        return;
-    }
-    if (id.startsWith("EDITIMG|")) {
-        const QStringList parts = id.split('|');
-        if (parts.size() >= 4) {
-            bool okToken = false;
-            bool okIndex = false;
-            const int token = parts[1].toInt(&okToken);
-            const int index = parts[2].toInt(&okIndex);
-            const QString path = parts[3];
-
-            if (okToken && okIndex &&
-                token == editImageLoadToken &&
-                index >= 0 && index < ui->listEditImages->count()) {
-                QListWidgetItem *item = ui->listEditImages->item(index);
-                if (item &&
-                    item->data(Qt::UserRole).toInt() == index &&
-                    item->data(ROLE_EDIT_IMAGE_PATH).toString() == path) {
-                    item->setIcon(QIcon(QPixmap::fromImage(image)));
-                    const QString title = (index == 0) ? AppText::tr("封面 / Cover") : AppText::tr("预览 %1").arg(index);
-                    item->setText(title);
-                    item->setToolTip(path);
-                }
-            }
         }
         return;
     }
@@ -9229,6 +8544,10 @@ void MainWindow::recolorPlaceholderItems()
     smallPlaceholderIcon = generateSmallPlaceholderIcon();  // 侧边栏/收藏树/用户图
     noPreviewIcon = generateNoPreviewIcon(false);
     smallNoPreviewIcon = generateNoPreviewIcon(true);
+    if (localMetaEditorPage) {
+        localMetaEditorPage->setPlaceholderIcon(placeholderIcon);
+        refreshCurrentDetailCacheStatus();
+    }
 
     auto recolorList = [this](QListWidget *list, const QIcon &missingIcon, const QIcon &knownNoPreviewIcon) {
         if (!list) return;
