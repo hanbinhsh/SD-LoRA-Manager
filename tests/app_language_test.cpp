@@ -13,6 +13,7 @@
 #include "ui_aboutpage.h"
 #include "ui_localmetaeditorpage.h"
 #include "ui_usergallerypage.h"
+#include "ui_homegallerypage.h"
 #include "ui_modelnotedialog.h"
 #include "ui_pathlistdialog.h"
 #include "ui_imageviewerdialog.h"
@@ -205,6 +206,7 @@ int main(int argc, char **argv)
     checkForm<Ui::AboutPage>();
     checkForm<Ui::LocalMetaEditorPage>();
     checkForm<Ui::UserGalleryPage>();
+    checkForm<Ui::HomeGalleryPage>();
     checkForm<Ui::ModelNoteDialog, QDialog>();
     checkForm<Ui::PathListDialog, QDialog>();
     checkForm<Ui::ImageViewerDialog, QDialog>();

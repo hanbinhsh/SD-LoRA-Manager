@@ -67,8 +67,10 @@ class DownloadsPage;
 class DownloadManager;
 class LocalMetaEditorPage;
 class UserGalleryPage;
+class HomeGalleryPage;
 class AppUpdateChecker;
 struct LocalMetaEditorContext;
+struct HomeFilterTagInfo;
 class PreviewDownloadQueue;
 class MetadataSyncService;
 class ModelUpdateCoordinator;
@@ -104,7 +106,7 @@ private slots:
     void onApiMetadataReceived(QNetworkReply *reply);
     void onGalleryImageClicked(int index);
     void onHomeButtonClicked(); // 切换到主页
-    void onHomeGalleryClicked(QListWidgetItem *item); // 主页大图点击跳转
+    void onHomeModelClicked(const QString &targetPath); // 主页大图点击跳转
     void onSidebarContextMenu(const QPoint &pos); // 侧边栏右键
     void onCreateCollection(); // 创建新收藏夹按钮点击
     void onCollectionFilterClicked(const QString &collectionName); // 点击收藏夹过滤
@@ -112,7 +114,6 @@ private slots:
     void onHashCalculated();
     void onSearchTextChanged(const QString &text);
     void onBtnFavoriteClicked();
-    void onHomeGalleryContextMenu(const QPoint &pos);
     void onSortIndexChanged(int index);
     void onFilterBaseModelChanged(const QString &text);
     void rebuildSortFilterMenu();        // 重建侧栏“排序/筛选”多级菜单（底模/类型项会随扫描变化）
@@ -153,6 +154,7 @@ private:
     SettingsPage *settingsPage = nullptr;
     QPointer<ImageViewerDialog> imageViewer;
     AboutPage *aboutPage = nullptr;
+    HomeGalleryPage *homeGalleryPage = nullptr;
     UserGalleryPage *userGalleryPage = nullptr;
     LocalMetaEditorPage *localMetaEditorPage = nullptr;
     QSet<int> pendingToolTabLoads;
@@ -167,24 +169,6 @@ private:
     QHash<QString, QColor> modelHighlightColors;
     QHash<QString, ModelUserNote> modelUserNotes;
     QString currentCollectionFilter; // 当前显示的收藏夹 ("" 代表全部)
-    QString currentHomeAuthorFilter;
-    QSet<QString> currentHomeTagFilters;
-    bool homeFilterExpanded = false;
-    bool homeFilterTagsSortByCount = true;
-
-    struct HomeFilterTagInfo {
-        QString tag;
-        int count = 0;
-        bool fromModel = false;
-        bool fromUser = false;
-
-        QString sourceName() const
-        {
-            if (fromModel && fromUser) return QStringLiteral("mixed");
-            if (fromUser) return QStringLiteral("user");
-            return QStringLiteral("model");
-        }
-    };
 
     // 收藏夹 JSON 读写
     void loadCollections();
@@ -215,6 +199,9 @@ private:
     void removeUserTagsForItems(const QList<QListWidgetItem*> &items, const QStringList &tags);
     void refreshHomeCollectionsUI(); // 刷新主页顶部的按钮
     void refreshHomeGallery(); // 刷新主页下方的图库
+    void syncHomeGalleryOptions();
+    void renameCollectionByName(const QString &name);
+    void deleteCollectionByName(const QString &name);
 
     void scanModels(const QString &path);
     void scanModels(const QStringList &paths, std::function<void()> onComplete = {});
@@ -446,19 +433,11 @@ private:
     int           optBlurProcessWidth                         = 500;              // 默认缩小到 500px
     int           optRenderThreadCount                        = 4;                // 图片处理线程数
     QHash<QString, QIcon> sidebarIconCache;
-    QHash<QString, QIcon> homeIconCache;
-    QSet<QString> queuedHomeThumbPaths;
-    QSet<QString> loadedHomeThumbPaths;
     QHash<QString, QListWidgetItem*> modelItemByPath;
-    QHash<QString, QListWidgetItem*> homeItemByPath;
     QMultiHash<QString, QTreeWidgetItem*> collectionTreeItemsByPath;
     QTimer *searchDebounceTimer = nullptr;
-    QTimer *homeAuthorFilterDebounceTimer = nullptr;
-    QTimer *homeGalleryThumbLoadTimer = nullptr;
     int usageAnalysisRefreshToken = 0;
 
-    void scheduleVisibleHomeGalleryThumbLoad();
-    void dispatchVisibleHomeGalleryThumbLoad();
     void invalidateIconCacheForPath(const QString &previewPath);
 
     bool          optRestoreTreeState                         = true;             // 保存菜单状态

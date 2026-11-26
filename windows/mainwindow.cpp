@@ -78,6 +78,7 @@
 #include "pages/aboutpage.h"
 #include "pages/localmetaeditorpage.h"
 #include "pages/usergallerypage.h"
+#include "pages/homegallerypage.h"
 #include "dialogs/modelnotedialog.h"
 #include "dialogs/imageviewerdialog.h"
 #include "dialogs/textviewerdialog.h"
@@ -195,6 +196,19 @@ MainWindow::MainWindow(QWidget *parent)
     ui->rootStack->addWidget(aboutPage);
     aboutPage->setVersionText(CURRENT_VERSION);
     connect(aboutPage, &AboutPage::checkUpdateRequested, this, &MainWindow::onCheckUpdateClicked);
+    homeGalleryPage = new HomeGalleryPage(this);
+    ui->mainStack->insertWidget(0, homeGalleryPage);
+    connect(homeGalleryPage, &HomeGalleryPage::createCollectionRequested, this, &MainWindow::onCreateCollection);
+    connect(homeGalleryPage, &HomeGalleryPage::collectionFilterRequested, this, &MainWindow::onCollectionFilterClicked);
+    connect(homeGalleryPage, &HomeGalleryPage::renameCollectionRequested, this, &MainWindow::renameCollectionByName);
+    connect(homeGalleryPage, &HomeGalleryPage::deleteCollectionRequested, this, &MainWindow::deleteCollectionByName);
+    connect(homeGalleryPage, &HomeGalleryPage::filtersChanged, this, [this]() {
+        refreshHomeFilterChips();
+        refreshHomeGallery();
+    });
+    connect(homeGalleryPage, &HomeGalleryPage::filterChipsRefreshRequested, this, &MainWindow::refreshHomeFilterChips);
+    connect(homeGalleryPage, &HomeGalleryPage::modelClicked, this, &MainWindow::onHomeModelClicked);
+    connect(homeGalleryPage, &HomeGalleryPage::contextMenuRequested, this, &MainWindow::showCollectionMenu);
     userGalleryPage = new UserGalleryPage(this);
     ui->detailContentStack->addWidget(userGalleryPage);
     userGalleryPage->setTranslationMap(&translationMap);
@@ -357,6 +371,10 @@ MainWindow::MainWindow(QWidget *parent)
         userGalleryPage->setThreadPools(threadPool, backgroundThreadPool);
         userGalleryPage->setPlaceholderIcon(placeholderIcon);
     }
+    if (homeGalleryPage) {
+        homeGalleryPage->setThreadPools(threadPool, backgroundThreadPool);
+        homeGalleryPage->setPlaceholderIcons(placeholderIcon, noPreviewIcon);
+    }
 
     netManager = new QNetworkAccessManager(this);
     initServices();
@@ -366,6 +384,7 @@ MainWindow::MainWindow(QWidget *parent)
     // === 2. 加载配置 ===
     loadGlobalConfig();   // 从 JSON 读选项
     syncUserGalleryOptions();
+    syncHomeGalleryOptions();
     loadModelSyncFailures();
     // === 应用线程数 ===
     threadPool->setMaxThreadCount(optRenderThreadCount);
@@ -382,18 +401,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     ui->btnFavorite->setContextMenuPolicy(Qt::CustomContextMenu);
 
-    // 1. 开启像素滚动与多选
-    ui->homeGalleryList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-    ui->homeGalleryList->setSelectionMode(QAbstractItemView::ExtendedSelection);
-    // 2. 设置滚轮滚一下移动的像素距离
-    ui->homeGalleryList->verticalScrollBar()->setSingleStep(40);
-    homeGalleryThumbLoadTimer = new QTimer(this);
-    homeGalleryThumbLoadTimer->setSingleShot(true);
-    connect(homeGalleryThumbLoadTimer, &QTimer::timeout, this, &MainWindow::dispatchVisibleHomeGalleryThumbLoad);
-    connect(ui->homeGalleryList->verticalScrollBar(), &QScrollBar::valueChanged, this, [this]() {
-        scheduleVisibleHomeGalleryThumbLoad();
-    });
-    ui->homeGalleryList->viewport()->installEventFilter(this);
     if (ui->scrollArea) {
         ui->scrollArea->installEventFilter(this);
         if (ui->scrollArea->viewport()) ui->scrollArea->viewport()->installEventFilter(this);
@@ -463,36 +470,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
     // 主页与画廊按钮
     connect(ui->btnHome, &QPushButton::clicked, this, &MainWindow::onHomeButtonClicked);
-    connect(ui->homeGalleryList, &QListWidget::itemClicked, this, &MainWindow::onHomeGalleryClicked);
-    connect(ui->btnAddCollection, &QPushButton::clicked, this, &MainWindow::onCreateCollection);
     connect(ui->btnGallery, &QPushButton::clicked, this, &MainWindow::onGalleryButtonClicked);
-    homeAuthorFilterDebounceTimer = new QTimer(this);
-    homeAuthorFilterDebounceTimer->setSingleShot(true);
-    homeAuthorFilterDebounceTimer->setInterval(120);
-    connect(homeAuthorFilterDebounceTimer, &QTimer::timeout, this, [this]() {
-        if (!ui || !ui->editHomeAuthorFilter) return;
-        currentHomeAuthorFilter = ui->editHomeAuthorFilter->text().trimmed();
-        refreshHomeFilterChips();
-        refreshHomeGallery();
-    });
-    connect(ui->editHomeAuthorFilter, &QLineEdit::textChanged, this, [this](const QString &) {
-        if (homeAuthorFilterDebounceTimer) homeAuthorFilterDebounceTimer->start();
-    });
-    connect(ui->editHomeTagFilter, &QLineEdit::returnPressed, this, [this]() {
-        addHomeTagFilter(ui->editHomeTagFilter->text());
-    });
-    connect(ui->btnHomeAddTagFilter, &QPushButton::clicked, this, [this]() {
-        addHomeTagFilter(ui->editHomeTagFilter->text());
-    });
-    connect(ui->btnHomeTagSortMode, &QPushButton::clicked, this, [this]() {
-        homeFilterTagsSortByCount = !homeFilterTagsSortByCount;
-        refreshHomeFilterChips();
-    });
-    connect(ui->btnHomeClearFilters, &QPushButton::clicked, this, &MainWindow::clearHomeFilters);
-    connect(ui->btnHomeFilterToggle, &QPushButton::clicked, this, [this](bool checked) {
-        homeFilterExpanded = checked;
-        refreshHomeFilterChips();
-    });
 
     // 切换 Tab 与图谱按钮
     connect(ui->btnShowUserGallery, &QPushButton::clicked, this, &MainWindow::onToggleDetailTab);
@@ -571,17 +549,13 @@ MainWindow::MainWindow(QWidget *parent)
                 ui->searchEdit->setText(startupSearchText);
             }
             currentCollectionFilter = startupCollectionFilter;
-            currentHomeAuthorFilter = startupHomeAuthorFilter;
-            currentHomeTagFilters = startupHomeTagFilters;
-            homeFilterExpanded = startupHomeFilterExpanded;
-            homeFilterTagsSortByCount = startupHomeFilterTagsSortByCount;
-            if (ui->editHomeAuthorFilter) {
-                const QSignalBlocker blocker(ui->editHomeAuthorFilter);
-                ui->editHomeAuthorFilter->setText(currentHomeAuthorFilter);
-            }
-            if (ui->btnHomeFilterToggle) {
-                const QSignalBlocker blocker(ui->btnHomeFilterToggle);
-                ui->btnHomeFilterToggle->setChecked(homeFilterExpanded);
+            if (homeGalleryPage) {
+                HomeGalleryFilterState hs;
+                hs.authorFilter = startupHomeAuthorFilter;
+                hs.tagFilters = startupHomeTagFilters;
+                hs.filterExpanded = startupHomeFilterExpanded;
+                hs.tagsSortByCount = startupHomeFilterTagsSortByCount;
+                homeGalleryPage->restoreFilterState(hs);
             }
             if (userGalleryPage) {
                 UserGalleryFilterState state;
@@ -688,8 +662,7 @@ MainWindow::~MainWindow()
 {
     isShuttingDown = true;
     if (searchDebounceTimer) searchDebounceTimer->stop();
-    if (homeAuthorFilterDebounceTimer) homeAuthorFilterDebounceTimer->stop();
-    if (homeGalleryThumbLoadTimer) homeGalleryThumbLoadTimer->stop();
+    if (homeGalleryPage) homeGalleryPage->shutdown();
     if (userGalleryPage) userGalleryPage->shutdown();
     if (bgResizeTimer) bgResizeTimer->stop();
     if (detailGalleryBuildTimer) detailGalleryBuildTimer->stop();
@@ -775,166 +748,76 @@ void MainWindow::onCreateCollection()
     }
 }
 
+void MainWindow::syncHomeGalleryOptions()
+{
+    if (!homeGalleryPage) return;
+    HomeGalleryOptions opts;
+    opts.filterNsfw = optFilterNSFW;
+    opts.nsfwMode = optNSFWMode;
+    opts.nsfwLevel = optNSFWLevel;
+    homeGalleryPage->setOptions(opts);
+}
+
+void MainWindow::renameCollectionByName(const QString &name)
+{
+    bool ok = false;
+    const QString newName = QInputDialog::getText(
+        this, AppText::tr("重命名收藏夹"), AppText::tr("新名称:"), QLineEdit::Normal, name, &ok);
+    if (!ok || newName.trimmed().isEmpty() || newName == name) return;
+    if (collections.contains(newName)) {
+        QMessageBox::warning(this, AppText::tr("错误"), AppText::tr("该名称已存在！"));
+        return;
+    }
+    const QStringList files = collections.value(name);
+    collections.insert(newName, files);
+    collections.remove(name);
+    if (currentCollectionFilter == name) currentCollectionFilter = newName;
+    saveCollections();
+}
+
+void MainWindow::deleteCollectionByName(const QString &name)
+{
+    const auto reply = QMessageBox::question(
+        this,
+        AppText::tr("确认删除"),
+        AppText::tr("确定要删除收藏夹 \"%1\" 吗？\n(里面的模型不会被删除，仅删除分类)").arg(name),
+        QMessageBox::Yes | QMessageBox::No);
+    if (reply != QMessageBox::Yes) return;
+
+    collections.remove(name);
+    if (currentCollectionFilter == name) {
+        currentCollectionFilter.clear();
+    }
+    saveCollections();
+    refreshHomeGallery();
+}
+
 void MainWindow::refreshHomeCollectionsUI()
 {
-    // 清除旧按钮 (保留第一个新建按钮)
-    QLayout *layout = ui->scrollAreaCollections->widget()->layout();
-    QLayoutItem *item;
-    while (layout->count() > 1) { // 假设索引0是 "新建" 按钮
-        item = layout->takeAt(1);
-        if (item->widget()) delete item->widget();
-        delete item;
-    }
-
-    // === 1. 修改新建按钮样式 ===
-    ui->btnAddCollection->setProperty("class", "collectionBtn");
-
-    // === 2. 添加 "全部" 按钮 ===
-    QPushButton *btnAll = new QPushButton(AppText::tr("ALL\n全部"));
-    btnAll->setFixedSize(90, 90);
-    btnAll->setProperty("class", "collectionBtn");
-    btnAll->setCheckable(true);
-    btnAll->setChecked(currentCollectionFilter.isEmpty());
-    btnAll->setCursor(Qt::PointingHandCursor);
-
-    connect(btnAll, &QPushButton::clicked, this, [this](){
-        onCollectionFilterClicked("");
-    });
-    layout->addWidget(btnAll);
-
-    // === 未分类按钮 ===
-    QPushButton *btnUncat = new QPushButton(AppText::tr("📦\n未分类"));
-    btnUncat->setFixedSize(90, 90);
-    btnUncat->setProperty("class", "collectionBtn");
-    btnUncat->setCheckable(true);
-    btnUncat->setChecked(currentCollectionFilter == FILTER_UNCATEGORIZED);
-    connect(btnUncat, &QPushButton::clicked, this, [this](){
-        currentCollectionFilter = FILTER_UNCATEGORIZED;
-        refreshHomeGallery();
-        refreshHomeCollectionsUI();
-    });
-    layout->addWidget(btnUncat);
-
-    // === 3. 添加收藏夹按钮 (带右键功能) ===
-    for (auto it = collections.begin(); it != collections.end(); ++it) {
-        QString name = it.key();
-        if (name == FILTER_UNCATEGORIZED) continue; // 健壮性屏蔽
-
-        // 名字截断
-        QString displayName = name;
-        if (displayName.length() > 20) displayName = displayName.left(18) + "..";
-
-        QPushButton *btn = new QPushButton(displayName);
-        btn->setFixedSize(90, 90);
-        btn->setProperty("class", "collectionBtn");
-        btn->setCheckable(true);
-        btn->setChecked(currentCollectionFilter == name);
-        btn->setCursor(Qt::PointingHandCursor);
-        btn->setToolTip(name);
-
-        // 左键点击：筛选
-        connect(btn, &QPushButton::clicked, this, [this, name](){
-            onCollectionFilterClicked(name);
-        });
-
-        // === 右键菜单逻辑 ===
-        btn->setContextMenuPolicy(Qt::CustomContextMenu);
-        connect(btn, &QPushButton::customContextMenuRequested, this, [this, btn, name](const QPoint &pos){
-            QMenu menu;
-
-            QAction *title = menu.addAction(AppText::tr("管理: %1").arg(name));
-            title->setEnabled(false);
-            menu.addSeparator();
-
-            QAction *actRename = menu.addAction(AppText::tr("重命名 / Rename"));
-            QAction *actDelete = menu.addAction(AppText::tr("删除 / Delete"));
-
-            QAction *selected = menu.exec(btn->mapToGlobal(pos));
-
-            if (selected == actRename) {
-                bool ok;
-                QString newName = QInputDialog::getText(this, AppText::tr("重命名收藏夹"), AppText::tr("新名称:"), QLineEdit::Normal, name, &ok);
-                if (ok && !newName.trimmed().isEmpty() && newName != name) {
-                    if (collections.contains(newName)) {
-                        QMessageBox::warning(this, AppText::tr("错误"), AppText::tr("该名称已存在！"));
-                        return;
-                    }
-                    // 执行重命名：取出旧值，插入新键，删除旧键
-                    QStringList files = collections.value(name);
-                    collections.insert(newName, files);
-                    collections.remove(name);
-
-                    // 如果当前正选着这个收藏夹，更新过滤名
-                    if (currentCollectionFilter == name) currentCollectionFilter = newName;
-
-                    saveCollections(); // 保存并刷新UI
-                }
-            }
-            else if (selected == actDelete) {
-                auto reply = QMessageBox::question(this, AppText::tr("确认删除"),
-                                                   AppText::tr("确定要删除收藏夹 \"%1\" 吗？\n(里面的模型不会被删除，仅删除分类)").arg(name),
-                                                   QMessageBox::Yes | QMessageBox::No);
-                if (reply == QMessageBox::Yes) {
-                    // 1. 从数据中移除
-                    collections.remove(name);
-
-                    // 2. 如果当前正看着这个收藏夹，被删了就得回到"全部"
-                    if (currentCollectionFilter == name) {
-                        currentCollectionFilter = "";
-                    }
-
-                    // 3. 保存并刷新
-                    saveCollections();
-                    refreshHomeGallery(); // 刷新一下主页大图，因为过滤条件变了
-                }
-            }
-        });
-
-        layout->addWidget(btn);
-    }
-
-    ((QHBoxLayout*)layout)->addStretch();
+    if (!homeGalleryPage) return;
+    homeGalleryPage->refreshCollectionsBar(collections.keys(), currentCollectionFilter, FILTER_UNCATEGORIZED);
 }
 
 void MainWindow::refreshHomeGallery()
 {
-    placeholderIcon = generatePlaceholderIcon(); // 用当前主题色重建，保证本次填充的占位X颜色正确
+    if (!homeGalleryPage) return;
+
+    placeholderIcon = generatePlaceholderIcon();
     noPreviewIcon = generateNoPreviewIcon(false);
+    homeGalleryPage->setPlaceholderIcons(placeholderIcon, noPreviewIcon);
+    syncHomeGalleryOptions();
     cancelPendingTasks();
-    if (homeGalleryThumbLoadTimer) homeGalleryThumbLoadTimer->stop();
-    queuedHomeThumbPaths.clear();
-    loadedHomeThumbPaths.clear();
-    homeItemByPath.clear();
-    ui->homeGalleryList->setUpdatesEnabled(false);
-    ui->homeGalleryList->clear();
 
-    // 1. 设置图标大小 (正方形)
-    int iconSize = 180;
-    ui->homeGalleryList->setIconSize(QSize(iconSize, iconSize));
-
-    // 2. 设置网格大小 (正方形)
-    // 既然没有文字了，高度不需要留空，设为 200x200 足够容纳 180 的图标加一点边距
-    ui->homeGalleryList->setGridSize(QSize(200, 200));
-
-    // 3. 布局模式
-    ui->homeGalleryList->setViewMode(QListWidget::IconMode);
-    ui->homeGalleryList->setResizeMode(QListWidget::Adjust);
-    ui->homeGalleryList->setSpacing(10);
-    // 禁用拖拽，防止意外移动
-    ui->homeGalleryList->setMovement(QListView::Static);
-
-    ui->homeGalleryList->setContextMenuPolicy(Qt::CustomContextMenu);
-    disconnect(ui->homeGalleryList, &QListWidget::customContextMenuRequested, this, &MainWindow::onHomeGalleryContextMenu);
-    connect(ui->homeGalleryList, &QListWidget::customContextMenuRequested, this, &MainWindow::onHomeGalleryContextMenu);
-
-    QString searchText = ui->searchEdit->text().trimmed();
-    QString targetBaseModel = ui->comboBaseModel->currentIndex() == 0 ? "All" : ui->comboBaseModel->currentText();
-    QString targetModelType = ui->comboModelType->currentIndex() == 0 ? "All" : ui->comboModelType->currentText();
+    const QString searchText = ui->searchEdit->text().trimmed();
+    const QString targetBaseModel = ui->comboBaseModel->currentIndex() == 0 ? "All" : ui->comboBaseModel->currentText();
+    const QString targetModelType = ui->comboModelType->currentIndex() == 0 ? "All" : ui->comboModelType->currentText();
+    const QString authorFilter = homeGalleryPage->authorFilter();
+    const QSet<QString> tagFilters = homeGalleryPage->tagFilters();
 
     QSet<QString> requiredTagKeys;
-    if (!currentHomeTagFilters.isEmpty()) {
-        requiredTagKeys.reserve(currentHomeTagFilters.size());
-        for (const QString &tag : std::as_const(currentHomeTagFilters)) {
+    if (!tagFilters.isEmpty()) {
+        requiredTagKeys.reserve(tagFilters.size());
+        for (const QString &tag : tagFilters) {
             const QString key = tag.trimmed().toCaseFolded();
             if (!key.isEmpty()) requiredTagKeys.insert(key);
         }
@@ -958,30 +841,31 @@ void MainWindow::refreshHomeGallery()
         }
     }
 
+    QVector<HomeGalleryEntry> entries;
+    entries.reserve(ui->modelList->count());
+
     for (int i = 0; i < ui->modelList->count(); ++i) {
         QListWidgetItem *sideItem = ui->modelList->item(i);
         if (!isModelListItem(sideItem)) continue;
 
-        int nsfwLevel = sideItem->data(ROLE_NSFW_LEVEL).toInt();
-        bool isNSFW = nsfwLevel > optNSFWLevel;
+        const int nsfwLevel = sideItem->data(ROLE_NSFW_LEVEL).toInt();
+        const bool isNSFW = nsfwLevel > optNSFWLevel;
         QString modelKey = sideItem->data(ROLE_MODEL_NAME).toString();
         if (modelKey.isEmpty()) modelKey = QFileInfo(sideItem->data(ROLE_FILE_PATH).toString()).completeBaseName();
         QString displayName = sideItem->text();
         if (displayName.isEmpty()) displayName = modelKey;
-        QString previewPath = sideItem->data(ROLE_PREVIEW_PATH).toString();
-        QString filePath = sideItem->data(ROLE_FILE_PATH).toString();
+        const QString filePath = sideItem->data(ROLE_FILE_PATH).toString();
 
-        // --- NSFW 拦截逻辑 ---
         if (optFilterNSFW && isNSFW && optNSFWMode == 0) {
-            continue; // 完全不显示模式：直接跳过此模型
+            continue;
         }
 
         if (!ModelFilter::matches(modelFilterRecord(sideItem), searchText,
                                   targetBaseModel, targetModelType)) continue;
 
-        if (!currentHomeAuthorFilter.isEmpty()) {
+        if (!authorFilter.isEmpty()) {
             const QString itemCreator = sideItem->data(ROLE_MODEL_CREATOR).toString();
-            if (itemCreator.compare(currentHomeAuthorFilter, Qt::CaseInsensitive) != 0) {
+            if (itemCreator.compare(authorFilter, Qt::CaseInsensitive) != 0) {
                 continue;
             }
         }
@@ -1013,105 +897,16 @@ void MainWindow::refreshHomeGallery()
 
         if (filterByCollection) {
             if (filterUncategorized) {
-                if (categorizedSet.contains(modelKey)) continue; // 已分类的模型，不显示在“未分类”中
+                if (categorizedSet.contains(modelKey)) continue;
             } else {
                 if (!activeCollectionSet.contains(modelKey)) continue;
             }
         }
 
-        QListWidgetItem *item = new QListWidgetItem();
-        copyCommonModelRoles(sideItem, [item](int role, const QVariant &val) {
-            item->setData(role, val);
-        });
-        item->setToolTip(formatModelUserNoteTooltip(filePath, displayName));
-
-        const ModelPreviewState previewState = static_cast<ModelPreviewState>(
-            sideItem->data(ROLE_MODEL_PREVIEW_STATE).toInt());
-        const bool blurItem = (optFilterNSFW && isNSFW && optNSFWMode == 1);
-        const QString homeCacheKey = (blurItem ? QStringLiteral("blur|") : QStringLiteral("norm|")) + previewPath;
-        if (!previewPath.isEmpty() && homeIconCache.contains(homeCacheKey)) {
-            item->setIcon(homeIconCache.value(homeCacheKey));
-            item->setData(ROLE_PREVIEW_PLACEHOLDER, false);
-            if (!filePath.isEmpty()) loadedHomeThumbPaths.insert(filePath);
-        } else {
-            item->setIcon(previewState == ModelPreviewState::KnownNoPreview ? noPreviewIcon : placeholderIcon);
-            item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
-        }
-        ui->homeGalleryList->addItem(item);
-        if (!filePath.isEmpty()) homeItemByPath.insert(filePath, item);
+        entries.append({sideItem, formatModelUserNoteTooltip(filePath, displayName)});
     }
 
-    ui->homeGalleryList->setUpdatesEnabled(true);
-    ui->homeGalleryList->doItemsLayout();
-    scheduleVisibleHomeGalleryThumbLoad();
-}
-
-void MainWindow::scheduleVisibleHomeGalleryThumbLoad()
-{
-    if (!homeGalleryThumbLoadTimer) return;
-    homeGalleryThumbLoadTimer->start(20);
-}
-
-void MainWindow::dispatchVisibleHomeGalleryThumbLoad()
-{
-    if (isShuttingDown || !ui || !ui->homeGalleryList || ui->homeGalleryList->count() == 0) return;
-
-    const QRect visibleRect = ui->homeGalleryList->viewport()->rect();
-    if (visibleRect.isEmpty()) return;
-
-    const QRect prefetchRect = visibleRect.adjusted(-visibleRect.width(),
-                                                    -visibleRect.height(),
-                                                    visibleRect.width(),
-                                                    visibleRect.height());
-    const QPoint centerPoint = visibleRect.center();
-
-    struct ThumbCandidate {
-        int priority = 2;
-        int distance = 0;
-        QString filePath;
-        QString previewPath;
-    };
-
-    QList<ThumbCandidate> candidates;
-    for (int i = 0; i < ui->homeGalleryList->count(); ++i) {
-        QListWidgetItem *item = ui->homeGalleryList->item(i);
-        if (!item || item->isHidden()) continue;
-
-        const QString filePath = item->data(ROLE_FILE_PATH).toString();
-        const QString previewPath = item->data(ROLE_PREVIEW_PATH).toString();
-        if (filePath.isEmpty() || previewPath.isEmpty()) continue;
-        if (loadedHomeThumbPaths.contains(filePath) || queuedHomeThumbPaths.contains(filePath)) continue;
-
-        const QRect itemRect = ui->homeGalleryList->visualItemRect(item);
-        if (!itemRect.isValid() || itemRect.isEmpty()) continue;
-        if (!itemRect.intersects(prefetchRect)) continue;
-
-        ThumbCandidate candidate;
-        candidate.filePath = filePath;
-        candidate.previewPath = previewPath;
-        candidate.distance = qAbs(itemRect.center().y() - centerPoint.y()) + qAbs(itemRect.center().x() - centerPoint.x());
-        candidate.priority = itemRect.intersects(visibleRect) ? 0 : 1;
-        candidates.append(candidate);
-    }
-
-    if (candidates.isEmpty()) return;
-
-    std::sort(candidates.begin(), candidates.end(), [](const ThumbCandidate &a, const ThumbCandidate &b) {
-        if (a.priority != b.priority) return a.priority < b.priority;
-        return a.distance < b.distance;
-    });
-
-    const int threadCount = qMax(1, threadPool ? threadPool->maxThreadCount() : 4);
-    const int maxLaunchPerPass = qMax(12, threadCount * 3);
-    int launched = 0;
-    for (const ThumbCandidate &candidate : candidates) {
-        if (launched >= maxLaunchPerPass) break;
-        IconLoaderTask *task = new IconLoaderTask(candidate.previewPath, 180, 12, this, QStringLiteral("HOME:") + candidate.filePath);
-        task->setAutoDelete(true);
-        threadPool->start(task);
-        queuedHomeThumbPaths.insert(candidate.filePath);
-        ++launched;
-    }
+    homeGalleryPage->setModelEntries(entries);
 }
 
 void MainWindow::invalidateIconCacheForPath(const QString &previewPath)
@@ -1124,346 +919,17 @@ void MainWindow::invalidateIconCacheForPath(const QString &previewPath)
         if (p.isEmpty()) continue;
         sidebarIconCache.remove(QStringLiteral("norm|") + p);
         sidebarIconCache.remove(QStringLiteral("blur|") + p);
-        homeIconCache.remove(QStringLiteral("norm|") + p);
-        homeIconCache.remove(QStringLiteral("blur|") + p);
     }
+    if (homeGalleryPage) homeGalleryPage->invalidateIconCacheForPath(previewPath);
 }
 
 void MainWindow::refreshHomeFilterChips()
 {
-    if (!ui || !ui->layoutHomeFilterChips || !ui->layoutHomeFilterSummaryChips) return;
-
-    constexpr int kSummaryChipHeight = 24;
-    constexpr int kSummaryAreaHeight = 36;     // chip 高度 + 横向滚动条空间
-    constexpr int kSummarySpacing = 5;
-    constexpr int kTagsMaxHeight = 170;
-    const int previousTagScrollValue = ui->scrollHomeFilterTags
-        ? ui->scrollHomeFilterTags->verticalScrollBar()->value()
-        : 0;
-
-    clearLayout(ui->layoutHomeFilterSummaryChips);
-    clearLayout(ui->layoutHomeFilterChips);
-
-    // =========================
-    // 1. 第一行：已选作者 / Tag 摘要区
-    // =========================
-    ui->scrollHomeFilterSummary->setWidgetResizable(false);
-    ui->scrollHomeFilterSummary->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    ui->scrollHomeFilterSummary->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    ui->scrollHomeFilterSummary->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    ui->scrollHomeFilterSummary->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    ui->scrollHomeFilterSummary->setMinimumWidth(320);
-    ui->scrollHomeFilterSummary->setFixedHeight(kSummaryAreaHeight);
-
-    ui->homeFilterSummaryContents->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    ui->homeFilterSummaryContents->setFixedHeight(kSummaryChipHeight);
-
-    ui->layoutHomeFilterSummaryChips->setContentsMargins(0, 0, 0, 0);
-    ui->layoutHomeFilterSummaryChips->setSpacing(kSummarySpacing);
-    ui->layoutHomeFilterSummaryChips->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-
-    int summaryContentWidth = 0;
-
-    auto appendSummaryWidth = [&](int itemWidth) {
-        if (summaryContentWidth > 0) {
-            summaryContentWidth += kSummarySpacing;
-        }
-        summaryContentWidth += itemWidth;
-    };
-
-    auto fixSummaryWidgetSize = [&](QWidget *widget) {
-        if (!widget) return;
-
-        widget->ensurePolished();
-        widget->style()->unpolish(widget);
-        widget->style()->polish(widget);
-
-        int width = 0;
-
-        if (auto *btn = qobject_cast<QPushButton *>(widget)) {
-            const QString text = btn->text();
-
-    #if QT_VERSION >= QT_VERSION_CHECK(5, 11, 0)
-            width = btn->fontMetrics().horizontalAdvance(text);
-    #else
-            width = btn->fontMetrics().width(text);
-    #endif
-
-            // 不用 QPushButton::sizeHint，因为它会带 Qt 默认按钮最小宽度
-            // 这里的 18 对应 QSS 左右 padding: 9px + 9px
-            // 再加一点边框和安全余量
-            width += 22;
-        } else if (auto *label = qobject_cast<QLabel *>(widget)) {
-            const QString text = label->text();
-
-    #if QT_VERSION >= QT_VERSION_CHECK(5, 11, 0)
-            width = label->fontMetrics().horizontalAdvance(text);
-    #else
-            width = label->fontMetrics().width(text);
-    #endif
-
-            width += 6;
-        }
-
-        width = qMax(width, 18);
-
-        widget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        widget->setMinimumSize(width, kSummaryChipHeight);
-        widget->setMaximumSize(width, kSummaryChipHeight);
-        widget->resize(width, kSummaryChipHeight);
-
-        appendSummaryWidth(width);
-    };
-
-    const QList<HomeFilterTagInfo> availableTagInfos = collectAvailableHomeFilterTags();
-    QHash<QString, HomeFilterTagInfo> availableTagInfoByKey;
-    for (const HomeFilterTagInfo &info : availableTagInfos) {
-        availableTagInfoByKey.insert(normalizedHomeTagKey(info.tag), info);
-    }
-
-    auto tagSourceFor = [&availableTagInfoByKey](const QString &tag) {
-        const HomeFilterTagInfo info = availableTagInfoByKey.value(normalizedHomeTagKey(tag));
-        return info.sourceName();
-    };
-
-    auto displayTagWithCount = [&availableTagInfoByKey](const QString &tag) {
-        const HomeFilterTagInfo info = availableTagInfoByKey.value(normalizedHomeTagKey(tag));
-        if (info.count > 0) return QString("%1(%2)").arg(tag).arg(info.count);
-        return tag;
-    };
-
-    auto addSummaryChip = [this, &fixSummaryWidgetSize](const QString &text,
-                                                        const QString &tooltip,
-                                                        const QString &source,
-                                                        const std::function<void()> &removeFn) {
-        QPushButton *chip = new QPushButton(text);
-        chip->setProperty("class", "filterChip");
-        if (!source.isEmpty()) chip->setProperty("tagSource", source);
-        chip->setCursor(Qt::PointingHandCursor);
-        chip->setToolTip(tooltip);
-        chip->setCheckable(false);
-        chip->setAutoDefault(false);
-        chip->setDefault(false);
-
-        fixSummaryWidgetSize(chip);
-
-        connect(chip, &QPushButton::clicked, this, removeFn);
-        ui->layoutHomeFilterSummaryChips->addWidget(chip);
-    };
-
-    QStringList selectedTags = currentHomeTagFilters.values();
-    std::sort(selectedTags.begin(), selectedTags.end(), [](const QString &a, const QString &b) {
-        return QString::localeAwareCompare(a, b) < 0;
-    });
-
-    if (!currentHomeAuthorFilter.isEmpty()) {
-        addSummaryChip("作者: " + currentHomeAuthorFilter + " ×",
-                       "点击移除作者筛选",
-                       QString(),
-                       [this]() {
-                           setHomeAuthorFilter(QString());
-                       });
-    }
-
-    for (const QString &tag : selectedTags) {
-        addSummaryChip(displayTagWithCount(tag) + " ×",
-                       "点击移除此 Tag 筛选",
-                       tagSourceFor(tag),
-                       [this, tag]() {
-                           currentHomeTagFilters.remove(tag);
-                           refreshHomeFilterChips();
-                           refreshHomeGallery();
-                       });
-    }
-
-    if (currentHomeAuthorFilter.isEmpty() && currentHomeTagFilters.isEmpty()) {
-        QLabel *emptySummary = new QLabel(AppText::tr("未启用主页作者/Tag 筛选"));
-        emptySummary->setStyleSheet(AppStyle::MutedBoldLabelStyle());
-        emptySummary->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-
-        fixSummaryWidgetSize(emptySummary);
-
-        ui->layoutHomeFilterSummaryChips->addWidget(emptySummary);
-    }
-
-    // 这里不要依赖 layout 的 sizeHint，直接使用手动累加的宽度
-    const int summaryViewportWidth = qMax(1, ui->scrollHomeFilterSummary->viewport()->width());
-    const int finalSummaryWidth = qMax(summaryContentWidth + 2, summaryViewportWidth);
-
-    ui->homeFilterSummaryContents->setFixedSize(finalSummaryWidth, kSummaryChipHeight);
-    ui->homeFilterSummaryContents->updateGeometry();
-
-    ui->layoutHomeFilterSummaryChips->invalidate();
-    ui->layoutHomeFilterSummaryChips->activate();
-
-    ui->scrollHomeFilterSummary->horizontalScrollBar()->setSingleStep(40);
-    ui->scrollHomeFilterSummary->horizontalScrollBar()->setPageStep(summaryViewportWidth);
-
-    // =========================
-    // 2. 展开 / 收起按钮和输入区
-    // =========================
-    ui->btnHomeFilterToggle->setChecked(homeFilterExpanded);
-    ui->btnHomeFilterToggle->setText(homeFilterExpanded ? AppText::tr("收起筛选") : AppText::tr("展开筛选"));
-
-    auto setLayoutVisible = [](QLayout *layout, bool visible) {
-        if (!layout) return;
-
-        for (int i = 0; i < layout->count(); ++i) {
-            QLayoutItem *item = layout->itemAt(i);
-            if (!item) continue;
-
-            if (QWidget *widget = item->widget()) {
-                widget->setVisible(visible);
-            }
-
-            if (QLayout *childLayout = item->layout()) {
-                for (int j = 0; j < childLayout->count(); ++j) {
-                    if (QWidget *childWidget = childLayout->itemAt(j)->widget()) {
-                        childWidget->setVisible(visible);
-                    }
-                }
-            }
-        }
-    };
-
-    setLayoutVisible(ui->horizontalLayout_HomeFilterInputs, homeFilterExpanded);
-
-    // =========================
-    // 3. 第二行：展开后的全部 Tag 区域
-    // =========================
-    ui->homeFilterChipsContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    ui->layoutHomeFilterChips->setContentsMargins(0, 0, 0, 0);
-    ui->layoutHomeFilterChips->setSpacing(0);
-    ui->layoutHomeFilterChips->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-
-    if (ui->scrollHomeFilterTags) {
-        ui->scrollHomeFilterTags->setWidgetResizable(true);
-        ui->scrollHomeFilterTags->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-        ui->scrollHomeFilterTags->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        ui->scrollHomeFilterTags->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        ui->scrollHomeFilterTags->setVisible(homeFilterExpanded);
-    } else {
-        ui->homeFilterChipsContainer->setVisible(homeFilterExpanded);
-    }
-
-    if (!homeFilterExpanded) {
-        if (ui->scrollHomeFilterTags) {
-            ui->scrollHomeFilterTags->setFixedHeight(0);
-            ui->scrollHomeFilterTags->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        }
-
-        ui->homeFilterChipsContainer->setMinimumHeight(0);
-        ui->homeFilterChipsContainer->setMaximumHeight(0);
-        return;
-    }
-
-    QWidget *availableTagsWidget = new QWidget();
-    availableTagsWidget->setStyleSheet("background:transparent;");
-    availableTagsWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-
-    FlowLayout *availableTagsLayout = new FlowLayout(availableTagsWidget, 0, 6, 6);
-
-    if (ui->btnHomeTagSortMode) {
-        ui->btnHomeTagSortMode->setText(homeFilterTagsSortByCount ? AppText::tr("按次数") : AppText::tr("按字母"));
-        ui->btnHomeTagSortMode->setToolTip(homeFilterTagsSortByCount
-            ? AppText::tr("当前按出现次数排序，点击切换为字母序")
-            : AppText::tr("当前按字母序排序，点击切换为出现次数"));
-    }
-
-    for (const HomeFilterTagInfo &info : availableTagInfos) {
-        const QString tag = info.tag;
-        bool tagSelected = false;
-
-        for (const QString &selected : currentHomeTagFilters) {
-            if (selected.compare(tag, Qt::CaseInsensitive) == 0) {
-                tagSelected = true;
-                break;
-            }
-        }
-
-        QPushButton *tagButton = new QPushButton(forceWrap(QString("%1(%2)").arg(tag).arg(info.count)));
-        tagButton->setProperty("class", "filterChip");
-        tagButton->setProperty("tagSource", info.sourceName());
-        tagButton->setCheckable(true);
-        tagButton->setChecked(tagSelected);
-        tagButton->setCursor(Qt::PointingHandCursor);
-        const QString sourceText = info.fromModel && info.fromUser
-            ? "模型 Tag + 用户 Tag"
-            : (info.fromUser ? "用户 Tag" : "模型 Tag");
-        tagButton->setToolTip(AppText::tr("%1，出现于 %2 个模型。点击添加/移除此 Tag 筛选。")
-                                  .arg(sourceText)
-                                  .arg(info.count));
-        tagButton->setMaximumWidth(180);
-        tagButton->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
-
-        connect(tagButton, &QPushButton::clicked, this, [this, tag]() {
-            QString existing;
-
-            for (const QString &value : currentHomeTagFilters) {
-                if (value.compare(tag, Qt::CaseInsensitive) == 0) {
-                    existing = value;
-                    break;
-                }
-            }
-
-            if (existing.isEmpty()) {
-                currentHomeTagFilters.insert(tag);
-            } else {
-                currentHomeTagFilters.remove(existing);
-            }
-
-            refreshHomeFilterChips();
-            refreshHomeGallery();
-        });
-
-        availableTagsLayout->addWidget(tagButton);
-    }
-
-    if (availableTagInfos.isEmpty()) {
-        QLabel *emptyTags = new QLabel(AppText::tr("当前模型库没有可用模型 Tag"));
-        emptyTags->setStyleSheet(AppStyle::MutedLabelStyle());
-        emptyTags->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-        availableTagsLayout->addWidget(emptyTags);
-    }
-
-    ui->layoutHomeFilterChips->addWidget(availableTagsWidget);
-
-    ui->layoutHomeFilterChips->invalidate();
-    ui->layoutHomeFilterChips->activate();
-
-    if (ui->scrollHomeFilterTags) {
-        const int tagViewportWidth = qMax(1, ui->scrollHomeFilterTags->viewport()->width());
-
-        int tagContentHeight = availableTagsLayout->heightForWidth(tagViewportWidth);
-        tagContentHeight = qMax(tagContentHeight, availableTagsLayout->minimumSize().height());
-        tagContentHeight = qMax(tagContentHeight, kSummaryChipHeight + 4);
-
-        availableTagsWidget->setMinimumHeight(tagContentHeight);
-        availableTagsWidget->setMaximumHeight(tagContentHeight);
-
-        ui->homeFilterChipsContainer->setMinimumHeight(tagContentHeight);
-        ui->homeFilterChipsContainer->setMaximumHeight(tagContentHeight);
-
-        const int visibleHeight = qMin(tagContentHeight, kTagsMaxHeight);
-
-        ui->scrollHomeFilterTags->setFixedHeight(visibleHeight);
-        ui->scrollHomeFilterTags->setVerticalScrollBarPolicy(
-            tagContentHeight > visibleHeight ? Qt::ScrollBarAsNeeded
-                                             : Qt::ScrollBarAlwaysOff
-        );
-
-        ui->scrollHomeFilterTags->verticalScrollBar()->setSingleStep(40);
-        QScrollBar *tagScrollBar = ui->scrollHomeFilterTags->verticalScrollBar();
-        tagScrollBar->setValue(qBound(0, previousTagScrollValue, tagScrollBar->maximum()));
-        QTimer::singleShot(0, this, [this, previousTagScrollValue]() {
-            if (!ui || !ui->scrollHomeFilterTags || !homeFilterExpanded) return;
-            QScrollBar *bar = ui->scrollHomeFilterTags->verticalScrollBar();
-            bar->setValue(qBound(0, previousTagScrollValue, bar->maximum()));
-        });
-    }
+    if (!homeGalleryPage) return;
+    homeGalleryPage->refreshFilterChips(collectAvailableHomeFilterTags());
 }
 
-QList<MainWindow::HomeFilterTagInfo> MainWindow::collectAvailableHomeFilterTags() const
+QList<HomeFilterTagInfo> MainWindow::collectAvailableHomeFilterTags() const
 {
     QHash<QString, HomeFilterTagInfo> tagInfoByKey;
     for (int i = 0; i < ui->modelList->count(); ++i) {
@@ -1497,9 +963,10 @@ QList<MainWindow::HomeFilterTagInfo> MainWindow::collectAvailableHomeFilterTags(
         }
     }
 
+    const bool sortByCount = !homeGalleryPage || homeGalleryPage->isTagsSortByCount();
     QList<HomeFilterTagInfo> tags = tagInfoByKey.values();
-    std::sort(tags.begin(), tags.end(), [this](const HomeFilterTagInfo &a, const HomeFilterTagInfo &b) {
-        if (homeFilterTagsSortByCount && a.count != b.count) return a.count > b.count;
+    std::sort(tags.begin(), tags.end(), [sortByCount](const HomeFilterTagInfo &a, const HomeFilterTagInfo &b) {
+        if (sortByCount && a.count != b.count) return a.count > b.count;
         return QString::localeAwareCompare(a.tag, b.tag) < 0;
     });
     return tags;
@@ -1507,65 +974,31 @@ QList<MainWindow::HomeFilterTagInfo> MainWindow::collectAvailableHomeFilterTags(
 
 void MainWindow::setHomeAuthorFilter(const QString &author)
 {
-    currentHomeAuthorFilter = author.trimmed();
-    if (ui && ui->editHomeAuthorFilter && ui->editHomeAuthorFilter->text() != currentHomeAuthorFilter) {
-        QSignalBlocker blocker(ui->editHomeAuthorFilter);
-        ui->editHomeAuthorFilter->setText(currentHomeAuthorFilter);
-    }
-    refreshHomeFilterChips();
-    refreshHomeGallery();
+    if (homeGalleryPage) homeGalleryPage->setAuthorFilter(author);
 }
 
 void MainWindow::addHomeTagFilter(const QString &tag)
 {
-    const QString clean = tag.trimmed();
-    if (clean.isEmpty()) return;
-
-    QString existing;
-    for (const QString &value : currentHomeTagFilters) {
-        if (value.compare(clean, Qt::CaseInsensitive) == 0) {
-            existing = value;
-            break;
-        }
-    }
-    if (existing.isEmpty()) currentHomeTagFilters.insert(clean);
-    if (ui && ui->editHomeTagFilter) ui->editHomeTagFilter->clear();
-    refreshHomeFilterChips();
-    refreshHomeGallery();
+    if (homeGalleryPage) homeGalleryPage->addTagFilter(tag);
 }
 
 void MainWindow::clearHomeFilters()
 {
-    currentHomeAuthorFilter.clear();
-    currentHomeTagFilters.clear();
-    if (ui && ui->editHomeAuthorFilter) {
-        QSignalBlocker blocker(ui->editHomeAuthorFilter);
-        ui->editHomeAuthorFilter->clear();
-    }
-    if (ui && ui->editHomeTagFilter) ui->editHomeTagFilter->clear();
-    refreshHomeFilterChips();
-    refreshHomeGallery();
+    if (homeGalleryPage) homeGalleryPage->clearFilters();
 }
 
 // 点击主页的大图 -> 跳转详情页
-void MainWindow::onHomeGalleryClicked(QListWidgetItem *item)
+void MainWindow::onHomeModelClicked(const QString &targetPath)
 {
-    if (!item) return;
-    if (QApplication::keyboardModifiers() & (Qt::ControlModifier | Qt::ShiftModifier)) {
-        return;
-    }
-
-    // 1. 获取点击项的文件路径 (这是最可靠的唯一标识)
-    QString targetPath = item->data(ROLE_FILE_PATH).toString();
     if (targetPath.isEmpty()) return;
 
     cancelPendingTasks();
 
-    // 2. 在侧边栏 (modelList) 中寻找匹配该路径的项 (O(1) 查找)
-    QListWidgetItem* matchItem = modelItemByPath.value(targetPath, nullptr);
+    // 在侧边栏 (modelList) 中寻找匹配该路径的项 (O(1) 查找)
+    QListWidgetItem *matchItem = modelItemByPath.value(targetPath, nullptr);
     if (!matchItem) {
-        for(int i = 0; i < ui->modelList->count(); ++i) {
-            QListWidgetItem* sideItem = ui->modelList->item(i);
+        for (int i = 0; i < ui->modelList->count(); ++i) {
+            QListWidgetItem *sideItem = ui->modelList->item(i);
             if (sideItem->data(ROLE_FILE_PATH).toString() == targetPath) {
                 matchItem = sideItem;
                 break;
@@ -1573,7 +1006,6 @@ void MainWindow::onHomeGalleryClicked(QListWidgetItem *item)
         }
     }
 
-    // 3. 如果找到了，选中它并触发加载逻辑
     if (matchItem) {
         ui->modelList->setCurrentItem(matchItem);
         syncTreeSelection(targetPath);
@@ -1608,20 +1040,6 @@ void MainWindow::onBtnFavoriteClicked()
 
     QPoint pos = ui->btnFavorite->mapToGlobal(QPoint(0, ui->btnFavorite->height()));
     showCollectionMenu(selectedItems, pos);
-}
-
-void MainWindow::onHomeGalleryContextMenu(const QPoint &pos)
-{
-    QListWidgetItem *item = ui->homeGalleryList->itemAt(pos);
-    if (!item) return; // 点击了空白处
-
-    QList<QListWidgetItem*> selectedItems = ui->homeGalleryList->selectedItems();
-    if (!selectedItems.contains(item)) {
-        selectedItems = {item};
-    }
-
-    // 复用通用的菜单逻辑（支持多选）
-    showCollectionMenu(selectedItems, ui->homeGalleryList->mapToGlobal(pos));
 }
 
 // ---------------------------------------------------------
@@ -1701,11 +1119,6 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         if (ui->backgroundLabel) {
             bgResizeTimer->start(0);
         }
-    }
-
-    if (ui->homeGalleryList && watched == ui->homeGalleryList->viewport() &&
-        (event->type() == QEvent::Resize || event->type() == QEvent::Show)) {
-        scheduleVisibleHomeGalleryThumbLoad();
     }
 
     if (event->type() == QEvent::Wheel && userGalleryPage && userGalleryPage->isVisible()) {
@@ -1789,7 +1202,7 @@ void MainWindow::scanModels(const QStringList &paths, std::function<void()> onCo
     ++modelUsageStatsToken;
     // 同步清空列表，随后把繁重的目录遍历 + JSON 解析放到后台线程，避免大模型库卡 UI。
     modelItemByPath.clear();
-    homeItemByPath.clear();
+    if (homeGalleryPage) homeGalleryPage->clearItems();
     ui->modelList->clear();
     ui->comboBaseModel->blockSignals(true);
     ui->comboBaseModel->clear();
@@ -2747,7 +2160,7 @@ void MainWindow::refreshModelUserNoteItems(const QString &filePath)
     if (QListWidgetItem *sideItem = findModelItemByFilePath(key)) {
         applyModelUserNoteData(sideItem);
     }
-    if (QListWidgetItem *homeItem = homeItemByPath.value(key, nullptr)) {
+    if (QListWidgetItem *homeItem = homeGalleryPage ? homeGalleryPage->itemForPath(key) : nullptr) {
         applyModelUserNoteData(homeItem);
     }
 }
@@ -2774,7 +2187,7 @@ void MainWindow::refreshModelUserNotePanel(const QString &filePath)
                 150);
             connect(button, &QPushButton::clicked, this, [this, tag]() {
                 ui->rootStack->setCurrentWidget(ui->pageLibrary);
-                ui->mainStack->setCurrentWidget(ui->pageHome);
+                ui->mainStack->setCurrentIndex(0);
                 addHomeTagFilter(tag);
                 ui->statusbar->showMessage(AppText::tr("已添加用户 Tag 筛选: ") + tag, 2000);
             });
@@ -2801,7 +2214,7 @@ void MainWindow::refreshModelAttributionPanel(const ModelMeta &meta)
             260);
         connect(author, &QPushButton::clicked, this, [this, name = meta.creatorName]() {
             ui->rootStack->setCurrentWidget(ui->pageLibrary);
-            ui->mainStack->setCurrentWidget(ui->pageHome);
+            ui->mainStack->setCurrentIndex(0);
             setHomeAuthorFilter(name);
             ui->statusbar->showMessage(AppText::tr("已按作者筛选: ") + name, 2000);
         });
@@ -2824,7 +2237,7 @@ void MainWindow::refreshModelAttributionPanel(const ModelMeta &meta)
                 150);
             connect(tagButton, &QPushButton::clicked, this, [this, tag]() {
                 ui->rootStack->setCurrentWidget(ui->pageLibrary);
-                ui->mainStack->setCurrentWidget(ui->pageHome);
+                ui->mainStack->setCurrentIndex(0);
                 addHomeTagFilter(tag);
                 ui->statusbar->showMessage(AppText::tr("已添加 Tag 筛选: ") + tag, 2000);
             });
@@ -3563,7 +2976,6 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
     };
 
     QSet<QString> sidebarModelPaths;
-    QSet<QString> homeModelPaths;
     bool needsDetailThumbnail = false;
 
     if (isCoverPreview) {
@@ -3578,14 +2990,8 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
             }
         }
 
-        for (int i = 0; i < ui->homeGalleryList->count(); ++i) {
-            QListWidgetItem *item = ui->homeGalleryList->item(i);
-            QString itemPath = item->data(ROLE_FILE_PATH).toString();
-            if (belongsToDownloadedModel(itemPath)) {
-                item->setData(ROLE_PREVIEW_PATH, savePath);
-                item->setData(ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
-                if (!itemPath.isEmpty()) homeModelPaths.insert(itemPath);
-            }
+        if (homeGalleryPage) {
+            homeGalleryPage->updateDownloadedCoverPreview(localBaseName, downloadedDirectory, savePath);
         }
 
         std::function<void(QTreeWidgetItem*)> updateTreeNode = [&](QTreeWidgetItem *node) {
@@ -3632,11 +3038,6 @@ void MainWindow::applyDownloadedPreviewToUi(const QString &localBaseName, const 
     // Keep the GUI update above lightweight and let the existing image workers do it.
     for (const QString &modelPath : std::as_const(sidebarModelPaths)) {
         auto *task = new IconLoaderTask(savePath, 64, 8, this, "SIDEBAR:" + modelPath);
-        task->setAutoDelete(true);
-        backgroundThreadPool->start(task);
-    }
-    for (const QString &modelPath : std::as_const(homeModelPaths)) {
-        auto *task = new IconLoaderTask(savePath, 180, 12, this, "HOME:" + modelPath);
         task->setAutoDelete(true);
         backgroundThreadPool->start(task);
     }
@@ -3859,9 +3260,6 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
     // 空图 = 预览缺失/加载失败：保留各项已设置的主题化占位X（含 ROLE_PREVIEW_PLACEHOLDER 标记），
     // 不覆盖、不清标记，交给 recolorPlaceholderItems 在切主题时重染。
     if (image.isNull()) {
-        if (id.startsWith(QStringLiteral("HOME:"))) {
-            queuedHomeThumbPaths.remove(id.mid(5));
-        }
         return;
     }
 
@@ -3902,45 +3300,10 @@ void MainWindow::onIconLoaded(const QString &id, const QImage &image)
     };
 
     // =========================================================
-    // 3. 更新主页列表 (Home Gallery) - 仅限 HOME 或 通用任务 (O(1) 查找 + 内存缓存)
+    // 3. 更新主页列表 (Home Gallery) - 仅限 HOME 或 通用任务
     // =========================================================
-    if (isHomeTask) {
-        auto applyHomeItemIcon = [&](QListWidgetItem *item) {
-            if (!item) return;
-            const bool isNSFW = item->data(ROLE_NSFW_LEVEL).toInt() > optNSFWLevel;
-            const bool blurItem = (optFilterNSFW && isNSFW && optNSFWMode == 1);
-            const QString previewPath = item->data(ROLE_PREVIEW_PATH).toString();
-            const QString cacheKey = (blurItem ? QStringLiteral("blur|") : QStringLiteral("norm|")) + previewPath;
-            QIcon finalIcon = homeIconCache.value(cacheKey);
-            if (finalIcon.isNull()) {
-                if (blurItem) {
-                    if (blurredPix.isNull()) blurredPix = ImagePresentation::applyNSFWBlur(originalPix);
-                    finalIcon = QIcon(ImagePresentation::applyRoundedMask(blurredPix, 12));
-                } else {
-                    finalIcon = originalIcon;
-                }
-                if (!previewPath.isEmpty()) homeIconCache.insert(cacheKey, finalIcon);
-            }
-            item->setIcon(finalIcon);
-            item->setData(ROLE_PREVIEW_PLACEHOLDER, false);
-            item->setData(ROLE_MODEL_PREVIEW_STATE, static_cast<int>(ModelPreviewState::RealPreview));
-        };
-
-        if (QListWidgetItem *item = homeItemByPath.value(filePath, nullptr)) {
-            applyHomeItemIcon(item);
-        } else {
-            for (int i = 0; i < ui->homeGalleryList->count(); ++i) {
-                QListWidgetItem *item = ui->homeGalleryList->item(i);
-                if (item && item->data(ROLE_FILE_PATH).toString() == filePath) {
-                    applyHomeItemIcon(item);
-                }
-            }
-        }
-        if (id.startsWith(QStringLiteral("HOME:"))) {
-            queuedHomeThumbPaths.remove(filePath);
-            loadedHomeThumbPaths.insert(filePath);
-            scheduleVisibleHomeGalleryThumbLoad();
-        }
+    if (isHomeTask && homeGalleryPage) {
+        homeGalleryPage->applyExternalImageUpdate(filePath, originalPix, originalIcon);
     }
 
     // =========================================================
@@ -4547,14 +3910,8 @@ void MainWindow::syncModelPreviewStateToViews(QListWidgetItem *sourceItem)
     const ModelPreviewState previewState = static_cast<ModelPreviewState>(state.toInt());
     if (previewState == ModelPreviewState::RealPreview) return;
 
-    for (int i = 0; i < ui->homeGalleryList->count(); ++i) {
-        QListWidgetItem *item = ui->homeGalleryList->item(i);
-        if (!item || QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath() != filePath) continue;
-        item->setData(ROLE_MODEL_PREVIEW_STATE, state);
-        item->setData(ROLE_PREVIEW_PLACEHOLDER, true);
-        item->setIcon(previewState == ModelPreviewState::KnownNoPreview
-                          ? noPreviewIcon
-                          : placeholderIcon);
+    if (homeGalleryPage) {
+        homeGalleryPage->syncPreviewState(filePath, previewState);
     }
 
     std::function<void(QTreeWidgetItem *)> updateTreeItem = [&](QTreeWidgetItem *node) {
@@ -6803,9 +6160,10 @@ void MainWindow::applySettingsState(SettingsState state)
     }
     if (iconVisualChanged) {
         sidebarIconCache.clear();
-        homeIconCache.clear();
+        if (homeGalleryPage) homeGalleryPage->clearIconCache();
     }
     syncUserGalleryOptions();
+    syncHomeGalleryOptions();
     if (galleryNsfwChanged) {
         refreshGalleryNsfwDisplay();
     }
@@ -7128,14 +6486,17 @@ void MainWindow::saveGlobalConfig() {
         if (ui->searchEdit) fs["search_text"] = ui->searchEdit->text();
         if (ui->sidebarStack) fs["sidebar_tab"] = ui->sidebarStack->currentIndex();
         fs["collection_filter"] = currentCollectionFilter;
-        fs["home_author_filter"] = currentHomeAuthorFilter;
-        fs["home_filter_expanded"] = homeFilterExpanded;
-        fs["home_tag_sort_by_count"] = homeFilterTagsSortByCount;
-        QJsonArray homeTagsArr;
-        for (const QString &t : std::as_const(currentHomeTagFilters)) {
-            if (!t.trimmed().isEmpty()) homeTagsArr.append(t.trimmed());
+        if (homeGalleryPage) {
+            const HomeGalleryFilterState hs = homeGalleryPage->filterState();
+            fs["home_author_filter"] = hs.authorFilter;
+            fs["home_filter_expanded"] = hs.filterExpanded;
+            fs["home_tag_sort_by_count"] = hs.tagsSortByCount;
+            QJsonArray homeTagsArr;
+            for (const QString &t : hs.tagFilters) {
+                if (!t.trimmed().isEmpty()) homeTagsArr.append(t.trimmed());
+            }
+            fs["home_tag_filters"] = homeTagsArr;
         }
-        fs["home_tag_filters"] = homeTagsArr;
         if (userGalleryPage) {
             const UserGalleryFilterState gs = userGalleryPage->filterState();
             fs["user_tag_sort_mode"] = gs.userTagSortMode;
@@ -7310,7 +6671,7 @@ void MainWindow::recolorPlaceholderItems()
         }
         if (changed && list->viewport()) list->viewport()->update();
     };
-    recolorList(ui->homeGalleryList, placeholderIcon, noPreviewIcon);
+    if (homeGalleryPage) homeGalleryPage->recolorPlaceholders(placeholderIcon, noPreviewIcon);
     recolorList(ui->modelList, smallPlaceholderIcon, smallNoPreviewIcon);
     if (userGalleryPage) userGalleryPage->recolorPlaceholders(placeholderIcon); // 非模型图片始终使用叉
 
