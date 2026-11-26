@@ -105,6 +105,7 @@
 #include "services/metadatasyncservice.h"
 #include "services/modelupdatecoordinator.h"
 #include "services/translationdictionaryservice.h"
+#include "services/sidebarcollectioncontroller.h"
 #include "widgets/flowlayout.h"
 #include "widgets/highlightitemdelegate.h"
 
@@ -3547,271 +3548,41 @@ void MainWindow::onSearchTextChanged(const QString &text)
 
 void MainWindow::showCollectionMenu(const QList<QListWidgetItem*> &items, const QPoint &globalPos)
 {
-    QList<QListWidgetItem*> modelItems;
-    for (QListWidgetItem *item : items) {
-        if (isModelListItem(item)) modelItems.append(item);
-    }
-    if (modelItems.isEmpty()) return;
-
-    QMenu menu(this);
-
-    // 1. 标题逻辑
-    if (modelItems.count() == 1) {
-        QListWidgetItem *first = modelItems.first();
-        QString name = first->text();
-
-        if (name.isEmpty()) {
-            // 如果 text 为空（主页大图模式），尝试获取 Civitai 名
-            name = first->data(ROLE_CIVITAI_NAME).toString();
-            // 如果 Civitai 名也为空，获取文件名
-            if (name.isEmpty()) {
-                name = first->data(ROLE_MODEL_NAME).toString();
-            }
-        }
-
-        if (name.length() > 20) name = name.left(18) + "..";
-        QAction *titleAct = menu.addAction(name);
-        titleAct->setEnabled(false);
-    } else {
-        QAction *titleAct = menu.addAction(AppText::tr("已选中 %1 个模型").arg(modelItems.count()));
-        titleAct->setEnabled(false);
-    }
-
-    menu.addSeparator();
-
-    QColor defaultColor(102, 192, 244, 96);
-    if (modelItems.count() == 1) {
-        const QString filePath = QFileInfo(modelItems.first()->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
-        if (modelHighlightColors.contains(filePath)) {
-            defaultColor = modelHighlightColors.value(filePath);
-        }
-    }
-
-    QAction *actSetHighlightColor = menu.addAction(AppText::tr("设置高亮颜色... / Set Highlight Color..."));
-    connect(actSetHighlightColor, &QAction::triggered, this, [this, modelItems, defaultColor]() {
-        QColorDialog dialog(defaultColor, this);
-        dialog.setWindowTitle(AppText::tr("设置模型高亮颜色"));
-        dialog.setOption(QColorDialog::ShowAlphaChannel, true);
-        if (dialog.exec() != QDialog::Accepted) return;
-
-        const QColor color = dialog.selectedColor();
-        if (!color.isValid()) return;
-        setHighlightColorForItems(modelItems, color);
-    });
-
-    QAction *actClearHighlightColor = menu.addAction(AppText::tr("清除高亮颜色 / Clear Highlight Color"));
-    bool hasHighlightColor = false;
-    for (QListWidgetItem *item : modelItems) {
-        const QString filePath = QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath();
-        if (modelHighlightColors.contains(filePath)) {
-            hasHighlightColor = true;
-            break;
-        }
-    }
-    actClearHighlightColor->setEnabled(hasHighlightColor);
-    connect(actClearHighlightColor, &QAction::triggered, this, [this, modelItems]() {
-        clearHighlightColorForItems(modelItems);
-    });
-
-    menu.addSeparator();
-
-    QAction *actEditUserNote = menu.addAction(AppText::tr("编辑评分、备注与触发词... / Edit Rating, Note && Triggers..."));
-    actEditUserNote->setEnabled(modelItems.count() == 1);
-    connect(actEditUserNote, &QAction::triggered, this, [this, modelItems]() {
-        if (modelItems.count() == 1) openModelNoteDialog(modelItems.first());
-    });
-
-    QMenu *ratingMenu = menu.addMenu(AppText::tr("设置评分 / Set Rating"));
-    QAction *clearRatingAct = ratingMenu->addAction(AppText::tr("未评分 / Clear Rating"));
-    connect(clearRatingAct, &QAction::triggered, this, [this, modelItems]() {
-        setUserRatingForItems(modelItems, 0.0);
-    });
-    ratingMenu->addSeparator();
-    for (int half = 2; half <= 10; ++half) {
-        const double rating = half / 2.0;
-        QAction *act = ratingMenu->addAction(formatModelRating(rating));
-        connect(act, &QAction::triggered, this, [this, modelItems, rating]() {
-            setUserRatingForItems(modelItems, rating);
-        });
-    }
-
-    QAction *actAddUserTags = menu.addAction(AppText::tr("添加用户标签... / Add User Tags..."));
-    connect(actAddUserTags, &QAction::triggered, this, [this, modelItems]() {
-        bool ok = false;
-        const QString text = QInputDialog::getMultiLineText(this,
-                                                            AppText::tr("添加用户标签"),
-                                                            AppText::tr("输入标签，逗号或换行分隔："),
-                                                            QString(),
-                                                            &ok);
-        if (!ok) return;
-        addUserTagsForItems(modelItems, normalizeModelUserTagsText(text));
-    });
-
-    QAction *actRemoveUserTags = menu.addAction(AppText::tr("移除用户标签... / Remove User Tags..."));
-    connect(actRemoveUserTags, &QAction::triggered, this, [this, modelItems]() {
-        bool ok = false;
-        const QString text = QInputDialog::getMultiLineText(this,
-                                                            AppText::tr("移除用户标签"),
-                                                            AppText::tr("输入要移除的标签，逗号或换行分隔："),
-                                                            QString(),
-                                                            &ok);
-        if (!ok) return;
-        removeUserTagsForItems(modelItems, normalizeModelUserTagsText(text));
-    });
-
-    menu.addSeparator();
-
-    // 打开模型文件所在位置
-    QStringList targetFilePaths;
-    for (QListWidgetItem *item : modelItems) {
-        if (!item) continue;
-        QString path = item->data(ROLE_FILE_PATH).toString().trimmed();
-        if (path.isEmpty()) continue;
-        if (!targetFilePaths.contains(path)) targetFilePaths.append(path);
-    }
-
-    QAction *actOpenModelLocation = menu.addAction(AppText::tr("打开模型位置 / Show Model in Folder"));
-    actOpenModelLocation->setEnabled(!targetFilePaths.isEmpty());
-    connect(actOpenModelLocation, &QAction::triggered, this, [this, targetFilePaths]() {
-        if (targetFilePaths.isEmpty()) return;
-
-        const QString filePath = targetFilePaths.first();
-        showFileInFolder(filePath);
-        if (targetFilePaths.size() > 1) {
-            ui->statusbar->showMessage(AppText::tr("已打开首个模型位置（共选中 %1 个）").arg(targetFilePaths.size()), 2500);
-        }
-    });
-
-    QAction *actSyncMetadata = menu.addAction(AppText::tr("🔄 批量同步元数据与预览图 / Sync Metadata..."));
-    actSyncMetadata->setEnabled(!targetFilePaths.isEmpty());
-    connect(actSyncMetadata, &QAction::triggered, this, [this, targetFilePaths]() {
-        if (targetFilePaths.isEmpty()) return;
+    ModelBatchMenuContext ctx;
+    ctx.highlightColors = &modelHighlightColors;
+    ctx.collections = &collections;
+    ctx.uncategorizedKey = FILTER_UNCATEGORIZED;
+    ctx.currentCollectionFilter = currentCollectionFilter;
+    ctx.setHighlightColor = [this](const QList<QListWidgetItem*> &list, const QColor &c) {
+        setHighlightColorForItems(list, c);
+    };
+    ctx.clearHighlightColor = [this](const QList<QListWidgetItem*> &list) {
+        clearHighlightColorForItems(list);
+    };
+    ctx.editUserNote = [this](QListWidgetItem *item) { openModelNoteDialog(item); };
+    ctx.formatRating = [this](double r) { return formatModelRating(r); };
+    ctx.setUserRating = [this](const QList<QListWidgetItem*> &list, double r) {
+        setUserRatingForItems(list, r);
+    };
+    ctx.normalizeUserTagsText = [this](const QString &t) { return normalizeModelUserTagsText(t); };
+    ctx.addUserTags = [this](const QList<QListWidgetItem*> &list, const QStringList &tags) {
+        addUserTagsForItems(list, tags);
+    };
+    ctx.removeUserTags = [this](const QList<QListWidgetItem*> &list, const QStringList &tags) {
+        removeUserTagsForItems(list, tags);
+    };
+    ctx.showFileInFolder = [this](const QString &p) { showFileInFolder(p); };
+    ctx.syncMetadataForPaths = [this](const QStringList &paths) {
         onMenuSwitchToDownloads();
-        startMetadataSyncForPaths(targetFilePaths, true);
-    });
+        startMetadataSyncForPaths(paths, true);
+    };
+    ctx.saveCollections = [this]() { saveCollections(); };
+    ctx.refreshHomeCollections = [this]() { refreshHomeCollectionsUI(); };
+    ctx.refreshHomeGallery = [this]() { refreshHomeGallery(); };
+    ctx.refreshCollectionTree = [this]() { refreshCollectionTreeView(); };
+    ctx.statusMessage = [this](const QString &msg, int ms) { ui->statusbar->showMessage(msg, ms); };
 
-    menu.addSeparator();
-
-    // 辅助 Lambda：获取 items 对应的所有 BaseName (用于收藏夹数据存储)
-    // 收藏夹系统始终使用 ROLE_MODEL_NAME (文件名) 作为 Key，不受显示名称影响
-    QStringList targetBaseNames;
-    for(auto *item : modelItems) {
-        targetBaseNames.append(item->data(ROLE_MODEL_NAME).toString());
-    }
-
-    // =========================================================
-    // 2. "从收藏夹移除..."
-    // =========================================================
-    QMenu *removeMenu = menu.addMenu(AppText::tr("从指定收藏夹移除..."));
-    bool canRemoveAny = false;
-
-    for (auto it = collections.begin(); it != collections.end(); ++it) {
-        QString colName = it.key();
-        if (colName == FILTER_UNCATEGORIZED) continue;
-
-        // 检查选中的模型中，是否有任何一个在这个收藏夹里
-        // 逻辑：只要有一个在，就允许点击移除（移除操作只移除在里面的）
-        int countInCol = 0;
-        for (const QString &bn : targetBaseNames) {
-            if (it.value().contains(bn)) countInCol++;
-        }
-
-        if (countInCol > 0) {
-            canRemoveAny = true;
-            QString actionText = QString("%1 (%2)").arg(colName).arg(countInCol);
-            QAction *actRemove = removeMenu->addAction(actionText);
-
-            connect(actRemove, &QAction::triggered, this, [this, colName, targetBaseNames](){
-                int removedCount = 0;
-                for (const QString &bn : targetBaseNames) {
-                    if (collections[colName].contains(bn)) {
-                        collections[colName].removeAll(bn);
-                        removedCount++;
-                    }
-                }
-                saveCollections();
-                refreshHomeGallery();
-                refreshCollectionTreeView();
-                ui->statusbar->showMessage(AppText::tr("已从 %1 移除 %2 个模型").arg(colName).arg(removedCount), 2000);
-            });
-        }
-    }
-    if (!canRemoveAny) removeMenu->setEnabled(false);
-
-    // =========================================================
-    // 3. "添加至收藏夹..."
-    // =========================================================
-    QMenu *addMenu = menu.addMenu(AppText::tr("添加至收藏夹..."));
-
-    for (auto it = collections.begin(); it != collections.end(); ++it) {
-        QString colName = it.key();
-        if (colName == FILTER_UNCATEGORIZED) continue;
-
-        QAction *action = addMenu->addAction(colName);
-        action->setCheckable(true);
-
-        // 状态检查逻辑：
-        // - 如果所有选中项都在该收藏夹 -> Checked
-        // - 如果部分在 -> (可选: PartiallyChecked，这里简单处理为 Unchecked)
-        // - 如果都不在 -> Unchecked
-        bool allIn = true;
-        for (const QString &bn : targetBaseNames) {
-            if (!it.value().contains(bn)) {
-                allIn = false;
-                break;
-            }
-        }
-        action->setChecked(allIn);
-
-        connect(action, &QAction::triggered, this, [this, colName, targetBaseNames, action](){
-            bool isAdding = action->isChecked(); // 触发后的状态
-            int count = 0;
-
-            if (isAdding) {
-                // 批量添加
-                for (const QString &bn : targetBaseNames) {
-                    if (!collections[colName].contains(bn)) {
-                        collections[colName].append(bn);
-                        count++;
-                    }
-                }
-                ui->statusbar->showMessage(AppText::tr("已将 %1 个模型加入 %2").arg(count).arg(colName), 2000);
-            } else {
-                // 批量移除（取消勾选）
-                for (const QString &bn : targetBaseNames) {
-                    if (collections[colName].contains(bn)) {
-                        collections[colName].removeAll(bn);
-                        count++;
-                    }
-                }
-                ui->statusbar->showMessage(AppText::tr("已从 %1 移除 %2 个模型").arg(colName).arg(count), 2000);
-            }
-            saveCollections();
-
-            // 如果影响了当前视图，刷新
-            if (currentCollectionFilter == colName) refreshHomeGallery();
-            refreshCollectionTreeView();
-        });
-    }
-
-    addMenu->addSeparator();
-    QAction *newAction = addMenu->addAction(AppText::tr("新建收藏夹..."));
-    connect(newAction, &QAction::triggered, this, [this, targetBaseNames](){
-        bool ok;
-        QString text = QInputDialog::getText(this, AppText::tr("新建"), AppText::tr("名称:"), QLineEdit::Normal, "", &ok);
-        if(ok && !text.isEmpty()) {
-            if(!collections.contains(text)) {
-                // 直接将选中的模型全部加入新收藏夹
-                collections[text] = targetBaseNames;
-                saveCollections();
-                refreshHomeCollectionsUI();
-                refreshCollectionTreeView();
-                ui->statusbar->showMessage(AppText::tr("新建收藏夹并加入 %1 个模型").arg(targetBaseNames.count()), 2000);
-            }
-        }
-    });
-
-    menu.exec(globalPos);
+    SidebarCollectionController::showModelBatchMenu(this, items, globalPos, ctx);
 }
 
 void MainWindow::applyModelHighlightColor(QListWidgetItem *item)
@@ -4027,62 +3798,19 @@ void MainWindow::onSortIndexChanged(int index) {
 
 bool MainWindow::isModelListItem(const QListWidgetItem *item) const
 {
-    return item
-           && !item->data(ROLE_IS_FOLDER_HEADER).toBool()
-           && !item->data(ROLE_FILE_PATH).toString().isEmpty();
+    return SidebarCollectionController::isModelListItem(item);
 }
 
 QListWidgetItem *MainWindow::createModelFolderHeader(const QString &folderName, const QString &folderKey) const
 {
-    QListWidgetItem *header = new QListWidgetItem(folderName);
-    header->setData(ROLE_IS_FOLDER_HEADER, true);
-    header->setData(ROLE_MODEL_FOLDER_KEY, folderKey);
-    header->setData(ROLE_MODEL_FOLDER_COLLAPSED, collapsedModelFolders.contains(folderKey));
-    header->setData(ROLE_MODEL_ROOT_NAME, folderName);
-    header->setFlags(Qt::ItemIsEnabled);
-    QFont font = header->font();
-    font.setBold(true);
-    header->setFont(font);
-    header->setForeground(QColor(AppStyle::AccentBlue()));
-    header->setBackground(QColor(AppStyle::HeaderBackground()));
-    return header;
+    return SidebarCollectionController::createModelFolderHeader(
+        folderName, folderKey, collapsedModelFolders.contains(folderKey));
 }
 
 void MainWindow::applyModelFolderVisibility()
 {
-    for (int i = 0; i < ui->modelList->count(); ++i) {
-        QListWidgetItem *item = ui->modelList->item(i);
-        if (!item) continue;
-        if (!item->data(ROLE_IS_FOLDER_HEADER).toBool()) {
-            if (!optModelListFolderGrouping && isModelListItem(item)) {
-                item->setHidden(!item->data(ROLE_MODEL_FILTER_VISIBLE).toBool());
-            }
-            continue;
-        }
-
-        const QString folderKey = item->data(ROLE_MODEL_FOLDER_KEY).toString();
-        const bool collapsed = collapsedModelFolders.contains(folderKey);
-        int visibleChildCount = 0;
-        for (int j = i + 1; j < ui->modelList->count(); ++j) {
-            QListWidgetItem *child = ui->modelList->item(j);
-            if (!child) continue;
-            if (child->data(ROLE_IS_FOLDER_HEADER).toBool()) break;
-            if (!isModelListItem(child)) continue;
-
-            const bool filterVisible = child->data(ROLE_MODEL_FILTER_VISIBLE).toBool();
-            if (filterVisible) {
-                visibleChildCount++;
-            }
-            child->setHidden(!filterVisible || collapsed);
-        }
-
-        const QString folderName = item->data(ROLE_MODEL_ROOT_NAME).toString().isEmpty()
-                                       ? item->text().mid(2).section(" (", 0, 0).trimmed()
-                                       : item->data(ROLE_MODEL_ROOT_NAME).toString();
-        item->setData(ROLE_MODEL_FOLDER_COLLAPSED, collapsed);
-        item->setText(QString("%1 %2 (%3)").arg(collapsed ? " + " : " - ", folderName).arg(visibleChildCount));
-        item->setHidden(!optModelListFolderGrouping || visibleChildCount <= 0);
-    }
+    SidebarCollectionController::applyModelFolderVisibility(
+        ui->modelList, optModelListFolderGrouping, collapsedModelFolders);
 }
 
 void MainWindow::toggleModelFolderCollapsed(const QString &folderKey)
@@ -4100,162 +3828,24 @@ void MainWindow::toggleModelFolderCollapsed(const QString &folderKey)
 
 void MainWindow::executeSort()
 {
-    // 0: Name, 1: Date(New), 2: Downloads, 3: Likes, 4: Date Added, 5: Usage, 6: Recently Used, 7: User Rating
-    int sortType = ui->comboSort->currentIndex();
-
-    // 1. 取出所有 Item
-    QList<QListWidgetItem*> items;
-    while(ui->modelList->count() > 0) {
-        QListWidgetItem *item = ui->modelList->takeItem(0);
-        if (item && item->data(ROLE_IS_FOLDER_HEADER).toBool()) {
-            delete item;
-        } else if (item) {
-            items.append(item);
-        }
-    }
-
-    // === 准备自然排序器 (用于 Case 0) ===
-    QCollator collator;
-    collator.setNumericMode(true); // 开启数字模式 (让 v2 排在 v10 前面)
-    collator.setCaseSensitivity(Qt::CaseInsensitive); // 忽略大小写 (让 a 和 A 排在一起)
-    collator.setIgnorePunctuation(false); // 不忽略标点 (保证 [ 能参与排序)
-
-    // 2. 使用 Lambda 表达式排序
-    std::sort(items.begin(), items.end(),
-        [sortType, &collator](QListWidgetItem *a, QListWidgetItem *b) { // 注意这里捕获了 &collator
-        auto compareByName = [&collator](QListWidgetItem *left, QListWidgetItem *right) {
-            return collator.compare(left->text(), right->text()) < 0;
-        };
-
-        switch (sortType) {
-            case 0: // Name (A-Z)
-                return compareByName(a, b);
-
-            case 1: // Date (Newest First -> Descending)
-                return a->data(ROLE_SORT_DATE).toLongLong() > b->data(ROLE_SORT_DATE).toLongLong();
-
-            case 2: // Downloads (High -> Descending)
-                return a->data(ROLE_SORT_DOWNLOADS).toInt() > b->data(ROLE_SORT_DOWNLOADS).toInt();
-
-            case 3: // Likes (High -> Descending)
-                return a->data(ROLE_SORT_LIKES).toInt() > b->data(ROLE_SORT_LIKES).toInt();
-
-            case 4: // Date Added (Local Created At -> Descending)
-                return a->data(ROLE_SORT_ADDED).toLongLong() > b->data(ROLE_SORT_ADDED).toLongLong();
-
-            case 5: // Usage Count (Local Gallery)
-            {
-                const int usageA = a->data(ROLE_SORT_USAGE_COUNT).toInt();
-                const int usageB = b->data(ROLE_SORT_USAGE_COUNT).toInt();
-                if (usageA != usageB) return usageA > usageB;
-                return compareByName(a, b);
-            }
-
-            case 6: // Recently Used (Local Gallery)
-            {
-                const qint64 usedA = a->data(ROLE_SORT_LAST_USED).toLongLong();
-                const qint64 usedB = b->data(ROLE_SORT_LAST_USED).toLongLong();
-                if (usedA != usedB) return usedA > usedB;
-                return compareByName(a, b);
-            }
-
-            case 7: // Rating (User)
-            {
-                const double ratingA = a->data(ROLE_USER_RATING).toDouble();
-                const double ratingB = b->data(ROLE_USER_RATING).toDouble();
-                if (!qFuzzyCompare(ratingA + 1.0, ratingB + 1.0)) return ratingA > ratingB;
-                return compareByName(a, b);
-            }
-
-            default:
-                return compareByName(a, b);
-            }
-        }
-    );
-
-    // 3. 放回 ListWidget
-    if (optModelListFolderGrouping) {
-        QMap<QString, QList<QListWidgetItem*>> grouped;
-        QMap<QString, QString> folderLabels;
-        QStringList folderOrder;
-        for (QListWidgetItem *item : items) {
-            const QString rootPath = item->data(ROLE_MODEL_ROOT_PATH).toString();
-            const QString rootKey = rootPath.isEmpty() ? "__unknown__" : QFileInfo(rootPath).absoluteFilePath();
-            QString rootName = item->data(ROLE_MODEL_ROOT_NAME).toString();
-            if (rootName.isEmpty()) rootName = "未指定文件夹";
-            if (!grouped.contains(rootKey)) {
-                folderOrder.append(rootKey);
-                folderLabels.insert(rootKey, rootName);
-            }
-            grouped[rootKey].append(item);
-        }
-
-        QCollator folderCollator;
-        folderCollator.setNumericMode(true);
-        folderCollator.setCaseSensitivity(Qt::CaseInsensitive);
-        std::sort(folderOrder.begin(), folderOrder.end(), [&](const QString &a, const QString &b) {
-            return folderCollator.compare(folderLabels.value(a), folderLabels.value(b)) < 0;
-        });
-
-        for (const QString &folderKey : folderOrder) {
-            ui->modelList->addItem(createModelFolderHeader(folderLabels.value(folderKey), folderKey));
-            for (QListWidgetItem *item : grouped.value(folderKey)) {
-                ui->modelList->addItem(item);
-            }
-        }
-    } else {
-        for(auto *item : items) {
-            ui->modelList->addItem(item);
-        }
-    }
-
-    // 4. 同步刷新主页
+    SidebarCollectionController::sortModelList(
+        ui->modelList, ui->comboSort->currentIndex(), optModelListFolderGrouping, collapsedModelFolders);
     onSearchTextChanged(ui->searchEdit->text());
 }
 
 void MainWindow::onFilterBaseModelChanged(const QString &text) {
+    Q_UNUSED(text);
     onSearchTextChanged(ui->searchEdit->text());
 }
 
-// 重建侧栏“排序/筛选”多级菜单。每次弹出前调用，使底模/类型项与最近一次扫描保持一致，
-// 并标记当前选中项。各项触发时只是改动隐藏下拉框的当前值，从而复用既有的排序/筛选逻辑。
 void MainWindow::rebuildSortFilterMenu() {
-    QMenu *menu = ui->btnSortFilter->menu();
-    if (!menu) return;
-    menu->clear();
-
-    auto buildSubmenu = [this, menu](const QString &title, QComboBox *combo, bool byIndex) {
-        QMenu *sub = menu->addMenu(title);
-        QActionGroup *group = new QActionGroup(sub);
-        group->setExclusive(true);
-        for (int i = 0; i < combo->count(); ++i) {
-            QAction *act = sub->addAction(combo->itemText(i));
-            act->setCheckable(true);
-            act->setChecked(i == combo->currentIndex());
-            group->addAction(act);
-            if (byIndex) {
-                connect(act, &QAction::triggered, this, [combo, i]() { combo->setCurrentIndex(i); });
-            } else {
-                const QString text = combo->itemText(i);
-                connect(act, &QAction::triggered, this, [combo, text]() { combo->setCurrentText(text); });
-            }
-        }
-    };
-
-    buildSubmenu(AppText::tr("排序 / Sort"), ui->comboSort, true);
-    menu->addSeparator();
-    buildSubmenu(AppText::tr("底模 / Base"), ui->comboBaseModel, false);
-    buildSubmenu(AppText::tr("类型 / Type"), ui->comboModelType, false);
+    SidebarCollectionController::rebuildSortFilterMenu(
+        this, ui->btnSortFilter, ui->comboSort, ui->comboBaseModel, ui->comboModelType);
 }
 
-// 用当前排序与已启用的筛选拼出按钮文案，方便用户不展开菜单也能看到当前状态。
 void MainWindow::updateSortFilterButtonText() {
-    QString text = "⚙ " + ui->comboSort->currentText();
-    QStringList active;
-    if (ui->comboBaseModel->currentIndex() > 0) active << ui->comboBaseModel->currentText();
-    if (ui->comboModelType->currentIndex() > 0) active << ui->comboModelType->currentText();
-    if (!active.isEmpty()) text += " · " + active.join(" · ");
-    ui->btnSortFilter->setText(text);
+    SidebarCollectionController::updateSortFilterButtonText(
+        ui->btnSortFilter, ui->comboSort, ui->comboBaseModel, ui->comboModelType);
 }
 
 // 静态函数，运行在后台线程
@@ -6566,479 +6156,64 @@ void MainWindow::onCollectionsTabButtonClicked()
 void MainWindow::onCollectionTreeItemClicked(QTreeWidgetItem *item, int column)
 {
     Q_UNUSED(column);
-
-    // 判断是收藏夹节点还是模型节点
-    if (item->data(0, ROLE_IS_COLLECTION_NODE).toBool()) {
-        // === 收藏夹节点 ===
-        QString collectionName = item->data(0, ROLE_COLLECTION_NAME).toString();
-        int count = item->data(0, ROLE_ITEM_COUNT).toInt();
-
-        // 2. 展开/折叠节点
-        bool wasExpanded = item->isExpanded();
-        item->setExpanded(!wasExpanded);
-
-        // 3. 切换文本前缀
-        QString displayName;
-        if (item->data(0, ROLE_IS_FOLDER_HEADER).toBool()) {
-            displayName = item->data(0, ROLE_MODEL_ROOT_NAME).toString();
-            if (displayName.isEmpty()) displayName = collectionName;
-        } else {
-            displayName = (collectionName == FILTER_UNCATEGORIZED) ? AppText::tr("未分类 / Uncategorized") : collectionName;
-        }
-        QString prefix = (!wasExpanded) ? " - " : " + "; // 此时已切换状态
-        QString newText = QString("%1%2 (%3)").arg(prefix).arg(displayName).arg(count);
-        item->setText(0, newText);
-    } else {
-        // 模型节点
-        QString filePath = item->data(0, ROLE_FILE_PATH).toString();
-        if (filePath.isEmpty()) return;
-
-        QListWidgetItem* matchItem = nullptr;
-        for(int i = 0; i < ui->modelList->count(); ++i) {
-            QListWidgetItem* sideItem = ui->modelList->item(i);
-            if (sideItem->data(ROLE_FILE_PATH).toString() == filePath) {
-                matchItem = sideItem;
-                break;
-            }
-        }
-
-        if (matchItem) {
-            ui->modelList->setCurrentItem(matchItem);
-            onModelListClicked(matchItem);
-        }
-    }
+    SidebarCollectionController::handleCollectionTreeItemClicked(
+        item,
+        ui->modelList,
+        modelItemByPath,
+        FILTER_UNCATEGORIZED,
+        [this](QListWidgetItem *matched) { onModelListClicked(matched); });
 }
 
 void MainWindow::onCollectionTreeContextMenu(const QPoint &pos)
 {
-    // 获取点击位置的 Item (作为上下文判断依据)
-    QTreeWidgetItem *clickedItem = ui->collectionTree->itemAt(pos);
-    if (!clickedItem) return;
-
-    // 获取所有选中的 Items
-    QList<QTreeWidgetItem*> selectedTreeItems = ui->collectionTree->selectedItems();
-
-    // 如果右键点击的项不在选区内，Qt 的默认行为会清除选区并单选点击项。
-    // 这里做一个保险，如果选区为空，就把点击项加进去
-    if (selectedTreeItems.isEmpty()) {
-        selectedTreeItems.append(clickedItem);
-    }
-
-    // 判断是收藏夹节点还是模型节点
-    if (clickedItem->data(0, ROLE_IS_COLLECTION_NODE).toBool()) {
-        if (clickedItem->data(0, ROLE_IS_FOLDER_HEADER).toBool()) {
-            QList<QListWidgetItem*> targetListItems;
-            std::function<void(QTreeWidgetItem*)> collectModelItems = [&](QTreeWidgetItem *treeItem) {
-                if (!treeItem) return;
-                const QString baseName = treeItem->data(0, ROLE_MODEL_NAME).toString();
-                if (!baseName.isEmpty()) {
-                    for (int i = 0; i < ui->modelList->count(); ++i) {
-                        QListWidgetItem *listItem = ui->modelList->item(i);
-                        if (listItem->data(ROLE_MODEL_NAME).toString() == baseName) {
-                            targetListItems.append(listItem);
-                            break;
-                        }
-                    }
-                }
-                for (int i = 0; i < treeItem->childCount(); ++i) collectModelItems(treeItem->child(i));
-            };
-            collectModelItems(clickedItem);
-            if (!targetListItems.isEmpty()) {
-                showCollectionMenu(targetListItems, ui->collectionTree->mapToGlobal(pos));
-            }
-            return;
-        }
-        // --- 收藏夹节点右键菜单 ---
-        QString collectionName = clickedItem->data(0, ROLE_COLLECTION_NAME).toString();
-
-        QMenu menu(this);
-        QAction *title = menu.addAction(AppText::tr("管理收藏夹: %1").arg(collectionName));
-        title->setEnabled(false);
-        menu.addSeparator();
-
-        if (collectionName == FILTER_UNCATEGORIZED) {
-            // "未分类"特殊处理，不能重命名和删除
-            QAction *dummy = menu.addAction(AppText::tr("无法操作此项"));
-            dummy->setEnabled(false);
-        } else {
-            QAction *actRename = menu.addAction(AppText::tr("重命名 / Rename Collection"));
-            QAction *actDelete = menu.addAction(AppText::tr("删除 / Delete Collection"));
-
-            QAction *selected = menu.exec(ui->collectionTree->mapToGlobal(pos));
-
-            if (selected == actRename) {
-                bool ok;
-                QString newName = QInputDialog::getText(this, AppText::tr("重命名收藏夹"), AppText::tr("新名称:"), QLineEdit::Normal, collectionName, &ok);
-                if (ok && !newName.trimmed().isEmpty() && newName != collectionName) {
-                    if (collections.contains(newName)) {
-                        QMessageBox::warning(this, AppText::tr("错误"), AppText::tr("该名称已存在！"));
-                        return;
-                    }
-                    QStringList files = collections.value(collectionName);
-                    collections.insert(newName, files);
-                    collections.remove(collectionName);
-
-                    if (currentCollectionFilter == collectionName) currentCollectionFilter = newName;
-
-                    saveCollections();
-                    refreshHomeCollectionsUI(); // 刷新主页的收藏夹按钮
-                    refreshCollectionTreeView(); // 刷新收藏夹树状视图
-                }
-            } else if (selected == actDelete) {
-                auto reply = QMessageBox::question(this, AppText::tr("确认删除"),
-                                                   AppText::tr("确定要删除收藏夹 \"%1\" 吗？\n(里面的模型不会被删除，仅删除分类)").arg(collectionName),
-                                                   QMessageBox::Yes | QMessageBox::No);
-                if (reply == QMessageBox::Yes) {
-                    collections.remove(collectionName);
-                    if (currentCollectionFilter == collectionName) currentCollectionFilter = "";
-                    saveCollections();
-                    refreshHomeCollectionsUI();
-                    refreshCollectionTreeView();
-                    // 如果删除了当前正在过滤的收藏夹，需要重置主页过滤
-                    if (currentCollectionFilter.isEmpty()) refreshHomeGallery();
-                }
-            }
-        }
-    } else {
-        // --- 模型节点逻辑 (核心修改：支持多选) ---
-
-        QList<QListWidgetItem*> targetListItems;
-
-        // 遍历所有选中的树节点
-        for (QTreeWidgetItem *tItem : selectedTreeItems) {
-            // 跳过选中的“文件夹”节点，只处理“模型”节点
-            if (tItem->data(0, ROLE_IS_COLLECTION_NODE).toBool()) continue;
-
-            QString baseName = tItem->data(0, ROLE_MODEL_NAME).toString();
-            if (baseName.isEmpty()) baseName = tItem->text(0); // 兜底
-
-            // 在 modelList 中查找对应的 Item (因为 showCollectionMenu 需要 QListWidgetItem)
-            // 优化：这里不需要每次都遍历 modelList，可以构建一个查找 Map，或者简单遍历
-            for (int i = 0; i < ui->modelList->count(); ++i) {
-                QListWidgetItem *listItem = ui->modelList->item(i);
-                if (listItem->data(ROLE_MODEL_NAME).toString() == baseName) {
-                    targetListItems.append(listItem);
-                    break;
-                }
-            }
-        }
-
-        // 如果找到了对应的模型列表项，弹出批量操作菜单
-        if (!targetListItems.isEmpty()) {
-            showCollectionMenu(targetListItems, ui->collectionTree->mapToGlobal(pos));
-        }
-    }
+    SidebarCollectionController::handleCollectionTreeContextMenu(
+        this,
+        ui->collectionTree,
+        ui->modelList,
+        modelItemByPath,
+        pos,
+        FILTER_UNCATEGORIZED,
+        [this](const QString &name) {
+            renameCollectionByName(name);
+            refreshCollectionTreeView();
+        },
+        [this](const QString &name) {
+            deleteCollectionByName(name);
+            refreshCollectionTreeView();
+        },
+        [this](const QList<QListWidgetItem*> &items, const QPoint &globalPos) {
+            showCollectionMenu(items, globalPos);
+        });
 }
 
 void MainWindow::refreshCollectionTreeView()
 {
-    // 保存菜单
-    QSet<QString> expandedCollections;
-    int scrollPos = 0;
-
-    if (isFirstTreeRefresh && optRestoreTreeState) {
-        // A. 首次启动：使用从 JSON 读取的缓存
-        expandedCollections = startupExpandedCollections;
-        scrollPos = startupTreeScrollPos;
-        isFirstTreeRefresh = false; // 标记已使用，下次刷新就走逻辑 B
-    } else {
-        // B. 运行时刷新：使用 UI 当前的状态
-        std::function<void(QTreeWidgetItem*)> collectExpanded = [&](QTreeWidgetItem *item) {
-            if (!item) return;
-            if (item->isExpanded()) {
-                const QString key = item->data(0, ROLE_COLLECTION_EXPAND_KEY).toString();
-                expandedCollections.insert(key.isEmpty() ? item->data(0, ROLE_COLLECTION_NAME).toString() : key);
-            }
-            for (int i = 0; i < item->childCount(); ++i) collectExpanded(item->child(i));
-        };
-        for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
-            collectExpanded(ui->collectionTree->topLevelItem(i));
-        }
-        scrollPos = ui->collectionTree->verticalScrollBar()->value();
-    }
-
-    // 清理和生成
-    ui->collectionTree->setUpdatesEnabled(false);
-    ui->collectionTree->setAnimated(false);
-    collectionTreeItemsByPath.clear();
-    ui->collectionTree->clear();
-    ui->collectionTree->setIconSize(QSize(32, 32));
-    ui->collectionTree->setRootIsDecorated(false);
-    ui->collectionTree->setIndentation(10); // 子节点的缩进保持正常
-    ui->collectionTree->setExpandsOnDoubleClick(false);
-
-    QFont categoryFont = ui->collectionTree->font();
-    categoryFont.setBold(true);
-    categoryFont.setPointSize(10);
-
-    const QString PRE_OPEN   = " - "; // 展开时：减号 + 空格
-    const QString PRE_CLOSED = " + "; // 折叠时：加号 + 空格
-
-    QHash<QString, QListWidgetItem*> visibleItemMap; // BaseName -> Item
-    QHash<QString, int> visibleItemRank;             // BaseName -> SortIndex (排名)
-    visibleItemMap.reserve(ui->modelList->count());
-    visibleItemRank.reserve(ui->modelList->count());
-
-    for (int i = 0; i < ui->modelList->count(); ++i) {
-        QListWidgetItem *item = ui->modelList->item(i);
-        if (!isModelListItem(item)) continue;
-
-        // 收藏夹树只关心搜索/底模过滤结果，不受 Models 文件夹折叠影响。
-        if (!item->data(ROLE_MODEL_FILTER_VISIBLE).toBool()) continue;
-
-        QString baseName = item->data(ROLE_MODEL_NAME).toString();
-        visibleItemMap.insert(baseName, item);
-        visibleItemRank.insert(baseName, i); // 记录它在列表中的顺序
-    }
-
-    // 定义排序 Lambda：让树节点按照 modelList 的顺序排列
-    auto rankSort = [&](const QString &s1, const QString &s2) {
-        return visibleItemRank.value(s1) < visibleItemRank.value(s2);
-    };
-
-    // 辅助 Lambda：添加子节点
-    auto addModelChildren = [&](QTreeWidgetItem *parent, QStringList models) {
-        // 1. 过滤：移除不可见的模型
-        QMutableStringListIterator it(models);
-        while (it.hasNext()) {
-            if (!visibleItemMap.contains(it.next())) {
-                it.remove();
-            }
-        }
-
-        // 2. 排序：按照 modelList 的顺序重排
-        std::sort(models.begin(), models.end(), rankSort);
-
-        // 3. 生成节点
-        for (const QString &baseName : models) {
-            if (QListWidgetItem *sourceItem = visibleItemMap.value(baseName, nullptr)) {
-                QTreeWidgetItem *child = new QTreeWidgetItem(parent);
-                child->setText(0, sourceItem->text());
-                copyCommonModelRoles(sourceItem, [child](int role, const QVariant &val) {
-                    child->setData(0, role, val);
-                });
-                child->setData(0, ROLE_PREVIEW_PLACEHOLDER, sourceItem->data(ROLE_PREVIEW_PLACEHOLDER));
-                child->setIcon(0, sourceItem->icon());
-                applyModelHighlightColor(child);
-                applyModelUserNoteData(child);
-                const QString fp = sourceItem->data(ROLE_FILE_PATH).toString();
-                if (!fp.isEmpty()) collectionTreeItemsByPath.insert(fp, child);
-            }
-        }
-    };
-
-    // =========================================================
-    // 3. 生成节点 (使用上面的可见数据源)
-    // =========================================================
-
-    QSet<QString> categorizedSet;
-    for (auto it = collections.begin(); it != collections.end(); ++it) {
-        for (const QString &m : it.value()) categorizedSet.insert(m);
-    }
-
-    QCollator collator;
-    collator.setNumericMode(true);
-    collator.setCaseSensitivity(Qt::CaseInsensitive);
-    collator.setIgnorePunctuation(false);
-
-    QList<QString> collectionNames = collections.keys();
-    collectionNames.removeAll(FILTER_UNCATEGORIZED);
-    std::sort(collectionNames.begin(), collectionNames.end(), [&](const QString &s1, const QString &s2){
-        return collator.compare(s1, s2) < 0;
-    });
-
-    auto makeTreeParent = [&](QTreeWidgetItem *parent, const QString &expandKey, const QString &collectionName, const QString &displayName, int count) {
-        QTreeWidgetItem *node = parent ? new QTreeWidgetItem(parent) : new QTreeWidgetItem(ui->collectionTree);
-        node->setData(0, ROLE_IS_COLLECTION_NODE, true);
-        node->setData(0, ROLE_COLLECTION_NAME, collectionName);
-        node->setData(0, ROLE_COLLECTION_EXPAND_KEY, expandKey);
-        node->setData(0, ROLE_ITEM_COUNT, count);
-        node->setFont(0, categoryFont);
-
-        const bool expanded = expandedCollections.contains(expandKey);
-        node->setExpanded(expanded);
-        node->setText(0, (expanded ? PRE_OPEN : PRE_CLOSED) + displayName + " (" + QString::number(count) + ")");
-        return node;
-    };
-
-    auto modelBelongsToFolder = [&](const QString &baseName, const QString &folderPath) {
-        QListWidgetItem *item = visibleItemMap.value(baseName, nullptr);
-        if (!item) return false;
-        return item->data(ROLE_MODEL_ROOT_PATH).toString() == folderPath;
-    };
-    auto addFolderChildrenForCollection = [&](QTreeWidgetItem *collectionNode, const QString &collectionKeyPrefix, QStringList models) {
-        QHash<QString, QStringList> modelsByFolder;
-        QHash<QString, QString> folderNames;
-        for (const QString &baseName : models) {
-            QListWidgetItem *item = visibleItemMap.value(baseName, nullptr);
-            if (!item) continue;
-            QString folderPath = item->data(ROLE_MODEL_ROOT_PATH).toString();
-            if (folderPath.isEmpty()) folderPath = QStringLiteral("__unknown__");
-            modelsByFolder[folderPath].append(baseName);
-            if (!folderNames.contains(folderPath)) {
-                QString folderName = item->data(ROLE_MODEL_ROOT_NAME).toString();
-                if (folderName.isEmpty()) {
-                    folderName = (folderPath == QStringLiteral("__unknown__")) ? QStringLiteral("未指定文件夹") : folderPath;
-                }
-                folderNames.insert(folderPath, folderName);
-            }
-        }
-
-        QStringList folderPaths = modelsByFolder.keys();
-        std::sort(folderPaths.begin(), folderPaths.end(), [&](const QString &a, const QString &b) {
-            return collator.compare(folderNames.value(a), folderNames.value(b)) < 0;
-        });
-
-        for (const QString &folderPath : folderPaths) {
-            QStringList folderModels = modelsByFolder.value(folderPath);
-            const int visibleCount = folderModels.count();
-            if (visibleCount <= 0 && !optShowEmptyCollections) continue;
-            const QString key = QString("%1:folder:%2").arg(collectionKeyPrefix, folderPath);
-            QTreeWidgetItem *folderNode = makeTreeParent(collectionNode, key, key, folderNames.value(folderPath), visibleCount);
-            folderNode->setData(0, ROLE_IS_FOLDER_HEADER, true);
-            folderNode->setData(0, ROLE_MODEL_ROOT_NAME, folderNames.value(folderPath));
-            addModelChildren(folderNode, folderModels);
-        }
-    };
-
-    auto addCollectionGroup = [&](QTreeWidgetItem *parent, const QString &folderPath) {
-        QStringList uncatModels;
-        for (auto it = visibleItemMap.begin(); it != visibleItemMap.end(); ++it) {
-            if (optCollectionFolderTopLevel && !modelBelongsToFolder(it.key(), folderPath)) continue;
-            if (!categorizedSet.contains(it.key())) uncatModels.append(it.key());
-        }
-
-        const int uncatCount = uncatModels.count();
-        if (uncatCount > 0 || optShowEmptyCollections) {
-            const QString key = optCollectionFolderTopLevel ? QString("folder:%1:%2").arg(folderPath, FILTER_UNCATEGORIZED)
-                                                            : FILTER_UNCATEGORIZED;
-            QTreeWidgetItem *uncategorizedNode = makeTreeParent(parent, key, FILTER_UNCATEGORIZED, AppText::tr("未分类 / Uncategorized"), uncatCount);
-            std::sort(uncatModels.begin(), uncatModels.end(), rankSort);
-            if (optCollectionFolderSecondLevel && !optCollectionFolderTopLevel) {
-                addFolderChildrenForCollection(uncategorizedNode, key, uncatModels);
-            } else {
-                addModelChildren(uncategorizedNode, uncatModels);
-            }
-        }
-
-        for (const QString &colName : collectionNames) {
-            QStringList models = collections.value(colName);
-            if (optCollectionFolderTopLevel) {
-                QMutableStringListIterator it(models);
-                while (it.hasNext()) {
-                    if (!modelBelongsToFolder(it.next(), folderPath)) it.remove();
-                }
-            }
-
-            int visibleCount = 0;
-            for(const QString &m : models) {
-                if(visibleItemMap.contains(m)) visibleCount++;
-            }
-
-            if (visibleCount > 0 || optShowEmptyCollections) {
-                const QString key = optCollectionFolderTopLevel ? QString("folder:%1:%2").arg(folderPath, colName)
-                                                                : colName;
-                QTreeWidgetItem *collectionNode = makeTreeParent(parent, key, colName, colName, visibleCount);
-                if (optCollectionFolderSecondLevel && !optCollectionFolderTopLevel) {
-                    addFolderChildrenForCollection(collectionNode, key, models);
-                } else {
-                    addModelChildren(collectionNode, models);
-                }
-            }
-        }
-    };
-
-    if (optCollectionFolderTopLevel) {
-        QMap<QString, QString> folderNames;
-        QHash<QString, int> folderCounts;
-        for (auto it = visibleItemMap.cbegin(); it != visibleItemMap.cend(); ++it) {
-            QListWidgetItem *item = it.value();
-            const QString folderPath = item->data(ROLE_MODEL_ROOT_PATH).toString();
-            if (folderPath.isEmpty()) continue;
-            folderCounts[folderPath]++;
-            if (!folderNames.contains(folderPath)) {
-                QString folderName = item->data(ROLE_MODEL_ROOT_NAME).toString();
-                if (folderName.isEmpty()) folderName = folderPath;
-                folderNames.insert(folderPath, folderName);
-            }
-        }
-
-        QStringList folderPaths = folderNames.keys();
-        std::sort(folderPaths.begin(), folderPaths.end(), [&](const QString &a, const QString &b) {
-            return collator.compare(folderNames.value(a), folderNames.value(b)) < 0;
-        });
-
-        for (const QString &folderPath : folderPaths) {
-            const int folderVisibleCount = folderCounts.value(folderPath, 0);
-            if (folderVisibleCount <= 0 && !optShowEmptyCollections) continue;
-
-            const QString folderKey = "folder:" + folderPath;
-            QTreeWidgetItem *folderNode = makeTreeParent(nullptr, folderKey, folderKey, folderNames.value(folderPath), folderVisibleCount);
-            folderNode->setData(0, ROLE_IS_FOLDER_HEADER, true);
-            folderNode->setData(0, ROLE_MODEL_ROOT_NAME, folderNames.value(folderPath));
-            addCollectionGroup(folderNode, folderPath);
-        }
-    } else {
-        addCollectionGroup(nullptr, QString());
-    }
-
-    ui->collectionTree->setAnimated(true);
-    ui->collectionTree->setUpdatesEnabled(true);
-
-    // 恢复滚动条
-    // 使用 QTimer 0 延时，确保 UI 布局完成后再滚动，否则可能滚不到位
-    if (scrollPos > 0) {
-        QTimer::singleShot(0, this, [this, scrollPos](){
-            ui->collectionTree->verticalScrollBar()->setValue(scrollPos);
-        });
-    }
+    CollectionTreeBuildInput in;
+    in.tree = ui->collectionTree;
+    in.modelList = ui->modelList;
+    in.collections = &collections;
+    in.uncategorizedKey = FILTER_UNCATEGORIZED;
+    in.showEmptyCollections = optShowEmptyCollections;
+    in.folderTopLevel = optCollectionFolderTopLevel;
+    in.folderSecondLevel = optCollectionFolderSecondLevel;
+    in.restoreTreeState = optRestoreTreeState;
+    in.isFirstTreeRefresh = &isFirstTreeRefresh;
+    in.startupExpandedCollections = startupExpandedCollections;
+    in.startupTreeScrollPos = startupTreeScrollPos;
+    in.treeItemsByPath = &collectionTreeItemsByPath;
+    in.applyHighlight = [this](QTreeWidgetItem *node) { applyModelHighlightColor(node); };
+    in.applyUserNote = [this](QTreeWidgetItem *node) { applyModelUserNoteData(node); };
+    SidebarCollectionController::rebuildCollectionTree(in);
 }
 
 void MainWindow::cancelPendingTasks()
 {
-    // QThreadPool::clear() 会移除所有尚未开始的任务
-    // 正在运行的任务无法强制停止，但它们很快就会结束。
-    // 注意：backgroundThreadPool 用于侧边栏/收藏夹等静默缩略图加载，
-    // 普通页面刷新不应清掉它，否则模型列表会留下占位叉号。
     if (threadPool) threadPool->clear();
-
-    // 可选：如果之前的逻辑有正在下载的队列，也可以在这里清空
-    // downloadQueue.clear();
-    // isDownloading = false;
 }
 
 void MainWindow::syncTreeSelection(const QString &filePath)
 {
-    if (filePath.isEmpty()) return;
-
-    bool found = false;
-
-    std::function<bool(QTreeWidgetItem*)> visit = [&](QTreeWidgetItem *node) {
-        if (!node) return false;
-        if (node->data(0, ROLE_FILE_PATH).toString() == filePath) {
-            QTreeWidgetItem *parent = node->parent();
-            while (parent) {
-                parent->setExpanded(true);
-                parent = parent->parent();
-            }
-            ui->collectionTree->setCurrentItem(node);
-            node->setSelected(true);
-            ui->collectionTree->scrollToItem(node, QAbstractItemView::PositionAtCenter);
-            return true;
-        }
-        for (int i = 0; i < node->childCount(); ++i) {
-            if (visit(node->child(i))) return true;
-        }
-        return false;
-    };
-
-    for (int i = 0; i < ui->collectionTree->topLevelItemCount(); ++i) {
-        if (visit(ui->collectionTree->topLevelItem(i))) {
-            found = true;
-            break;
-        }
-    }
-    Q_UNUSED(found);
+    SidebarCollectionController::syncTreeSelection(ui->collectionTree, filePath);
 }
 
 void MainWindow::onMenuSwitchToAbout()
