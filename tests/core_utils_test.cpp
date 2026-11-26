@@ -11,10 +11,12 @@
 #include "utils/modelmetadatacodec.h"
 #include "utils/modelbrowserurl.h"
 #include "utils/modelscanner.h"
+#include "utils/modeluserdatastore.h"
 #include "utils/pathutils.h"
 #include "utils/previewimagestore.h"
 #include "utils/tagutils.h"
 #include "utils/tagusage.h"
+#include "utils/usergallerycache.h"
 
 #include <QBuffer>
 #include <QCoreApplication>
@@ -793,6 +795,61 @@ void testInspection(const QTemporaryDir &dir)
     item.syncFailure = "failed";
     check(MetadataInspection::scan({item}).first().category == "failed", "failure cache classification");
     check(!MetadataInspection::healthCheck({item}).isEmpty(), "health check reuses metadata scan");
+
+    // ModelUserDataStore persistence round-trips
+    const QString colPath = dir.filePath("store/collections.json");
+    const QMap<QString, QStringList> cols{{"Favorites", {"loraA", "loraB"}}};
+    check(ModelUserDataStore::saveCollections(colPath, cols)
+          && ModelUserDataStore::loadCollections(colPath) == cols,
+          "collections JSON round-trip");
+
+    const QString colorPath = dir.filePath("store/model_colors.json");
+    const QString normModelPath = QFileInfo(model).absoluteFilePath();
+    const QHash<QString, QColor> colors{{normModelPath, QColor("#8033aaee")}};
+    check(ModelUserDataStore::saveHighlightColors(colorPath, colors)
+          && ModelUserDataStore::loadHighlightColors(colorPath).value(normModelPath) == QColor("#8033aaee"),
+          "highlight colors JSON round-trip");
+
+    const QString notesPath = dir.filePath("store/model_user_notes.json");
+    ModelUserNote note;
+    note.rating = 4.5;
+    note.note = "Great anime style";
+    note.tags = ModelUserDataStore::normalizeUserTagsText("Anime, anime\nStyle,  ");
+    note.customTriggers = ModelUserDataStore::normalizeDistinctTrimmedList({"trigA", "TRIGA", "trigB"});
+    note.updatedAt = "2026-11-26T00:00:00Z";
+    const QHash<QString, ModelUserNote> notes{{normModelPath, note}};
+    check(ModelUserDataStore::saveUserNotes(notesPath, notes), "save user notes atomically");
+    const auto loadedNotes = ModelUserDataStore::loadUserNotes(notesPath);
+    check(loadedNotes.value(normModelPath).rating == 4.5
+          && loadedNotes.value(normModelPath).tags == QStringList({"Anime", "Style"})
+          && loadedNotes.value(normModelPath).customTriggers == QStringList({"trigA", "trigB"}),
+          "user notes JSON round-trip and deduplication");
+
+    const QString failPath = dir.filePath("store/model_sync_failures.json");
+    const QHash<QString, QJsonObject> fails{{normModelPath, QJsonObject{{"error", "HTTP 404"}}}};
+    check(ModelUserDataStore::saveSyncFailures(failPath, fails)
+          && ModelUserDataStore::loadSyncFailures(failPath).value(normModelPath).value("error").toString() == "HTTP 404",
+          "sync failures JSON round-trip");
+
+    // UserGalleryCache persistence round-trip
+    const QString galleryCachePath = dir.filePath("store/user_gallery_cache.json");
+    UserImageInfo imgInfo;
+    imgInfo.path = dir.filePath("img1.png");
+    imgInfo.prompt = "1girl, BREAK, blue_hair, <lora:my_lora:0.8>";
+    imgInfo.negativePrompt = "lowres";
+    imgInfo.parameters = "Steps: 20, Model: base_v1, Model hash: aabbccdd";
+    imgInfo.lastModified = 1700000123456LL;
+    imgInfo.parserVersion = GalleryMetadata::ParserVersion;
+    GalleryMetadata::populateParsedModelFields(imgInfo);
+    const QMap<QString, UserImageInfo> cacheMap{{imgInfo.path, imgInfo}};
+    check(UserGalleryCache::save(galleryCachePath, cacheMap), "save user gallery cache atomically");
+    const auto loadedCache = UserGalleryCache::load(galleryCachePath, true, {"BREAK"});
+    const auto loadedImg = loadedCache.value(imgInfo.path);
+    check(loadedImg.lastModified == 1700000123456LL
+          && loadedImg.checkpointName == "base_v1"
+          && loadedImg.parsedLoras.size() == 1 && loadedImg.parsedLoras.first().name == "my_lora"
+          && loadedImg.cleanTags.contains("blue_hair") && !loadedImg.cleanTags.contains("BREAK"),
+          "user gallery cache round-trip preserves metadata and filters tags");
 }
 }
 

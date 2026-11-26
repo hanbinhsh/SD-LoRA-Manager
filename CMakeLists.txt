@@ -29,6 +29,7 @@ qt_add_executable(SD_LoRA_Manager
     windows/mainwindow.cpp
     windows/mainwindow.h
     windows/mainwindow.ui
+    core/modelitemroles.h
     core/modeltypes.h
     core/modelupdateinfo.h
     utils/downloadcache.h
@@ -78,6 +79,14 @@ qt_add_executable(SD_LoRA_Manager
     utils/fileutils.cpp
     utils/modellistcache.h
     utils/modellistcache.cpp
+    utils/modeluserdatastore.h
+    utils/modeluserdatastore.cpp
+    utils/usergallerycache.h
+    utils/usergallerycache.cpp
+    widgets/flowlayout.h
+    widgets/flowlayout.cpp
+    widgets/highlightitemdelegate.h
+    widgets/highlightitemdelegate.cpp
     pages/downloadspage.h
     pages/downloadspage.cpp
     pages/downloadspage.ui
@@ -184,10 +193,12 @@ if(BUILD_CORE_UTIL_TESTS)
         utils/modellistcache.cpp
         utils/modelmetadatacodec.cpp
         utils/modelscanner.cpp
+        utils/modeluserdatastore.cpp
         utils/pathutils.cpp
         utils/previewimagestore.cpp
         utils/tagutils.cpp
-        utils/tagusage.cpp)
+        utils/tagusage.cpp
+        utils/usergallerycache.cpp)
     target_include_directories(core_utils_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(core_utils_test PRIVATE Qt6::Core Qt6::Gui)
     foreach(group metadata matching scanner preview comfy tags archive paths_filters browser_urls inspection downloads)

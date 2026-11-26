@@ -94,6 +94,10 @@
 #include "utils/metadatainspection.h"
 #include "utils/imagepresentation.h"
 #include "utils/tagutils.h"
+#include "utils/modeluserdatastore.h"
+#include "utils/usergallerycache.h"
+#include "widgets/flowlayout.h"
+#include "widgets/highlightitemdelegate.h"
 
 namespace {
 QVector<TagTranslationSource> buildTagTranslationSources(const QStringList &paths,
@@ -167,323 +171,7 @@ void copyCommonModelRoles(const QListWidgetItem *source, AssignRoleFn assign)
         assign(role, source->data(role));
     }
 }
-
-QString loadQssResource(const QString &path)
-{
-    // 读取并完成 @token / @rgba(token, A) 替换。
-    return AppStyle::loadQss(path);
 }
-
-struct ThemeBundle {
-    QString mainQss;
-    QString toolQss;
-    QString dialogQss;
-    QString status;
-    bool ok = true;
-};
-
-QString themeDisplayName(const QString &themeId)
-{
-    if (themeId == "custom_qss") return "Custom QSS";
-    return AppStyle::themeDisplayName(themeId); // 内置 + 用户主题；未知返回原 id
-}
-
-ThemeBundle loadThemeBundle(const QString &themeId, const QString &customPath)
-{
-    ThemeBundle bundle;
-
-    // 先切换活动调色板，再加载/替换 QSS——base/main/tool/dialog 会直接被染成目标主题，
-    // 不再需要零散的 themes/*_main.qss / *_tool.qss 覆盖文件。
-    AppStyle::setActiveTheme(themeId);
-
-    const QString baseMain = loadQssResource(":/styles/mainwindow.qss");
-    const QString baseTool = AppStyle::loadToolPageQss(); // base.qss + toolpage.qss
-    const QString baseDialog = loadQssResource(":/styles/dialog.qss");
-
-    if (themeId == "custom_qss") {
-        QFile file(customPath);
-        if (!customPath.trimmed().isEmpty() && file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            const QString customQss = AppStyle::applyTokens(QString::fromUtf8(file.readAll()));
-            bundle.mainQss = baseMain + "\n" + customQss;
-            bundle.toolQss = baseTool + "\n" + customQss;
-            bundle.dialogQss = baseDialog + "\n" + customQss;
-            bundle.status = QString("当前主题：Custom QSS (%1)").arg(QFileInfo(customPath).fileName());
-            bundle.ok = true;
-            return bundle;
-        }
-        bundle.mainQss = baseMain;
-        bundle.toolQss = baseTool;
-        bundle.dialogQss = baseDialog;
-        bundle.status = "自定义 QSS 读取失败，已保留 Steam Dark。";
-        bundle.ok = false;
-        return bundle;
-    }
-
-    bundle.mainQss = baseMain;
-    bundle.toolQss = baseTool;
-    bundle.dialogQss = baseDialog;
-    bundle.status = QString("当前主题：%1").arg(themeDisplayName(themeId));
-    bundle.ok = true;
-    return bundle;
-}
-
-class FlowChipButton : public QPushButton
-{
-public:
-    explicit FlowChipButton(const QString &text, QWidget *parent = nullptr)
-        : QPushButton(parent), m_fullText(text)
-    {
-        setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
-    }
-
-    void setChipText(const QString &text)
-    {
-        m_fullText = text;
-        update();
-        updateGeometry();
-    }
-
-    QString chipText() const { return m_fullText; }
-
-    void setFullLine(bool fullLine)
-    {
-        if (m_isFullLine != fullLine) {
-            m_isFullLine = fullLine;
-            update();
-        }
-    }
-
-    bool isFullLine() const { return m_isFullLine; }
-
-    QSize calculateSizeForWidth(int availableW) const
-    {
-        const int padX = 22;
-        const int padY = 8;
-        QFontMetrics fm = fontMetrics();
-        const int singleW = fm.horizontalAdvance(m_fullText) + padX;
-        const int defaultH = qMax(24, fm.height() + padY);
-
-        if (availableW <= 0 || singleW < availableW) {
-            return QSize(singleW, defaultH);
-        }
-
-        // 仅当单个 tag 非常长需占据整行时，折行并增高
-        const int innerW = qMax(20, availableW - padX);
-        QRect bound = fm.boundingRect(QRect(0, 0, innerW, 10000),
-                                      Qt::AlignCenter | Qt::TextWordWrap | Qt::TextWrapAnywhere,
-                                      m_fullText);
-        return QSize(availableW, qMax(defaultH, bound.height() + padY));
-    }
-
-    QSize sizeHint() const override
-    {
-        return calculateSizeForWidth(-1);
-    }
-
-    QSize minimumSizeHint() const override
-    {
-        return QSize(40, 24);
-    }
-
-protected:
-    void paintEvent(QPaintEvent *event) override
-    {
-        Q_UNUSED(event);
-        QPainter p(this);
-        p.setRenderHint(QPainter::Antialiasing);
-        p.setRenderHint(QPainter::TextAntialiasing);
-
-        QStyleOptionButton opt;
-        initStyleOption(&opt);
-        opt.text.clear();
-        style()->drawControl(QStyle::CE_PushButton, &opt, &p, this);
-
-        const QRect textRect = rect().adjusted(9, 4, -9, -4);
-        p.setFont(font());
-        p.setPen(opt.palette.buttonText().color());
-        if (m_isFullLine) {
-            p.drawText(textRect, Qt::AlignCenter | Qt::TextWordWrap | Qt::TextWrapAnywhere, m_fullText);
-        } else {
-            p.drawText(textRect, Qt::AlignCenter | Qt::TextSingleLine, m_fullText);
-        }
-    }
-
-private:
-    QString m_fullText;
-    bool m_isFullLine = false;
-};
-
-class FlowLayout : public QLayout
-{
-public:
-    explicit FlowLayout(QWidget *parent = nullptr, int margin = 0, int hSpacing = 6, int vSpacing = 6)
-        : QLayout(parent), m_hSpace(hSpacing), m_vSpace(vSpacing)
-    {
-        setContentsMargins(margin, margin, margin, margin);
-    }
-
-    ~FlowLayout() override
-    {
-        QLayoutItem *item = nullptr;
-        while ((item = takeAt(0)) != nullptr) delete item;
-    }
-
-    void addItem(QLayoutItem *item) override { itemList.append(item); }
-    int count() const override { return itemList.size(); }
-    QLayoutItem *itemAt(int index) const override { return itemList.value(index); }
-    QLayoutItem *takeAt(int index) override
-    {
-        if (index < 0 || index >= itemList.size()) return nullptr;
-        return itemList.takeAt(index);
-    }
-
-    Qt::Orientations expandingDirections() const override { return {}; }
-    bool hasHeightForWidth() const override { return true; }
-    int heightForWidth(int width) const override { return doLayout(QRect(0, 0, width, 0), true); }
-    QSize minimumSize() const override
-    {
-        return QSize(50, 24);
-    }
-    QSize sizeHint() const override { return QSize(100, 24); }
-    void setGeometry(const QRect &rect) override
-    {
-        QLayout::setGeometry(rect);
-        doLayout(rect, false);
-    }
-
-private:
-    int doLayout(const QRect &rect, bool testOnly) const
-    {
-        const QMargins margins = contentsMargins();
-        QRect effectiveRect = rect.adjusted(margins.left(), margins.top(), -margins.right(), -margins.bottom());
-        const int maxLineWidth = qMax(40, effectiveRect.width());
-        const int spaceX = m_hSpace;
-        const int spaceY = m_vSpace;
-
-        int x = effectiveRect.x();
-        int y = effectiveRect.y();
-        int lineHeight = 0;
-
-        for (QLayoutItem *item : itemList) {
-            QWidget *w = item->widget();
-            FlowChipButton *chip = dynamic_cast<FlowChipButton*>(w);
-
-            QSize itemSize;
-            bool isFullLine = false;
-
-            if (chip) {
-                itemSize = chip->calculateSizeForWidth(maxLineWidth);
-                if (itemSize.width() >= maxLineWidth) {
-                    isFullLine = true;
-                    itemSize.setWidth(maxLineWidth);
-                    chip->setFullLine(true);
-                } else {
-                    chip->setFullLine(false);
-                }
-            } else {
-                itemSize = item->sizeHint();
-                if (itemSize.width() >= maxLineWidth) {
-                    isFullLine = true;
-                    itemSize.setWidth(maxLineWidth);
-                }
-            }
-
-            if (isFullLine) {
-                // 如果当前行已有其他 tag，先换行
-                if (x > effectiveRect.x()) {
-                    x = effectiveRect.x();
-                    y += lineHeight + spaceY;
-                    lineHeight = 0;
-                }
-                if (!testOnly) {
-                    item->setGeometry(QRect(QPoint(effectiveRect.x(), y), itemSize));
-                }
-                y += itemSize.height() + spaceY;
-                x = effectiveRect.x();
-                lineHeight = 0;
-                continue;
-            }
-
-            // 普通单行组件
-            int nextX = x + itemSize.width() + spaceX;
-            if (nextX - spaceX > effectiveRect.right() && x > effectiveRect.x()) {
-                x = effectiveRect.x();
-                y += lineHeight + spaceY;
-                nextX = x + itemSize.width() + spaceX;
-                lineHeight = 0;
-            }
-            if (!testOnly) {
-                item->setGeometry(QRect(QPoint(x, y), itemSize));
-            }
-            x = nextX;
-            lineHeight = qMax(lineHeight, itemSize.height());
-        }
-
-        int totalH = (lineHeight > 0) ? (y + lineHeight) : (y > effectiveRect.y() ? (y - spaceY) : y);
-        return totalH - rect.y() + margins.bottom();
-    }
-
-    QList<QLayoutItem*> itemList;
-    int m_hSpace = 6;
-    int m_vSpace = 6;
-};
-}
-
-class HighlightItemDelegate : public QStyledItemDelegate
-{
-public:
-    explicit HighlightItemDelegate(QObject *parent = nullptr)
-        : QStyledItemDelegate(parent)
-    {
-    }
-
-    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
-    {
-        QStyleOptionViewItem opt(option);
-        initStyleOption(&opt, index);
-        const QWidget *widget = opt.widget;
-        QStyle *style = widget ? widget->style() : QApplication::style();
-
-        // Draw the native item background first, then place the user highlight
-        // under the icon/text so translucent colors do not wash out content.
-        QStyleOptionViewItem backgroundOpt(opt);
-        backgroundOpt.text.clear();
-        backgroundOpt.icon = QIcon();
-        backgroundOpt.features &= ~QStyleOptionViewItem::HasDisplay;
-        backgroundOpt.features &= ~QStyleOptionViewItem::HasDecoration;
-        style->drawControl(QStyle::CE_ItemViewItem, &backgroundOpt, painter, widget);
-
-        const QColor highlight = index.data(ROLE_MODEL_HIGHLIGHT_COLOR).value<QColor>();
-        if (highlight.isValid() && highlight.alpha() > 0) {
-            painter->save();
-            painter->fillRect(opt.rect, highlight);
-            painter->restore();
-        }
-
-        if (!opt.icon.isNull()) {
-            const QRect iconRect = style->subElementRect(QStyle::SE_ItemViewItemDecoration, &opt, widget);
-            QIcon::Mode mode = QIcon::Normal;
-            if (!(opt.state & QStyle::State_Enabled)) {
-                mode = QIcon::Disabled;
-            } else if (opt.state & QStyle::State_Selected) {
-                mode = QIcon::Selected;
-            }
-            const QIcon::State state = (opt.state & QStyle::State_Open) ? QIcon::On : QIcon::Off;
-            opt.icon.paint(painter, iconRect, opt.decorationAlignment, mode, state);
-        }
-
-        if (!opt.text.isEmpty()) {
-            const QRect textRect = style->subElementRect(QStyle::SE_ItemViewItemText, &opt, widget);
-            const QString text = opt.fontMetrics.elidedText(opt.text, opt.textElideMode, textRect.width());
-            // 用主题色而非 palette 角色（QSS 设的颜色被 delegate 自绘绕过，会在浅色主题下变白看不清）。
-            const bool sel = opt.state & QStyle::State_Selected;
-            painter->save();
-            painter->setPen(sel ? AppStyle::color("primaryText") : AppStyle::color("mutedText2"));
-            painter->drawText(textRect, opt.displayAlignment, text);
-            painter->restore();
-        }
-    }
-};
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -1148,85 +836,24 @@ void MainWindow::onHomeButtonClicked()
 
 void MainWindow::loadCollections()
 {
-    collections.clear();
-    QString configDir = qApp->applicationDirPath() + "/config";
-    QDir().mkpath(configDir);
-
-    QFile file(configDir + "/collections.json");
-    if (file.open(QIODevice::ReadOnly)) {
-        QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-        QJsonObject root = doc.object();
-        for (auto it = root.begin(); it != root.end(); ++it) {
-            QString name = it.key();
-            QStringList files;
-            for (auto v : it.value().toArray()) files << v.toString();
-            collections.insert(name, files);
-        }
-    }
+    collections = ModelUserDataStore::loadCollections(qApp->applicationDirPath() + "/config/collections.json");
     refreshHomeCollectionsUI();
 }
 
 void MainWindow::saveCollections()
 {
-    QJsonObject root;
-    for (auto it = collections.begin(); it != collections.end(); ++it) {
-        QJsonArray arr;
-        for (const QString &f : it.value()) arr.append(f);
-        root.insert(it.key(), arr);
-    }
-
-    QString configDir = qApp->applicationDirPath() + "/config";
-    QDir().mkpath(configDir);
-    QSaveFile file(configDir + "/collections.json");
-    const QByteArray payload = QJsonDocument(root).toJson();
-    if (!file.open(QIODevice::WriteOnly)
-        || file.write(payload) != payload.size()
-        || !file.commit()) {
-        qWarning() << "Unable to save collections atomically:" << file.errorString();
-    }
+    ModelUserDataStore::saveCollections(qApp->applicationDirPath() + "/config/collections.json", collections);
     refreshHomeCollectionsUI();
 }
 
 void MainWindow::loadModelHighlightColors()
 {
-    modelHighlightColors.clear();
-
-    const QString configPath = qApp->applicationDirPath() + "/config/model_colors.json";
-    QFile file(configPath);
-    if (!file.open(QIODevice::ReadOnly)) return;
-
-    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-    if (!doc.isObject()) return;
-
-    const QJsonObject root = doc.object();
-    for (auto it = root.begin(); it != root.end(); ++it) {
-        const QString filePath = QFileInfo(it.key()).absoluteFilePath();
-        const QColor color(it.value().toString());
-        if (!filePath.isEmpty() && color.isValid()) {
-            modelHighlightColors.insert(filePath, color);
-        }
-    }
+    modelHighlightColors = ModelUserDataStore::loadHighlightColors(qApp->applicationDirPath() + "/config/model_colors.json");
 }
 
 void MainWindow::saveModelHighlightColors()
 {
-    const QString configDir = qApp->applicationDirPath() + "/config";
-    QDir().mkpath(configDir);
-
-    QJsonObject root;
-    for (auto it = modelHighlightColors.begin(); it != modelHighlightColors.end(); ++it) {
-        if (it.value().isValid()) {
-            root.insert(it.key(), it.value().name(QColor::HexArgb));
-        }
-    }
-
-    QSaveFile file(configDir + "/model_colors.json");
-    const QByteArray payload = QJsonDocument(root).toJson();
-    if (!file.open(QIODevice::WriteOnly)
-        || file.write(payload) != payload.size()
-        || !file.commit()) {
-        qWarning() << "Unable to save model highlight colors atomically:" << file.errorString();
-    }
+    ModelUserDataStore::saveHighlightColors(qApp->applicationDirPath() + "/config/model_colors.json", modelHighlightColors);
 }
 
 void MainWindow::onCreateCollection()
@@ -3462,14 +3089,7 @@ QString MainWindow::modelSyncFailurePath() const
 
 void MainWindow::loadModelSyncFailures()
 {
-    modelSyncFailures.clear();
-    QFile file(modelSyncFailurePath());
-    if (!file.open(QIODevice::ReadOnly)) return;
-    const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
-    for (auto it = root.begin(); it != root.end(); ++it) {
-        const QString path = QFileInfo(it.key()).absoluteFilePath();
-        if (!path.isEmpty()) modelSyncFailures.insert(path, it.value().toObject());
-    }
+    modelSyncFailures = ModelUserDataStore::loadSyncFailures(modelSyncFailurePath());
 }
 
 QString MainWindow::modelUserNotesPath() const
@@ -3479,126 +3099,38 @@ QString MainWindow::modelUserNotesPath() const
 
 QStringList MainWindow::normalizeModelUserTags(const QStringList &tags) const
 {
-    QStringList result;
-    QSet<QString> seen;
-    for (const QString &raw : tags) {
-        const QString tag = raw.trimmed();
-        if (tag.isEmpty()) continue;
-        const QString key = tag.toCaseFolded();
-        if (seen.contains(key)) continue;
-        seen.insert(key);
-        result.append(tag);
-    }
-    return result;
+    return ModelUserDataStore::normalizeDistinctTrimmedList(tags);
 }
 
 QStringList MainWindow::normalizeModelUserTagsText(const QString &text) const
 {
-    QString normalizedText = text;
-    normalizedText.replace('\r', ',');
-    normalizedText.replace('\n', ',');
-    return normalizeModelUserTags(normalizedText.split(',', Qt::SkipEmptyParts));
+    return ModelUserDataStore::normalizeUserTagsText(text);
 }
 
 QStringList MainWindow::normalizeModelCustomTriggers(const QStringList &triggers) const
 {
-    QStringList result;
-    QSet<QString> seen;
-    for (const QString &raw : triggers) {
-        const QString trigger = raw.trimmed();
-        if (trigger.isEmpty()) continue;
-        const QString key = trigger.toCaseFolded();
-        if (seen.contains(key)) continue;
-        seen.insert(key);
-        result.append(trigger);
-    }
-    return result;
+    return ModelUserDataStore::normalizeDistinctTrimmedList(triggers);
 }
 
 void MainWindow::loadModelUserNotes()
 {
-    modelUserNotes.clear();
-
-    QFile file(modelUserNotesPath());
-    if (!file.open(QIODevice::ReadOnly)) return;
-
-    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-    if (!doc.isObject()) return;
-
-    const QJsonObject root = doc.object();
-    for (auto it = root.begin(); it != root.end(); ++it) {
-        const QString filePath = QFileInfo(it.key()).absoluteFilePath();
-        const QJsonObject obj = it.value().toObject();
-        ModelUserNote note;
-        note.rating = obj.value("rating").toDouble(0.0);
-        if (note.rating < 0.5) note.rating = 0.0;
-        if (note.rating > 5.0) note.rating = 5.0;
-        note.rating = std::round(note.rating * 2.0) / 2.0;
-        note.note = obj.value("note").toString();
-        note.updatedAt = obj.value("updatedAt").toString();
-        QStringList tags;
-        const QJsonArray arr = obj.value("tags").toArray();
-        for (const QJsonValue &val : arr) tags.append(val.toString());
-        note.tags = normalizeModelUserTags(tags);
-        QStringList customTriggers;
-        const QJsonArray triggerArr = obj.value("customTriggers").toArray();
-        for (const QJsonValue &val : triggerArr) customTriggers.append(val.toString());
-        note.customTriggers = normalizeModelCustomTriggers(customTriggers);
-        if (!filePath.isEmpty()) modelUserNotes.insert(filePath, note);
-    }
+    modelUserNotes = ModelUserDataStore::loadUserNotes(modelUserNotesPath());
 }
 
 void MainWindow::saveModelUserNotes() const
 {
-    const QString configDir = qApp->applicationDirPath() + "/config";
-    QDir().mkpath(configDir);
-
-    QJsonObject root;
-    for (auto it = modelUserNotes.cbegin(); it != modelUserNotes.cend(); ++it) {
-        const ModelUserNote &note = it.value();
-        if (note.rating <= 0.0 && note.note.trimmed().isEmpty() && note.tags.isEmpty() && note.customTriggers.isEmpty()) continue;
-
-        QJsonObject obj;
-        obj["rating"] = note.rating;
-        obj["note"] = note.note;
-        obj["updatedAt"] = note.updatedAt;
-        QJsonArray tags;
-        for (const QString &tag : note.tags) tags.append(tag);
-        obj["tags"] = tags;
-        QJsonArray triggers;
-        for (const QString &trigger : note.customTriggers) triggers.append(trigger);
-        obj["customTriggers"] = triggers;
-        root.insert(it.key(), obj);
-    }
-
-    QSaveFile file(modelUserNotesPath());
-    if (!file.open(QIODevice::WriteOnly)) return;
-    file.write(QJsonDocument(root).toJson());
-    file.commit();
+    ModelUserDataStore::saveUserNotes(modelUserNotesPath(), modelUserNotes);
 }
 
 QString MainWindow::formatModelRating(double rating) const
 {
-    if (rating <= 0.0) return AppText::tr("未评分");
-    return QString("%1 / 5").arg(rating, 0, 'f', (std::fmod(rating, 1.0) == 0.0) ? 0 : 1);
+    return ModelUserDataStore::formatRating(rating, AppText::tr("未评分"));
 }
 
 QString MainWindow::formatModelUserNoteTooltip(const QString &filePath, const QString &baseTooltip) const
 {
-    QStringList lines;
-    if (!baseTooltip.trimmed().isEmpty()) lines << baseTooltip.trimmed();
-
     const QString key = QFileInfo(filePath).absoluteFilePath();
-    const ModelUserNote note = modelUserNotes.value(key);
-    if (note.rating > 0.0) lines << "评分: " + formatModelRating(note.rating);
-    if (!note.tags.isEmpty()) lines << "标签: " + note.tags.join(", ");
-    if (!note.customTriggers.isEmpty()) lines << "自定义触发词: " + note.customTriggers.join(" | ");
-    QString noteText = note.note.simplified();
-    if (!noteText.isEmpty()) {
-        if (noteText.size() > 120) noteText = noteText.left(117) + "...";
-        lines << "备注: " + noteText;
-    }
-    return lines.join("\n");
+    return ModelUserDataStore::formatUserNoteTooltip(modelUserNotes.value(key), baseTooltip, AppText::tr("未评分"));
 }
 
 void MainWindow::applyModelUserNoteData(QListWidgetItem *item)
@@ -3841,16 +3373,7 @@ void MainWindow::removeUserTagsForItems(const QList<QListWidgetItem*> &items, co
 
 void MainWindow::saveModelSyncFailures() const
 {
-    const QString configDir = qApp->applicationDirPath() + "/config";
-    QDir().mkpath(configDir);
-    QSaveFile file(modelSyncFailurePath());
-    if (!file.open(QIODevice::WriteOnly)) return;
-    QJsonObject root;
-    for (auto it = modelSyncFailures.cbegin(); it != modelSyncFailures.cend(); ++it) {
-        root.insert(QFileInfo(it.key()).absoluteFilePath(), it.value());
-    }
-    file.write(QJsonDocument(root).toJson());
-    file.commit();
+    ModelUserDataStore::saveSyncFailures(modelSyncFailurePath(), modelSyncFailures);
 }
 
 void MainWindow::recordModelSyncFailure(const QString &filePath, const QString &baseName, const QString &error)
@@ -3864,13 +3387,9 @@ void MainWindow::recordModelSyncFailure(const QString &filePath, const QString &
     obj["failedAt"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     modelSyncFailures.insert(key, obj);
     saveModelSyncFailures();
-    for (int i = 0; i < ui->modelList->count(); ++i) {
-        QListWidgetItem *item = ui->modelList->item(i);
-        if (item && QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath() == key) {
-            item->setData(ROLE_SYNC_FAILED, true);
-            item->setData(ROLE_SYNC_ERROR, error);
-            break;
-        }
+    if (QListWidgetItem *item = findModelItemByFilePath(key)) {
+        item->setData(ROLE_SYNC_FAILED, true);
+        item->setData(ROLE_SYNC_ERROR, error);
     }
 }
 
@@ -3879,13 +3398,9 @@ void MainWindow::clearModelSyncFailure(const QString &filePath)
     const QString key = QFileInfo(filePath).absoluteFilePath();
     if (key.isEmpty()) return;
     if (modelSyncFailures.remove(key)) saveModelSyncFailures();
-    for (int i = 0; i < ui->modelList->count(); ++i) {
-        QListWidgetItem *item = ui->modelList->item(i);
-        if (item && QFileInfo(item->data(ROLE_FILE_PATH).toString()).absoluteFilePath() == key) {
-            item->setData(ROLE_SYNC_FAILED, false);
-            item->setData(ROLE_SYNC_ERROR, QString());
-            break;
-        }
+    if (QListWidgetItem *item = findModelItemByFilePath(key)) {
+        item->setData(ROLE_SYNC_FAILED, false);
+        item->setData(ROLE_SYNC_ERROR, QString());
     }
 }
 
@@ -10168,7 +9683,7 @@ void MainWindow::applyApplicationTheme(const QString &themeId, const QString &cu
                                                                             : Qt::ColorScheme::Dark);
     }
 
-    const ThemeBundle bundle = loadThemeBundle(themeId, customPath);
+    const AppStyle::ThemeBundle bundle = AppStyle::loadThemeBundle(themeId, customPath);
     qApp->setStyleSheet(bundle.dialogQss);
     setStyleSheet(bundle.mainQss);
     currentToolPageQss = bundle.toolQss;
@@ -10180,7 +9695,7 @@ void MainWindow::applyApplicationTheme(const QString &themeId, const QString &cu
         settingsPage->setThemeStatus(bundle.status);
     }
     if (updateStatus && ui && ui->statusbar) {
-        ui->statusbar->showMessage(bundle.ok ? AppText::tr("已应用主题：%1").arg(themeDisplayName(themeId)) : bundle.status, 2500);
+        ui->statusbar->showMessage(bundle.ok ? AppText::tr("已应用主题：%1").arg(AppStyle::themeDisplayName(themeId)) : bundle.status, 2500);
     }
 }
 
@@ -10188,8 +9703,8 @@ void MainWindow::applyActivePaletteToUi()
 {
     // 用「当前活动调色板」重建所有 QSS 并刷新（不切 colorScheme，供编辑器实时预览）。
     // 活动调色板已由调用方通过 AppStyle::setActivePalette() 指定。
-    qApp->setStyleSheet(loadQssResource(":/styles/dialog.qss"));
-    setStyleSheet(loadQssResource(":/styles/mainwindow.qss"));
+    qApp->setStyleSheet(AppStyle::loadQss(":/styles/dialog.qss"));
+    setStyleSheet(AppStyle::loadQss(":/styles/mainwindow.qss"));
     currentToolPageQss = AppStyle::loadToolPageQss();
     refreshLoadedToolPageThemes();
     recolorPlaceholderItems(); // 编辑器预览时也重染占位X
@@ -10229,7 +9744,7 @@ void MainWindow::onThemeSaved(const QString &themeId)
 
 void MainWindow::onThemeDeleteRequested(const QString &themeId)
 {
-    const QString name = themeDisplayName(themeId);
+    const QString name = AppStyle::themeDisplayName(themeId);
     if (QMessageBox::question(this, AppText::tr("删除主题 / Delete Theme"),
                               AppText::tr("确定删除自定义主题“%1”吗？此操作不可撤销。").arg(name))
         != QMessageBox::Yes)
@@ -11510,111 +11025,13 @@ void MainWindow::loadUserGalleryCache() {
         resumePendingUserGalleryScan();
     });
     watcher->setFuture(QtConcurrent::run(backgroundThreadPool, [cachePath, splitOnNewline, filterTags]() {
-        QMap<QString, UserImageInfo> result;
-        QFile file(cachePath);
-        if (!file.open(QIODevice::ReadOnly)) return result;
-        QJsonParseError error;
-        const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &error);
-        if (error.error != QJsonParseError::NoError || !doc.isObject()) {
-            qWarning() << "Invalid user gallery cache JSON:" << error.errorString();
-            return result;
-        }
-        const QJsonObject root = doc.object();
-        for (auto it = root.begin(); it != root.end(); ++it) {
-            if (!it.value().isObject()) continue;
-            const QJsonObject obj = it.value().toObject();
-            UserImageInfo info;
-            info.path = it.key();
-            info.prompt = obj["p"].toString();
-            info.negativePrompt = obj["np"].toString();
-            info.parameters = obj["param"].toString();
-            info.lastModified = obj["t"].toVariant().toLongLong();
-            info.parserVersion = obj.value("pv").toInt(0);
-            info.cleanTags = TagUtils::parsePromptTags(info.prompt, splitOnNewline, filterTags);
-            info.negativeCleanTags = TagUtils::parsePromptTags(info.negativePrompt, splitOnNewline, filterTags);
-            info.checkpointName = obj.value("ckpt").toString();
-            info.checkpointHash = obj.value("ckpt_h").toString();
-            info.isComfy = obj.value("comfy").toBool(false);
-            if (obj.contains("loras") && obj["loras"].isArray()) {
-                const QJsonArray lorasArr = obj["loras"].toArray();
-                info.parsedLoras.reserve(lorasArr.size());
-                for (const QJsonValue &v : lorasArr) {
-                    const QJsonObject lo = v.toObject();
-                    ParsedLoraEntry entry;
-                    entry.name = lo.value("n").toString();
-                    entry.hash = lo.value("h").toString();
-                    entry.weight = lo.value("w").toString();
-                    if (!entry.name.isEmpty()) info.parsedLoras.append(entry);
-                }
-            }
-            if (obj.contains("extra_lh") && obj["extra_lh"].isArray()) {
-                const QJsonArray extraArr = obj["extra_lh"].toArray();
-                info.extraLoraHashes.reserve(extraArr.size());
-                for (const QJsonValue &v : extraArr) {
-                    const QString h = v.toString().trimmed();
-                    if (!h.isEmpty()) info.extraLoraHashes.append(h);
-                }
-            }
-            if (obj.value("pm").toBool(false)) {
-                info.parsedModelsReady = true;
-            } else {
-                GalleryMetadata::populateParsedModelFields(info);
-            }
-            result.insert(info.path, info);
-        }
-        return result;
+        return UserGalleryCache::load(cachePath, splitOnNewline, filterTags);
     }));
 }
 
 // 保存缓存
 void MainWindow::saveUserGalleryCache() {
-    QString configDir = qApp->applicationDirPath() + "/config";
-    QDir().mkpath(configDir);
-
-    QJsonObject root;
-    // 遍历当前的 imageCache
-    for (auto it = imageCache.begin(); it != imageCache.end(); ++it) {
-        UserImageInfo info = it.value();
-        if (!info.parsedModelsReady) {
-            GalleryMetadata::populateParsedModelFields(info);
-        }
-        QJsonObject obj;
-        obj["p"] = info.prompt;
-        obj["np"] = info.negativePrompt;
-        obj["param"] = info.parameters;
-        obj["t"] = QString::number(info.lastModified); // 存为字符串避免精度问题
-        obj["pv"] = info.parserVersion;
-        if (!info.checkpointName.isEmpty()) obj["ckpt"] = info.checkpointName;
-        if (!info.checkpointHash.isEmpty()) obj["ckpt_h"] = info.checkpointHash;
-        if (info.isComfy) obj["comfy"] = true;
-        if (!info.parsedLoras.isEmpty()) {
-            QJsonArray lorasArr;
-            for (const ParsedLoraEntry &entry : info.parsedLoras) {
-                QJsonObject lo;
-                lo["n"] = entry.name;
-                if (!entry.hash.isEmpty()) lo["h"] = entry.hash;
-                if (!entry.weight.isEmpty()) lo["w"] = entry.weight;
-                lorasArr.append(lo);
-            }
-            obj["loras"] = lorasArr;
-        }
-        if (!info.extraLoraHashes.isEmpty()) {
-            QJsonArray extraArr;
-            for (const QString &h : info.extraLoraHashes) extraArr.append(h);
-            obj["extra_lh"] = extraArr;
-        }
-        if (info.parsedModelsReady) obj["pm"] = true;
-
-        root.insert(info.path, obj);
-    }
-
-    QSaveFile file(configDir + "/user_gallery_cache.json");
-    const QByteArray payload = QJsonDocument(root).toJson(QJsonDocument::Compact);
-    if (!file.open(QIODevice::WriteOnly)
-        || file.write(payload) != payload.size()
-        || !file.commit()) {
-        qWarning() << "Unable to save user gallery cache atomically:" << file.errorString();
-    }
+    UserGalleryCache::save(qApp->applicationDirPath() + "/config/user_gallery_cache.json", imageCache);
 }
 
 void MainWindow::updateModelListNames()

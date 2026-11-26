@@ -204,9 +204,49 @@ QList<ThemeInfo> availableThemes()
 
 QString themeDisplayName(const QString &themeId)
 {
+    if (themeId == QLatin1String("custom_qss")) return QStringLiteral("Custom QSS");
     ensureInit();
     const ThemeEntry *e = registry().value(themeId, nullptr);
     return e ? e->displayName : themeId;
+}
+
+ThemeBundle loadThemeBundle(const QString &themeId, const QString &customPath)
+{
+    ThemeBundle bundle;
+
+    // 先切换活动调色板，再加载/替换 QSS——base/main/tool/dialog 会直接被染成目标主题，
+    // 不再需要零散的 themes/*_main.qss / *_tool.qss 覆盖文件。
+    setActiveTheme(themeId);
+
+    const QString baseMain = loadQss(QStringLiteral(":/styles/mainwindow.qss"));
+    const QString baseTool = loadToolPageQss(); // base.qss + toolpage.qss
+    const QString baseDialog = loadQss(QStringLiteral(":/styles/dialog.qss"));
+
+    if (themeId == QLatin1String("custom_qss")) {
+        QFile file(customPath);
+        if (!customPath.trimmed().isEmpty() && file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            const QString customQss = applyTokens(QString::fromUtf8(file.readAll()));
+            bundle.mainQss = baseMain + QLatin1Char('\n') + customQss;
+            bundle.toolQss = baseTool + QLatin1Char('\n') + customQss;
+            bundle.dialogQss = baseDialog + QLatin1Char('\n') + customQss;
+            bundle.status = QStringLiteral("当前主题：Custom QSS (%1)").arg(QFileInfo(customPath).fileName());
+            bundle.ok = true;
+            return bundle;
+        }
+        bundle.mainQss = baseMain;
+        bundle.toolQss = baseTool;
+        bundle.dialogQss = baseDialog;
+        bundle.status = QStringLiteral("自定义 QSS 读取失败，已保留 Steam Dark。");
+        bundle.ok = false;
+        return bundle;
+    }
+
+    bundle.mainQss = baseMain;
+    bundle.toolQss = baseTool;
+    bundle.dialogQss = baseDialog;
+    bundle.status = QStringLiteral("当前主题：%1").arg(themeDisplayName(themeId));
+    bundle.ok = true;
+    return bundle;
 }
 
 QString themeColorScheme(const QString &themeId)

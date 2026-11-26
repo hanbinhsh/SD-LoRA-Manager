@@ -21,6 +21,16 @@ struct ThemeInfo {
     QString scheme = QStringLiteral("dark"); // 窗口基调："light" 或 "dark"（决定 colorScheme）
 };
 
+struct ThemeBundle {
+    QString mainQss;
+    QString toolQss;
+    QString dialogQss;
+    QString status;
+    bool ok = true;
+};
+
+ThemeBundle loadThemeBundle(const QString &themeId, const QString &customPath);
+
 // 默认(Steam Dark)全量调色板，作为缺省回退基底。
 const QHash<QString, QString> &defaultPalette();
 // 指定主题的全量调色板（未知 id / custom_qss 回退 Steam Dark）。
