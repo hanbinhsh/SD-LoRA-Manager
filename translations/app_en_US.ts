@@ -6262,5 +6262,131 @@ Continue?</translation>
       <source>，清理空目录 %1 个</source>
       <translation>, removed %1 empty folder(s)</translation>
     </message>
+    <message>
+      <source>手机图库同步</source>
+      <translation>Mobile Gallery Sync</translation>
+    </message>
+    <message>
+      <source>文件夹同步</source>
+      <translation>Folder Sync</translation>
+    </message>
+    <message>
+      <source>启动软件时自动开启同步</source>
+      <translation>Auto-start sync on launch</translation>
+    </message>
+    <message>
+      <source>白名单验证</source>
+      <translation>Whitelist verification</translation>
+    </message>
+    <message>
+      <source>端口:</source>
+      <translation>Port:</translation>
+    </message>
+    <message>
+      <source>AES 密钥:</source>
+      <translation>AES Key:</translation>
+    </message>
+    <message>
+      <source>启动服务</source>
+      <translation>Start Service</translation>
+    </message>
+    <message>
+      <source>停止服务</source>
+      <translation>Stop Service</translation>
+    </message>
+    <message>
+      <source>同步文件夹列表</source>
+      <translation>Sync Folders</translation>
+    </message>
+    <message>
+      <source>添加文件夹</source>
+      <translation>Add Folder</translation>
+    </message>
+    <message>
+      <source>待审核设备</source>
+      <translation>Pending Approval</translation>
+    </message>
+    <message>
+      <source>已许可白名单</source>
+      <translation>Permitted</translation>
+    </message>
+    <message>
+      <source>已连接设备</source>
+      <translation>Connected</translation>
+    </message>
+    <message>
+      <source>服务日志</source>
+      <translation>Service Log</translation>
+    </message>
+    <message>
+      <source>文件夹路径</source>
+      <translation>Folder Paths</translation>
+    </message>
+    <message>
+      <source>互换</source>
+      <translation>Swap</translation>
+    </message>
+    <message>
+      <source>同步方式</source>
+      <translation>Sync Mode</translation>
+    </message>
+    <message>
+      <source>自动同步</source>
+      <translation>Auto Sync</translation>
+    </message>
+    <message>
+      <source>监听文件夹变化并在检测到变动时自动执行同步</source>
+      <translation>Watch folders for changes and sync automatically</translation>
+    </message>
+    <message>
+      <source>开始同步</source>
+      <translation>Start Sync</translation>
+    </message>
+    <message>
+      <source>同步预览与日志</source>
+      <translation>Sync Preview &amp; Log</translation>
+    </message>
+    <message>
+      <source>两个目录已一致，无需传输任何文件。</source>
+      <translation>Both folders are already up to date; nothing to transfer.</translation>
+    </message>
+    <message>
+      <source>开始同步：%1 -&gt; %2（共 %3 个待处理文件，%4）</source>
+      <translation>Starting sync: %1 -&gt; %2 (%3 pending file(s), %4)</translation>
+    </message>
+    <message>
+      <source>[自动同步] 检测到变更：%1 -&gt; %2（共 %3 个待处理文件，%4）</source>
+      <translation>[Auto Sync] Changes detected: %1 -&gt; %2 (%3 pending file(s), %4)</translation>
+    </message>
+    <message>
+      <source>已请求取消同步，等待当前文件处理完成...</source>
+      <translation>Cancellation requested; waiting for current file to finish...</translation>
+    </message>
+    <message>
+      <source>已关闭自动同步。</source>
+      <translation>Auto sync disabled.</translation>
+    </message>
+    <message>
+      <source>确认开启自动移动同步</source>
+      <translation>Confirm Auto Move Sync</translation>
+    </message>
+    <message>
+      <source>开启“单向移动”自动同步后，文件夹 A 中新增或变动的文件将自动移动到文件夹 B 并移除源文件。
+确定开启吗？</source>
+      <translation>With One-way Move auto sync enabled, new or modified files in Folder A will be automatically moved to Folder B and removed from A.
+Enable it?</translation>
+    </message>
+    <message>
+      <source>已开启自动同步监听（双向）：%1 ⇄ %2</source>
+      <translation>Auto sync watch enabled (two-way): %1 ⇄ %2</translation>
+    </message>
+    <message>
+      <source>已开启自动同步监听：%1 → %2</source>
+      <translation>Auto sync watch enabled: %1 → %2</translation>
+    </message>
+    <message>
+      <source>路径无效，已自动关闭自动同步。</source>
+      <translation>Invalid folder path; auto sync has been disabled.</translation>
+    </message>
   </context>
 </TS>

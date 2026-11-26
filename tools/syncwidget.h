@@ -54,6 +54,8 @@ private slots:
     void onCancelFolderSync();
     void onClearFolderSyncLog();
     void onFolderSyncFinished();
+    void onAutoFolderSyncToggled(bool checked);
+    void onFolderAutoDirectoryChanged(const QString &path);
 
 private:
     Ui::SyncWidget *ui;
@@ -77,13 +79,23 @@ private:
 
     // 文件夹同步状态
     QFutureWatcher<FolderSyncResult> *m_folderSyncWatcher = nullptr;
+    QFileSystemWatcher *m_folderAutoWatcher = nullptr;
+    QTimer *m_folderAutoDebounceTimer = nullptr;
+    QTimer *m_folderAutoCooldownTimer = nullptr;
     std::shared_ptr<std::atomic_bool> m_folderSyncCancelFlag;
     bool m_folderSyncRunning = false;
+    bool m_folderAutoSuppressWatchEvents = false;
+    bool m_folderSyncLastRunWasAuto = false;
 
     FolderSyncMode currentFolderSyncMode() const;
     void updateFolderSyncModeHint();
     void setFolderSyncUiBusy(bool busy);
     void logFolderSyncMsg(const QString &msg);
+    void triggerFolderSync(bool isAuto);
+    bool startFolderAutoWatch(bool showWarningDialog = false);
+    void stopFolderAutoWatch();
+    void addFolderAutoWatchTree(const QString &rootPath);
+    void refreshFolderAutoWatchIfEnabled();
 
     // 动态生成带按钮的列表项的辅助函数
     void addFolderItem(const QString &path);

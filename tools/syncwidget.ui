@@ -11,17 +11,20 @@
    </rect>
   </property>
   <layout class="QVBoxLayout" name="rootSyncLayout">
+   <property name="spacing">
+    <number>10</number>
+   </property>
    <property name="leftMargin">
-    <number>6</number>
+    <number>18</number>
    </property>
    <property name="topMargin">
-    <number>6</number>
+    <number>18</number>
    </property>
    <property name="rightMargin">
-    <number>6</number>
+    <number>18</number>
    </property>
    <property name="bottomMargin">
-    <number>6</number>
+    <number>18</number>
    </property>
    <item>
     <widget class="QTabWidget" name="syncTabWidget">
@@ -30,29 +33,44 @@
      </property>
      <widget class="QWidget" name="tabMobileSync">
       <attribute name="title">
-       <string>📱 手机图库同步 / Mobile Sync</string>
+       <string>手机图库同步</string>
       </attribute>
       <layout class="QGridLayout" name="gridLayout">
+       <property name="leftMargin">
+        <number>12</number>
+       </property>
+       <property name="topMargin">
+        <number>12</number>
+       </property>
+       <property name="rightMargin">
+        <number>12</number>
+       </property>
+       <property name="bottomMargin">
+        <number>12</number>
+       </property>
+       <property name="spacing">
+        <number>10</number>
+       </property>
        <item row="0" column="0">
         <layout class="QHBoxLayout" name="horizontalLayout">
          <item>
           <widget class="QCheckBox" name="chkAutoStart">
            <property name="text">
-            <string>启动软件时自动开启同步 / Auto Start</string>
+            <string>启动软件时自动开启同步</string>
            </property>
           </widget>
          </item>
          <item>
           <widget class="QCheckBox" name="chkWhitelist">
            <property name="text">
-            <string>白名单验证 / Whitelist</string>
+            <string>白名单验证</string>
            </property>
           </widget>
          </item>
          <item>
           <widget class="QLabel" name="label">
            <property name="text">
-            <string>端口 / Port:</string>
+            <string>端口:</string>
            </property>
           </widget>
          </item>
@@ -72,7 +90,7 @@
          <item>
           <widget class="QLabel" name="label_2">
            <property name="text">
-            <string>AES Key:</string>
+            <string>AES 密钥:</string>
            </property>
           </widget>
          </item>
@@ -115,7 +133,7 @@
          <item>
           <widget class="QPushButton" name="btnStart">
            <property name="text">
-            <string>▶ 启动服务 / Start</string>
+            <string>启动服务</string>
            </property>
           </widget>
          </item>
@@ -138,7 +156,7 @@
            <item>
             <widget class="QGroupBox" name="groupBox">
              <property name="title">
-              <string>同步文件夹列表 / Sync Folders:</string>
+              <string>同步文件夹列表</string>
              </property>
              <layout class="QVBoxLayout" name="verticalLayout">
               <property name="leftMargin">
@@ -168,7 +186,7 @@
              <item>
               <widget class="QPushButton" name="btnAddFolder">
                <property name="text">
-                <string>添加文件夹 / Add</string>
+                <string>添加文件夹</string>
                </property>
               </widget>
              </item>
@@ -181,7 +199,7 @@
            <item>
             <widget class="QGroupBox" name="groupBox_2">
              <property name="title">
-              <string>待审核设备 / Pending Approval:</string>
+              <string>待审核设备</string>
              </property>
              <layout class="QVBoxLayout" name="verticalLayout_5">
               <property name="spacing">
@@ -208,7 +226,7 @@
            <item>
             <widget class="QGroupBox" name="groupBox_3">
              <property name="title">
-              <string>已许可白名单 / Permitted:</string>
+              <string>已许可白名单</string>
              </property>
              <layout class="QVBoxLayout" name="verticalLayout_6">
               <property name="spacing">
@@ -235,7 +253,7 @@
            <item>
             <widget class="QGroupBox" name="groupBox_4">
              <property name="title">
-              <string>已连接设备 / Connected:</string>
+              <string>已连接设备</string>
              </property>
              <layout class="QVBoxLayout" name="verticalLayout_7">
               <property name="spacing">
@@ -266,7 +284,7 @@
            <item>
             <widget class="QGroupBox" name="groupBox_5">
              <property name="title">
-              <string>服务日志 / Log:</string>
+              <string>服务日志</string>
              </property>
              <layout class="QVBoxLayout" name="verticalLayout_8">
               <property name="spacing">
@@ -302,16 +320,28 @@
      </widget>
      <widget class="QWidget" name="tabFolderSync">
       <attribute name="title">
-       <string>📁 文件夹同步 / Folder Sync</string>
+       <string>文件夹同步</string>
       </attribute>
       <layout class="QVBoxLayout" name="folderSyncMainLayout">
        <property name="spacing">
         <number>10</number>
        </property>
+       <property name="leftMargin">
+        <number>12</number>
+       </property>
+       <property name="topMargin">
+        <number>12</number>
+       </property>
+       <property name="rightMargin">
+        <number>12</number>
+       </property>
+       <property name="bottomMargin">
+        <number>12</number>
+       </property>
        <item>
         <widget class="QGroupBox" name="groupFolderSyncPaths">
          <property name="title">
-          <string>文件夹路径 / Folder Paths</string>
+          <string>文件夹路径</string>
          </property>
          <layout class="QGridLayout" name="folderPathsGridLayout">
           <property name="horizontalSpacing">
@@ -353,7 +383,7 @@
              <string>互换文件夹 A 与文件夹 B 的路径</string>
             </property>
             <property name="text">
-             <string>⇄ 互换</string>
+             <string>互换</string>
             </property>
            </widget>
           </item>
@@ -387,7 +417,7 @@
        <item>
         <widget class="QGroupBox" name="groupFolderSyncMode">
          <property name="title">
-          <string>同步方式 / Sync Mode</string>
+          <string>同步方式</string>
          </property>
          <layout class="QVBoxLayout" name="folderModeLayout">
           <property name="spacing">
@@ -445,6 +475,16 @@
               </property>
              </widget>
             </item>
+            <item>
+             <widget class="QCheckBox" name="chkAutoFolderSync">
+              <property name="toolTip">
+               <string>监听文件夹变化并在检测到变动时自动执行同步</string>
+              </property>
+              <property name="text">
+               <string>自动同步</string>
+              </property>
+             </widget>
+            </item>
            </layout>
           </item>
           <item>
@@ -481,7 +521,7 @@
             <cursorShape>PointingHandCursor</cursorShape>
            </property>
            <property name="text">
-            <string>▶ 开始同步</string>
+            <string>开始同步</string>
            </property>
           </widget>
          </item>
@@ -545,7 +585,7 @@
           </sizepolicy>
          </property>
          <property name="title">
-          <string>同步预览与日志 / Sync Log</string>
+          <string>同步预览与日志</string>
          </property>
          <layout class="QVBoxLayout" name="folderLogLayout">
           <property name="spacing">
