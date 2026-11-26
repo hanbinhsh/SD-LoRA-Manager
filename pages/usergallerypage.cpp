@@ -95,6 +95,7 @@ UserGalleryPage::UserGalleryPage(QWidget *parent)
     m_tagFlowWidget->setAttribute(Qt::WA_TranslucentBackground);
     ui->scrollAreaTags->viewport()->setAutoFillBackground(false);
     ui->scrollAreaTags->setWidget(m_tagFlowWidget);
+    ui->tagFlowContainer = nullptr; // setWidget() deletes the Designer placeholder widget
     ui->scrollAreaTags->viewport()->setAutoFillBackground(false);
     connect(ui->scrollAreaTags->verticalScrollBar(), &QScrollBar::valueChanged,
             ui->scrollAreaTags->viewport(), [this]() {
@@ -1002,7 +1003,6 @@ void UserGalleryPage::setupPromptToolbar()
     installAntiScrollLeak(m_negTagWidget);
     installAntiScrollLeak(m_tagFlowWidget);
     if (ui->galleryPromptTagsContent) ui->galleryPromptTagsContent->installEventFilter(this);
-    if (ui->tagFlowContainer) ui->tagFlowContainer->installEventFilter(this);
     if (ui->galleryParamsChipContainer) ui->galleryParamsChipContainer->installEventFilter(this);
     if (ui->lblGalleryParamsPlain) ui->lblGalleryParamsPlain->installEventFilter(this);
 
