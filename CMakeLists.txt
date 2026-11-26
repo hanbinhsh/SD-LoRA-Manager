@@ -1,5 +1,70 @@
 cmake_minimum_required(VERSION 3.19)
+
+# Guard against Qt Creator auto-selecting an older clang-cl (< 20, e.g. libclang 17)
+# for newly created Qt 6.x MSVC Kits when Visual Studio 2026 / MSVC 14.50+ STL is installed
+# (which requires Clang 20+ or native MSVC cl.exe; otherwise fails with STL1000 / __builtin_verbose_trap).
+if(WIN32 AND DEFINED CMAKE_CXX_COMPILER AND CMAKE_CXX_COMPILER MATCHES "clang-cl(\\.exe)?$")
+    execute_process(
+        COMMAND "${CMAKE_CXX_COMPILER}" --version
+        OUTPUT_VARIABLE _sdlm_clang_ver_out
+        ERROR_VARIABLE _sdlm_clang_ver_err
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_STRIP_TRAILING_WHITESPACE
+    )
+    set(_sdlm_clang_major "")
+    if(_sdlm_clang_ver_out MATCHES "clang version ([0-9]+)\\.")
+        set(_sdlm_clang_major "${CMAKE_MATCH_1}")
+    endif()
+    if(_sdlm_clang_major AND _sdlm_clang_major LESS 20)
+        find_program(_sdlm_msvc_cl NAMES cl.exe)
+        if(NOT _sdlm_msvc_cl AND DEFINED ENV{VCToolsInstallDir})
+            find_program(_sdlm_msvc_cl NAMES cl.exe
+                PATHS "$ENV{VCToolsInstallDir}/bin/Hostx64/x64" "$ENV{VCToolsInstallDir}/bin/Hostx86/x64"
+                NO_DEFAULT_PATH)
+        endif()
+        if(_sdlm_msvc_cl)
+            message(STATUS
+                "[SD_LoRA_Manager] Detected clang-cl ${_sdlm_clang_major} (${CMAKE_CXX_COMPILER}), "
+                "which is incompatible with MSVC 14.50+ STL. Automatically switching compiler to MSVC: ${_sdlm_msvc_cl}")
+            set(CMAKE_CXX_COMPILER "${_sdlm_msvc_cl}" CACHE FILEPATH "C++ compiler" FORCE)
+            if(DEFINED CMAKE_C_COMPILER AND CMAKE_C_COMPILER MATCHES "clang-cl(\\.exe)?$")
+                set(CMAKE_C_COMPILER "${_sdlm_msvc_cl}" CACHE FILEPATH "C compiler" FORCE)
+            endif()
+            foreach(_sdlm_stale_var
+                CMAKE_CXX_COMPILER_AR
+                CMAKE_CXX_COMPILER_RANLIB
+                CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS
+                CMAKE_C_COMPILER_AR
+                CMAKE_C_COMPILER_RANLIB
+                CMAKE_C_COMPILER_CLANG_SCAN_DEPS
+                CMAKE_LINKER
+                CMAKE_MT
+                CMAKE_RC_COMPILER)
+                if(DEFINED ${_sdlm_stale_var} AND (${_sdlm_stale_var} MATCHES "NOTFOUND$" OR ${_sdlm_stale_var} MATCHES "(libclang|llvm-)"))
+                    unset(${_sdlm_stale_var} CACHE)
+                endif()
+            endforeach()
+        else()
+            message(FATAL_ERROR
+                "Incompatible compiler detected: ${CMAKE_CXX_COMPILER} (Clang ${_sdlm_clang_major} < 20) "
+                "cannot compile with MSVC 14.50+ (VS 2026) STL headers (STL1000 / __builtin_verbose_trap), "
+                "and MSVC cl.exe was not found in PATH.\n"
+                "Fix in Qt Creator: Edit -> Preferences -> Kits -> select your Qt 6.x MSVC2022 64bit Kit -> "
+                "change both C and C++ compilers from clang-cl to \"Microsoft Visual C++ Compiler (amd64)\", "
+                "then clear CMake configuration and rebuild.")
+        endif()
+    endif()
+endif()
+
 project(SD_LoRA_Manager LANGUAGES CXX)
+
+if(WIN32 AND MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "20")
+    message(FATAL_ERROR
+        "Compiler ${CMAKE_CXX_COMPILER} (Clang ${CMAKE_CXX_COMPILER_VERSION}) is incompatible with MSVC 14.50+ STL "
+        "(requires Clang 20+ or native MSVC cl.exe).\n"
+        "Switch the Qt Creator Kit C/C++ compiler to \"Microsoft Visual C++ Compiler (amd64)\" (cl.exe), "
+        "delete the stale CMakeCache.txt / clear CMake configuration, and reconfigure.")
+endif()
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network Concurrent LinguistTools)
 
