@@ -12,23 +12,14 @@
 #include <utility>
 
 namespace {
-QStringList readPathList(const QJsonObject &obj, const QString &arrayKey, const QStringList &fallbackKeys)
+QStringList readPathList(const QJsonObject &obj, const QString &arrayKey)
 {
     QStringList out;
-    if (obj.contains(arrayKey) && obj[arrayKey].isArray()) {
-        const QJsonArray arr = obj[arrayKey].toArray();
-        for (const QJsonValue &val : arr) {
-            const QString path = val.toString().trimmed();
-            if (!path.isEmpty()) out.append(path);
-        }
-        return out;
-    }
-    for (const QString &key : fallbackKeys) {
-        const QString val = obj.value(key).toString().trimmed();
-        if (!val.isEmpty()) {
-            out.append(val);
-            break;
-        }
+    if (!obj.contains(arrayKey) || !obj[arrayKey].isArray()) return out;
+    const QJsonArray arr = obj[arrayKey].toArray();
+    for (const QJsonValue &val : arr) {
+        const QString path = val.toString().trimmed();
+        if (!path.isEmpty()) out.append(path);
     }
     return out;
 }
@@ -107,11 +98,9 @@ AppConfigData load(const QString &configPath)
     }
 
     const QJsonObject &root = data.rawRoot;
-    data.paths.loraPaths = readPathList(root, QStringLiteral("lora_paths"), {QStringLiteral("lora_path")});
-    data.paths.galleryPaths = readPathList(
-        root, QStringLiteral("gallery_paths"), {QStringLiteral("gallery_path"), QStringLiteral("sd_folder")});
-    data.paths.translationCsvPaths = readPathList(
-        root, QStringLiteral("translation_paths"), {QStringLiteral("translation_path")});
+    data.paths.loraPaths = readPathList(root, QStringLiteral("lora_paths"));
+    data.paths.galleryPaths = readPathList(root, QStringLiteral("gallery_paths"));
+    data.paths.translationCsvPaths = readPathList(root, QStringLiteral("translation_paths"));
     data.paths.disabledLoraPaths = readPathSet(root, QStringLiteral("lora_paths_disabled"));
     data.paths.disabledGalleryPaths = readPathSet(root, QStringLiteral("gallery_paths_disabled"));
     data.paths.disabledTranslationCsvPaths = readPathSet(root, QStringLiteral("translation_paths_disabled"));
@@ -183,13 +172,10 @@ bool save(const QString &configPath, const AppConfigSaveInput &input)
     root[QStringLiteral("gallery_paths_disabled")] = toJsonArray(input.paths.disabledGalleryPaths);
     root[QStringLiteral("translation_paths_disabled")] = toJsonArray(input.paths.disabledTranslationCsvPaths);
     root[QStringLiteral("model_list_collapsed_folders")] = toJsonArray(input.paths.collapsedModelFolders);
-    root[QStringLiteral("translation_path")] =
-        PathUtils::collectEnabledPaths(input.paths.translationCsvPaths, input.paths.disabledTranslationCsvPaths).value(0);
 
     if (input.writeSettings) {
         input.writeSettings(root);
     }
-    root.remove(QStringLiteral("model_switch_delay_ms"));
 
     if (input.windowSize.isValid()) {
         root[QStringLiteral("window_width")] = input.windowSize.width();

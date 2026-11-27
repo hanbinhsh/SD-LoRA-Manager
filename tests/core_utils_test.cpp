@@ -856,6 +856,12 @@ void testInspection(const QTemporaryDir &dir)
           && loadedImg.cleanTags.contains("blue_hair") && !loadedImg.cleanTags.contains("BREAK"),
           "user gallery cache round-trip preserves metadata and filters tags");
 
+    const QString legacyGalleryCachePath = dir.filePath("store/legacy_user_gallery_cache.json");
+    writeFile(legacyGalleryCachePath,
+              R"({"legacy.png":{"p":"1girl","np":"","param":"","t":"1700000123456","pv":10}})");
+    check(UserGalleryCache::load(legacyGalleryCachePath, true, {}).isEmpty(),
+          "user gallery cache ignores entries without parsed-models flag");
+
     // CivitaiClient helpers
     check(CivitaiClient::isCivitaiUrl(QUrl("https://civitai.com/api/v1/models/1"))
           && CivitaiClient::shouldUseBearerAuth(QUrl("https://civitai.com/api/v1/models/1"))
@@ -919,6 +925,7 @@ void testInspection(const QTemporaryDir &dir)
     const AppConfigData cfgOut = AppConfigStore::load(cfgPath);
     check(cfgOut.fileOpened && cfgOut.rawRoot.value("custom_keep").toInt() == 77
           && cfgOut.rawRoot.value("window_width").toInt() == 1440
+          && !cfgOut.rawRoot.contains("translation_path")
           && cfgOut.hasTreeState && cfgOut.treeState.scrollPos == 120
           && cfgOut.treeState.expandedItems.contains("Fav")
           && cfgOut.hasFilterSortState && cfgOut.filterSortState.sortIndex == 3
@@ -926,6 +933,16 @@ void testInspection(const QTemporaryDir &dir)
           && cfgOut.filterSortState.homeTagFilters.contains("anime")
           && cfgOut.filterSortState.galleryTagViewActive,
           "AppConfigStore round-trips settings, paths, tree state and filter/sort state");
+
+    const QString legacyCfgPath = dir.filePath("legacy_settings_test.json");
+    writeFile(legacyCfgPath,
+              R"({"lora_path":"C:/old_lora","gallery_path":"C:/old_gal","sd_folder":"C:/old_sd","translation_path":"C:/old.csv"})");
+    const AppConfigData legacyCfgOut = AppConfigStore::load(legacyCfgPath);
+    check(legacyCfgOut.fileOpened
+          && legacyCfgOut.paths.loraPaths.isEmpty()
+          && legacyCfgOut.paths.galleryPaths.isEmpty()
+          && legacyCfgOut.paths.translationCsvPaths.isEmpty(),
+          "AppConfigStore does not read legacy single-path keys");
 
     writeFile(cfgPath, "{broken_json");
     check(!AppConfigStore::save(cfgPath, cfgIn), "AppConfigStore refuses to overwrite malformed JSON");

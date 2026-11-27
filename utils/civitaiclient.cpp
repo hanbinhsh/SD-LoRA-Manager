@@ -46,9 +46,7 @@ QNetworkRequest makeNetworkRequest(const QUrl &url,
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::UserAgentHeader, userAgent);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
     request.setTransferTimeout(30000); // 30秒超时，防止异常挂起导致队列卡死
-#endif
     if (allowCivitaiAuth && isCivitaiUrl(url) && shouldUseBearerAuth(url)) {
         const QString key = apiKey.trimmed();
         if (!key.isEmpty()) {

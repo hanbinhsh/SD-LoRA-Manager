@@ -67,10 +67,8 @@ int main(int argc, char *argv[])
         qputenv("QT_SCALE_FACTOR", config.uiScale.toUtf8());
     }
 
-    // 允许非整数倍缩放 (例如 1.25, 1.5)，Qt 5.14+ 支持
-#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+    // 允许非整数倍缩放 (例如 1.25, 1.5)
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
-#endif
 
     // 3. 实例化 QApplication
     QApplication a(argc, argv);

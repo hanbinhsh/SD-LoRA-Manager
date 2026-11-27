@@ -16,7 +16,6 @@
 #include <QNetworkInterface>
 #include <QFile>
 #include <QSaveFile>
-#include <QSettings>
 #include <QCoreApplication>
 #include <QDir>
 #include <algorithm>
@@ -252,7 +251,6 @@ void SyncWidget::loadSettings() {
     m_isLoading = true; // 开启加载模式
 
     QJsonObject root;
-    bool migratedFromLegacy = false;
     const QString filePath = settingsPath();
 
     if (QFile::exists(filePath)) {
@@ -265,51 +263,6 @@ void SyncWidget::loadSettings() {
             } else {
                 qWarning() << "Failed to parse sync settings JSON:" << filePath << parseError.errorString();
             }
-        }
-    } else {
-        // 首次迁移：若本地尚无 config/sync_settings.json，则尝试从旧版注册表 QSettings 自动导入一次
-        QSettings legacy(QStringLiteral("IceRinne"), QStringLiteral("LoraManager"));
-
-        legacy.beginGroup(QStringLiteral("SyncServer"));
-        const bool hasLegacySync = !legacy.childKeys().isEmpty();
-        QJsonObject legacySync;
-        if (hasLegacySync) {
-            legacySync.insert(QStringLiteral("autoStart"), legacy.value(QStringLiteral("autoStart"), false).toBool());
-            legacySync.insert(QStringLiteral("enableWhitelist"), legacy.value(QStringLiteral("enableWhitelist"), false).toBool());
-            legacySync.insert(QStringLiteral("port"), legacy.value(QStringLiteral("port"), QStringLiteral("12345")).toString());
-            legacySync.insert(QStringLiteral("aesKey"), legacy.value(QStringLiteral("aesKey"), QString()).toString());
-            legacySync.insert(QStringLiteral("whitelist"), QJsonArray::fromStringList(legacy.value(QStringLiteral("whitelist")).toStringList()));
-            legacySync.insert(QStringLiteral("rootPaths"), QJsonArray::fromStringList(legacy.value(QStringLiteral("rootPaths")).toStringList()));
-        }
-        legacy.endGroup();
-
-        legacy.beginGroup(QStringLiteral("FolderSync"));
-        const bool hasLegacyFolder = !legacy.childKeys().isEmpty();
-        QJsonObject legacyFolder;
-        if (hasLegacyFolder) {
-            legacyFolder.insert(QStringLiteral("folderA"), legacy.value(QStringLiteral("folderA"), QString()).toString());
-            legacyFolder.insert(QStringLiteral("folderB"), legacy.value(QStringLiteral("folderB"), QString()).toString());
-            legacyFolder.insert(QStringLiteral("mode"), legacy.value(QStringLiteral("mode"), 0).toInt());
-            legacyFolder.insert(QStringLiteral("includeSubdirs"), legacy.value(QStringLiteral("includeSubdirs"), true).toBool());
-            legacyFolder.insert(QStringLiteral("autoSync"), legacy.value(QStringLiteral("autoSync"), false).toBool());
-            legacyFolder.insert(QStringLiteral("timeFilterMode"), legacy.value(QStringLiteral("timeFilterMode"), 0).toInt());
-            legacyFolder.insert(QStringLiteral("timeStartIso"), legacy.value(QStringLiteral("timeStartIso"), QString()).toString());
-            legacyFolder.insert(QStringLiteral("timeEndIso"), legacy.value(QStringLiteral("timeEndIso"), QString()).toString());
-            legacyFolder.insert(QStringLiteral("imagesOnly"), legacy.value(QStringLiteral("imagesOnly"), false).toBool());
-            legacyFolder.insert(QStringLiteral("requireMetadata"), legacy.value(QStringLiteral("requireMetadata"), false).toBool());
-            legacyFolder.insert(QStringLiteral("minSizeKB"), legacy.value(QStringLiteral("minSizeKB"), 0).toInt());
-            legacyFolder.insert(QStringLiteral("maxSizeKB"), legacy.value(QStringLiteral("maxSizeKB"), 0).toInt());
-            legacyFolder.insert(QStringLiteral("nameFilterMode"), legacy.value(QStringLiteral("nameFilterMode"), 0).toInt());
-            legacyFolder.insert(QStringLiteral("nameKeywords"), legacy.value(QStringLiteral("nameKeywords"), QString()).toString());
-            legacyFolder.insert(QStringLiteral("extFilterMode"), legacy.value(QStringLiteral("extFilterMode"), 0).toInt());
-            legacyFolder.insert(QStringLiteral("extensions"), legacy.value(QStringLiteral("extensions"), QString()).toString());
-        }
-        legacy.endGroup();
-
-        if (hasLegacySync || hasLegacyFolder) {
-            if (hasLegacySync) root.insert(QStringLiteral("SyncServer"), legacySync);
-            if (hasLegacyFolder) root.insert(QStringLiteral("FolderSync"), legacyFolder);
-            migratedFromLegacy = true;
         }
     }
 
@@ -379,10 +332,6 @@ void SyncWidget::loadSettings() {
     ui->editFolderExtensions->setText(folderSync.value(QStringLiteral("extensions")).toString());
 
     m_isLoading = false; // 关闭加载模式
-
-    if (migratedFromLegacy) {
-        saveSettings();
-    }
 }
 
 void SyncWidget::saveSettings() {

@@ -66,11 +66,10 @@ QMap<QString, UserImageInfo> load(const QString &cachePath,
                 if (!h.isEmpty()) info.extraLoraHashes.append(h);
             }
         }
-        if (obj.value(QStringLiteral("pm")).toBool(false)) {
-            info.parsedModelsReady = true;
-        } else {
-            GalleryMetadata::populateParsedModelFields(info);
+        if (!obj.value(QStringLiteral("pm")).toBool(false)) {
+            continue;
         }
+        info.parsedModelsReady = true;
         result.insert(info.path, info);
     }
     return result;

@@ -1502,12 +1502,12 @@ void MainWindow::onGalleryImageClicked(int index)
         modelDir = QFileInfo(currentMeta.filePath).absolutePath();
     }
 
-    // 如果因为某种异常没拿到目录，则回退到 Lora 根目录
+    // 如果因为某种异常没拿到目录，则回退到首个启用的 LoRA 根目录
     if (modelDir.isEmpty()) {
-        modelDir = currentLoraPath;
+        modelDir = PathUtils::collectEnabledPaths(loraPaths, disabledLoraPaths).value(0);
     }
 
-    // 2. 寻找本地图片路径 (使用解析出的 modelDir 而不是全局 currentLoraPath)
+    // 2. 寻找本地图片路径
     QString localPath = ModelMetadata::previewPath(modelDir, currentBaseName, index);
 
     int width = img.width;
@@ -1730,7 +1730,7 @@ LocalMetaEditorContext MainWindow::buildLocalMetaEditorContext(const ModelMeta &
             ctx.syncFailureError = modelSyncFailures.value(absPath)["error"].toString();
         }
     } else {
-        ctx.modelDir = currentLoraPath;
+        ctx.modelDir = PathUtils::collectEnabledPaths(loraPaths, disabledLoraPaths).value(0);
     }
     return ctx;
 }
@@ -5636,8 +5636,6 @@ void MainWindow::applyPathListsToUi()
     const QStringList activeLoraPaths = PathUtils::collectEnabledPaths(loraPaths, disabledLoraPaths);
     const QStringList activeGalleryPaths = PathUtils::collectEnabledPaths(galleryPaths, disabledGalleryPaths);
     const QStringList activeTranslationPaths = PathUtils::collectEnabledPaths(translationCsvPaths, disabledTranslationCsvPaths);
-    currentLoraPath = activeLoraPaths.value(0);
-    sdOutputFolder = activeGalleryPaths.value(0);
     translationCsvPath = activeTranslationPaths.value(0);
 
     if (settingsPage) {

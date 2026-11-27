@@ -1502,12 +1502,10 @@ void LlmPromptWidget::loadSettings()
             "You are an expert Stable Diffusion prompt engineer. "
             "Rewrite prompts precisely, preserve useful quality tags, and prefer concise, production-ready outputs."
         ));
-        QString legacyPromptTemplate = root["llm_prompt_template"].toString();
         const QStringList taskKeys = {kTaskCharacterReplace, kTaskOutfitReplace, kTaskPreferenceGenerate, kTaskImageAdjust};
         for (const QString &taskKey : taskKeys) {
             const QString keyName = "llm_prompt_template_" + taskKey;
             QString value = root[keyName].toString();
-            if (value.isEmpty()) value = legacyPromptTemplate;
             if (value.isEmpty()) value = defaultPromptTemplate(taskKey);
             m_taskPromptTemplates.insert(taskKey, value);
 

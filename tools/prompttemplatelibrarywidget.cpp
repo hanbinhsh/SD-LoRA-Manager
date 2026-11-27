@@ -971,8 +971,8 @@ QString PromptTemplateLibraryWidget::typeToString(PlaceholderType type) const
 
 PromptTemplateLibraryWidget::PlaceholderType PromptTemplateLibraryWidget::typeFromString(const QString &text) const
 {
-    if (text == "single" || text == "单选") return PlaceholderType::SingleChoice;
-    if (text == "multi" || text == "多选") return PlaceholderType::MultiChoice;
+    if (text == "single") return PlaceholderType::SingleChoice;
+    if (text == "multi") return PlaceholderType::MultiChoice;
     return PlaceholderType::Text;
 }
 

@@ -974,11 +974,4 @@ TrashDeleteResult deleteFiles(const QStringList &filePaths,
     return result;
 }
 
-TrashDeleteResult moveFilesToTrash(const QStringList &filePaths,
-                                   const ProgressCallback &progressCallback,
-                                   const std::atomic_bool *cancelFlag)
-{
-    return deleteFiles(filePaths, FolderDeleteMode::MoveToTrash, progressCallback, cancelFlag);
-}
-
 } // namespace FolderSyncEngine

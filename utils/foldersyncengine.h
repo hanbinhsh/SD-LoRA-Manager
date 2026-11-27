@@ -204,10 +204,6 @@ TrashDeleteResult deleteFiles(const QStringList &filePaths,
                               const ProgressCallback &progressCallback = {},
                               const std::atomic_bool *cancelFlag = nullptr);
 
-TrashDeleteResult moveFilesToTrash(const QStringList &filePaths,
-                                   const ProgressCallback &progressCallback = {},
-                                   const std::atomic_bool *cancelFlag = nullptr);
-
 } // namespace FolderSyncEngine
 
 #endif // FOLDERSYNCENGINE_H

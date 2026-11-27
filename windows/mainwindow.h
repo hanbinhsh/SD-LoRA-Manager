@@ -407,9 +407,7 @@ private:
     QSet<QString> disabledGalleryPaths;                                           // 关闭的图库路径
     QStringList   translationCsvPaths;                                            // Tag 翻译表路径列表
     QSet<QString> disabledTranslationCsvPaths;                                    // 关闭的 Tag 翻译表路径
-    QString       currentLoraPath;                                                // LoRA主路径 (兼容)
     QString       translationCsvPath;                                             // 翻译文件路径
-    QString       sdOutputFolder;                                                 // 图库主路径 (兼容)
     QString       optSavedUAString                            = "";               // 设置的UA
     QString       optCivitaiApiKey                            = "";               // Civitai API Key
     bool          optLoraRecursive                            = false;            // 递归搜索Lora文件夹
