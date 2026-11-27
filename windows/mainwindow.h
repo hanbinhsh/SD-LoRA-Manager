@@ -47,7 +47,7 @@
 #include "pages/aboutpage.h"
 #include "utils/appconfigstore.h"
 
-const QString CURRENT_VERSION = "1.6.2";
+const QString CURRENT_VERSION = "1.6.3";
 const QString GITHUB_REPO_API = "https://api.github.com/repos/hanbinhsh/SD-LoRA-Manager/releases/latest";
 
 const QString DEFAULT_FILTER_TAGS = "BREAK, ADDCOMM, ADDBASE, ADDCOL, ADDROW";
@@ -451,8 +451,8 @@ private:
     int           optModelUpdateDownloadPolicy                = 0;                // 0: 每次询问, 1: 保留旧版, 2: 覆盖当前文件
     bool          optAutoCheckUpdatesOnStartup                = true;             // 启动时自动检查软件更新
     double        optUiScale                                  = 1.0;              // 缩放比率
-    QString       optThemeId                                  = "steam_dark";    // 当前程序主题
-    QString       optCustomThemePath                          = "";              // 外部 QSS 主题路径
+    QString       optThemeId                                  = "steam_dark";     // 当前程序主题
+    QString       optCustomThemePath                          = "";               // 外部 QSS 主题路径
     QString       currentToolPageQss;                                             // 当前工具页样式
     // 保存与加载
     SettingsState buildSettingsState() const;
