@@ -18,6 +18,7 @@
 #include "ui_pathlistdialog.h"
 #include "ui_imageviewerdialog.h"
 #include "ui_launcherimportdialog.h"
+#include "ui_foldersyncdeletedialog.h"
 
 #include <QApplication>
 #include <QComboBox>
@@ -211,6 +212,7 @@ int main(int argc, char **argv)
     checkForm<Ui::PathListDialog, QDialog>();
     checkForm<Ui::ImageViewerDialog, QDialog>();
     checkForm<Ui::LauncherImportDialog, QDialog>();
+    checkForm<Ui::FolderSyncDeleteDialog, QDialog>();
     checkDownloadState();
     qInfo() << (failures ? "FAILED" : "passed");
     return failures ? 1 : 0;

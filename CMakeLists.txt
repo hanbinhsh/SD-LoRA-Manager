@@ -222,6 +222,9 @@ qt_add_executable(SD_LoRA_Manager
     dialogs/textviewerdialog.h
     dialogs/textviewerdialog.cpp
     dialogs/textviewerdialog.ui
+    dialogs/foldersyncdeletedialog.h
+    dialogs/foldersyncdeletedialog.cpp
+    dialogs/foldersyncdeletedialog.ui
     tools/usageanalysiswidget.h
     tools/usageanalysiswidget.cpp
     tools/usageanalysiswidget.ui
@@ -420,7 +423,7 @@ if(BUILD_CORE_UTIL_TESTS)
         tools/tagbrowserwidget.ui tools/syncwidget.ui tools/usageanalysiswidget.ui
         pages/launcherwidget.ui pages/aboutpage.ui pages/localmetaeditorpage.ui pages/usergallerypage.ui pages/homegallerypage.ui
         dialogs/modelnotedialog.ui dialogs/pathlistdialog.ui
-        dialogs/imageviewerdialog.ui dialogs/launcherimportdialog.ui
+        dialogs/imageviewerdialog.ui dialogs/launcherimportdialog.ui dialogs/foldersyncdeletedialog.ui
         widgets/gallerylistwidget.cpp widgets/gallerylistwidget.h
         utils/downloadstatus.cpp utils/styleconstants.cpp utils/tableviewstylehelper.cpp
         resources.qrc)

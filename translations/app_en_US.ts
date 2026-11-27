@@ -6444,5 +6444,283 @@ Enable it?</translation>
       <source>起始时间不能晚于截止时间。</source>
       <translation>Start time cannot be later than end time.</translation>
     </message>
+    <message>
+      <source>跳过无元信息图片</source>
+      <translation>Skip images without metadata</translation>
+    </message>
+    <message>
+      <source>检测图片是否包含生成元信息，没有元信息的图片将不同步（可过滤 ControlNet 预览图与遮罩图）</source>
+      <translation>Check whether images contain generation metadata; images without metadata will be skipped (filters ControlNet previews and masks)</translation>
+    </message>
+    <message>
+      <source>大小过滤(KB):</source>
+      <translation>Size Filter (KB):</translation>
+    </message>
+    <message>
+      <source>不限</source>
+      <translation>Any</translation>
+    </message>
+    <message>
+      <source>最小 </source>
+      <translation>Min </translation>
+    </message>
+    <message>
+      <source>最大 </source>
+      <translation>Max </translation>
+    </message>
+    <message>
+      <source>名称过滤:</source>
+      <translation>Name Filter:</translation>
+    </message>
+    <message>
+      <source>不限名称</source>
+      <translation>Any Name</translation>
+    </message>
+    <message>
+      <source>排除包含</source>
+      <translation>Exclude Containing</translation>
+    </message>
+    <message>
+      <source>仅包含</source>
+      <translation>Include Only</translation>
+    </message>
+    <message>
+      <source>多个关键字用逗号分隔，例如 controlnet, mask</source>
+      <translation>Comma-separated keywords, e.g. controlnet, mask</translation>
+    </message>
+    <message>
+      <source>文件对比</source>
+      <translation>Compare Folders</translation>
+    </message>
+    <message>
+      <source>对比两个文件夹在选定时间与筛选条件下的文件是否完全一致</source>
+      <translation>Compare whether both folders match exactly under the selected time and filter rules</translation>
+    </message>
+    <message>
+      <source>删除到回收站</source>
+      <translation>Move to Recycle Bin</translation>
+    </message>
+    <message>
+      <source>列出对比结果中的多余或被筛选排除的文件，经二次确认后移入系统回收站</source>
+      <translation>List extra or filtered-out files from comparison and move selected ones to Recycle Bin after confirmation</translation>
+    </message>
+    <message>
+      <source>确认移至回收站的文件列表</source>
+      <translation>Confirm Files to Move to Recycle Bin</translation>
+    </message>
+    <message>
+      <source>请勾选需要移至系统回收站的文件：</source>
+      <translation>Select files to move to the system Recycle Bin:</translation>
+    </message>
+    <message>
+      <source>仅选 B 中多余</source>
+      <translation>Select Extra in B</translation>
+    </message>
+    <message>
+      <source>仅选 A 中多余</source>
+      <translation>Select Extra in A</translation>
+    </message>
+    <message>
+      <source>仅选 A 中排除项</source>
+      <translation>Select Excluded in A</translation>
+    </message>
+    <message>
+      <source>仅选 B 中排除项</source>
+      <translation>Select Excluded in B</translation>
+    </message>
+    <message>
+      <source>全不选</source>
+      <translation>Select None</translation>
+    </message>
+    <message>
+      <source>文件名</source>
+      <translation>File Name</translation>
+    </message>
+    <message>
+      <source>所属</source>
+      <translation>Folder Side</translation>
+    </message>
+    <message>
+      <source>所在文件夹</source>
+      <translation>Containing Folder</translation>
+    </message>
+    <message>
+      <source>原因</source>
+      <translation>Reason</translation>
+    </message>
+    <message>
+      <source>已勾选 0 个文件</source>
+      <translation>0 file(s) selected</translation>
+    </message>
+    <message>
+      <source>移至回收站</source>
+      <translation>Move to Recycle Bin</translation>
+    </message>
+    <message>
+      <source>可清理候选文件共 %1 个（仅在 B：%2，仅在 A：%3，A 中排除项：%4，B 中排除项：%5）。请勾选要移入回收站的文件：</source>
+      <translation>Found %1 candidate file(s) (Only in B: %2, Only in A: %3, Excluded in A: %4, Excluded in B: %5). Select files to move to Recycle Bin:</translation>
+    </message>
+    <message>
+      <source>已勾选 %1 个文件（共 %2）</source>
+      <translation>%1 file(s) selected (%2)</translation>
+    </message>
+    <message>
+      <source>二次确认删除</source>
+      <translation>Confirm Deletion</translation>
+    </message>
+    <message>
+      <source>确定将选中的 %1 个文件移至系统回收站吗？
+（文件夹 A：%2 个，文件夹 B：%3 个）</source>
+      <translation>Move the %1 selected file(s) to the system Recycle Bin?
+(Folder A: %2, Folder B: %3)</translation>
+    </message>
+    <message>
+      <source>正在扫描并预览变更...</source>
+      <translation>Scanning to preview changes...</translation>
+    </message>
+    <message>
+      <source>正在扫描并分析差异...</source>
+      <translation>Scanning and analyzing differences...</translation>
+    </message>
+    <message>
+      <source>开始扫描目录以预览变更...</source>
+      <translation>Starting directory scan for preview...</translation>
+    </message>
+    <message>
+      <source>开始扫描目录以计算同步计划...</source>
+      <translation>Starting directory scan to build sync plan...</translation>
+    </message>
+    <message>
+      <source>扫描已取消。</source>
+      <translation>Scan canceled.</translation>
+    </message>
+    <message>
+      <source>自动同步监听中（无新增差异）</source>
+      <translation>Auto sync active (no new changes)</translation>
+    </message>
+    <message>
+      <source>正在对比两个文件夹...</source>
+      <translation>Comparing both folders...</translation>
+    </message>
+    <message>
+      <source>开始对比文件夹 A 与文件夹 B（按当前时间与筛选条件）...</source>
+      <translation>Comparing Folder A and Folder B using current time and filter rules...</translation>
+    </message>
+    <message>
+      <source>文件对比已取消。</source>
+      <translation>Folder comparison canceled.</translation>
+    </message>
+    <message>
+      <source>筛选后完全一致（无多余、无缺失）</source>
+      <translation>Exact match after filtering (no extra or missing files)</translation>
+    </message>
+    <message>
+      <source>存在差异</source>
+      <translation>Differences found</translation>
+    </message>
+    <message>
+      <source>对比完成：%1 | 一致 %2，差异 %3，仅在 A %4，仅在 B %5，A 排除 %6，B 排除 %7</source>
+      <translation>Compare done: %1 | Matched %2, Diff %3, Only in A %4, Only in B %5, Excluded A %6, Excluded B %7</translation>
+    </message>
+    <message>
+      <source>... 其余 %1 项已省略，可点击“删除到回收站”查看完整清单。</source>
+      <translation>... %1 more item(s) omitted; click Move to Recycle Bin to inspect the full list.</translation>
+    </message>
+    <message>
+      <source>提示：发现 %1 个多余或被筛选排除的文件，可点击“删除到回收站”进行二次确认清理。</source>
+      <translation>Tip: Found %1 extra or filtered-out file(s); click Move to Recycle Bin to review and delete safely.</translation>
+    </message>
+    <message>
+      <source>无需清理</source>
+      <translation>Nothing to Clean</translation>
+    </message>
+    <message>
+      <source>当前对比结果中没有可删除的多余或排除文件，请先点击“文件对比”。</source>
+      <translation>No extra or excluded files found in the current comparison. Run Compare Folders first.</translation>
+    </message>
+    <message>
+      <source>正在移入回收站 0 / %1 ...</source>
+      <translation>Moving to Recycle Bin 0 / %1 ...</translation>
+    </message>
+    <message>
+      <source>正在移入回收站 %1 / %2 ...</source>
+      <translation>Moving to Recycle Bin %1 / %2 ...</translation>
+    </message>
+    <message>
+      <source>开始将选中的 %1 个文件移入系统回收站...</source>
+      <translation>Moving %1 selected file(s) to system Recycle Bin...</translation>
+    </message>
+    <message>
+      <source>回收站清理已取消：已移入回收站 %1 个，失败 %2 个</source>
+      <translation>Recycle Bin cleanup canceled: moved %1, failed %2</translation>
+    </message>
+    <message>
+      <source>回收站清理完成：已移入回收站 %1 个，失败 %2 个</source>
+      <translation>Recycle Bin cleanup complete: moved %1, failed %2</translation>
+    </message>
+    <message>
+      <source>正在取消当前任务...</source>
+      <translation>Canceling current task...</translation>
+    </message>
+    <message>
+      <source>已请求取消当前任务，等待当前文件处理完成...</source>
+      <translation>Cancellation requested; waiting for current file to finish...</translation>
+    </message>
+    <message>
+      <source>已开启自动同步，当前任务完成后将自动启动监听。</source>
+      <translation>Auto sync enabled; folder watch will start once the current task finishes.</translation>
+    </message>
+    <message>
+      <source>已开启自动同步监听（双向，共监听 %1 个目录）：%2 ⇄ %3</source>
+      <translation>Auto sync watch enabled (two-way, %1 folder(s)): %2 ⇄ %3</translation>
+    </message>
+    <message>
+      <source>已开启自动同步监听（共监听 %1 个目录）：%2 → %3</source>
+      <translation>Auto sync watch enabled (%1 folder(s)): %2 → %3</translation>
+    </message>
+    <message>
+      <source>提示：子目录数量超过 %1，为防止卡顿已限制监听目录上限。</source>
+      <translation>Note: Subfolder count exceeded %1; watch list capped to keep UI responsive.</translation>
+    </message>
+    <message>
+      <source>文件夹 A</source>
+      <translation>Folder A</translation>
+    </message>
+    <message>
+      <source>文件夹 B</source>
+      <translation>Folder B</translation>
+    </message>
+    <message>
+      <source>仅存在于 A（B 缺失）</source>
+      <translation>Only in A (missing in B)</translation>
+    </message>
+    <message>
+      <source>仅存在于 B（多余）</source>
+      <translation>Only in B (extra)</translation>
+    </message>
+    <message>
+      <source>图片无生成元信息</source>
+      <translation>Image has no generation metadata</translation>
+    </message>
+    <message>
+      <source>非图片文件</source>
+      <translation>Not an image file</translation>
+    </message>
+    <message>
+      <source>文件小于最小大小限制</source>
+      <translation>Smaller than min size limit</translation>
+    </message>
+    <message>
+      <source>文件超过最大大小限制</source>
+      <translation>Larger than max size limit</translation>
+    </message>
+    <message>
+      <source>文件名未命中包含词</source>
+      <translation>Filename does not match include keywords</translation>
+    </message>
+    <message>
+      <source>最小文件大小不能大于最大文件大小。</source>
+      <translation>Minimum file size cannot exceed maximum file size.</translation>
+    </message>
   </context>
 </TS>

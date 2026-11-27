@@ -1,11 +1,15 @@
 #include "utils/foldersyncengine.h"
 
+#include "utils/imagemetadataparser.h"
+
 #include <QDateTime>
 #include <QDir>
 #include <QDirIterator>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QRegularExpression>
 #include <QSet>
 #include <QUuid>
 #include <algorithm>
@@ -24,6 +28,7 @@ constexpr Qt::CaseSensitivity kPathCaseSensitivity = Qt::CaseSensitive;
 struct ScannedFileEntry {
     QString relativePath;
     QString absolutePath;
+    QString parentDir;
     qint64 size = 0;
     qint64 modifiedMs = 0;
 };
@@ -37,9 +42,17 @@ QString lookupKeyForRelativePath(const QString &relativePath)
 #endif
 }
 
-QHash<QString, ScannedFileEntry> scanDirectoryFiles(const QString &rootDirPath, bool includeSubdirs)
+QHash<QString, ScannedFileEntry> scanDirectoryFiles(
+    const QString &rootDirPath,
+    bool includeSubdirs,
+    const QString &sideLabel,
+    const FolderSyncEngine::ProgressCallback &progressCallback,
+    const std::atomic_bool *cancelFlag,
+    bool *canceledOut)
 {
     QHash<QString, ScannedFileEntry> result;
+    if (canceledOut) *canceledOut = false;
+
     const QFileInfo rootInfo(rootDirPath);
     if (!rootInfo.exists() || !rootInfo.isDir()) {
         return result;
@@ -50,8 +63,16 @@ QHash<QString, ScannedFileEntry> scanDirectoryFiles(const QString &rootDirPath, 
         ? QDirIterator::Subdirectories
         : QDirIterator::NoIteratorFlags;
 
+    QElapsedTimer throttle;
+    throttle.start();
+    int scanned = 0;
+
     QDirIterator it(rootDir.absolutePath(), QDir::Files | QDir::NoDotAndDotDot, flags);
     while (it.hasNext()) {
+        if (cancelFlag && cancelFlag->load()) {
+            if (canceledOut) *canceledOut = true;
+            return {};
+        }
         const QString absPath = it.next();
         const QFileInfo fi(absPath);
         const QString relPath = QDir::fromNativeSeparators(rootDir.relativeFilePath(absPath));
@@ -61,9 +82,17 @@ QHash<QString, ScannedFileEntry> scanDirectoryFiles(const QString &rootDirPath, 
         ScannedFileEntry entry;
         entry.relativePath = relPath;
         entry.absolutePath = fi.absoluteFilePath();
+        entry.parentDir = QDir::cleanPath(QDir::fromNativeSeparators(fi.absolutePath()));
         entry.size = fi.size();
         entry.modifiedMs = fi.lastModified().toMSecsSinceEpoch();
         result.insert(lookupKeyForRelativePath(relPath), entry);
+        ++scanned;
+
+        if (progressCallback && (scanned % 200 == 0 || throttle.elapsed() >= 150)) {
+            throttle.restart();
+            progressCallback(scanned, 0,
+                             QStringLiteral("正在扫描文件夹 %1（已发现 %2 个文件）...").arg(sideLabel).arg(scanned));
+        }
     }
     return result;
 }
@@ -93,7 +122,6 @@ bool copyFileAtomically(const QString &sourcePath, const QString &targetPath, QS
         return false;
     }
 
-    // Preserve modification timestamp so subsequent sync comparisons skip unchanged files cleanly.
     const QDateTime srcMtime = srcInfo.lastModified();
     if (srcMtime.isValid()) {
         QFile tmpFile(tempPath);
@@ -138,12 +166,10 @@ bool moveFileSafely(const QString &sourcePath, const QString &targetPath, QStrin
         return false;
     }
 
-    // Fast path: same volume and destination does not exist yet.
     if (!QFile::exists(targetPath) && QFile::rename(sourcePath, targetPath)) {
         return true;
     }
 
-    // Fallback: atomic copy + remove source (works across volumes and when replacing existing files).
     if (!copyFileAtomically(sourcePath, targetPath, errorOut)) {
         return false;
     }
@@ -233,12 +259,67 @@ bool isSupportedImageFile(const QString &fileName)
     return !ext.isEmpty() && kImageExtensions.contains(ext);
 }
 
-bool matchesFilter(const QString &fileName, qint64 modifiedMs, const FolderSyncFilter &filter)
+QStringList parseNameKeywords(const QString &text)
 {
-    if (filter.imagesOnly && !isSupportedImageFile(fileName)) {
-        return false;
+    static const QRegularExpression sep(QStringLiteral("[,，;；\\r\\n]+"));
+    const QStringList raw = text.split(sep, Qt::SkipEmptyParts);
+    QStringList out;
+    out.reserve(raw.size());
+    for (const QString &part : raw) {
+        const QString clean = part.trimmed();
+        if (!clean.isEmpty()) {
+            out.append(clean);
+        }
+    }
+    return out;
+}
+
+QString validateInputs(const QString &folderA, const QString &folderB, const FolderSyncFilter &filter)
+{
+    const QString trimmedA = folderA.trimmed();
+    const QString trimmedB = folderB.trimmed();
+    if (trimmedA.isEmpty() || trimmedB.isEmpty()) {
+        return QStringLiteral("请先选择有效的文件夹 A 和文件夹 B。");
     }
 
+    const QFileInfo infoA(trimmedA);
+    if (!infoA.exists() || !infoA.isDir()) {
+        return QStringLiteral("文件夹 A 不存在或不是有效目录：%1").arg(trimmedA);
+    }
+
+    const QFileInfo infoB(trimmedB);
+    if (infoB.exists() && !infoB.isDir()) {
+        return QStringLiteral("文件夹 B 路径指向的是文件而不是目录：%1").arg(trimmedB);
+    }
+
+    if (isSameOrNestedDirectory(trimmedA, trimmedB)) {
+        return QStringLiteral("文件夹 A 与文件夹 B 不能相同，也不能互相嵌套。");
+    }
+
+    if (filter.timeMode == FolderSyncTimeFilterMode::Before && !filter.endTime.isValid()) {
+        return QStringLiteral("请设置有效的截止时间。");
+    }
+    if (filter.timeMode == FolderSyncTimeFilterMode::After && !filter.startTime.isValid()) {
+        return QStringLiteral("请设置有效的起始时间。");
+    }
+    if (filter.timeMode == FolderSyncTimeFilterMode::Between) {
+        if (!filter.startTime.isValid() || !filter.endTime.isValid()) {
+            return QStringLiteral("请设置有效的起始时间和截止时间。");
+        }
+        if (filter.startTime > filter.endTime) {
+            return QStringLiteral("起始时间不能晚于截止时间。");
+        }
+    }
+
+    if (filter.minSizeKB > 0 && filter.maxSizeKB > 0 && filter.minSizeKB > filter.maxSizeKB) {
+        return QStringLiteral("最小文件大小不能大于最大文件大小。");
+    }
+
+    return QString();
+}
+
+bool matchesTimeRange(qint64 modifiedMs, const FolderSyncFilter &filter)
+{
     switch (filter.timeMode) {
     case FolderSyncTimeFilterMode::All:
         return true;
@@ -256,67 +337,146 @@ bool matchesFilter(const QString &fileName, qint64 modifiedMs, const FolderSyncF
     return true;
 }
 
+bool evaluateNonTimeFilter(const QString &absPath,
+                           const QString &fileName,
+                           qint64 sizeBytes,
+                           const FolderSyncFilter &filter,
+                           QString *excludeReasonOut)
+{
+    const bool isImg = isSupportedImageFile(fileName);
+    if (filter.imagesOnly && !isImg) {
+        if (excludeReasonOut) *excludeReasonOut = QStringLiteral("非图片文件");
+        return false;
+    }
+
+    if (filter.minSizeKB > 0 && sizeBytes < filter.minSizeKB * 1024LL) {
+        if (excludeReasonOut) *excludeReasonOut = QStringLiteral("文件小于最小大小限制");
+        return false;
+    }
+    if (filter.maxSizeKB > 0 && sizeBytes > filter.maxSizeKB * 1024LL) {
+        if (excludeReasonOut) *excludeReasonOut = QStringLiteral("文件超过最大大小限制");
+        return false;
+    }
+
+    if (filter.nameMode != FolderSyncNameFilterMode::None && !filter.nameKeywords.isEmpty()) {
+        const QString baseFileName = QFileInfo(fileName).fileName();
+        QString matchedKeyword;
+        for (const QString &kw : filter.nameKeywords) {
+            if (!kw.isEmpty() && baseFileName.contains(kw, Qt::CaseInsensitive)) {
+                matchedKeyword = kw;
+                break;
+            }
+        }
+        if (filter.nameMode == FolderSyncNameFilterMode::ExcludeContains && !matchedKeyword.isEmpty()) {
+            if (excludeReasonOut) *excludeReasonOut = QStringLiteral("文件名包含排除词: %1").arg(matchedKeyword);
+            return false;
+        }
+        if (filter.nameMode == FolderSyncNameFilterMode::IncludeContains && matchedKeyword.isEmpty()) {
+            if (excludeReasonOut) *excludeReasonOut = QStringLiteral("文件名未命中包含词");
+            return false;
+        }
+    }
+
+    if (filter.requireImageMetadata && isImg) {
+        const ParsedImageMetadata meta = parseImageMetadataFromFile(absPath);
+        if (!meta.hasContent()) {
+            if (excludeReasonOut) *excludeReasonOut = QStringLiteral("图片无生成元信息");
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool matchesFilter(const QString &absPath,
+                   const QString &fileName,
+                   qint64 sizeBytes,
+                   qint64 modifiedMs,
+                   const FolderSyncFilter &filter,
+                   QString *excludeReasonOut)
+{
+    if (!matchesTimeRange(modifiedMs, filter)) {
+        if (excludeReasonOut) *excludeReasonOut = QStringLiteral("不在选定时间范围内");
+        return false;
+    }
+    return evaluateNonTimeFilter(absPath, fileName, sizeBytes, filter, excludeReasonOut);
+}
+
+QStringList collectWatchDirectories(const QStringList &rootDirs,
+                                    bool includeSubdirs,
+                                    int maxDirectories,
+                                    const std::atomic_bool *cancelFlag)
+{
+    QStringList dirs;
+    QSet<QString> seen;
+
+    auto addUnique = [&](const QString &dirPath) {
+        const QString clean = normalizeDirPath(dirPath);
+        if (clean.isEmpty()) return;
+        const QString key = lookupKeyForRelativePath(clean);
+        if (!seen.contains(key)) {
+            seen.insert(key);
+            dirs.append(clean);
+        }
+    };
+
+    for (const QString &root : rootDirs) {
+        if (cancelFlag && cancelFlag->load()) return {};
+        const QFileInfo fi(root);
+        if (!fi.exists() || !fi.isDir()) continue;
+        addUnique(fi.absoluteFilePath());
+        if (maxDirectories > 0 && dirs.size() >= maxDirectories) break;
+
+        if (includeSubdirs) {
+            QDirIterator it(fi.absoluteFilePath(), QDir::Dirs | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+            while (it.hasNext()) {
+                if (cancelFlag && cancelFlag->load()) return {};
+                addUnique(it.next());
+                if (maxDirectories > 0 && dirs.size() >= maxDirectories) break;
+            }
+        }
+    }
+    return dirs;
+}
+
 FolderSyncPlan planSync(const QString &folderA,
                         const QString &folderB,
                         FolderSyncMode mode,
                         bool includeSubdirs,
-                        const FolderSyncFilter &filter)
+                        const FolderSyncFilter &filter,
+                        const ProgressCallback &progressCallback,
+                        const std::atomic_bool *cancelFlag)
 {
     FolderSyncPlan plan;
     plan.mode = mode;
     plan.includeSubdirs = includeSubdirs;
     plan.filter = filter;
 
-    const QString trimmedA = folderA.trimmed();
-    const QString trimmedB = folderB.trimmed();
-    if (trimmedA.isEmpty() || trimmedB.isEmpty()) {
-        plan.errorMessage = QStringLiteral("请先选择有效的文件夹 A 和文件夹 B。");
+    const QString validationError = validateInputs(folderA, folderB, filter);
+    if (!validationError.isEmpty()) {
+        plan.errorMessage = validationError;
         return plan;
     }
 
-    const QFileInfo infoA(trimmedA);
-    if (!infoA.exists() || !infoA.isDir()) {
-        plan.errorMessage = QStringLiteral("文件夹 A 不存在或不是有效目录：%1").arg(trimmedA);
+    plan.folderA = normalizeDirPath(folderA);
+    plan.folderB = normalizeDirPath(folderB);
+
+    bool canceled = false;
+    const QHash<QString, ScannedFileEntry> filesA = scanDirectoryFiles(
+        plan.folderA, includeSubdirs, QStringLiteral("A"), progressCallback, cancelFlag, &canceled);
+    if (canceled) {
+        plan.canceled = true;
         return plan;
     }
 
-    const QFileInfo infoB(trimmedB);
-    if (infoB.exists() && !infoB.isDir()) {
-        plan.errorMessage = QStringLiteral("文件夹 B 路径指向的是文件而不是目录：%1").arg(trimmedB);
-        return plan;
-    }
-
-    if (isSameOrNestedDirectory(trimmedA, trimmedB)) {
-        plan.errorMessage = QStringLiteral("文件夹 A 与文件夹 B 不能相同，也不能互相嵌套。");
-        return plan;
-    }
-
-    if (filter.timeMode == FolderSyncTimeFilterMode::Before && !filter.endTime.isValid()) {
-        plan.errorMessage = QStringLiteral("请设置有效的截止时间。");
-        return plan;
-    }
-    if (filter.timeMode == FolderSyncTimeFilterMode::After && !filter.startTime.isValid()) {
-        plan.errorMessage = QStringLiteral("请设置有效的起始时间。");
-        return plan;
-    }
-    if (filter.timeMode == FolderSyncTimeFilterMode::Between) {
-        if (!filter.startTime.isValid() || !filter.endTime.isValid()) {
-            plan.errorMessage = QStringLiteral("请设置有效的起始时间和截止时间。");
-            return plan;
-        }
-        if (filter.startTime > filter.endTime) {
-            plan.errorMessage = QStringLiteral("起始时间不能晚于截止时间。");
-            return plan;
-        }
-    }
-
-    plan.folderA = normalizeDirPath(trimmedA);
-    plan.folderB = normalizeDirPath(trimmedB);
-
-    const QHash<QString, ScannedFileEntry> filesA = scanDirectoryFiles(plan.folderA, includeSubdirs);
+    const QFileInfo infoB(plan.folderB);
     const QHash<QString, ScannedFileEntry> filesB = infoB.exists()
-        ? scanDirectoryFiles(plan.folderB, includeSubdirs)
+        ? scanDirectoryFiles(plan.folderB, includeSubdirs, QStringLiteral("B"), progressCallback, cancelFlag, &canceled)
         : QHash<QString, ScannedFileEntry>{};
+    if (canceled) {
+        plan.canceled = true;
+        return plan;
+    }
 
     const QDir dirA(plan.folderA);
     const QDir dirB(plan.folderB);
@@ -331,147 +491,162 @@ FolderSyncPlan planSync(const QString &folderA,
     }
     std::sort(allKeys.begin(), allKeys.end());
 
-    plan.actions.reserve(allKeys.size());
+    const int totalKeys = allKeys.size();
+    plan.actions.reserve(totalKeys);
+
+    QElapsedTimer throttle;
+    throttle.start();
+    int processed = 0;
 
     for (const QString &key : allKeys) {
+        if (cancelFlag && cancelFlag->load()) {
+            plan.canceled = true;
+            return plan;
+        }
+
         const bool inA = filesA.contains(key);
         const bool inB = filesB.contains(key);
 
         if (mode == FolderSyncMode::OneWayCopy) {
             const ScannedFileEntry &entryA = filesA[key];
-            if (!matchesFilter(entryA.relativePath, entryA.modifiedMs, filter)) {
+            if (!matchesFilter(entryA.absolutePath, entryA.relativePath, entryA.size, entryA.modifiedMs, filter)) {
                 ++plan.filteredOutCount;
-                continue;
-            }
-
-            FolderSyncAction action;
-            action.relativePath = entryA.relativePath;
-            action.sourcePath = entryA.absolutePath;
-            action.targetPath = QDir::cleanPath(dirB.filePath(entryA.relativePath));
-            action.fileSize = entryA.size;
-
-            if (!inB) {
-                action.type = FolderSyncActionType::CopyAtoB;
-                action.reason = QStringLiteral("B 中不存在");
-                ++plan.copyAtoBCount;
-                plan.totalTransferBytes += entryA.size;
             } else {
-                const ScannedFileEntry &entryB = filesB[key];
-                if (entryA.size == entryB.size && entryB.modifiedMs + kTimestampToleranceMs >= entryA.modifiedMs) {
-                    action.type = FolderSyncActionType::Skip;
-                    action.reason = QStringLiteral("目标已是最新且大小一致");
-                    ++plan.skipCount;
-                } else {
-                    action.type = FolderSyncActionType::CopyAtoB;
-                    action.reason = QStringLiteral("A 文件更新或大小不同");
-                    ++plan.copyAtoBCount;
-                    plan.totalTransferBytes += entryA.size;
-                }
-            }
-            plan.actions.append(action);
-        } else if (mode == FolderSyncMode::OneWayMove) {
-            const ScannedFileEntry &entryA = filesA[key];
-            if (!matchesFilter(entryA.relativePath, entryA.modifiedMs, filter)) {
-                ++plan.filteredOutCount;
-                continue;
-            }
-
-            FolderSyncAction action;
-            action.type = FolderSyncActionType::MoveAtoB;
-            action.relativePath = entryA.relativePath;
-            action.sourcePath = entryA.absolutePath;
-            action.targetPath = QDir::cleanPath(dirB.filePath(entryA.relativePath));
-            action.fileSize = entryA.size;
-            action.reason = inB ? QStringLiteral("移动并覆盖 B 中同名文件") : QStringLiteral("移动到 B");
-            ++plan.moveAtoBCount;
-            plan.totalTransferBytes += entryA.size;
-            plan.actions.append(action);
-        } else { // TwoWaySync
-            if (inA && !inB) {
-                const ScannedFileEntry &entryA = filesA[key];
-                if (!matchesFilter(entryA.relativePath, entryA.modifiedMs, filter)) {
-                    ++plan.filteredOutCount;
-                    continue;
-                }
                 FolderSyncAction action;
-                action.type = FolderSyncActionType::CopyAtoB;
                 action.relativePath = entryA.relativePath;
                 action.sourcePath = entryA.absolutePath;
                 action.targetPath = QDir::cleanPath(dirB.filePath(entryA.relativePath));
                 action.fileSize = entryA.size;
-                action.reason = QStringLiteral("仅存在于 A");
-                ++plan.copyAtoBCount;
+
+                if (!inB) {
+                    action.type = FolderSyncActionType::CopyAtoB;
+                    action.reason = QStringLiteral("B 中不存在");
+                    ++plan.copyAtoBCount;
+                    plan.totalTransferBytes += entryA.size;
+                } else {
+                    const ScannedFileEntry &entryB = filesB[key];
+                    if (entryA.size == entryB.size && entryB.modifiedMs + kTimestampToleranceMs >= entryA.modifiedMs) {
+                        action.type = FolderSyncActionType::Skip;
+                        action.reason = QStringLiteral("目标已是最新且大小一致");
+                        ++plan.skipCount;
+                    } else {
+                        action.type = FolderSyncActionType::CopyAtoB;
+                        action.reason = QStringLiteral("A 文件更新或大小不同");
+                        ++plan.copyAtoBCount;
+                        plan.totalTransferBytes += entryA.size;
+                    }
+                }
+                plan.actions.append(action);
+            }
+        } else if (mode == FolderSyncMode::OneWayMove) {
+            const ScannedFileEntry &entryA = filesA[key];
+            if (!matchesFilter(entryA.absolutePath, entryA.relativePath, entryA.size, entryA.modifiedMs, filter)) {
+                ++plan.filteredOutCount;
+            } else {
+                FolderSyncAction action;
+                action.type = FolderSyncActionType::MoveAtoB;
+                action.relativePath = entryA.relativePath;
+                action.sourcePath = entryA.absolutePath;
+                action.targetPath = QDir::cleanPath(dirB.filePath(entryA.relativePath));
+                action.fileSize = entryA.size;
+                action.reason = inB ? QStringLiteral("移动并覆盖 B 中同名文件") : QStringLiteral("移动到 B");
+                ++plan.moveAtoBCount;
                 plan.totalTransferBytes += entryA.size;
                 plan.actions.append(action);
+            }
+        } else { // TwoWaySync
+            if (inA && !inB) {
+                const ScannedFileEntry &entryA = filesA[key];
+                if (!matchesFilter(entryA.absolutePath, entryA.relativePath, entryA.size, entryA.modifiedMs, filter)) {
+                    ++plan.filteredOutCount;
+                } else {
+                    FolderSyncAction action;
+                    action.type = FolderSyncActionType::CopyAtoB;
+                    action.relativePath = entryA.relativePath;
+                    action.sourcePath = entryA.absolutePath;
+                    action.targetPath = QDir::cleanPath(dirB.filePath(entryA.relativePath));
+                    action.fileSize = entryA.size;
+                    action.reason = QStringLiteral("仅存在于 A");
+                    ++plan.copyAtoBCount;
+                    plan.totalTransferBytes += entryA.size;
+                    plan.actions.append(action);
+                }
             } else if (!inA && inB) {
                 const ScannedFileEntry &entryB = filesB[key];
-                if (!matchesFilter(entryB.relativePath, entryB.modifiedMs, filter)) {
+                if (!matchesFilter(entryB.absolutePath, entryB.relativePath, entryB.size, entryB.modifiedMs, filter)) {
                     ++plan.filteredOutCount;
-                    continue;
+                } else {
+                    FolderSyncAction action;
+                    action.type = FolderSyncActionType::CopyBtoA;
+                    action.relativePath = entryB.relativePath;
+                    action.sourcePath = entryB.absolutePath;
+                    action.targetPath = QDir::cleanPath(dirA.filePath(entryB.relativePath));
+                    action.fileSize = entryB.size;
+                    action.reason = QStringLiteral("仅存在于 B");
+                    ++plan.copyBtoACount;
+                    plan.totalTransferBytes += entryB.size;
+                    plan.actions.append(action);
                 }
-                FolderSyncAction action;
-                action.type = FolderSyncActionType::CopyBtoA;
-                action.relativePath = entryB.relativePath;
-                action.sourcePath = entryB.absolutePath;
-                action.targetPath = QDir::cleanPath(dirA.filePath(entryB.relativePath));
-                action.fileSize = entryB.size;
-                action.reason = QStringLiteral("仅存在于 B");
-                ++plan.copyBtoACount;
-                plan.totalTransferBytes += entryB.size;
-                plan.actions.append(action);
             } else if (inA && inB) {
                 const ScannedFileEntry &entryA = filesA[key];
                 const ScannedFileEntry &entryB = filesB[key];
                 const qint64 timeDiff = entryA.modifiedMs - entryB.modifiedMs;
 
                 if (entryA.size == entryB.size && std::llabs(timeDiff) <= kTimestampToleranceMs) {
-                    if (!matchesFilter(entryA.relativePath, entryA.modifiedMs, filter)
-                        && !matchesFilter(entryB.relativePath, entryB.modifiedMs, filter)) {
+                    if (!matchesFilter(entryA.absolutePath, entryA.relativePath, entryA.size, entryA.modifiedMs, filter)
+                        && !matchesFilter(entryB.absolutePath, entryB.relativePath, entryB.size, entryB.modifiedMs, filter)) {
                         ++plan.filteredOutCount;
-                        continue;
+                    } else {
+                        FolderSyncAction action;
+                        action.relativePath = entryA.relativePath;
+                        action.type = FolderSyncActionType::Skip;
+                        action.sourcePath = entryA.absolutePath;
+                        action.targetPath = entryB.absolutePath;
+                        action.fileSize = entryA.size;
+                        action.reason = QStringLiteral("两端一致");
+                        ++plan.skipCount;
+                        plan.actions.append(action);
                     }
-                    FolderSyncAction action;
-                    action.relativePath = entryA.relativePath;
-                    action.type = FolderSyncActionType::Skip;
-                    action.sourcePath = entryA.absolutePath;
-                    action.targetPath = entryB.absolutePath;
-                    action.fileSize = entryA.size;
-                    action.reason = QStringLiteral("两端一致");
-                    ++plan.skipCount;
-                    plan.actions.append(action);
                 } else if (timeDiff > kTimestampToleranceMs
                            || (std::llabs(timeDiff) <= kTimestampToleranceMs && entryA.modifiedMs >= entryB.modifiedMs)) {
-                    if (!matchesFilter(entryA.relativePath, entryA.modifiedMs, filter)) {
+                    if (!matchesFilter(entryA.absolutePath, entryA.relativePath, entryA.size, entryA.modifiedMs, filter)) {
                         ++plan.filteredOutCount;
-                        continue;
+                    } else {
+                        FolderSyncAction action;
+                        action.relativePath = entryA.relativePath;
+                        action.type = FolderSyncActionType::CopyAtoB;
+                        action.sourcePath = entryA.absolutePath;
+                        action.targetPath = entryB.absolutePath;
+                        action.fileSize = entryA.size;
+                        action.reason = QStringLiteral("A 较新");
+                        ++plan.copyAtoBCount;
+                        plan.totalTransferBytes += entryA.size;
+                        plan.actions.append(action);
                     }
-                    FolderSyncAction action;
-                    action.relativePath = entryA.relativePath;
-                    action.type = FolderSyncActionType::CopyAtoB;
-                    action.sourcePath = entryA.absolutePath;
-                    action.targetPath = entryB.absolutePath;
-                    action.fileSize = entryA.size;
-                    action.reason = QStringLiteral("A 较新");
-                    ++plan.copyAtoBCount;
-                    plan.totalTransferBytes += entryA.size;
-                    plan.actions.append(action);
                 } else {
-                    if (!matchesFilter(entryB.relativePath, entryB.modifiedMs, filter)) {
+                    if (!matchesFilter(entryB.absolutePath, entryB.relativePath, entryB.size, entryB.modifiedMs, filter)) {
                         ++plan.filteredOutCount;
-                        continue;
+                    } else {
+                        FolderSyncAction action;
+                        action.relativePath = entryA.relativePath;
+                        action.type = FolderSyncActionType::CopyBtoA;
+                        action.sourcePath = entryB.absolutePath;
+                        action.targetPath = entryA.absolutePath;
+                        action.fileSize = entryB.size;
+                        action.reason = QStringLiteral("B 较新");
+                        ++plan.copyBtoACount;
+                        plan.totalTransferBytes += entryB.size;
+                        plan.actions.append(action);
                     }
-                    FolderSyncAction action;
-                    action.relativePath = entryA.relativePath;
-                    action.type = FolderSyncActionType::CopyBtoA;
-                    action.sourcePath = entryB.absolutePath;
-                    action.targetPath = entryA.absolutePath;
-                    action.fileSize = entryB.size;
-                    action.reason = QStringLiteral("B 较新");
-                    ++plan.copyBtoACount;
-                    plan.totalTransferBytes += entryB.size;
-                    plan.actions.append(action);
                 }
             }
+        }
+
+        ++processed;
+        if (progressCallback && (processed % 100 == 0 || throttle.elapsed() >= 150)) {
+            throttle.restart();
+            progressCallback(processed, totalKeys,
+                             QStringLiteral("正在分析差异 %1 / %2 ...").arg(processed).arg(totalKeys));
         }
     }
 
@@ -479,10 +654,9 @@ FolderSyncPlan planSync(const QString &folderA,
     return plan;
 }
 
-FolderSyncResult executeSync(
-    const FolderSyncPlan &plan,
-    const std::function<void(int done, int total, const QString &message)> &progressCallback,
-    const std::atomic_bool *cancelFlag)
+FolderSyncResult executeSync(const FolderSyncPlan &plan,
+                             const ProgressCallback &progressCallback,
+                             const std::atomic_bool *cancelFlag)
 {
     FolderSyncResult result;
     if (!plan.valid) {
@@ -491,7 +665,6 @@ FolderSyncResult executeSync(
         return result;
     }
 
-    // Ensure destination directory B exists (even if folder A is currently empty).
     QDir dirB(plan.folderB);
     if (!dirB.exists() && !dirB.mkpath(QStringLiteral("."))) {
         result.errors.append(QStringLiteral("无法创建目标文件夹 B：%1").arg(plan.folderB));
@@ -558,6 +731,197 @@ FolderSyncResult executeSync(
     }
 
     result.success = (!result.canceled && result.failedCount == 0);
+    return result;
+}
+
+FolderCompareResult compareFolders(const QString &folderA,
+                                   const QString &folderB,
+                                   bool includeSubdirs,
+                                   const FolderSyncFilter &filter,
+                                   const ProgressCallback &progressCallback,
+                                   const std::atomic_bool *cancelFlag)
+{
+    FolderCompareResult result;
+    const QString validationError = validateInputs(folderA, folderB, filter);
+    if (!validationError.isEmpty()) {
+        result.errorMessage = validationError;
+        return result;
+    }
+
+    result.folderA = normalizeDirPath(folderA);
+    result.folderB = normalizeDirPath(folderB);
+
+    bool canceled = false;
+    const QHash<QString, ScannedFileEntry> filesA = scanDirectoryFiles(
+        result.folderA, includeSubdirs, QStringLiteral("A"), progressCallback, cancelFlag, &canceled);
+    if (canceled) {
+        result.canceled = true;
+        return result;
+    }
+
+    const QFileInfo infoB(result.folderB);
+    const QHash<QString, ScannedFileEntry> filesB = infoB.exists()
+        ? scanDirectoryFiles(result.folderB, includeSubdirs, QStringLiteral("B"), progressCallback, cancelFlag, &canceled)
+        : QHash<QString, ScannedFileEntry>{};
+    if (canceled) {
+        result.canceled = true;
+        return result;
+    }
+
+    QHash<QString, ScannedFileEntry> qualifiedA;
+    QHash<QString, ScannedFileEntry> qualifiedB;
+
+    const int totalToEval = filesA.size() + filesB.size();
+    int evaluated = 0;
+    QElapsedTimer throttle;
+    throttle.start();
+
+    auto classifySide = [&](const QHash<QString, ScannedFileEntry> &rawFiles,
+                            QHash<QString, ScannedFileEntry> &qualifiedOut,
+                            bool isSideA) -> bool {
+        QStringList keys = rawFiles.keys();
+        std::sort(keys.begin(), keys.end());
+        for (const QString &key : keys) {
+            if (cancelFlag && cancelFlag->load()) return false;
+            const ScannedFileEntry &entry = rawFiles[key];
+            if (matchesTimeRange(entry.modifiedMs, filter)) {
+                QString reason;
+                if (evaluateNonTimeFilter(entry.absolutePath, entry.relativePath, entry.size, filter, &reason)) {
+                    qualifiedOut.insert(key, entry);
+                } else {
+                    FolderCompareEntry excluded;
+                    excluded.kind = isSideA ? FolderCompareEntryKind::ExcludedInA : FolderCompareEntryKind::ExcludedInB;
+                    excluded.sideLabel = isSideA ? QStringLiteral("文件夹 A") : QStringLiteral("文件夹 B");
+                    excluded.absolutePath = entry.absolutePath;
+                    excluded.parentDir = entry.parentDir;
+                    excluded.relativePath = entry.relativePath;
+                    excluded.fileSize = entry.size;
+                    excluded.modifiedMs = entry.modifiedMs;
+                    excluded.reason = reason;
+                    result.entries.append(excluded);
+                    if (isSideA) ++result.excludedInACount;
+                    else ++result.excludedInBCount;
+                }
+            }
+            ++evaluated;
+            if (progressCallback && (evaluated % 100 == 0 || throttle.elapsed() >= 150)) {
+                throttle.restart();
+                progressCallback(evaluated, totalToEval,
+                                 QStringLiteral("正在筛选与检测元信息 %1 / %2 ...").arg(evaluated).arg(totalToEval));
+            }
+        }
+        return true;
+    };
+
+    if (!classifySide(filesA, qualifiedA, true) || !classifySide(filesB, qualifiedB, false)) {
+        result.canceled = true;
+        return result;
+    }
+
+    QStringList allQualifiedKeys = qualifiedA.keys();
+    for (auto it = qualifiedB.cbegin(); it != qualifiedB.cend(); ++it) {
+        if (!qualifiedA.contains(it.key())) {
+            allQualifiedKeys.append(it.key());
+        }
+    }
+    std::sort(allQualifiedKeys.begin(), allQualifiedKeys.end());
+
+    for (const QString &key : allQualifiedKeys) {
+        if (cancelFlag && cancelFlag->load()) {
+            result.canceled = true;
+            return result;
+        }
+        const bool inA = qualifiedA.contains(key);
+        const bool inB = qualifiedB.contains(key);
+
+        if (inA && !inB) {
+            const ScannedFileEntry &e = qualifiedA[key];
+            FolderCompareEntry item;
+            item.kind = FolderCompareEntryKind::OnlyInA;
+            item.sideLabel = QStringLiteral("文件夹 A");
+            item.absolutePath = e.absolutePath;
+            item.parentDir = e.parentDir;
+            item.relativePath = e.relativePath;
+            item.fileSize = e.size;
+            item.modifiedMs = e.modifiedMs;
+            item.reason = QStringLiteral("仅存在于 A（B 缺失）");
+            result.entries.append(item);
+            ++result.onlyInACount;
+        } else if (!inA && inB) {
+            const ScannedFileEntry &e = qualifiedB[key];
+            FolderCompareEntry item;
+            item.kind = FolderCompareEntryKind::OnlyInB;
+            item.sideLabel = QStringLiteral("文件夹 B");
+            item.absolutePath = e.absolutePath;
+            item.parentDir = e.parentDir;
+            item.relativePath = e.relativePath;
+            item.fileSize = e.size;
+            item.modifiedMs = e.modifiedMs;
+            item.reason = QStringLiteral("仅存在于 B（多余）");
+            result.entries.append(item);
+            ++result.onlyInBCount;
+        } else if (inA && inB) {
+            const ScannedFileEntry &eA = qualifiedA[key];
+            const ScannedFileEntry &eB = qualifiedB[key];
+            const qint64 timeDiff = std::llabs(eA.modifiedMs - eB.modifiedMs);
+            if (eA.size == eB.size && timeDiff <= kTimestampToleranceMs) {
+                ++result.matchedCount;
+            } else {
+                FolderCompareEntry item;
+                item.kind = FolderCompareEntryKind::ContentDiff;
+                item.sideLabel = QStringLiteral("A / B");
+                item.absolutePath = eA.absolutePath;
+                item.parentDir = eA.parentDir;
+                item.relativePath = eA.relativePath;
+                item.fileSize = eA.size;
+                item.modifiedMs = eA.modifiedMs;
+                item.reason = (eA.size != eB.size)
+                    ? QStringLiteral("两端大小不一致 (A: %1 B, B: %2 B)").arg(eA.size).arg(eB.size)
+                    : QStringLiteral("两端修改时间不一致");
+                result.entries.append(item);
+                ++result.differentCount;
+            }
+        }
+    }
+
+    result.valid = true;
+    return result;
+}
+
+TrashDeleteResult moveFilesToTrash(const QStringList &filePaths,
+                                   const ProgressCallback &progressCallback,
+                                   const std::atomic_bool *cancelFlag)
+{
+    TrashDeleteResult result;
+    const int total = filePaths.size();
+    int done = 0;
+
+    for (const QString &path : filePaths) {
+        if (cancelFlag && cancelFlag->load()) {
+            result.canceled = true;
+            break;
+        }
+        ++done;
+        if (!QFileInfo::exists(path)) {
+            ++result.failedCount;
+            const QString msg = QStringLiteral("[回收站] 文件不存在: %1").arg(path);
+            result.errors.append(msg);
+            if (progressCallback) progressCallback(done, total, msg);
+            continue;
+        }
+        QString trashPath;
+        if (QFile::moveToTrash(path, &trashPath)) {
+            ++result.deletedCount;
+            if (progressCallback) {
+                progressCallback(done, total, QStringLiteral("[已移入回收站] %1").arg(path));
+            }
+        } else {
+            ++result.failedCount;
+            const QString msg = QStringLiteral("[移入回收站失败] %1").arg(path);
+            result.errors.append(msg);
+            if (progressCallback) progressCallback(done, total, msg);
+        }
+    }
     return result;
 }
 

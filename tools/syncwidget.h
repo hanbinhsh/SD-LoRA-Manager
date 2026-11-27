@@ -50,13 +50,20 @@ private slots:
     void onSwapFolders();
     void onFolderSyncModeChanged();
     void onPreviewFolderSync();
+    void onCompareFolders();
+    void onDeleteToTrashClicked();
     void onStartFolderSync();
     void onCancelFolderSync();
     void onClearFolderSyncLog();
+    void onFolderPlanFinished();
     void onFolderSyncFinished();
+    void onFolderCompareFinished();
+    void onFolderTrashFinished();
+    void onFolderAutoWatchScanFinished();
     void onAutoFolderSyncToggled(bool checked);
     void onFolderAutoDirectoryChanged(const QString &path);
     void onFolderTimeFilterChanged();
+    void onFolderNameFilterChanged();
 
 private:
     Ui::SyncWidget *ui;
@@ -79,25 +86,49 @@ private:
     bool m_isLoading = false;
 
     // 文件夹同步状态
+    enum class FolderTaskKind {
+        Idle,
+        Preview,
+        SyncPlan,
+        SyncExecute,
+        Compare,
+        TrashDelete
+    };
+
+    QFutureWatcher<FolderSyncPlan> *m_folderPlanWatcher = nullptr;
     QFutureWatcher<FolderSyncResult> *m_folderSyncWatcher = nullptr;
+    QFutureWatcher<FolderCompareResult> *m_folderCompareWatcher = nullptr;
+    QFutureWatcher<TrashDeleteResult> *m_folderTrashWatcher = nullptr;
+    QFutureWatcher<QStringList> *m_folderAutoWatchScanWatcher = nullptr;
     QFileSystemWatcher *m_folderAutoWatcher = nullptr;
     QTimer *m_folderAutoDebounceTimer = nullptr;
     QTimer *m_folderAutoCooldownTimer = nullptr;
+    QTimer *m_folderLogFlushTimer = nullptr;
+    QStringList m_pendingFolderLogLines;
     std::shared_ptr<std::atomic_bool> m_folderSyncCancelFlag;
-    bool m_folderSyncRunning = false;
+    std::shared_ptr<std::atomic_bool> m_folderWatchScanCancelFlag;
+    FolderTaskKind m_folderTaskKind = FolderTaskKind::Idle;
     bool m_folderAutoSuppressWatchEvents = false;
-    bool m_folderSyncLastRunWasAuto = false;
+    bool m_folderPendingPlanIsAuto = false;
+    bool m_folderWatchScanTriggerSyncAfter = false;
+    int m_folderWatchScanGeneration = 0;
+    FolderCompareResult m_lastCompareResult;
 
+    bool isFolderTaskRunning() const { return m_folderTaskKind != FolderTaskKind::Idle; }
     FolderSyncMode currentFolderSyncMode() const;
     FolderSyncFilter currentFolderSyncFilter() const;
     void updateFolderTimeFilterUi();
+    void updateFolderNameFilterUi();
     void updateFolderSyncModeHint();
     void setFolderSyncUiBusy(bool busy);
     void logFolderSyncMsg(const QString &msg);
-    void triggerFolderSync(bool isAuto);
-    bool startFolderAutoWatch(bool showWarningDialog = false);
+    void enqueueFolderSyncLog(const QString &msg);
+    void flushFolderSyncLogs();
+    void clearLastCompareResult();
+    void startFolderPlanAsync(FolderTaskKind targetKind, bool isAuto);
+    void executePreparedFolderPlan(const FolderSyncPlan &plan, bool isAuto);
+    void startFolderAutoWatchAsync(bool triggerInitialSync = false, bool showWarningDialog = false);
     void stopFolderAutoWatch();
-    void addFolderAutoWatchTree(const QString &rootPath);
     void refreshFolderAutoWatchIfEnabled();
 
     // 动态生成带按钮的列表项的辅助函数

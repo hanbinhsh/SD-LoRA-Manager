@@ -281,6 +281,16 @@
              </widget>
             </item>
             <item>
+             <widget class="QCheckBox" name="chkFolderRequireMetadata">
+              <property name="toolTip">
+               <string>检测图片是否包含生成元信息，没有元信息的图片将不同步（可过滤 ControlNet 预览图与遮罩图）</string>
+              </property>
+              <property name="text">
+               <string>跳过无元信息图片</string>
+              </property>
+             </widget>
+            </item>
+            <item>
              <spacer name="folderTimeFilterSpacer">
               <property name="orientation">
                <enum>Qt::Orientation::Horizontal</enum>
@@ -292,6 +302,92 @@
                </size>
               </property>
              </spacer>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="folderExtraFilterLayout">
+            <property name="spacing">
+             <number>8</number>
+            </property>
+            <item>
+             <widget class="QLabel" name="lblFolderSizeFilter">
+              <property name="text">
+               <string>大小过滤(KB):</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSpinBox" name="spinFolderMinSizeKB">
+              <property name="specialValueText">
+               <string>不限</string>
+              </property>
+              <property name="prefix">
+               <string>最小 </string>
+              </property>
+              <property name="maximum">
+               <number>9999999</number>
+              </property>
+              <property name="singleStep">
+               <number>10</number>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblFolderSizeSep">
+              <property name="text">
+               <string notr="true">-</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSpinBox" name="spinFolderMaxSizeKB">
+              <property name="specialValueText">
+               <string>不限</string>
+              </property>
+              <property name="prefix">
+               <string>最大 </string>
+              </property>
+              <property name="maximum">
+               <number>9999999</number>
+              </property>
+              <property name="singleStep">
+               <number>100</number>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblFolderNameFilter">
+              <property name="text">
+               <string>名称过滤:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboFolderNameFilter">
+              <item>
+               <property name="text">
+                <string>不限名称</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>排除包含</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>仅包含</string>
+               </property>
+              </item>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="editFolderNameKeywords">
+              <property name="placeholderText">
+               <string>多个关键字用逗号分隔，例如 controlnet, mask</string>
+              </property>
+             </widget>
             </item>
            </layout>
           </item>
@@ -320,6 +416,35 @@
            </property>
            <property name="text">
             <string>预览变更</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnCompareFolders">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="toolTip">
+            <string>对比两个文件夹在选定时间与筛选条件下的文件是否完全一致</string>
+           </property>
+           <property name="text">
+            <string>文件对比</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnDeleteToTrash">
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="toolTip">
+            <string>列出对比结果中的多余或被筛选排除的文件，经二次确认后移入系统回收站</string>
+           </property>
+           <property name="text">
+            <string>删除到回收站</string>
            </property>
           </widget>
          </item>

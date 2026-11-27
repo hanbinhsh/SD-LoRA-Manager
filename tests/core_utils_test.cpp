@@ -1124,6 +1124,100 @@ void testFolderSync(const QTemporaryDir &dir)
     check(twBetweenRes.success && QFile::exists(tfB + "/mid.webp") && QFile::exists(tfA + "/b_mid.png")
           && !QFile::exists(tfB + "/mid_note.txt") && !QFile::exists(tfA + "/b_late.png"),
           "TwoWaySync executes only files matching time window and image filter");
+
+    // 7. Size filter, filename filter (exclude & include), metadata detection, and compareFolders
+    const QString advA = root + "/adv_a";
+    const QString advB = root + "/adv_b";
+    QDir().mkpath(advA);
+    QDir().mkpath(advB);
+
+    // Helper: create a tiny PNG with or without a PNG tEXt 'parameters' chunk
+    auto writePngWithOptionalMeta = [&](const QString &path, int extraBytes, const QByteArray &paramsText) {
+        QByteArray png;
+        const char sig[] = {'\x89', 'P', 'N', 'G', '\r', '\n', '\x1a', '\n'};
+        png.append(sig, 8);
+        auto appendChunk = [&](const char type[4], const QByteArray &payload) {
+            quint32 lenBE = qToBigEndian<quint32>(static_cast<quint32>(payload.size()));
+            png.append(reinterpret_cast<const char*>(&lenBE), 4);
+            png.append(type, 4);
+            png.append(payload);
+            const quint32 dummyCrc = 0;
+            png.append(reinterpret_cast<const char*>(&dummyCrc), 4);
+        };
+        if (!paramsText.isEmpty()) {
+            QByteArray textPayload("parameters");
+            textPayload.append('\0');
+            textPayload.append(paramsText);
+            appendChunk("tEXt", textPayload);
+        }
+        if (extraBytes > 0) {
+            appendChunk("IDAT", QByteArray(extraBytes, 'x'));
+        }
+        appendChunk("IEND", {});
+        writeFile(path, png);
+    };
+
+    writePngWithOptionalMeta(advA + "/good_portrait.png", 3000, "1girl, masterpiece\nSteps: 20, Sampler: Euler a");
+    writePngWithOptionalMeta(advA + "/controlnet_depth.png", 3000, "1girl, masterpiece\nSteps: 20");
+    writePngWithOptionalMeta(advA + "/no_meta_mask.png", 3000, {});
+    writePngWithOptionalMeta(advA + "/tiny_thumb.png", 100, "1girl, masterpiece\nSteps: 20");
+    setFileMtime(advA + "/good_portrait.png", t2);
+    setFileMtime(advA + "/controlnet_depth.png", t2);
+    setFileMtime(advA + "/no_meta_mask.png", t2);
+    setFileMtime(advA + "/tiny_thumb.png", t2);
+
+    // Mirror good_portrait to B + add an extra controlnet image in B + extra qualified image in B
+    QFile::copy(advA + "/good_portrait.png", advB + "/good_portrait.png");
+    setFileMtime(advB + "/good_portrait.png", t2);
+    writePngWithOptionalMeta(advB + "/controlnet_canny.png", 3000, {});
+    setFileMtime(advB + "/controlnet_canny.png", t2);
+    writePngWithOptionalMeta(advB + "/extra_only_b.png", 3000, "1girl, solo\nSteps: 25");
+    setFileMtime(advB + "/extra_only_b.png", t2);
+
+    FolderSyncFilter advFilter;
+    advFilter.timeMode = FolderSyncTimeFilterMode::Between;
+    advFilter.startTime = QDateTime::fromSecsSinceEpoch(1700000150);
+    advFilter.endTime = QDateTime::fromSecsSinceEpoch(1700000250);
+    advFilter.imagesOnly = true;
+    advFilter.minSizeKB = 2;
+    advFilter.maxSizeKB = 100;
+    advFilter.nameMode = FolderSyncNameFilterMode::ExcludeContains;
+    advFilter.nameKeywords = FolderSyncEngine::parseNameKeywords("controlnet, mask");
+    advFilter.requireImageMetadata = true;
+
+    const FolderSyncPlan advPlan = FolderSyncEngine::planSync(advA, advB, FolderSyncMode::OneWayCopy, true, advFilter);
+    check(advPlan.valid && advPlan.skipCount == 1 && advPlan.copyAtoBCount == 0 && advPlan.filteredOutCount == 3,
+          "combined size + exclude-name + metadata filter excludes controlnet, no-meta, and tiny images");
+
+    // Test IncludeContains mode
+    FolderSyncFilter includeFilter;
+    includeFilter.nameMode = FolderSyncNameFilterMode::IncludeContains;
+    includeFilter.nameKeywords = FolderSyncEngine::parseNameKeywords("controlnet");
+    const FolderSyncPlan incPlan = FolderSyncEngine::planSync(advA, advB, FolderSyncMode::OneWayCopy, true, includeFilter);
+    check(incPlan.valid && incPlan.copyAtoBCount == 1 && incPlan.actions.first().relativePath == "controlnet_depth.png",
+          "IncludeContains filename filter selects only matching keyword files");
+
+    // Test invalid size range
+    FolderSyncFilter badSizeFilter;
+    badSizeFilter.minSizeKB = 500;
+    badSizeFilter.maxSizeKB = 100;
+    check(!FolderSyncEngine::planSync(advA, advB, FolderSyncMode::OneWayCopy, true, badSizeFilter).valid,
+          "folder sync rejects minSizeKB > maxSizeKB");
+
+    // Test compareFolders
+    const FolderCompareResult cmp = FolderSyncEngine::compareFolders(advA, advB, true, advFilter);
+    check(cmp.valid && !cmp.isFilteredExactMatch()
+          && cmp.matchedCount == 1
+          && cmp.onlyInACount == 0
+          && cmp.onlyInBCount == 1
+          && cmp.excludedInACount == 3
+          && cmp.excludedInBCount == 1
+          && cmp.deletableCandidateCount() == 5,
+          "compareFolders accurately separates matched, extra-in-B, and excluded controlnet/mask/no-meta files");
+
+    // Test collectWatchDirectories cap
+    const QStringList watchDirs = FolderSyncEngine::collectWatchDirectories({advA, advB}, true, 10);
+    check(watchDirs.size() == 2, "collectWatchDirectories collects normalized watch roots");
 }
 }
 
