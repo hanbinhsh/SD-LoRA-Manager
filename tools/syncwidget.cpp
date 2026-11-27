@@ -137,6 +137,10 @@ SyncWidget::SyncWidget(QWidget *parent) :
             this, [this](int) { onFolderNameFilterChanged(); });
     connect(ui->editFolderNameKeywords, &QLineEdit::editingFinished,
             this, [this]() { clearLastCompareResult(); saveSettings(); });
+    connect(ui->comboFolderExtFilter, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int) { onFolderExtFilterChanged(); });
+    connect(ui->editFolderExtensions, &QLineEdit::editingFinished,
+            this, [this]() { clearLastCompareResult(); saveSettings(); });
     connect(ui->chkAutoFolderSync, &QCheckBox::toggled, this, &SyncWidget::onAutoFolderSyncToggled);
     connect(ui->editFolderA, &QLineEdit::editingFinished, this, [this]() {
         clearLastCompareResult();
@@ -153,6 +157,7 @@ SyncWidget::SyncWidget(QWidget *parent) :
     loadSettings();
     updateFolderTimeFilterUi();
     updateFolderNameFilterUi();
+    updateFolderExtFilterUi();
     updateFolderSyncModeHint();
 
     // 自动启动服务
@@ -283,6 +288,8 @@ void SyncWidget::loadSettings() {
     ui->spinFolderMaxSizeKB->setValue(qMax(0, settings.value("maxSizeKB", 0).toInt()));
     ui->comboFolderNameFilter->setCurrentIndex(qBound(0, settings.value("nameFilterMode", 0).toInt(), 2));
     ui->editFolderNameKeywords->setText(settings.value("nameKeywords", "").toString());
+    ui->comboFolderExtFilter->setCurrentIndex(qBound(0, settings.value("extFilterMode", 0).toInt(), 2));
+    ui->editFolderExtensions->setText(settings.value("extensions", "").toString());
     settings.endGroup();
 
     m_isLoading = false; // 关闭加载模式
@@ -316,6 +323,8 @@ void SyncWidget::saveSettings() {
     settings.setValue("maxSizeKB", ui->spinFolderMaxSizeKB->value());
     settings.setValue("nameFilterMode", ui->comboFolderNameFilter->currentIndex());
     settings.setValue("nameKeywords", ui->editFolderNameKeywords->text().trimmed());
+    settings.setValue("extFilterMode", ui->comboFolderExtFilter->currentIndex());
+    settings.setValue("extensions", ui->editFolderExtensions->text().trimmed());
     settings.endGroup();
 }
 
@@ -1069,6 +1078,12 @@ FolderSyncFilter SyncWidget::currentFolderSyncFilter() const
     else filter.nameMode = FolderSyncNameFilterMode::None;
     filter.nameKeywords = FolderSyncEngine::parseNameKeywords(ui->editFolderNameKeywords->text());
 
+    const int extIdx = ui->comboFolderExtFilter->currentIndex();
+    if (extIdx == 1) filter.extMode = FolderSyncExtFilterMode::IncludeOnly;
+    else if (extIdx == 2) filter.extMode = FolderSyncExtFilterMode::Exclude;
+    else filter.extMode = FolderSyncExtFilterMode::None;
+    filter.extensions = FolderSyncEngine::parseExtensions(ui->editFolderExtensions->text());
+
     return filter;
 }
 
@@ -1089,6 +1104,12 @@ void SyncWidget::updateFolderNameFilterUi()
     ui->editFolderNameKeywords->setEnabled(enabled && !isFolderTaskRunning());
 }
 
+void SyncWidget::updateFolderExtFilterUi()
+{
+    const bool enabled = (ui->comboFolderExtFilter->currentIndex() != 0);
+    ui->editFolderExtensions->setEnabled(enabled && !isFolderTaskRunning());
+}
+
 void SyncWidget::onFolderTimeFilterChanged()
 {
     updateFolderTimeFilterUi();
@@ -1099,6 +1120,13 @@ void SyncWidget::onFolderTimeFilterChanged()
 void SyncWidget::onFolderNameFilterChanged()
 {
     updateFolderNameFilterUi();
+    clearLastCompareResult();
+    saveSettings();
+}
+
+void SyncWidget::onFolderExtFilterChanged()
+{
+    updateFolderExtFilterUi();
     clearLastCompareResult();
     saveSettings();
 }
@@ -1146,6 +1174,8 @@ void SyncWidget::setFolderSyncUiBusy(bool busy)
     ui->spinFolderMaxSizeKB->setEnabled(!busy);
     ui->comboFolderNameFilter->setEnabled(!busy);
     ui->editFolderNameKeywords->setEnabled(!busy && ui->comboFolderNameFilter->currentIndex() != 0);
+    ui->comboFolderExtFilter->setEnabled(!busy);
+    ui->editFolderExtensions->setEnabled(!busy && ui->comboFolderExtFilter->currentIndex() != 0);
     ui->btnPreviewFolderSync->setEnabled(!busy);
     ui->btnCompareFolders->setEnabled(!busy);
     ui->btnDeleteToTrash->setEnabled(!busy && m_lastCompareResult.deletableCandidateCount() > 0);
@@ -1586,6 +1616,10 @@ void SyncWidget::onDeleteToTrashClicked()
     const QStringList paths = dialog.selectedFilePaths();
     if (paths.isEmpty()) return;
 
+    const FolderDeleteMode deleteMode = dialog.deleteMode();
+    const bool permanent = (deleteMode == FolderDeleteMode::PermanentDelete);
+    m_lastDeleteMode = deleteMode;
+
     m_folderTaskKind = FolderTaskKind::TrashDelete;
     m_folderAutoSuppressWatchEvents = true;
     if (m_folderAutoDebounceTimer) m_folderAutoDebounceTimer->stop();
@@ -1594,27 +1628,35 @@ void SyncWidget::onDeleteToTrashClicked()
     setFolderSyncUiBusy(true);
     ui->progressFolderSync->setRange(0, paths.size());
     ui->progressFolderSync->setValue(0);
-    ui->lblFolderSyncSummary->setText(AppText::tr("正在移入回收站 0 / %1 ...").arg(paths.size()));
-    logFolderSyncMsg(AppText::tr("开始将选中的 %1 个文件移入系统回收站...").arg(paths.size()));
+    ui->lblFolderSyncSummary->setText(
+        permanent
+            ? AppText::tr("正在直接删除 0 / %1 ...").arg(paths.size())
+            : AppText::tr("正在移入回收站 0 / %1 ...").arg(paths.size()));
+    logFolderSyncMsg(
+        permanent
+            ? AppText::tr("开始直接永久删除选中的 %1 个文件...").arg(paths.size())
+            : AppText::tr("开始将选中的 %1 个文件移入系统回收站...").arg(paths.size()));
 
     auto cancelFlag = std::make_shared<std::atomic_bool>(false);
     m_folderSyncCancelFlag = cancelFlag;
     QPointer<SyncWidget> self(this);
 
-    auto progressCb = [self](int done, int total, const QString &line) {
+    auto progressCb = [self, permanent](int done, int total, const QString &line) {
         if (!self) return;
-        QMetaObject::invokeMethod(self, [self, done, total, line]() {
+        QMetaObject::invokeMethod(self, [self, permanent, done, total, line]() {
             if (!self) return;
             self->ui->progressFolderSync->setRange(0, qMax(1, total));
             self->ui->progressFolderSync->setValue(done);
             self->ui->lblFolderSyncSummary->setText(
-                AppText::tr("正在移入回收站 %1 / %2 ...").arg(done).arg(total));
+                permanent
+                    ? AppText::tr("正在直接删除 %1 / %2 ...").arg(done).arg(total)
+                    : AppText::tr("正在移入回收站 %1 / %2 ...").arg(done).arg(total));
             self->enqueueFolderSyncLog(line);
         }, Qt::QueuedConnection);
     };
 
-    QFuture<TrashDeleteResult> future = QtConcurrent::run([paths, progressCb, cancelFlag]() {
-        return FolderSyncEngine::moveFilesToTrash(paths, progressCb, cancelFlag.get());
+    QFuture<TrashDeleteResult> future = QtConcurrent::run([paths, deleteMode, progressCb, cancelFlag]() {
+        return FolderSyncEngine::deleteFiles(paths, deleteMode, progressCb, cancelFlag.get());
     });
     m_folderTrashWatcher->setFuture(future);
 }
@@ -1622,6 +1664,7 @@ void SyncWidget::onDeleteToTrashClicked()
 void SyncWidget::onFolderTrashFinished()
 {
     const TrashDeleteResult res = m_folderTrashWatcher->result();
+    const bool permanent = (m_lastDeleteMode == FolderDeleteMode::PermanentDelete);
     m_folderTaskKind = FolderTaskKind::Idle;
     clearLastCompareResult();
     setFolderSyncUiBusy(false);
@@ -1629,9 +1672,16 @@ void SyncWidget::onFolderTrashFinished()
 
     ui->progressFolderSync->setRange(0, 100);
     ui->progressFolderSync->setValue(res.canceled ? 0 : 100);
-    const QString summary = res.canceled
-        ? AppText::tr("回收站清理已取消：已移入回收站 %1 个，失败 %2 个").arg(res.deletedCount).arg(res.failedCount)
-        : AppText::tr("回收站清理完成：已移入回收站 %1 个，失败 %2 个").arg(res.deletedCount).arg(res.failedCount);
+    QString summary;
+    if (permanent) {
+        summary = res.canceled
+            ? AppText::tr("直接删除已取消：已删除 %1 个，失败 %2 个").arg(res.deletedCount).arg(res.failedCount)
+            : AppText::tr("直接删除完成：已删除 %1 个，失败 %2 个").arg(res.deletedCount).arg(res.failedCount);
+    } else {
+        summary = res.canceled
+            ? AppText::tr("回收站清理已取消：已移入回收站 %1 个，失败 %2 个").arg(res.deletedCount).arg(res.failedCount)
+            : AppText::tr("回收站清理完成：已移入回收站 %1 个，失败 %2 个").arg(res.deletedCount).arg(res.failedCount);
+    }
     ui->lblFolderSyncSummary->setText(summary);
     logFolderSyncMsg(summary);
 

@@ -64,6 +64,7 @@ private slots:
     void onFolderAutoDirectoryChanged(const QString &path);
     void onFolderTimeFilterChanged();
     void onFolderNameFilterChanged();
+    void onFolderExtFilterChanged();
 
 private:
     Ui::SyncWidget *ui;
@@ -113,12 +114,14 @@ private:
     bool m_folderWatchScanTriggerSyncAfter = false;
     int m_folderWatchScanGeneration = 0;
     FolderCompareResult m_lastCompareResult;
+    FolderDeleteMode m_lastDeleteMode = FolderDeleteMode::MoveToTrash;
 
     bool isFolderTaskRunning() const { return m_folderTaskKind != FolderTaskKind::Idle; }
     FolderSyncMode currentFolderSyncMode() const;
     FolderSyncFilter currentFolderSyncFilter() const;
     void updateFolderTimeFilterUi();
     void updateFolderNameFilterUi();
+    void updateFolderExtFilterUi();
     void updateFolderSyncModeHint();
     void setFolderSyncUiBusy(bool busy);
     void logFolderSyncMsg(const QString &msg);

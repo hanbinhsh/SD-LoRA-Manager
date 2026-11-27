@@ -274,6 +274,25 @@ QStringList parseNameKeywords(const QString &text)
     return out;
 }
 
+QStringList parseExtensions(const QString &text)
+{
+    static const QRegularExpression sep(QStringLiteral("[,，;；\\s]+"));
+    const QStringList raw = text.split(sep, Qt::SkipEmptyParts);
+    QStringList out;
+    QSet<QString> seen;
+    for (const QString &part : raw) {
+        QString clean = part.trimmed().toLower();
+        while (clean.startsWith(QLatin1Char('*')) || clean.startsWith(QLatin1Char('.'))) {
+            clean.remove(0, 1);
+        }
+        if (!clean.isEmpty() && !seen.contains(clean)) {
+            seen.insert(clean);
+            out.append(clean);
+        }
+    }
+    return out;
+}
+
 QString validateInputs(const QString &folderA, const QString &folderB, const FolderSyncFilter &filter)
 {
     const QString trimmedA = folderA.trimmed();
@@ -347,6 +366,19 @@ bool evaluateNonTimeFilter(const QString &absPath,
     if (filter.imagesOnly && !isImg) {
         if (excludeReasonOut) *excludeReasonOut = QStringLiteral("非图片文件");
         return false;
+    }
+
+    if (filter.extMode != FolderSyncExtFilterMode::None && !filter.extensions.isEmpty()) {
+        const QString ext = QFileInfo(fileName).suffix().toLower();
+        const bool matched = !ext.isEmpty() && filter.extensions.contains(ext);
+        if (filter.extMode == FolderSyncExtFilterMode::IncludeOnly && !matched) {
+            if (excludeReasonOut) *excludeReasonOut = QStringLiteral("文件后缀不在允许列表");
+            return false;
+        }
+        if (filter.extMode == FolderSyncExtFilterMode::Exclude && matched) {
+            if (excludeReasonOut) *excludeReasonOut = QStringLiteral("文件后缀命中排除列表: .%1").arg(ext);
+            return false;
+        }
     }
 
     if (filter.minSizeKB > 0 && sizeBytes < filter.minSizeKB * 1024LL) {
@@ -888,13 +920,15 @@ FolderCompareResult compareFolders(const QString &folderA,
     return result;
 }
 
-TrashDeleteResult moveFilesToTrash(const QStringList &filePaths,
-                                   const ProgressCallback &progressCallback,
-                                   const std::atomic_bool *cancelFlag)
+TrashDeleteResult deleteFiles(const QStringList &filePaths,
+                              FolderDeleteMode mode,
+                              const ProgressCallback &progressCallback,
+                              const std::atomic_bool *cancelFlag)
 {
     TrashDeleteResult result;
     const int total = filePaths.size();
     int done = 0;
+    const bool permanent = (mode == FolderDeleteMode::PermanentDelete);
 
     for (const QString &path : filePaths) {
         if (cancelFlag && cancelFlag->load()) {
@@ -904,25 +938,47 @@ TrashDeleteResult moveFilesToTrash(const QStringList &filePaths,
         ++done;
         if (!QFileInfo::exists(path)) {
             ++result.failedCount;
-            const QString msg = QStringLiteral("[回收站] 文件不存在: %1").arg(path);
+            const QString msg = permanent
+                ? QStringLiteral("[直接删除] 文件不存在: %1").arg(path)
+                : QStringLiteral("[回收站] 文件不存在: %1").arg(path);
             result.errors.append(msg);
             if (progressCallback) progressCallback(done, total, msg);
             continue;
         }
-        QString trashPath;
-        if (QFile::moveToTrash(path, &trashPath)) {
+
+        bool ok = false;
+        if (permanent) {
+            ok = QFile::remove(path);
+        } else {
+            QString trashPath;
+            ok = QFile::moveToTrash(path, &trashPath);
+        }
+
+        if (ok) {
             ++result.deletedCount;
             if (progressCallback) {
-                progressCallback(done, total, QStringLiteral("[已移入回收站] %1").arg(path));
+                progressCallback(done, total,
+                                 permanent
+                                     ? QStringLiteral("[已直接删除] %1").arg(path)
+                                     : QStringLiteral("[已移入回收站] %1").arg(path));
             }
         } else {
             ++result.failedCount;
-            const QString msg = QStringLiteral("[移入回收站失败] %1").arg(path);
+            const QString msg = permanent
+                ? QStringLiteral("[直接删除失败] %1").arg(path)
+                : QStringLiteral("[移入回收站失败] %1").arg(path);
             result.errors.append(msg);
             if (progressCallback) progressCallback(done, total, msg);
         }
     }
     return result;
+}
+
+TrashDeleteResult moveFilesToTrash(const QStringList &filePaths,
+                                   const ProgressCallback &progressCallback,
+                                   const std::atomic_bool *cancelFlag)
+{
+    return deleteFiles(filePaths, FolderDeleteMode::MoveToTrash, progressCallback, cancelFlag);
 }
 
 } // namespace FolderSyncEngine

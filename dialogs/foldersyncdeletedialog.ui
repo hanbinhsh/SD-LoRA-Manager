@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>确认移至回收站的文件列表</string>
+   <string>确认要删除的文件列表</string>
   </property>
   <layout class="QVBoxLayout" name="rootDeleteLayout">
    <property name="spacing">
@@ -32,7 +32,7 @@
    <item>
     <widget class="QLabel" name="lblDeleteSummary">
      <property name="text">
-      <string>请勾选需要移至系统回收站的文件：</string>
+      <string>请勾选需要删除的文件（网络盘文件若不支持回收站，可选择“直接删除”）：</string>
      </property>
      <property name="wordWrap">
       <bool>true</bool>
@@ -190,8 +190,24 @@
        <property name="cursor">
         <cursorShape>PointingHandCursor</cursorShape>
        </property>
+       <property name="toolTip">
+        <string>将勾选文件移入系统回收站（可恢复）</string>
+       </property>
        <property name="text">
         <string>移至回收站</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnPermanentDelete">
+       <property name="cursor">
+        <cursorShape>PointingHandCursor</cursorShape>
+       </property>
+       <property name="toolTip">
+        <string>直接永久删除勾选文件（不经过回收站，适用于不支持回收站的网络盘）</string>
+       </property>
+       <property name="text">
+        <string>直接删除</string>
        </property>
       </widget>
      </item>

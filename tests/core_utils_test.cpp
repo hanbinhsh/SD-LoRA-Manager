@@ -1218,6 +1218,41 @@ void testFolderSync(const QTemporaryDir &dir)
     // Test collectWatchDirectories cap
     const QStringList watchDirs = FolderSyncEngine::collectWatchDirectories({advA, advB}, true, 10);
     check(watchDirs.size() == 2, "collectWatchDirectories collects normalized watch roots");
+
+    // 8. Extension filter (parseExtensions, IncludeOnly, Exclude) & permanent delete
+    const QStringList parsedExts = FolderSyncEngine::parseExtensions("*.PNG, .webp; jpg，txt .PNG");
+    check(parsedExts == QStringList({"png", "webp", "jpg", "txt"}),
+          "parseExtensions normalizes wildcards, dots, delimiters, casing, and duplicates");
+
+    const QString extA = root + "/ext_a";
+    const QString extB = root + "/ext_b";
+    QDir().mkpath(extA);
+    QDir().mkpath(extB);
+    writeFile(extA + "/a.png", "p");
+    writeFile(extA + "/b.webp", "w");
+    writeFile(extA + "/c.json", "j");
+    writeFile(extA + "/d.txt", "t");
+
+    FolderSyncFilter incExt;
+    incExt.extMode = FolderSyncExtFilterMode::IncludeOnly;
+    incExt.extensions = FolderSyncEngine::parseExtensions(".png, webp");
+    const FolderSyncPlan incExtPlan = FolderSyncEngine::planSync(extA, extB, FolderSyncMode::OneWayCopy, true, incExt);
+    check(incExtPlan.valid && incExtPlan.copyAtoBCount == 2 && incExtPlan.filteredOutCount == 2,
+          "IncludeOnly extension filter syncs only matching extensions");
+
+    FolderSyncFilter excExt;
+    excExt.extMode = FolderSyncExtFilterMode::Exclude;
+    excExt.extensions = FolderSyncEngine::parseExtensions("json, .txt");
+    const FolderSyncPlan excExtPlan = FolderSyncEngine::planSync(extA, extB, FolderSyncMode::OneWayCopy, true, excExt);
+    check(excExtPlan.valid && excExtPlan.copyAtoBCount == 2 && excExtPlan.filteredOutCount == 2,
+          "Exclude extension filter excludes matching extensions");
+
+    const TrashDeleteResult permDel = FolderSyncEngine::deleteFiles(
+        {extA + "/c.json", extA + "/d.txt"}, FolderDeleteMode::PermanentDelete);
+    check(!permDel.canceled && permDel.deletedCount == 2 && permDel.failedCount == 0
+          && !QFile::exists(extA + "/c.json") && !QFile::exists(extA + "/d.txt")
+          && QFile::exists(extA + "/a.png"),
+          "deleteFiles(PermanentDelete) permanently removes selected files directly");
 }
 }
 

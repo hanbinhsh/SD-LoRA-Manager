@@ -27,11 +27,24 @@ enum class FolderSyncNameFilterMode {
     IncludeContains = 2
 };
 
+enum class FolderSyncExtFilterMode {
+    None = 0,
+    IncludeOnly = 1,
+    Exclude = 2
+};
+
+enum class FolderDeleteMode {
+    MoveToTrash = 0,
+    PermanentDelete = 1
+};
+
 struct FolderSyncFilter {
     FolderSyncTimeFilterMode timeMode = FolderSyncTimeFilterMode::All;
     QDateTime startTime;
     QDateTime endTime;
     bool imagesOnly = false;
+    FolderSyncExtFilterMode extMode = FolderSyncExtFilterMode::None;
+    QStringList extensions;
     qint64 minSizeKB = 0; // <= 0 means no minimum
     qint64 maxSizeKB = 0; // <= 0 means no maximum
     FolderSyncNameFilterMode nameMode = FolderSyncNameFilterMode::None;
@@ -146,6 +159,7 @@ QString normalizeDirPath(const QString &path);
 bool isSameOrNestedDirectory(const QString &dirA, const QString &dirB);
 bool isSupportedImageFile(const QString &fileName);
 QStringList parseNameKeywords(const QString &text);
+QStringList parseExtensions(const QString &text);
 QString validateInputs(const QString &folderA, const QString &folderB, const FolderSyncFilter &filter);
 
 bool matchesTimeRange(qint64 modifiedMs, const FolderSyncFilter &filter);
@@ -184,6 +198,11 @@ FolderCompareResult compareFolders(const QString &folderA,
                                    const FolderSyncFilter &filter = FolderSyncFilter(),
                                    const ProgressCallback &progressCallback = {},
                                    const std::atomic_bool *cancelFlag = nullptr);
+
+TrashDeleteResult deleteFiles(const QStringList &filePaths,
+                              FolderDeleteMode mode,
+                              const ProgressCallback &progressCallback = {},
+                              const std::atomic_bool *cancelFlag = nullptr);
 
 TrashDeleteResult moveFilesToTrash(const QStringList &filePaths,
                                    const ProgressCallback &progressCallback = {},

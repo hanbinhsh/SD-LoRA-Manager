@@ -392,6 +392,46 @@
            </layout>
           </item>
           <item>
+           <layout class="QHBoxLayout" name="folderExtFilterLayout">
+            <property name="spacing">
+             <number>8</number>
+            </property>
+            <item>
+             <widget class="QLabel" name="lblFolderExtFilter">
+              <property name="text">
+               <string>后缀过滤:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboFolderExtFilter">
+              <item>
+               <property name="text">
+                <string>不限后缀</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>仅包含后缀</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>排除后缀</string>
+               </property>
+              </item>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="editFolderExtensions">
+              <property name="placeholderText">
+               <string>多个后缀用逗号分隔，例如 png, webp, jpg（可不带点）</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
            <widget class="QLabel" name="lblFolderSyncModeHint">
             <property name="text">
              <string>将文件夹 A 中新增或更新的文件复制到文件夹 B，保留 A 中的原始文件。</string>
@@ -441,10 +481,10 @@
             <cursorShape>PointingHandCursor</cursorShape>
            </property>
            <property name="toolTip">
-            <string>列出对比结果中的多余或被筛选排除的文件，经二次确认后移入系统回收站</string>
+            <string>列出对比结果中的多余或被筛选排除的文件，支持移入回收站或直接删除（适用于网络盘）</string>
            </property>
            <property name="text">
-            <string>删除到回收站</string>
+            <string>删除冗余文件</string>
            </property>
           </widget>
          </item>

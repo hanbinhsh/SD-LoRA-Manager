@@ -20,19 +20,23 @@ public:
     ~FolderSyncDeleteDialog() override;
 
     QStringList selectedFilePaths() const;
+    FolderDeleteMode deleteMode() const { return m_deleteMode; }
 
 private slots:
     void onSelectByCategory(FolderCompareEntryKind kind);
     void onSelectAll();
     void onSelectNone();
     void onConfirmMoveToTrash();
+    void onConfirmPermanentDelete();
     void updateSelectionSummary();
 
 private:
     void populateTable();
+    void confirmDeleteWithMode(FolderDeleteMode mode);
 
     Ui::FolderSyncDeleteDialog *ui = nullptr;
     QVector<FolderCompareEntry> m_candidates;
+    FolderDeleteMode m_deleteMode = FolderDeleteMode::MoveToTrash;
 };
 
 #endif // FOLDERSYNCDELETEDIALOG_H

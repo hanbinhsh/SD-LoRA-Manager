@@ -37,7 +37,7 @@ FolderSyncDeleteDialog::FolderSyncDeleteDialog(const FolderCompareResult &compar
     }
 
     ui->lblDeleteSummary->setText(
-        AppText::tr("可清理候选文件共 %1 个（仅在 B：%2，仅在 A：%3，A 中排除项：%4，B 中排除项：%5）。请勾选要移入回收站的文件：")
+        AppText::tr("可清理候选文件共 %1 个（仅在 B：%2，仅在 A：%3，A 中排除项：%4，B 中排除项：%5）。请勾选要删除的文件（网络盘文件可使用“直接删除”）：")
             .arg(m_candidates.size())
             .arg(compareResult.onlyInBCount)
             .arg(compareResult.onlyInACount)
@@ -64,6 +64,7 @@ FolderSyncDeleteDialog::FolderSyncDeleteDialog(const FolderCompareResult &compar
     connect(ui->btnSelectAll, &QPushButton::clicked, this, &FolderSyncDeleteDialog::onSelectAll);
     connect(ui->btnSelectNone, &QPushButton::clicked, this, &FolderSyncDeleteDialog::onSelectNone);
     connect(ui->btnMoveToTrash, &QPushButton::clicked, this, &FolderSyncDeleteDialog::onConfirmMoveToTrash);
+    connect(ui->btnPermanentDelete, &QPushButton::clicked, this, &FolderSyncDeleteDialog::onConfirmPermanentDelete);
     connect(ui->btnClose, &QPushButton::clicked, this, &QDialog::reject);
     connect(ui->tableDeleteCandidates, &QTableWidget::itemChanged,
             this, [this](QTableWidgetItem *) { updateSelectionSummary(); });
@@ -177,6 +178,7 @@ void FolderSyncDeleteDialog::updateSelectionSummary()
     ui->lblSelectedCount->setText(
         AppText::tr("已勾选 %1 个文件（共 %2）").arg(count).arg(formatDeleteByteSize(totalBytes)));
     ui->btnMoveToTrash->setEnabled(count > 0);
+    ui->btnPermanentDelete->setEnabled(count > 0);
 }
 
 QStringList FolderSyncDeleteDialog::selectedFilePaths() const
@@ -193,6 +195,16 @@ QStringList FolderSyncDeleteDialog::selectedFilePaths() const
 }
 
 void FolderSyncDeleteDialog::onConfirmMoveToTrash()
+{
+    confirmDeleteWithMode(FolderDeleteMode::MoveToTrash);
+}
+
+void FolderSyncDeleteDialog::onConfirmPermanentDelete()
+{
+    confirmDeleteWithMode(FolderDeleteMode::PermanentDelete);
+}
+
+void FolderSyncDeleteDialog::confirmDeleteWithMode(FolderDeleteMode mode)
 {
     const QStringList paths = selectedFilePaths();
     if (paths.isEmpty()) return;
@@ -211,16 +223,31 @@ void FolderSyncDeleteDialog::onConfirmMoveToTrash()
         }
     }
 
-    const auto reply = QMessageBox::question(
-        this,
-        AppText::tr("二次确认删除"),
-        AppText::tr("确定将选中的 %1 个文件移至系统回收站吗？\n（文件夹 A：%2 个，文件夹 B：%3 个）")
-            .arg(paths.size())
-            .arg(countA)
-            .arg(countB),
-        QMessageBox::Yes | QMessageBox::No,
-        QMessageBox::No);
+    QMessageBox::StandardButton reply = QMessageBox::No;
+    if (mode == FolderDeleteMode::PermanentDelete) {
+        reply = QMessageBox::warning(
+            this,
+            AppText::tr("二次确认直接删除"),
+            AppText::tr("警告：直接删除不会经过回收站，删除后无法恢复！\n确定要永久删除选中的 %1 个文件吗？\n（文件夹 A：%2 个，文件夹 B：%3 个）")
+                .arg(paths.size())
+                .arg(countA)
+                .arg(countB),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No);
+    } else {
+        reply = QMessageBox::question(
+            this,
+            AppText::tr("二次确认删除"),
+            AppText::tr("确定将选中的 %1 个文件移至系统回收站吗？\n（文件夹 A：%2 个，文件夹 B：%3 个）")
+                .arg(paths.size())
+                .arg(countA)
+                .arg(countB),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No);
+    }
+
     if (reply == QMessageBox::Yes) {
+        m_deleteMode = mode;
         accept();
     }
 }

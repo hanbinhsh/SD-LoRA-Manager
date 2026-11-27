@@ -6722,5 +6722,93 @@ Enable it?</translation>
       <source>最小文件大小不能大于最大文件大小。</source>
       <translation>Minimum file size cannot exceed maximum file size.</translation>
     </message>
+    <message>
+      <source>后缀过滤:</source>
+      <translation>Extension Filter:</translation>
+    </message>
+    <message>
+      <source>不限后缀</source>
+      <translation>Any Extension</translation>
+    </message>
+    <message>
+      <source>仅包含后缀</source>
+      <translation>Include Only</translation>
+    </message>
+    <message>
+      <source>排除后缀</source>
+      <translation>Exclude</translation>
+    </message>
+    <message>
+      <source>多个后缀用逗号分隔，例如 png, webp, jpg（可不带点）</source>
+      <translation>Comma-separated extensions, e.g. png, webp, jpg (dot optional)</translation>
+    </message>
+    <message>
+      <source>列出对比结果中的多余或被筛选排除的文件，支持移入回收站或直接删除（适用于网络盘）</source>
+      <translation>List extra or filtered-out files from comparison; supports Move to Recycle Bin or Direct Delete (for network drives)</translation>
+    </message>
+    <message>
+      <source>删除冗余文件</source>
+      <translation>Delete Extra Files</translation>
+    </message>
+    <message>
+      <source>确认要删除的文件列表</source>
+      <translation>Confirm Files to Delete</translation>
+    </message>
+    <message>
+      <source>请勾选需要删除的文件（网络盘文件若不支持回收站，可选择“直接删除”）：</source>
+      <translation>Select files to delete (for network drives without Recycle Bin support, use Direct Delete):</translation>
+    </message>
+    <message>
+      <source>将勾选文件移入系统回收站（可恢复）</source>
+      <translation>Move selected files to system Recycle Bin (recoverable)</translation>
+    </message>
+    <message>
+      <source>直接永久删除勾选文件（不经过回收站，适用于不支持回收站的网络盘）</source>
+      <translation>Permanently delete selected files directly (bypasses Recycle Bin; for network drives)</translation>
+    </message>
+    <message>
+      <source>直接删除</source>
+      <translation>Direct Delete</translation>
+    </message>
+    <message>
+      <source>可清理候选文件共 %1 个（仅在 B：%2，仅在 A：%3，A 中排除项：%4，B 中排除项：%5）。请勾选要删除的文件（网络盘文件可使用“直接删除”）：</source>
+      <translation>Found %1 candidate file(s) (Only in B: %2, Only in A: %3, Excluded in A: %4, Excluded in B: %5). Select files to delete (use Direct Delete for network drives):</translation>
+    </message>
+    <message>
+      <source>二次确认直接删除</source>
+      <translation>Confirm Permanent Deletion</translation>
+    </message>
+    <message>
+      <source>警告：直接删除不会经过回收站，删除后无法恢复！
+确定要永久删除选中的 %1 个文件吗？
+（文件夹 A：%2 个，文件夹 B：%3 个）</source>
+      <translation>Warning: Direct Delete bypasses the Recycle Bin and cannot be undone!
+Permanently delete the %1 selected file(s)?
+(Folder A: %2, Folder B: %3)</translation>
+    </message>
+    <message>
+      <source>正在直接删除 0 / %1 ...</source>
+      <translation>Deleting directly 0 / %1 ...</translation>
+    </message>
+    <message>
+      <source>正在直接删除 %1 / %2 ...</source>
+      <translation>Deleting directly %1 / %2 ...</translation>
+    </message>
+    <message>
+      <source>开始直接永久删除选中的 %1 个文件...</source>
+      <translation>Permanently deleting %1 selected file(s)...</translation>
+    </message>
+    <message>
+      <source>直接删除已取消：已删除 %1 个，失败 %2 个</source>
+      <translation>Direct delete canceled: deleted %1, failed %2</translation>
+    </message>
+    <message>
+      <source>直接删除完成：已删除 %1 个，失败 %2 个</source>
+      <translation>Direct delete complete: deleted %1, failed %2</translation>
+    </message>
+    <message>
+      <source>文件后缀不在允许列表</source>
+      <translation>File extension not in allowed list</translation>
+    </message>
   </context>
 </TS>
