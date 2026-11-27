@@ -15,6 +15,11 @@
 #include <QHostInfo>
 #include <QNetworkInterface>
 #include <QFile>
+#include <QSaveFile>
+#include <QSettings>
+#include <QCoreApplication>
+#include <QDir>
+#include <algorithm>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <QHBoxLayout>
@@ -236,35 +241,117 @@ void SyncWidget::logMsg(const QString &msg) {
     ui->logOutput->append(timeStr + msg);
 }
 
-// ======================= 设置存取 (立即保存) =======================
+// ======================= 设置存取 (立即保存至 config/sync_settings.json) =======================
+QString SyncWidget::settingsPath() const {
+    const QString configDir = QCoreApplication::applicationDirPath() + QStringLiteral("/config");
+    QDir().mkpath(configDir);
+    return configDir + QStringLiteral("/sync_settings.json");
+}
+
 void SyncWidget::loadSettings() {
     m_isLoading = true; // 开启加载模式
 
-    QSettings settings("IceRinne", "LoraManager");
-    settings.beginGroup("SyncServer");
+    QJsonObject root;
+    bool migratedFromLegacy = false;
+    const QString filePath = settingsPath();
 
-    ui->chkAutoStart->setChecked(settings.value("autoStart", false).toBool());
-    ui->chkWhitelist->setChecked(settings.value("enableWhitelist", false).toBool());
-    ui->editPort->setText(settings.value("port", "12345").toString());
-    ui->editAesKey->setText(settings.value("aesKey", "").toString());
+    if (QFile::exists(filePath)) {
+        QFile file(filePath);
+        if (file.open(QIODevice::ReadOnly)) {
+            QJsonParseError parseError;
+            const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+            if (parseError.error == QJsonParseError::NoError && doc.isObject()) {
+                root = doc.object();
+            } else {
+                qWarning() << "Failed to parse sync settings JSON:" << filePath << parseError.errorString();
+            }
+        }
+    } else {
+        // 首次迁移：若本地尚无 config/sync_settings.json，则尝试从旧版注册表 QSettings 自动导入一次
+        QSettings legacy(QStringLiteral("IceRinne"), QStringLiteral("LoraManager"));
 
-    QStringList whitelistArr = settings.value("whitelist").toStringList();
+        legacy.beginGroup(QStringLiteral("SyncServer"));
+        const bool hasLegacySync = !legacy.childKeys().isEmpty();
+        QJsonObject legacySync;
+        if (hasLegacySync) {
+            legacySync.insert(QStringLiteral("autoStart"), legacy.value(QStringLiteral("autoStart"), false).toBool());
+            legacySync.insert(QStringLiteral("enableWhitelist"), legacy.value(QStringLiteral("enableWhitelist"), false).toBool());
+            legacySync.insert(QStringLiteral("port"), legacy.value(QStringLiteral("port"), QStringLiteral("12345")).toString());
+            legacySync.insert(QStringLiteral("aesKey"), legacy.value(QStringLiteral("aesKey"), QString()).toString());
+            legacySync.insert(QStringLiteral("whitelist"), QJsonArray::fromStringList(legacy.value(QStringLiteral("whitelist")).toStringList()));
+            legacySync.insert(QStringLiteral("rootPaths"), QJsonArray::fromStringList(legacy.value(QStringLiteral("rootPaths")).toStringList()));
+        }
+        legacy.endGroup();
+
+        legacy.beginGroup(QStringLiteral("FolderSync"));
+        const bool hasLegacyFolder = !legacy.childKeys().isEmpty();
+        QJsonObject legacyFolder;
+        if (hasLegacyFolder) {
+            legacyFolder.insert(QStringLiteral("folderA"), legacy.value(QStringLiteral("folderA"), QString()).toString());
+            legacyFolder.insert(QStringLiteral("folderB"), legacy.value(QStringLiteral("folderB"), QString()).toString());
+            legacyFolder.insert(QStringLiteral("mode"), legacy.value(QStringLiteral("mode"), 0).toInt());
+            legacyFolder.insert(QStringLiteral("includeSubdirs"), legacy.value(QStringLiteral("includeSubdirs"), true).toBool());
+            legacyFolder.insert(QStringLiteral("autoSync"), legacy.value(QStringLiteral("autoSync"), false).toBool());
+            legacyFolder.insert(QStringLiteral("timeFilterMode"), legacy.value(QStringLiteral("timeFilterMode"), 0).toInt());
+            legacyFolder.insert(QStringLiteral("timeStartIso"), legacy.value(QStringLiteral("timeStartIso"), QString()).toString());
+            legacyFolder.insert(QStringLiteral("timeEndIso"), legacy.value(QStringLiteral("timeEndIso"), QString()).toString());
+            legacyFolder.insert(QStringLiteral("imagesOnly"), legacy.value(QStringLiteral("imagesOnly"), false).toBool());
+            legacyFolder.insert(QStringLiteral("requireMetadata"), legacy.value(QStringLiteral("requireMetadata"), false).toBool());
+            legacyFolder.insert(QStringLiteral("minSizeKB"), legacy.value(QStringLiteral("minSizeKB"), 0).toInt());
+            legacyFolder.insert(QStringLiteral("maxSizeKB"), legacy.value(QStringLiteral("maxSizeKB"), 0).toInt());
+            legacyFolder.insert(QStringLiteral("nameFilterMode"), legacy.value(QStringLiteral("nameFilterMode"), 0).toInt());
+            legacyFolder.insert(QStringLiteral("nameKeywords"), legacy.value(QStringLiteral("nameKeywords"), QString()).toString());
+            legacyFolder.insert(QStringLiteral("extFilterMode"), legacy.value(QStringLiteral("extFilterMode"), 0).toInt());
+            legacyFolder.insert(QStringLiteral("extensions"), legacy.value(QStringLiteral("extensions"), QString()).toString());
+        }
+        legacy.endGroup();
+
+        if (hasLegacySync || hasLegacyFolder) {
+            if (hasLegacySync) root.insert(QStringLiteral("SyncServer"), legacySync);
+            if (hasLegacyFolder) root.insert(QStringLiteral("FolderSync"), legacyFolder);
+            migratedFromLegacy = true;
+        }
+    }
+
+    auto readStringList = [](const QJsonObject &obj, const QString &key) {
+        QStringList list;
+        const QJsonArray arr = obj.value(key).toArray();
+        list.reserve(arr.size());
+        for (const QJsonValue &val : arr) {
+            const QString s = val.toString();
+            if (!s.isEmpty()) list.append(s);
+        }
+        return list;
+    };
+
+    const QJsonObject syncServer = root.value(QStringLiteral("SyncServer")).toObject();
+    ui->chkAutoStart->setChecked(syncServer.value(QStringLiteral("autoStart")).toBool(false));
+    ui->chkWhitelist->setChecked(syncServer.value(QStringLiteral("enableWhitelist")).toBool(false));
+    ui->editPort->setText(syncServer.value(QStringLiteral("port")).toString(QStringLiteral("12345")));
+    ui->editAesKey->setText(syncServer.value(QStringLiteral("aesKey")).toString());
+
+    const QStringList whitelistArr = readStringList(syncServer, QStringLiteral("whitelist"));
     for (const QString &id : whitelistArr) {
-        m_whitelistedDevices.insert(id);
-        addWhitelistItem(id);
+        if (!m_whitelistedDevices.contains(id)) {
+            m_whitelistedDevices.insert(id);
+            addWhitelistItem(id);
+        }
     }
 
-    m_rootPaths = settings.value("rootPaths").toStringList();
-    for (const QString &path : m_rootPaths) {
-        addFolderItem(path);
-        addPathRecursive(path, path);
+    m_rootPaths.clear();
+    const QStringList savedRootPaths = readStringList(syncServer, QStringLiteral("rootPaths"));
+    for (const QString &path : savedRootPaths) {
+        if (!m_rootPaths.contains(path)) {
+            m_rootPaths.append(path);
+            addFolderItem(path);
+            addPathRecursive(path, path);
+        }
     }
-    settings.endGroup();
 
-    settings.beginGroup("FolderSync");
-    ui->editFolderA->setText(settings.value("folderA", "").toString());
-    ui->editFolderB->setText(settings.value("folderB", "").toString());
-    const int savedMode = settings.value("mode", 0).toInt();
+    const QJsonObject folderSync = root.value(QStringLiteral("FolderSync")).toObject();
+    ui->editFolderA->setText(folderSync.value(QStringLiteral("folderA")).toString());
+    ui->editFolderB->setText(folderSync.value(QStringLiteral("folderB")).toString());
+    const int savedMode = folderSync.value(QStringLiteral("mode")).toInt(0);
     if (savedMode == 1) {
         ui->radioSyncMove->setChecked(true);
     } else if (savedMode == 2) {
@@ -272,60 +359,77 @@ void SyncWidget::loadSettings() {
     } else {
         ui->radioSyncCopy->setChecked(true);
     }
-    ui->chkSyncSubdirs->setChecked(settings.value("includeSubdirs", true).toBool());
-    ui->chkAutoFolderSync->setChecked(settings.value("autoSync", false).toBool());
-    const int savedTimeMode = qBound(0, settings.value("timeFilterMode", 0).toInt(), 3);
+    ui->chkSyncSubdirs->setChecked(folderSync.value(QStringLiteral("includeSubdirs")).toBool(true));
+    ui->chkAutoFolderSync->setChecked(folderSync.value(QStringLiteral("autoSync")).toBool(false));
+    const int savedTimeMode = qBound(0, folderSync.value(QStringLiteral("timeFilterMode")).toInt(0), 3);
     ui->comboFolderTimeFilter->setCurrentIndex(savedTimeMode);
     const QDateTime defaultStart(QDate::currentDate(), QTime(0, 0, 0));
     const QDateTime defaultEnd(QDate::currentDate(), QTime(23, 59, 59));
-    const QDateTime savedStart = QDateTime::fromString(settings.value("timeStartIso").toString(), Qt::ISODate);
-    const QDateTime savedEnd = QDateTime::fromString(settings.value("timeEndIso").toString(), Qt::ISODate);
+    const QDateTime savedStart = QDateTime::fromString(folderSync.value(QStringLiteral("timeStartIso")).toString(), Qt::ISODate);
+    const QDateTime savedEnd = QDateTime::fromString(folderSync.value(QStringLiteral("timeEndIso")).toString(), Qt::ISODate);
     ui->dtFolderSyncStart->setDateTime(savedStart.isValid() ? savedStart : defaultStart);
     ui->dtFolderSyncEnd->setDateTime(savedEnd.isValid() ? savedEnd : defaultEnd);
-    ui->chkFolderSyncImagesOnly->setChecked(settings.value("imagesOnly", false).toBool());
-    ui->chkFolderRequireMetadata->setChecked(settings.value("requireMetadata", false).toBool());
-    ui->spinFolderMinSizeKB->setValue(qMax(0, settings.value("minSizeKB", 0).toInt()));
-    ui->spinFolderMaxSizeKB->setValue(qMax(0, settings.value("maxSizeKB", 0).toInt()));
-    ui->comboFolderNameFilter->setCurrentIndex(qBound(0, settings.value("nameFilterMode", 0).toInt(), 2));
-    ui->editFolderNameKeywords->setText(settings.value("nameKeywords", "").toString());
-    ui->comboFolderExtFilter->setCurrentIndex(qBound(0, settings.value("extFilterMode", 0).toInt(), 2));
-    ui->editFolderExtensions->setText(settings.value("extensions", "").toString());
-    settings.endGroup();
+    ui->chkFolderSyncImagesOnly->setChecked(folderSync.value(QStringLiteral("imagesOnly")).toBool(false));
+    ui->chkFolderRequireMetadata->setChecked(folderSync.value(QStringLiteral("requireMetadata")).toBool(false));
+    ui->spinFolderMinSizeKB->setValue(qMax(0, folderSync.value(QStringLiteral("minSizeKB")).toInt(0)));
+    ui->spinFolderMaxSizeKB->setValue(qMax(0, folderSync.value(QStringLiteral("maxSizeKB")).toInt(0)));
+    ui->comboFolderNameFilter->setCurrentIndex(qBound(0, folderSync.value(QStringLiteral("nameFilterMode")).toInt(0), 2));
+    ui->editFolderNameKeywords->setText(folderSync.value(QStringLiteral("nameKeywords")).toString());
+    ui->comboFolderExtFilter->setCurrentIndex(qBound(0, folderSync.value(QStringLiteral("extFilterMode")).toInt(0), 2));
+    ui->editFolderExtensions->setText(folderSync.value(QStringLiteral("extensions")).toString());
 
     m_isLoading = false; // 关闭加载模式
+
+    if (migratedFromLegacy) {
+        saveSettings();
+    }
 }
 
 void SyncWidget::saveSettings() {
     if (m_isLoading) return; // 拦截：如果是正在读取配置时触发的改变，不执行保存！
 
-    QSettings settings("IceRinne", "LoraManager");
-    settings.beginGroup("SyncServer");
-    settings.setValue("autoStart", ui->chkAutoStart->isChecked());
-    settings.setValue("enableWhitelist", ui->chkWhitelist->isChecked());
-    settings.setValue("port", ui->editPort->text());
-    settings.setValue("aesKey", ui->editAesKey->text());
-    settings.setValue("whitelist", QStringList(m_whitelistedDevices.begin(), m_whitelistedDevices.end()));
-    settings.setValue("rootPaths", m_rootPaths);
-    settings.endGroup();
+    QStringList sortedWhitelist(m_whitelistedDevices.begin(), m_whitelistedDevices.end());
+    std::sort(sortedWhitelist.begin(), sortedWhitelist.end());
 
-    settings.beginGroup("FolderSync");
-    settings.setValue("folderA", ui->editFolderA->text().trimmed());
-    settings.setValue("folderB", ui->editFolderB->text().trimmed());
-    settings.setValue("mode", static_cast<int>(currentFolderSyncMode()));
-    settings.setValue("includeSubdirs", ui->chkSyncSubdirs->isChecked());
-    settings.setValue("autoSync", ui->chkAutoFolderSync->isChecked());
-    settings.setValue("timeFilterMode", ui->comboFolderTimeFilter->currentIndex());
-    settings.setValue("timeStartIso", ui->dtFolderSyncStart->dateTime().toString(Qt::ISODate));
-    settings.setValue("timeEndIso", ui->dtFolderSyncEnd->dateTime().toString(Qt::ISODate));
-    settings.setValue("imagesOnly", ui->chkFolderSyncImagesOnly->isChecked());
-    settings.setValue("requireMetadata", ui->chkFolderRequireMetadata->isChecked());
-    settings.setValue("minSizeKB", ui->spinFolderMinSizeKB->value());
-    settings.setValue("maxSizeKB", ui->spinFolderMaxSizeKB->value());
-    settings.setValue("nameFilterMode", ui->comboFolderNameFilter->currentIndex());
-    settings.setValue("nameKeywords", ui->editFolderNameKeywords->text().trimmed());
-    settings.setValue("extFilterMode", ui->comboFolderExtFilter->currentIndex());
-    settings.setValue("extensions", ui->editFolderExtensions->text().trimmed());
-    settings.endGroup();
+    QJsonObject syncServer;
+    syncServer.insert(QStringLiteral("autoStart"), ui->chkAutoStart->isChecked());
+    syncServer.insert(QStringLiteral("enableWhitelist"), ui->chkWhitelist->isChecked());
+    syncServer.insert(QStringLiteral("port"), ui->editPort->text());
+    syncServer.insert(QStringLiteral("aesKey"), ui->editAesKey->text());
+    syncServer.insert(QStringLiteral("whitelist"), QJsonArray::fromStringList(sortedWhitelist));
+    syncServer.insert(QStringLiteral("rootPaths"), QJsonArray::fromStringList(m_rootPaths));
+
+    QJsonObject folderSync;
+    folderSync.insert(QStringLiteral("folderA"), ui->editFolderA->text().trimmed());
+    folderSync.insert(QStringLiteral("folderB"), ui->editFolderB->text().trimmed());
+    folderSync.insert(QStringLiteral("mode"), static_cast<int>(currentFolderSyncMode()));
+    folderSync.insert(QStringLiteral("includeSubdirs"), ui->chkSyncSubdirs->isChecked());
+    folderSync.insert(QStringLiteral("autoSync"), ui->chkAutoFolderSync->isChecked());
+    folderSync.insert(QStringLiteral("timeFilterMode"), ui->comboFolderTimeFilter->currentIndex());
+    folderSync.insert(QStringLiteral("timeStartIso"), ui->dtFolderSyncStart->dateTime().toString(Qt::ISODate));
+    folderSync.insert(QStringLiteral("timeEndIso"), ui->dtFolderSyncEnd->dateTime().toString(Qt::ISODate));
+    folderSync.insert(QStringLiteral("imagesOnly"), ui->chkFolderSyncImagesOnly->isChecked());
+    folderSync.insert(QStringLiteral("requireMetadata"), ui->chkFolderRequireMetadata->isChecked());
+    folderSync.insert(QStringLiteral("minSizeKB"), ui->spinFolderMinSizeKB->value());
+    folderSync.insert(QStringLiteral("maxSizeKB"), ui->spinFolderMaxSizeKB->value());
+    folderSync.insert(QStringLiteral("nameFilterMode"), ui->comboFolderNameFilter->currentIndex());
+    folderSync.insert(QStringLiteral("nameKeywords"), ui->editFolderNameKeywords->text().trimmed());
+    folderSync.insert(QStringLiteral("extFilterMode"), ui->comboFolderExtFilter->currentIndex());
+    folderSync.insert(QStringLiteral("extensions"), ui->editFolderExtensions->text().trimmed());
+
+    QJsonObject root;
+    root.insert(QStringLiteral("SyncServer"), syncServer);
+    root.insert(QStringLiteral("FolderSync"), folderSync);
+
+    QSaveFile file(settingsPath());
+    if (!file.open(QIODevice::WriteOnly)) {
+        qWarning() << "Failed to open sync settings for writing:" << file.fileName() << file.errorString();
+        return;
+    }
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    if (!file.commit()) {
+        qWarning() << "Failed to commit sync settings:" << file.fileName() << file.errorString();
+    }
 }
 
 // UI 改变即刻触发保存

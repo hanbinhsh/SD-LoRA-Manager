@@ -6,7 +6,6 @@
 #include <QTcpSocket>
 #include <QUdpSocket>
 #include <QFileSystemWatcher>
-#include <QSettings>
 #include <QMap>
 #include <QSet>
 #include <QJsonObject>
@@ -149,6 +148,7 @@ private:
     void handleClientDisconnected();
 
     // 核心功能函数
+    QString settingsPath() const;
     void loadSettings();
     void saveSettings();
     void logMsg(const QString &msg);
