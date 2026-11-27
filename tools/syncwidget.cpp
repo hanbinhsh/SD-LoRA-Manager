@@ -111,7 +111,6 @@ SyncWidget::SyncWidget(QWidget *parent) :
         saveSettings();
         refreshFolderAutoWatchIfEnabled();
     });
-    connect(ui->syncTabWidget, &QTabWidget::currentChanged, this, [this](int) { saveSettings(); });
 
     // 加载设置
     loadSettings();
@@ -230,10 +229,6 @@ void SyncWidget::loadSettings() {
     ui->dtFolderSyncStart->setDateTime(savedStart.isValid() ? savedStart : defaultStart);
     ui->dtFolderSyncEnd->setDateTime(savedEnd.isValid() ? savedEnd : defaultEnd);
     ui->chkFolderSyncImagesOnly->setChecked(settings.value("imagesOnly", false).toBool());
-    const int savedTab = settings.value("currentTab", 0).toInt();
-    if (savedTab >= 0 && savedTab < ui->syncTabWidget->count()) {
-        ui->syncTabWidget->setCurrentIndex(savedTab);
-    }
     settings.endGroup();
 
     m_isLoading = false; // 关闭加载模式
@@ -262,7 +257,6 @@ void SyncWidget::saveSettings() {
     settings.setValue("timeStartIso", ui->dtFolderSyncStart->dateTime().toString(Qt::ISODate));
     settings.setValue("timeEndIso", ui->dtFolderSyncEnd->dateTime().toString(Qt::ISODate));
     settings.setValue("imagesOnly", ui->chkFolderSyncImagesOnly->isChecked());
-    settings.setValue("currentTab", ui->syncTabWidget->currentIndex());
     settings.endGroup();
 }
 
