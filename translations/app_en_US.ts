@@ -6388,5 +6388,61 @@ Enable it?</translation>
       <source>路径无效，已自动关闭自动同步。</source>
       <translation>Invalid folder path; auto sync has been disabled.</translation>
     </message>
+    <message>
+      <source>时间筛选:</source>
+      <translation>Time Filter:</translation>
+    </message>
+    <message>
+      <source>不限制时间</source>
+      <translation>All Time</translation>
+    </message>
+    <message>
+      <source>指定时间之前</source>
+      <translation>Before Time</translation>
+    </message>
+    <message>
+      <source>指定时间之后</source>
+      <translation>After Time</translation>
+    </message>
+    <message>
+      <source>两个时间之间</source>
+      <translation>Between Times</translation>
+    </message>
+    <message>
+      <source>起始时间:</source>
+      <translation>From:</translation>
+    </message>
+    <message>
+      <source>截止时间:</source>
+      <translation>To:</translation>
+    </message>
+    <message>
+      <source>仅同步图片</source>
+      <translation>Images only</translation>
+    </message>
+    <message>
+      <source>仅同步常见图片文件（png/jpg/jpeg/webp/bmp/gif/tif/tiff/avif）</source>
+      <translation>Only sync common image files (png/jpg/jpeg/webp/bmp/gif/tif/tiff/avif)</translation>
+    </message>
+    <message>
+      <source>，筛选排除 %1 个</source>
+      <translation>, %1 filtered out</translation>
+    </message>
+    <message>
+      <source>请设置有效的截止时间。</source>
+      <translation>Please set a valid end time.</translation>
+    </message>
+    <message>
+      <source>请设置有效的起始时间。</source>
+      <translation>Please set a valid start time.</translation>
+    </message>
+    <message>
+      <source>请设置有效的起始时间和截止时间。</source>
+      <translation>Please set valid start and end times.</translation>
+    </message>
+    <message>
+      <source>起始时间不能晚于截止时间。</source>
+      <translation>Start time cannot be later than end time.</translation>
+    </message>
   </context>
 </TS>

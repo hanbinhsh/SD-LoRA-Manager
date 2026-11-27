@@ -1060,6 +1060,70 @@ void testFolderSync(const QTemporaryDir &dir)
     const FolderSyncResult cancelRes = FolderSyncEngine::executeSync(cancelPlan, {}, &cancelFlag);
     check(cancelRes.canceled && !cancelRes.success && cancelRes.copiedCount == 0,
           "folder sync honors cancellation flag cleanly");
+
+    // 6. Time range & image-only filters (Before, After, Between, invalid range, TwoWay)
+    const QString tfA = root + "/tf_a";
+    const QString tfB = root + "/tf_b";
+    QDir().mkpath(tfA);
+    QDir().mkpath(tfB);
+    const QDateTime t1 = QDateTime::fromSecsSinceEpoch(1700000100);
+    const QDateTime t2 = QDateTime::fromSecsSinceEpoch(1700000200);
+    const QDateTime t3 = QDateTime::fromSecsSinceEpoch(1700000300);
+    writeFile(tfA + "/early.png", "early-img");
+    writeFile(tfA + "/mid.webp", "mid-img");
+    writeFile(tfA + "/mid_note.txt", "mid-txt");
+    writeFile(tfA + "/late.jpg", "late-img");
+    setFileMtime(tfA + "/early.png", t1);
+    setFileMtime(tfA + "/mid.webp", t2);
+    setFileMtime(tfA + "/mid_note.txt", t2);
+    setFileMtime(tfA + "/late.jpg", t3);
+
+    FolderSyncFilter badRange;
+    badRange.timeMode = FolderSyncTimeFilterMode::Between;
+    badRange.startTime = t3;
+    badRange.endTime = t1;
+    check(!FolderSyncEngine::planSync(tfA, tfB, FolderSyncMode::OneWayCopy, true, badRange).valid,
+          "folder sync rejects startTime > endTime");
+
+    FolderSyncFilter beforeFilter;
+    beforeFilter.timeMode = FolderSyncTimeFilterMode::Before;
+    beforeFilter.endTime = QDateTime::fromSecsSinceEpoch(1700000150);
+    beforeFilter.imagesOnly = true;
+    const FolderSyncPlan beforePlan = FolderSyncEngine::planSync(tfA, tfB, FolderSyncMode::OneWayCopy, true, beforeFilter);
+    check(beforePlan.valid && beforePlan.copyAtoBCount == 1 && beforePlan.filteredOutCount == 3
+          && beforePlan.actions.first().relativePath == "early.png",
+          "Before + imagesOnly filter selects only images modified at or before cutoff");
+
+    FolderSyncFilter afterFilter;
+    afterFilter.timeMode = FolderSyncTimeFilterMode::After;
+    afterFilter.startTime = QDateTime::fromSecsSinceEpoch(1700000250);
+    afterFilter.imagesOnly = true;
+    const FolderSyncPlan afterPlan = FolderSyncEngine::planSync(tfA, tfB, FolderSyncMode::OneWayCopy, true, afterFilter);
+    check(afterPlan.valid && afterPlan.copyAtoBCount == 1 && afterPlan.filteredOutCount == 3
+          && afterPlan.actions.first().relativePath == "late.jpg",
+          "After + imagesOnly filter selects only images modified at or after cutoff");
+
+    FolderSyncFilter betweenFilter;
+    betweenFilter.timeMode = FolderSyncTimeFilterMode::Between;
+    betweenFilter.startTime = QDateTime::fromSecsSinceEpoch(1700000150);
+    betweenFilter.endTime = QDateTime::fromSecsSinceEpoch(1700000250);
+    betweenFilter.imagesOnly = true;
+    const FolderSyncPlan betweenPlan = FolderSyncEngine::planSync(tfA, tfB, FolderSyncMode::OneWayCopy, true, betweenFilter);
+    check(betweenPlan.valid && betweenPlan.copyAtoBCount == 1 && betweenPlan.filteredOutCount == 3
+          && betweenPlan.actions.first().relativePath == "mid.webp",
+          "Between + imagesOnly filter selects only images inside time window and excludes txt");
+
+    writeFile(tfB + "/b_mid.png", "b-mid-img");
+    writeFile(tfB + "/b_late.png", "b-late-img");
+    setFileMtime(tfB + "/b_mid.png", t2);
+    setFileMtime(tfB + "/b_late.png", t3);
+    const FolderSyncPlan twBetweenPlan = FolderSyncEngine::planSync(tfA, tfB, FolderSyncMode::TwoWaySync, true, betweenFilter);
+    check(twBetweenPlan.valid && twBetweenPlan.copyAtoBCount == 1 && twBetweenPlan.copyBtoACount == 1,
+          "TwoWaySync respects time range and imagesOnly filter in both directions");
+    const FolderSyncResult twBetweenRes = FolderSyncEngine::executeSync(twBetweenPlan);
+    check(twBetweenRes.success && QFile::exists(tfB + "/mid.webp") && QFile::exists(tfA + "/b_mid.png")
+          && !QFile::exists(tfB + "/mid_note.txt") && !QFile::exists(tfA + "/b_late.png"),
+          "TwoWaySync executes only files matching time window and image filter");
 }
 }
 

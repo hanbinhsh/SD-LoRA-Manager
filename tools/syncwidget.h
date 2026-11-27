@@ -56,6 +56,7 @@ private slots:
     void onFolderSyncFinished();
     void onAutoFolderSyncToggled(bool checked);
     void onFolderAutoDirectoryChanged(const QString &path);
+    void onFolderTimeFilterChanged();
 
 private:
     Ui::SyncWidget *ui;
@@ -88,6 +89,8 @@ private:
     bool m_folderSyncLastRunWasAuto = false;
 
     FolderSyncMode currentFolderSyncMode() const;
+    FolderSyncFilter currentFolderSyncFilter() const;
+    void updateFolderTimeFilterUi();
     void updateFolderSyncModeHint();
     void setFolderSyncUiBusy(bool busy);
     void logFolderSyncMsg(const QString &msg);

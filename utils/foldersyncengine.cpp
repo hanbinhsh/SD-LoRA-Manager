@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QSet>
 #include <QUuid>
 #include <algorithm>
 #include <cstdlib>
@@ -215,14 +216,56 @@ bool isSameOrNestedDirectory(const QString &dirA, const QString &dirB)
         || normA.startsWith(prefixB, kPathCaseSensitivity);
 }
 
+bool isSupportedImageFile(const QString &fileName)
+{
+    static const QSet<QString> kImageExtensions = {
+        QStringLiteral("png"),
+        QStringLiteral("jpg"),
+        QStringLiteral("jpeg"),
+        QStringLiteral("webp"),
+        QStringLiteral("bmp"),
+        QStringLiteral("gif"),
+        QStringLiteral("tif"),
+        QStringLiteral("tiff"),
+        QStringLiteral("avif"),
+    };
+    const QString ext = QFileInfo(fileName).suffix().toLower();
+    return !ext.isEmpty() && kImageExtensions.contains(ext);
+}
+
+bool matchesFilter(const QString &fileName, qint64 modifiedMs, const FolderSyncFilter &filter)
+{
+    if (filter.imagesOnly && !isSupportedImageFile(fileName)) {
+        return false;
+    }
+
+    switch (filter.timeMode) {
+    case FolderSyncTimeFilterMode::All:
+        return true;
+    case FolderSyncTimeFilterMode::Before:
+        if (!filter.endTime.isValid()) return false;
+        return modifiedMs <= filter.endTime.toMSecsSinceEpoch() + 999;
+    case FolderSyncTimeFilterMode::After:
+        if (!filter.startTime.isValid()) return false;
+        return modifiedMs >= filter.startTime.toMSecsSinceEpoch();
+    case FolderSyncTimeFilterMode::Between:
+        if (!filter.startTime.isValid() || !filter.endTime.isValid()) return false;
+        return modifiedMs >= filter.startTime.toMSecsSinceEpoch()
+            && modifiedMs <= filter.endTime.toMSecsSinceEpoch() + 999;
+    }
+    return true;
+}
+
 FolderSyncPlan planSync(const QString &folderA,
                         const QString &folderB,
                         FolderSyncMode mode,
-                        bool includeSubdirs)
+                        bool includeSubdirs,
+                        const FolderSyncFilter &filter)
 {
     FolderSyncPlan plan;
     plan.mode = mode;
     plan.includeSubdirs = includeSubdirs;
+    plan.filter = filter;
 
     const QString trimmedA = folderA.trimmed();
     const QString trimmedB = folderB.trimmed();
@@ -246,6 +289,25 @@ FolderSyncPlan planSync(const QString &folderA,
     if (isSameOrNestedDirectory(trimmedA, trimmedB)) {
         plan.errorMessage = QStringLiteral("文件夹 A 与文件夹 B 不能相同，也不能互相嵌套。");
         return plan;
+    }
+
+    if (filter.timeMode == FolderSyncTimeFilterMode::Before && !filter.endTime.isValid()) {
+        plan.errorMessage = QStringLiteral("请设置有效的截止时间。");
+        return plan;
+    }
+    if (filter.timeMode == FolderSyncTimeFilterMode::After && !filter.startTime.isValid()) {
+        plan.errorMessage = QStringLiteral("请设置有效的起始时间。");
+        return plan;
+    }
+    if (filter.timeMode == FolderSyncTimeFilterMode::Between) {
+        if (!filter.startTime.isValid() || !filter.endTime.isValid()) {
+            plan.errorMessage = QStringLiteral("请设置有效的起始时间和截止时间。");
+            return plan;
+        }
+        if (filter.startTime > filter.endTime) {
+            plan.errorMessage = QStringLiteral("起始时间不能晚于截止时间。");
+            return plan;
+        }
     }
 
     plan.folderA = normalizeDirPath(trimmedA);
@@ -277,6 +339,11 @@ FolderSyncPlan planSync(const QString &folderA,
 
         if (mode == FolderSyncMode::OneWayCopy) {
             const ScannedFileEntry &entryA = filesA[key];
+            if (!matchesFilter(entryA.relativePath, entryA.modifiedMs, filter)) {
+                ++plan.filteredOutCount;
+                continue;
+            }
+
             FolderSyncAction action;
             action.relativePath = entryA.relativePath;
             action.sourcePath = entryA.absolutePath;
@@ -304,6 +371,11 @@ FolderSyncPlan planSync(const QString &folderA,
             plan.actions.append(action);
         } else if (mode == FolderSyncMode::OneWayMove) {
             const ScannedFileEntry &entryA = filesA[key];
+            if (!matchesFilter(entryA.relativePath, entryA.modifiedMs, filter)) {
+                ++plan.filteredOutCount;
+                continue;
+            }
+
             FolderSyncAction action;
             action.type = FolderSyncActionType::MoveAtoB;
             action.relativePath = entryA.relativePath;
@@ -317,6 +389,10 @@ FolderSyncPlan planSync(const QString &folderA,
         } else { // TwoWaySync
             if (inA && !inB) {
                 const ScannedFileEntry &entryA = filesA[key];
+                if (!matchesFilter(entryA.relativePath, entryA.modifiedMs, filter)) {
+                    ++plan.filteredOutCount;
+                    continue;
+                }
                 FolderSyncAction action;
                 action.type = FolderSyncActionType::CopyAtoB;
                 action.relativePath = entryA.relativePath;
@@ -329,6 +405,10 @@ FolderSyncPlan planSync(const QString &folderA,
                 plan.actions.append(action);
             } else if (!inA && inB) {
                 const ScannedFileEntry &entryB = filesB[key];
+                if (!matchesFilter(entryB.relativePath, entryB.modifiedMs, filter)) {
+                    ++plan.filteredOutCount;
+                    continue;
+                }
                 FolderSyncAction action;
                 action.type = FolderSyncActionType::CopyBtoA;
                 action.relativePath = entryB.relativePath;
@@ -344,17 +424,29 @@ FolderSyncPlan planSync(const QString &folderA,
                 const ScannedFileEntry &entryB = filesB[key];
                 const qint64 timeDiff = entryA.modifiedMs - entryB.modifiedMs;
 
-                FolderSyncAction action;
-                action.relativePath = entryA.relativePath;
                 if (entryA.size == entryB.size && std::llabs(timeDiff) <= kTimestampToleranceMs) {
+                    if (!matchesFilter(entryA.relativePath, entryA.modifiedMs, filter)
+                        && !matchesFilter(entryB.relativePath, entryB.modifiedMs, filter)) {
+                        ++plan.filteredOutCount;
+                        continue;
+                    }
+                    FolderSyncAction action;
+                    action.relativePath = entryA.relativePath;
                     action.type = FolderSyncActionType::Skip;
                     action.sourcePath = entryA.absolutePath;
                     action.targetPath = entryB.absolutePath;
                     action.fileSize = entryA.size;
                     action.reason = QStringLiteral("两端一致");
                     ++plan.skipCount;
+                    plan.actions.append(action);
                 } else if (timeDiff > kTimestampToleranceMs
                            || (std::llabs(timeDiff) <= kTimestampToleranceMs && entryA.modifiedMs >= entryB.modifiedMs)) {
+                    if (!matchesFilter(entryA.relativePath, entryA.modifiedMs, filter)) {
+                        ++plan.filteredOutCount;
+                        continue;
+                    }
+                    FolderSyncAction action;
+                    action.relativePath = entryA.relativePath;
                     action.type = FolderSyncActionType::CopyAtoB;
                     action.sourcePath = entryA.absolutePath;
                     action.targetPath = entryB.absolutePath;
@@ -362,7 +454,14 @@ FolderSyncPlan planSync(const QString &folderA,
                     action.reason = QStringLiteral("A 较新");
                     ++plan.copyAtoBCount;
                     plan.totalTransferBytes += entryA.size;
+                    plan.actions.append(action);
                 } else {
+                    if (!matchesFilter(entryB.relativePath, entryB.modifiedMs, filter)) {
+                        ++plan.filteredOutCount;
+                        continue;
+                    }
+                    FolderSyncAction action;
+                    action.relativePath = entryA.relativePath;
                     action.type = FolderSyncActionType::CopyBtoA;
                     action.sourcePath = entryB.absolutePath;
                     action.targetPath = entryA.absolutePath;
@@ -370,8 +469,8 @@ FolderSyncPlan planSync(const QString &folderA,
                     action.reason = QStringLiteral("B 较新");
                     ++plan.copyBtoACount;
                     plan.totalTransferBytes += entryB.size;
+                    plan.actions.append(action);
                 }
-                plan.actions.append(action);
             }
         }
     }

@@ -40,7 +40,7 @@ QGroupBox::title {
 }
 
 QLineEdit, QComboBox, QTableWidget, QTableView, QListWidget,
-QPlainTextEdit, QTextBrowser, QTextEdit, QDoubleSpinBox, QSpinBox,
+QPlainTextEdit, QTextBrowser, QTextEdit, QDoubleSpinBox, QSpinBox, QDateTimeEdit,
 QScrollArea, QTreeWidget {
     background-color: @inputBg;
     border: 1px solid @inputBorder;
@@ -49,19 +49,19 @@ QScrollArea, QTreeWidget {
     padding: 4px;
 }
 
-QComboBox {
+QComboBox, QDateTimeEdit {
     padding-right: 24px;
 }
 
-QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover {
+QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover, QDateTimeEdit:hover {
     border-color: @inputBorderBright;
 }
 
-QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QDateTimeEdit:focus {
     border-color: @accentBlue;
 }
 
-QComboBox::drop-down {
+QComboBox::drop-down, QDateTimeEdit::drop-down {
     subcontrol-origin: border;
     subcontrol-position: top right;
     width: 22px;
@@ -73,11 +73,11 @@ QComboBox::drop-down {
     margin: 1px 1px 1px 0px;
 }
 
-QComboBox::drop-down:hover {
+QComboBox::drop-down:hover, QDateTimeEdit::drop-down:hover {
     background-color: @hoverBg;
 }
 
-QComboBox::down-arrow {
+QComboBox::down-arrow, QDateTimeEdit::down-arrow {
     image: url(@arrowDownSvg);
     width: 10px;
     height: 10px;

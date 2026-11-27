@@ -94,6 +94,14 @@ SyncWidget::SyncWidget(QWidget *parent) :
         saveSettings();
         refreshFolderAutoWatchIfEnabled();
     });
+    connect(ui->comboFolderTimeFilter, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int) { onFolderTimeFilterChanged(); });
+    connect(ui->dtFolderSyncStart, &QDateTimeEdit::dateTimeChanged,
+            this, [this](const QDateTime &) { saveSettings(); });
+    connect(ui->dtFolderSyncEnd, &QDateTimeEdit::dateTimeChanged,
+            this, [this](const QDateTime &) { saveSettings(); });
+    connect(ui->chkFolderSyncImagesOnly, &QCheckBox::toggled,
+            this, [this](bool) { saveSettings(); });
     connect(ui->chkAutoFolderSync, &QCheckBox::toggled, this, &SyncWidget::onAutoFolderSyncToggled);
     connect(ui->editFolderA, &QLineEdit::editingFinished, this, [this]() {
         saveSettings();
@@ -107,6 +115,7 @@ SyncWidget::SyncWidget(QWidget *parent) :
 
     // 加载设置
     loadSettings();
+    updateFolderTimeFilterUi();
     updateFolderSyncModeHint();
 
     // 自动启动服务
@@ -212,6 +221,15 @@ void SyncWidget::loadSettings() {
     }
     ui->chkSyncSubdirs->setChecked(settings.value("includeSubdirs", true).toBool());
     ui->chkAutoFolderSync->setChecked(settings.value("autoSync", false).toBool());
+    const int savedTimeMode = qBound(0, settings.value("timeFilterMode", 0).toInt(), 3);
+    ui->comboFolderTimeFilter->setCurrentIndex(savedTimeMode);
+    const QDateTime defaultStart(QDate::currentDate(), QTime(0, 0, 0));
+    const QDateTime defaultEnd(QDate::currentDate(), QTime(23, 59, 59));
+    const QDateTime savedStart = QDateTime::fromString(settings.value("timeStartIso").toString(), Qt::ISODate);
+    const QDateTime savedEnd = QDateTime::fromString(settings.value("timeEndIso").toString(), Qt::ISODate);
+    ui->dtFolderSyncStart->setDateTime(savedStart.isValid() ? savedStart : defaultStart);
+    ui->dtFolderSyncEnd->setDateTime(savedEnd.isValid() ? savedEnd : defaultEnd);
+    ui->chkFolderSyncImagesOnly->setChecked(settings.value("imagesOnly", false).toBool());
     const int savedTab = settings.value("currentTab", 0).toInt();
     if (savedTab >= 0 && savedTab < ui->syncTabWidget->count()) {
         ui->syncTabWidget->setCurrentIndex(savedTab);
@@ -240,6 +258,10 @@ void SyncWidget::saveSettings() {
     settings.setValue("mode", static_cast<int>(currentFolderSyncMode()));
     settings.setValue("includeSubdirs", ui->chkSyncSubdirs->isChecked());
     settings.setValue("autoSync", ui->chkAutoFolderSync->isChecked());
+    settings.setValue("timeFilterMode", ui->comboFolderTimeFilter->currentIndex());
+    settings.setValue("timeStartIso", ui->dtFolderSyncStart->dateTime().toString(Qt::ISODate));
+    settings.setValue("timeEndIso", ui->dtFolderSyncEnd->dateTime().toString(Qt::ISODate));
+    settings.setValue("imagesOnly", ui->chkFolderSyncImagesOnly->isChecked());
     settings.setValue("currentTab", ui->syncTabWidget->currentIndex());
     settings.endGroup();
 }
@@ -970,6 +992,37 @@ FolderSyncMode SyncWidget::currentFolderSyncMode() const
     return FolderSyncMode::OneWayCopy;
 }
 
+FolderSyncFilter SyncWidget::currentFolderSyncFilter() const
+{
+    FolderSyncFilter filter;
+    const int idx = ui->comboFolderTimeFilter->currentIndex();
+    if (idx == 1) filter.timeMode = FolderSyncTimeFilterMode::Before;
+    else if (idx == 2) filter.timeMode = FolderSyncTimeFilterMode::After;
+    else if (idx == 3) filter.timeMode = FolderSyncTimeFilterMode::Between;
+    else filter.timeMode = FolderSyncTimeFilterMode::All;
+    filter.startTime = ui->dtFolderSyncStart->dateTime();
+    filter.endTime = ui->dtFolderSyncEnd->dateTime();
+    filter.imagesOnly = ui->chkFolderSyncImagesOnly->isChecked();
+    return filter;
+}
+
+void SyncWidget::updateFolderTimeFilterUi()
+{
+    const int idx = ui->comboFolderTimeFilter->currentIndex();
+    const bool showStart = (idx == 2 || idx == 3);
+    const bool showEnd = (idx == 1 || idx == 3);
+    ui->lblFolderTimeStart->setVisible(showStart);
+    ui->dtFolderSyncStart->setVisible(showStart);
+    ui->lblFolderTimeEnd->setVisible(showEnd);
+    ui->dtFolderSyncEnd->setVisible(showEnd);
+}
+
+void SyncWidget::onFolderTimeFilterChanged()
+{
+    updateFolderTimeFilterUi();
+    saveSettings();
+}
+
 void SyncWidget::updateFolderSyncModeHint()
 {
     const FolderSyncMode mode = currentFolderSyncMode();
@@ -997,6 +1050,10 @@ void SyncWidget::setFolderSyncUiBusy(bool busy)
     ui->radioSyncMove->setEnabled(!busy);
     ui->radioSyncTwoWay->setEnabled(!busy);
     ui->chkSyncSubdirs->setEnabled(!busy);
+    ui->comboFolderTimeFilter->setEnabled(!busy);
+    ui->dtFolderSyncStart->setEnabled(!busy);
+    ui->dtFolderSyncEnd->setEnabled(!busy);
+    ui->chkFolderSyncImagesOnly->setEnabled(!busy);
     ui->btnPreviewFolderSync->setEnabled(!busy);
     ui->btnStartFolderSync->setEnabled(!busy);
     ui->btnCancelFolderSync->setEnabled(busy);
@@ -1062,7 +1119,8 @@ void SyncWidget::onPreviewFolderSync()
         ui->editFolderA->text(),
         ui->editFolderB->text(),
         currentFolderSyncMode(),
-        ui->chkSyncSubdirs->isChecked());
+        ui->chkSyncSubdirs->isChecked(),
+        currentFolderSyncFilter());
 
     if (!plan.valid) {
         QMessageBox::warning(this, AppText::tr("参数无效"), plan.errorMessage);
@@ -1071,12 +1129,15 @@ void SyncWidget::onPreviewFolderSync()
     }
 
     const int pending = plan.pendingTransferCount();
-    const QString summary = AppText::tr("预览完成：A→B 复制 %1，A→B 移动 %2，B→A 复制 %3，跳过 %4（待传输 %5）")
-                                .arg(plan.copyAtoBCount)
-                                .arg(plan.moveAtoBCount)
-                                .arg(plan.copyBtoACount)
-                                .arg(plan.skipCount)
-                                .arg(formatSyncByteSize(plan.totalTransferBytes));
+    QString summary = AppText::tr("预览完成：A→B 复制 %1，A→B 移动 %2，B→A 复制 %3，跳过 %4（待传输 %5）")
+                          .arg(plan.copyAtoBCount)
+                          .arg(plan.moveAtoBCount)
+                          .arg(plan.copyBtoACount)
+                          .arg(plan.skipCount)
+                          .arg(formatSyncByteSize(plan.totalTransferBytes));
+    if (plan.filteredOutCount > 0) {
+        summary += AppText::tr("，筛选排除 %1 个").arg(plan.filteredOutCount);
+    }
     ui->lblFolderSyncSummary->setText(summary);
     logFolderSyncMsg(summary);
 
@@ -1118,7 +1179,8 @@ void SyncWidget::triggerFolderSync(bool isAuto)
         ui->editFolderA->text(),
         ui->editFolderB->text(),
         mode,
-        ui->chkSyncSubdirs->isChecked());
+        ui->chkSyncSubdirs->isChecked(),
+        currentFolderSyncFilter());
 
     if (!plan.valid) {
         if (!isAuto) {
@@ -1316,7 +1378,8 @@ bool SyncWidget::startFolderAutoWatch(bool showWarningDialog)
         ui->editFolderA->text(),
         ui->editFolderB->text(),
         mode,
-        ui->chkSyncSubdirs->isChecked());
+        ui->chkSyncSubdirs->isChecked(),
+        currentFolderSyncFilter());
 
     if (!plan.valid) {
         if (showWarningDialog) {

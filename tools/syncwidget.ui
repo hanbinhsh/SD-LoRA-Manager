@@ -488,6 +488,101 @@
            </layout>
           </item>
           <item>
+           <layout class="QHBoxLayout" name="folderTimeFilterLayout">
+            <property name="spacing">
+             <number>8</number>
+            </property>
+            <item>
+             <widget class="QLabel" name="lblFolderTimeFilter">
+              <property name="text">
+               <string>时间筛选:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboFolderTimeFilter">
+              <item>
+               <property name="text">
+                <string>不限制时间</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>指定时间之前</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>指定时间之后</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>两个时间之间</string>
+               </property>
+              </item>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblFolderTimeStart">
+              <property name="text">
+               <string>起始时间:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QDateTimeEdit" name="dtFolderSyncStart">
+              <property name="displayFormat">
+               <string notr="true">yyyy-MM-dd HH:mm:ss</string>
+              </property>
+              <property name="calendarPopup">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblFolderTimeEnd">
+              <property name="text">
+               <string>截止时间:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QDateTimeEdit" name="dtFolderSyncEnd">
+              <property name="displayFormat">
+               <string notr="true">yyyy-MM-dd HH:mm:ss</string>
+              </property>
+              <property name="calendarPopup">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="chkFolderSyncImagesOnly">
+              <property name="toolTip">
+               <string>仅同步常见图片文件（png/jpg/jpeg/webp/bmp/gif/tif/tiff/avif）</string>
+              </property>
+              <property name="text">
+               <string>仅同步图片</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="folderTimeFilterSpacer">
+              <property name="orientation">
+               <enum>Qt::Orientation::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item>
            <widget class="QLabel" name="lblFolderSyncModeHint">
             <property name="text">
              <string>将文件夹 A 中新增或更新的文件复制到文件夹 B，保留 A 中的原始文件。</string>
